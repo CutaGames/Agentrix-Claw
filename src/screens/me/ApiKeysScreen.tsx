@@ -30,6 +30,7 @@ interface ProviderDef {
   icon: string;
   region: 'international' | 'china';
   currency: string;
+  billingType?: 'subscription' | 'api-key';
   requiredFields: string[];
   optionalFields: string[];
   placeholder: Record<string, string>;
@@ -323,6 +324,70 @@ export function ApiKeysScreen() {
               </Text>
             )}
 
+            {provider.id === 'copilot-subscription' && (
+              <View style={styles.tokenGuide}>
+                <Text style={styles.tokenGuideTitle}>
+                  {t({ en: '🔑 How to get your Copilot Token', zh: '🔑 如何获取 Copilot Token' })}
+                </Text>
+                <Text style={styles.tokenGuideStep}>
+                  {t({
+                    en: '① Open VS Code → Press Ctrl+Shift+P → Type "GitHub Copilot: Sign In" → Complete GitHub login in the browser',
+                    zh: '① 打开 VS Code → 按 Ctrl+Shift+P → 输入 "GitHub Copilot: Sign In" → 在浏览器中完成 GitHub 登录',
+                  })}
+                </Text>
+                <Text style={styles.tokenGuideStep}>
+                  {t({
+                    en: '② After login, press Ctrl+Shift+P → "Developer: Open Runtime Status" → Find "GitHub Copilot" section → Copy the token value',
+                    zh: '② 登录成功后，按 Ctrl+Shift+P → 搜索 "Developer: Open Runtime Status" → 找到 "GitHub Copilot" 部分 → 复制 token 值',
+                  })}
+                </Text>
+                <Text style={styles.tokenGuideStep}>
+                  {t({
+                    en: '③ Alternative: Use an OpenClaw-compatible relay service. Enter your relay URL in the Base URL field below, and use the relay\'s access token.',
+                    zh: '③ 或者：使用 OpenClaw 兼容的中继服务。在下方 Base URL 中填入中继地址，Token 填写中继服务的 access token。',
+                  })}
+                </Text>
+                <Text style={[styles.tokenGuideStep, { color: colors.textMuted, marginTop: 4 }]}>
+                  {t({
+                    en: '💡 Copilot Pro/Business/Enterprise subscribers get free access to 20+ models including GPT-5, Claude 4.6, Gemini 3.',
+                    zh: '💡 Copilot Pro/Business/Enterprise 订阅用户可免费使用 20+ 模型，包括 GPT-5、Claude 4.6、Gemini 3。',
+                  })}
+                </Text>
+              </View>
+            )}
+
+            {provider.id === 'chatgpt-subscription' && (
+              <View style={styles.tokenGuide}>
+                <Text style={styles.tokenGuideTitle}>
+                  {t({ en: '🔑 How to get your ChatGPT Token', zh: '🔑 如何获取 ChatGPT Token' })}
+                </Text>
+                <Text style={styles.tokenGuideStep}>
+                  {t({
+                    en: '① Log in to chat.openai.com in your browser',
+                    zh: '① 在浏览器中登录 chat.openai.com',
+                  })}
+                </Text>
+                <Text style={styles.tokenGuideStep}>
+                  {t({
+                    en: '② Press F12 → Application tab → Cookies → Find "__Secure-next-auth.session-token" → Copy the value',
+                    zh: '② 按 F12 → Application 标签 → Cookies → 找到 "__Secure-next-auth.session-token" → 复制值',
+                  })}
+                </Text>
+                <Text style={styles.tokenGuideStep}>
+                  {t({
+                    en: '③ Alternative: Use an OpenAI-compatible relay. Enter your relay URL in Base URL and use the relay\'s access token.',
+                    zh: '③ 或者：使用 OpenAI 兼容的中继。在 Base URL 中填入中继地址，token 填写中继的 access token。',
+                  })}
+                </Text>
+                <Text style={[styles.tokenGuideStep, { color: colors.textMuted, marginTop: 4 }]}>
+                  {t({
+                    en: '💡 ChatGPT Plus/Pro subscribers get access to GPT-4o, GPT-5, o3 and more.',
+                    zh: '💡 ChatGPT Plus/Pro 订阅用户可使用 GPT-4o、GPT-5、o3 等模型。',
+                  })}
+                </Text>
+              </View>
+            )}
+
             {/* Secret Key (Bedrock, Baidu) */}
             {provider.requiredFields.includes('secretKey') && (
               <>
@@ -451,8 +516,9 @@ export function ApiKeysScreen() {
     );
   }
 
-  const intlProviders = catalog.filter(p => p.region === 'international');
-  const chinaProviders = catalog.filter(p => p.region === 'china');
+  const subProviders = catalog.filter(p => p.billingType === 'subscription');
+  const apiIntlProviders = catalog.filter(p => p.billingType !== 'subscription' && p.region === 'international');
+  const apiChinaProviders = catalog.filter(p => p.billingType !== 'subscription' && p.region === 'china');
 
   return (
     <View style={styles.container}>
@@ -485,13 +551,33 @@ export function ApiKeysScreen() {
           )}
         </View>
 
-        {/* International providers */}
-        <Text style={styles.sectionTitle}>{t({ en: '🌍 International', zh: '🌍 国际厂商' })}</Text>
-        {intlProviders.map(renderProvider)}
+        {/* Subscription providers — flat monthly fee */}
+        {subProviders.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>{t({ en: '🔄 Subscription (monthly plan)', zh: '🔄 订阅直连（包月/包年）' })}</Text>
+            <Text style={styles.sectionHint}>
+              {t({
+                en: 'Use your existing ChatGPT / Copilot subscription token. Flat monthly fee, not charged per token.',
+                zh: '使用已有的 ChatGPT / Copilot 订阅 token，按月付费，不按 token 计量。',
+              })}
+            </Text>
+            {subProviders.map(renderProvider)}
+          </>
+        )}
 
-        {/* China providers */}
-        <Text style={styles.sectionTitle}>{t({ en: '🇨🇳 China', zh: '🇨🇳 国内厂商' })}</Text>
-        {chinaProviders.map(renderProvider)}
+        {/* API Key providers — pay-per-use, international */}
+        <Text style={styles.sectionTitle}>{t({ en: '🌍 API Key — International', zh: '🔑 API Key 按量 — 国际厂商' })}</Text>
+        <Text style={styles.sectionHint}>
+          {t({
+            en: 'Pay-per-token. Get an API key from the provider and pay based on usage.',
+            zh: '按 token 量计费。向厂商申请 API Key，按实际使用量扣费。',
+          })}
+        </Text>
+        {apiIntlProviders.map(renderProvider)}
+
+        {/* API Key providers — pay-per-use, China */}
+        <Text style={styles.sectionTitle}>{t({ en: '🇨🇳 API Key — China', zh: '🔑 API Key 按量 — 国内厂商' })}</Text>
+        {apiChinaProviders.map(renderProvider)}
 
         <View style={{ height: 60 }} />
       </ScrollView>
@@ -598,7 +684,8 @@ const styles = StyleSheet.create({
   },
   summaryLine: { fontSize: 13, color: colors.textPrimary, marginBottom: 4, lineHeight: 20 },
 
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginTop: 16, marginBottom: 10 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginTop: 16, marginBottom: 4 },
+  sectionHint: { fontSize: 12, color: colors.textMuted, marginBottom: 10, lineHeight: 17 },
 
   // Card
   card: {
@@ -694,4 +781,12 @@ const styles = StyleSheet.create({
   costBadgeText: { fontSize: 11, fontWeight: '700' },
   freeBadgePill: { backgroundColor: '#22c55e18', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 },
   freeBadgePillText: { fontSize: 10, color: '#22c55e', fontWeight: '600' },
+
+  // Token acquisition guide
+  tokenGuide: {
+    backgroundColor: '#6366f110', borderRadius: 10, padding: 12,
+    marginTop: 8, borderWidth: 1, borderColor: '#6366f130',
+  },
+  tokenGuideTitle: { fontSize: 13, fontWeight: '700', color: colors.textPrimary, marginBottom: 8 },
+  tokenGuideStep: { fontSize: 12, color: colors.textSecondary, lineHeight: 20, marginBottom: 4 },
 });

@@ -29,6 +29,7 @@ export interface ProviderDef {
   icon: string;
   region: 'international' | 'china';
   currency: string;      // "USD" or "CNY"
+  billingType: 'subscription' | 'api-key';  // subscription = 月付/包月订阅, api-key = 按量计费
   requiredFields: string[];
   optionalFields: string[];
   placeholder: Record<string, string>;
@@ -78,7 +79,7 @@ const SUBSCRIPTION_MODEL_ALIASES: Record<string, string> = {
 export const PROVIDER_CATALOG: ProviderDef[] = [
   // ─── 🌍 International ───
   {
-    id: 'openai', name: 'OpenAI', icon: '🧠', region: 'international', currency: 'USD',
+    id: 'openai', name: 'OpenAI', icon: '🧠', region: 'international', currency: 'USD', billingType: 'api-key',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     placeholder: { apiKey: 'sk-proj-...' },
     models: [
@@ -88,7 +89,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'chatgpt-subscription', name: 'ChatGPT Subscription', icon: '💬', region: 'international', currency: 'USD',
+    id: 'chatgpt-subscription', name: 'ChatGPT Subscription', icon: '💬', region: 'international', currency: 'USD', billingType: 'subscription',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     credentialLabel: 'Subscription Token',
     placeholder: {
@@ -102,7 +103,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'copilot-subscription', name: 'GitHub Copilot Subscription', icon: '🪟', region: 'international', currency: 'USD',
+    id: 'copilot-subscription', name: 'GitHub Copilot Subscription', icon: '🪟', region: 'international', currency: 'USD', billingType: 'subscription',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     credentialLabel: 'Copilot Token',
     placeholder: {
@@ -137,7 +138,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'gemini', name: 'Google Gemini', icon: '✨', region: 'international', currency: 'USD',
+    id: 'gemini', name: 'Google Gemini', icon: '✨', region: 'international', currency: 'USD', billingType: 'api-key',
     requiredFields: ['apiKey'], optionalFields: [],
     placeholder: { apiKey: 'AIzaSy...' },
     models: [
@@ -148,7 +149,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'anthropic', name: 'Anthropic (Claude)', icon: '🤖', region: 'international', currency: 'USD',
+    id: 'anthropic', name: 'Anthropic (Claude)', icon: '🤖', region: 'international', currency: 'USD', billingType: 'api-key',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     placeholder: { apiKey: 'sk-ant-api03-...' },
     models: [
@@ -158,7 +159,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'xai', name: 'xAI (Grok)', icon: '🚀', region: 'international', currency: 'USD',
+    id: 'xai', name: 'xAI (Grok)', icon: '🚀', region: 'international', currency: 'USD', billingType: 'api-key',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     placeholder: { apiKey: 'xai-...' },
     baseUrl: 'https://api.x.ai/v1',
@@ -167,7 +168,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'meta', name: 'Meta (Llama)', icon: '🦙', region: 'international', currency: 'USD',
+    id: 'meta', name: 'Meta (Llama)', icon: '🦙', region: 'international', currency: 'USD', billingType: 'api-key',
     requiredFields: ['apiKey'], optionalFields: [],
     placeholder: { apiKey: 'gsk_...' },
     baseUrl: 'https://api.groq.com/openai/v1',
@@ -176,7 +177,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'bedrock', name: 'AWS Bedrock (国际区)', icon: '☁️', region: 'international', currency: 'USD',
+    id: 'bedrock', name: 'AWS Bedrock (国际区)', icon: '☁️', region: 'international', currency: 'USD', billingType: 'api-key',
     requiredFields: ['apiKey', 'secretKey', 'region'], optionalFields: [],
     credentialLabel: 'AWS Access Key ID',
     placeholder: { apiKey: 'AKIA... / ASIA...', secretKey: 'wJal...', region: 'us-east-1' },
@@ -188,7 +189,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'bedrock-cn', name: 'AWS Bedrock (中国区)', icon: '☁️', region: 'china', currency: 'CNY',
+    id: 'bedrock-cn', name: 'AWS Bedrock (中国区)', icon: '☁️', region: 'china', currency: 'CNY', billingType: 'api-key',
     requiredFields: ['apiKey', 'secretKey', 'region'], optionalFields: [],
     credentialLabel: 'AWS Access Key ID',
     placeholder: { apiKey: 'AKIA... / ASIA...', secretKey: 'wJal...', region: 'cn-northwest-1' },
@@ -199,7 +200,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
   },
   // ─── 🇨🇳 China ───
   {
-    id: 'bytedance', name: '字节跳动 (豆包)', icon: '🔥', region: 'china', currency: 'CNY',
+    id: 'bytedance', name: '字节跳动 (豆包)', icon: '🔥', region: 'china', currency: 'CNY', billingType: 'api-key',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     placeholder: { apiKey: 'sk-...' },
     baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
@@ -209,7 +210,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'alibaba', name: '阿里通义千问 (Qwen)', icon: '🐜', region: 'china', currency: 'CNY',
+    id: 'alibaba', name: '阿里通义千问 (Qwen)', icon: '🐜', region: 'china', currency: 'CNY', billingType: 'api-key',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     placeholder: { apiKey: 'sk-...' },
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -219,7 +220,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'zhipu', name: '智谱 AI (GLM)', icon: '🧪', region: 'china', currency: 'CNY',
+    id: 'zhipu', name: '智谱 AI (GLM)', icon: '🧪', region: 'china', currency: 'CNY', billingType: 'api-key',
     requiredFields: ['apiKey'], optionalFields: [],
     placeholder: { apiKey: 'zhipu-api-key...' },
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
@@ -228,7 +229,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'moonshot', name: '月之暗面 (Kimi)', icon: '🌙', region: 'china', currency: 'CNY',
+    id: 'moonshot', name: '月之暗面 (Kimi)', icon: '🌙', region: 'china', currency: 'CNY', billingType: 'api-key',
     requiredFields: ['apiKey'], optionalFields: [],
     placeholder: { apiKey: 'sk-...' },
     baseUrl: 'https://api.moonshot.cn/v1',
@@ -237,7 +238,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'minimax', name: 'MiniMax', icon: '🤖', region: 'china', currency: 'CNY',
+    id: 'minimax', name: 'MiniMax', icon: '🤖', region: 'china', currency: 'CNY', billingType: 'api-key',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     placeholder: { apiKey: 'eyJ...' },
     baseUrl: 'https://api.minimax.chat/v1',
@@ -246,7 +247,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'deepseek', name: 'DeepSeek', icon: '🔬', region: 'china', currency: 'CNY',
+    id: 'deepseek', name: 'DeepSeek', icon: '🔬', region: 'china', currency: 'CNY', billingType: 'api-key',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     placeholder: { apiKey: 'sk-...' },
     baseUrl: 'https://api.deepseek.com',
@@ -255,7 +256,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'baidu', name: '百度文心', icon: '🐻', region: 'china', currency: 'CNY',
+    id: 'baidu', name: '百度文心', icon: '🐻', region: 'china', currency: 'CNY', billingType: 'api-key',
     requiredFields: ['apiKey', 'secretKey'], optionalFields: [],
     placeholder: { apiKey: 'app-key...', secretKey: 'app-secret...' },
     models: [
@@ -264,7 +265,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     ],
   },
   {
-    id: 'iflytek', name: '科大讯飞 (星火)', icon: '🗣️', region: 'china', currency: 'CNY',
+    id: 'iflytek', name: '科大讯飞 (星火)', icon: '🗣️', region: 'china', currency: 'CNY', billingType: 'api-key',
     requiredFields: ['apiKey'], optionalFields: [],
     placeholder: { apiKey: 'Bearer token...' },
     baseUrl: 'https://spark-api-open.xf-yun.com/v1',

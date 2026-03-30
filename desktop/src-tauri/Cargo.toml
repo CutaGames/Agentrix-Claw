@@ -39,3 +39,9 @@ windows = "0.61"
 
 [dependencies.rfd]
 version = "0.15"
+
+[profile.release]
+opt-level = "s"
+codegen-units = 16
+lto = false
+strip = true
