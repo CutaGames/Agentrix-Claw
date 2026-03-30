@@ -1,4 +1,3 @@
-'use client'
 import { createContext, useContext, ReactNode, useState, useEffect } from 'react'
 import { walletService, type WalletInfo, type WalletType } from '../lib/wallet/WalletService'
 

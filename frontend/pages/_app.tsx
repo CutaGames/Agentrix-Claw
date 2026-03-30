@@ -1,5 +1,4 @@
 import type { AppProps } from 'next/app'
-import { useRouter } from 'next/router'
 import React, { useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Web3Provider } from '../contexts/Web3Context'
@@ -23,8 +22,7 @@ const queryClient = new QueryClient({
   },
 })
 
-export default function App({ Component, pageProps }: AppProps) {
-  const router = useRouter()
+export default function App({ Component, pageProps, router }: AppProps) {
   const routesDisablingLegacyModal = ['/pay/user-demo', '/agent-enhanced', '/agent-builder']
   const disableLegacyPaymentModal =
     Boolean((pageProps as any)?.disableLegacyPaymentModal) ||
