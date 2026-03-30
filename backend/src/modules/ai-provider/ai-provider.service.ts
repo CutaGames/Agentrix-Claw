@@ -74,6 +74,23 @@ const SUBSCRIPTION_MODEL_ALIASES: Record<string, string> = {
   'copilot-sub-gemini-3.1-pro': 'gemini-3.1-pro',
   'copilot-sub-claude-opus-4.5': 'claude-opus-4.5',
   'copilot-sub-claude-opus-4.6': 'claude-opus-4.6',
+  // ── Volcengine Savings Plan (火山引擎节省计划) ──
+  'volc-plan-doubao-seed-2.0-pro': 'doubao-seed-2.0-pro',
+  'volc-plan-doubao-2.0-lite': 'doubao-2.0-lite',
+  'volc-plan-doubao-1.5-pro': 'doubao-1.5-pro',
+  // ── Alibaba Bailian (阿里百炼资源包) ──
+  'bailian-plan-qwen-3.5-max': 'qwen-3.5-max',
+  'bailian-plan-qwen-flash': 'qwen-flash',
+  'bailian-plan-qwen-3.5-plus': 'qwen-3.5-plus',
+  // ── MiniMax Subscription (MiniMax 订阅) ──
+  'minimax-plan-m2.5': 'minimax-m2.5',
+  'minimax-plan-m1.5-pro': 'minimax-m1.5-pro',
+  // ── DeepSeek Plan (DeepSeek 资源包) ──
+  'deepseek-plan-v3.2': 'deepseek-v3.2',
+  'deepseek-plan-r1': 'deepseek-r1',
+  // ── Zhipu Subscription (智谱订阅) ──
+  'zhipu-plan-glm-5-opus': 'glm-5-opus',
+  'zhipu-plan-glm-4-flash': 'glm-4-flash',
 };
 
 export const PROVIDER_CATALOG: ProviderDef[] = [
@@ -107,8 +124,8 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     credentialLabel: 'Copilot Token',
     placeholder: {
-      apiKey: 'copilot-session-or-relay-token',
-      baseUrl: 'https://your-openclaw-relay.example.com/v1',
+      apiKey: 'ghu_xxxx... (GitHub OAuth Token)',
+      baseUrl: 'https://api.individual.githubcopilot.com',
     },
     models: [
       // ── 🆓 Free Tier (0x multiplier, all plans) ──
@@ -198,7 +215,77 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
       { id: 'anthropic.claude-3-5-haiku-20241022-v1:0', label: 'Claude Haiku 4.5 (中国区)', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥5.6', outputPrice: '¥35.0', positioning: '轻量/快速/中国区可用' },
     ],
   },
-  // ─── 🇨🇳 China ───
+  // ─── 🔄 China Subscription Plans ───
+  {
+    id: 'volcengine-plan', name: '火山引擎节省计划', icon: '🌋', region: 'china', currency: 'CNY', billingType: 'subscription',
+    requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
+    credentialLabel: 'API Key (节省计划)',
+    placeholder: {
+      apiKey: 'sk-...',
+      baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    },
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    models: [
+      { id: 'volc-plan-doubao-seed-2.0-pro', label: '豆包 Seed 2.0 Pro (节省计划)', contextWindow: 256000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '节省计划包月/综合最强' },
+      { id: 'volc-plan-doubao-2.0-lite', label: '豆包 2.0 Lite (节省计划)', contextWindow: 256000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '节省计划包月/轻量高速' },
+      { id: 'volc-plan-doubao-1.5-pro', label: '豆包 1.5 Pro (节省计划)', contextWindow: 128000, costTier: 'free', capabilities: ['chat', 'function_calling'], multimodal: false, positioning: '节省计划包月/上代旗舰' },
+    ],
+  },
+  {
+    id: 'bailian-plan', name: '阿里百炼资源包', icon: '🐜', region: 'china', currency: 'CNY', billingType: 'subscription',
+    requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
+    credentialLabel: 'API Key (百炼资源包)',
+    placeholder: {
+      apiKey: 'sk-...',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    },
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    models: [
+      { id: 'bailian-plan-qwen-3.5-max', label: 'Qwen 3.5 Max (资源包)', contextWindow: 252000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '资源包/开源综合第一' },
+      { id: 'bailian-plan-qwen-flash', label: 'Qwen Flash (资源包)', contextWindow: 256000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '资源包/极速低成本' },
+      { id: 'bailian-plan-qwen-3.5-plus', label: 'Qwen 3.5 Plus (资源包)', contextWindow: 131072, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '资源包/均衡高性价比' },
+    ],
+  },
+  {
+    id: 'minimax-plan', name: 'MiniMax 订阅', icon: '🤖', region: 'china', currency: 'CNY', billingType: 'subscription',
+    requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
+    credentialLabel: 'API Key (订阅)',
+    placeholder: {
+      apiKey: 'eyJ...',
+      baseUrl: 'https://api.minimax.chat/v1',
+    },
+    baseUrl: 'https://api.minimax.chat/v1',
+    models: [
+      { id: 'minimax-plan-m2.5', label: 'MiniMax M2.5 (订阅)', contextWindow: 205000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '订阅包月/全球调用量王' },
+      { id: 'minimax-plan-m1.5-pro', label: 'MiniMax M1.5 Pro (订阅)', contextWindow: 128000, costTier: 'free', capabilities: ['chat', 'function_calling'], multimodal: false, positioning: '订阅包月/上代旗舰' },
+    ],
+  },
+  {
+    id: 'deepseek-plan', name: 'DeepSeek 资源包', icon: '🔬', region: 'china', currency: 'CNY', billingType: 'subscription',
+    requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
+    credentialLabel: 'API Key (资源包)',
+    placeholder: {
+      apiKey: 'sk-...',
+      baseUrl: 'https://api.deepseek.com',
+    },
+    baseUrl: 'https://api.deepseek.com',
+    models: [
+      { id: 'deepseek-plan-v3.2', label: 'DeepSeek V3.2 (资源包)', contextWindow: 128000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '资源包/理科推理/极致性价比' },
+      { id: 'deepseek-plan-r1', label: 'DeepSeek R1 (资源包)', contextWindow: 128000, costTier: 'free', capabilities: ['chat', 'function_calling'], multimodal: false, positioning: '资源包/深度推理/数学竞赛' },
+    ],
+  },
+  {
+    id: 'zhipu-plan', name: '智谱 AI 订阅', icon: '🧪', region: 'china', currency: 'CNY', billingType: 'subscription',
+    requiredFields: ['apiKey'], optionalFields: [],
+    credentialLabel: 'API Key (订阅)',
+    placeholder: { apiKey: 'zhipu-api-key...' },
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    models: [
+      { id: 'zhipu-plan-glm-5-opus', label: 'GLM-5 Opus (订阅)', contextWindow: 200000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '订阅/MoE旗舰/代码工具强' },
+      { id: 'zhipu-plan-glm-4-flash', label: 'GLM-4 Flash (订阅)', contextWindow: 128000, costTier: 'free', capabilities: ['chat', 'function_calling'], multimodal: false, positioning: '订阅/极速/高并发' },
+    ],
+  },
+  // ─── 🇨🇳 China (API Pay-per-use) ───
   {
     id: 'bytedance', name: '字节跳动 (豆包)', icon: '🔥', region: 'china', currency: 'CNY', billingType: 'api-key',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
@@ -587,28 +674,38 @@ export class AiProviderService {
       case 'chatgpt-subscription':
       case 'copilot-subscription':
       case 'deepseek':
+      case 'deepseek-plan':
       case 'xai':
       case 'meta':
       case 'moonshot':
       case 'alibaba':
+      case 'bailian-plan':
       case 'bytedance':
+      case 'volcengine-plan':
       case 'minimax':
+      case 'minimax-plan':
       case 'iflytek':
-      case 'zhipu': {
+      case 'zhipu':
+      case 'zhipu-plan': {
         // All OpenAI-compatible APIs
         const defaultUrls: Record<string, string> = {
           openai: 'https://api.openai.com/v1',
           'chatgpt-subscription': '',
           'copilot-subscription': '',
           deepseek: 'https://api.deepseek.com',
+          'deepseek-plan': 'https://api.deepseek.com',
           xai: 'https://api.x.ai/v1',
           meta: 'https://api.groq.com/openai/v1',
           moonshot: 'https://api.moonshot.cn/v1',
           alibaba: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+          'bailian-plan': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
           bytedance: 'https://ark.cn-beijing.volces.com/api/v3',
+          'volcengine-plan': 'https://ark.cn-beijing.volces.com/api/v3',
           minimax: 'https://api.minimax.chat/v1',
+          'minimax-plan': 'https://api.minimax.chat/v1',
           iflytek: 'https://spark-api-open.xf-yun.com/v1',
           zhipu: 'https://open.bigmodel.cn/api/paas/v4',
+          'zhipu-plan': 'https://open.bigmodel.cn/api/paas/v4',
         };
         const base = dto.baseUrl || defaultUrls[dto.providerId] || 'https://api.openai.com/v1';
         if ((dto.providerId === 'chatgpt-subscription' || dto.providerId === 'copilot-subscription') && !dto.baseUrl) {

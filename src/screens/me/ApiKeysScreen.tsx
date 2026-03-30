@@ -537,7 +537,7 @@ export function ApiKeysScreen() {
             📊 {t({ en: `${configuredCount} provider(s) configured`, zh: `已配置 ${configuredCount} 个厂商` })}
           </Text>
           <Text style={[styles.summaryLine, { color: colors.textMuted }]}> 
-            {t({ en: 'ChatGPT / Copilot subscriptions also use this page. They can use a subscription token alone, or a token + relay Base URL when needed.', zh: 'ChatGPT / Copilot 订阅也走这个入口。可只填订阅 token，也可按需要填写 token + 中继 Base URL。' })}
+            {t({ en: 'Subscriptions (ChatGPT, Copilot, CN savings plans) and API-key providers all managed here.', zh: '订阅直连（ChatGPT / Copilot / 国内节省计划）与 API 按量厂商统一管理。' })}
           </Text>
           {defaultProvider ? (
             <Text style={styles.summaryLine}>
@@ -557,8 +557,8 @@ export function ApiKeysScreen() {
             <Text style={styles.sectionTitle}>{t({ en: '🔄 Subscription (monthly plan)', zh: '🔄 订阅直连（包月/包年）' })}</Text>
             <Text style={styles.sectionHint}>
               {t({
-                en: 'Use your existing ChatGPT / Copilot subscription token. Flat monthly fee, not charged per token.',
-                zh: '使用已有的 ChatGPT / Copilot 订阅 token，按月付费，不按 token 计量。',
+                en: 'Flat monthly fee or resource package — not charged per token. Includes ChatGPT, Copilot Pro+, and CN savings plans (Volcengine, Bailian, MiniMax, DeepSeek, Zhipu).',
+                zh: '包月/资源包，不按 token 计量。包含 ChatGPT、Copilot Pro+、以及国内节省计划（火山引擎、百炼、MiniMax、DeepSeek、智谱）。',
               })}
             </Text>
             {subProviders.map(renderProvider)}
