@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { WearableAgentCapabilityService } from '../../services/wearables/wearableAgentCapability.service';
@@ -15,76 +17,48 @@ import { WearablePairingStoreService } from '../../services/wearables/wearablePa
 import {
   type AgentCapabilityPreview,
   type BlePermissionState,
-  type LiveCharacteristicEvent,
   type PairedWearableRecord,
-  type WearableCharacteristicSnapshot,
   type WearableConnectionStage,
   type WearableKind,
   type WearableProfile,
   type WearableScanCandidate,
   type WearableServiceSnapshot,
-  type WearableSupportTier,
 } from '../../services/wearables/wearableTypes';
 
 type DeviceFilter = 'all' | 'ring' | 'band' | 'clip' | 'sensor';
 
-const FILTERS: Array<{ key: DeviceFilter; icon: string }> = [
-  { key: 'all', icon: '◎' },
-  { key: 'ring', icon: '◌' },
-  { key: 'band', icon: '▭' },
-  { key: 'clip', icon: '◫' },
-  { key: 'sensor', icon: '△' },
-];
+const KIND_CFG: Record<WearableKind | 'unknown', { icon: string; en: string; zh: string; color: string }> = {
+  ring: { icon: '💍', en: 'Ring', zh: '戒指', color: '#8B5CF6' },
+  band: { icon: '⌚', en: 'Band', zh: '手环', color: '#3B82F6' },
+  clip: { icon: '📎', en: 'Clip', zh: '夹扣', color: '#10B981' },
+  sensor: { icon: '📡', en: 'Sensor', zh: '传感器', color: '#F59E0B' },
+  unknown: { icon: '📱', en: 'Device', zh: '设备', color: '#6B7280' },
+};
 
 function upsertCandidate(list: WearableScanCandidate[], next: WearableScanCandidate): WearableScanCandidate[] {
-  const map = new Map(list.map((item) => [item.id, item]));
+  const map = new Map(list.map((c) => [c.id, c]));
   map.set(next.id, next);
-  return Array.from(map.values()).sort((left, right) => {
-    const leftRssi = left.raw.rssi ?? -999;
-    const rightRssi = right.raw.rssi ?? -999;
-    return rightRssi - leftRssi;
-  });
+  return Array.from(map.values()).sort((a, b) => (b.raw.rssi ?? -999) - (a.raw.rssi ?? -999));
 }
 
-function formatConnectionTime(value: string): string {
-  try {
-    return new Date(value).toLocaleTimeString();
-  } catch {
-    return value;
-  }
+function signalInfo(rssi: number | null): { bars: number; label: string } {
+  if (rssi == null || rssi < -90) return { bars: 1, label: 'Weak' };
+  if (rssi < -70) return { bars: 2, label: 'Fair' };
+  if (rssi < -50) return { bars: 3, label: 'Good' };
+  return { bars: 4, label: 'Strong' };
 }
 
-function kindLabel(kind: WearableKind): string {
-  switch (kind) {
-    case 'ring':
-      return 'Ring';
-    case 'band':
-      return 'Band';
-    case 'clip':
-      return 'Clip';
-    case 'sensor':
-      return 'Sensor';
-    default:
-      return 'Unknown';
-  }
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return 'now';
+  if (m < 60) return m + 'm';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h';
+  return Math.floor(h / 24) + 'd';
 }
 
-function stageLabel(stage: WearableConnectionStage | null, t: ReturnType<typeof useI18n>['t']): string {
-  switch (stage) {
-    case 'connecting':
-      return t({ en: 'Connecting', zh: '正在连接' });
-    case 'discovering':
-      return t({ en: 'Discovering GATT', zh: '正在发现 GATT' });
-    case 'reading':
-      return t({ en: 'Reading characteristic', zh: '正在读取特征值' });
-    case 'done':
-      return t({ en: 'Verified', zh: '已验证' });
-    default:
-      return t({ en: 'Idle', zh: '空闲' });
-  }
-}
-
-export function WearableHubScreen() {
+export function WearableHubScreen({ navigation }: any) {
   const { t } = useI18n();
   const [permissionState, setPermissionState] = useState<BlePermissionState | null>(null);
   const [scanFilter, setScanFilter] = useState<DeviceFilter>('all');
@@ -93,80 +67,64 @@ export function WearableHubScreen() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [monitorError, setMonitorError] = useState<string | null>(null);
   const [connectionStage, setConnectionStage] = useState<WearableConnectionStage | null>(null);
   const [profile, setProfile] = useState<WearableProfile | null>(null);
   const [capabilityPreview, setCapabilityPreview] = useState<AgentCapabilityPreview | null>(null);
   const [serviceSnapshots, setServiceSnapshots] = useState<WearableServiceSnapshot[]>([]);
   const [pairedRecords, setPairedRecords] = useState<PairedWearableRecord[]>([]);
-  const [liveEvents, setLiveEvents] = useState<LiveCharacteristicEvent[]>([]);
-  const [isMonitoring, setIsMonitoring] = useState(false);
   const scanStopRef = useRef<null | (() => void)>(null);
-  const monitorStopRef = useRef<null | (() => void)>(null);
   const connectedDeviceIdRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  const filteredCandidates = useMemo(() => {
-    return scanCandidates.filter((candidate) => scanFilter === 'all' || candidate.kind === scanFilter);
-  }, [scanCandidates, scanFilter]);
+  const filteredCandidates = useMemo(
+    () => scanCandidates.filter((c) => scanFilter === 'all' || c.kind === scanFilter),
+    [scanCandidates, scanFilter],
+  );
 
-  const selectedCandidate = useMemo(() => {
-    return scanCandidates.find((candidate) => candidate.id === selectedCandidateId) ?? null;
-  }, [scanCandidates, selectedCandidateId]);
-
-  const firstNotifiableCharacteristic = useMemo<WearableCharacteristicSnapshot | null>(() => {
-    for (const service of serviceSnapshots) {
-      const match = service.characteristics.find((characteristic) => characteristic.isNotifiable);
-      if (match) {
-        return match;
-      }
-    }
-    return null;
-  }, [serviceSnapshots]);
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     void loadPairedRecords();
-  }, []);
-
-  useEffect(() => {
     return () => {
       mountedRef.current = false;
       scanStopRef.current?.();
-      monitorStopRef.current?.();
-      const connectedId = connectedDeviceIdRef.current;
-      if (connectedId) {
-        void WearableBleGatewayService.disconnectDevice(connectedId);
-      }
+      const cid = connectedDeviceIdRef.current;
+      if (cid) void WearableBleGatewayService.disconnectDevice(cid);
     };
   }, []);
 
+  useEffect(() => {
+    if (!isScanning) return;
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.15, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [isScanning]);
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+
   const loadPairedRecords = async () => {
     const records = await WearablePairingStoreService.list();
-    if (mountedRef.current) {
-      setPairedRecords(records);
-    }
+    if (mountedRef.current) setPairedRecords(records);
   };
 
   const requestPermissions = async (): Promise<BlePermissionState | null> => {
     setScanError(null);
     try {
-      const nextState = await WearableBleGatewayService.requestPermissions();
-      if (!mountedRef.current) {
-        return null;
+      const s = await WearableBleGatewayService.requestPermissions();
+      if (!mountedRef.current) return null;
+      setPermissionState(s);
+      if (!s.granted) {
+        setScanError(t({ en: 'Please enable Bluetooth, nearby devices, and location permissions.', zh: '请开启蓝牙、附近设备和定位权限。' }));
       }
-      setPermissionState(nextState);
-      if (!nextState.granted) {
-        setScanError(t({
-          en: 'Bluetooth permission was not fully granted. Enable Bluetooth, nearby device, and location access before scanning.',
-          zh: '蓝牙权限未完整授予。开始扫描前请开启蓝牙、附近设备和定位权限。',
-        }));
-      }
-      return nextState;
-    } catch (error: any) {
-      const message = error?.message || t({ en: 'Permission request failed.', zh: '权限请求失败。' });
-      if (mountedRef.current) {
-        setScanError(message);
-      }
+      return s;
+    } catch (e: any) {
+      if (mountedRef.current) setScanError(e?.message || 'Permission error');
       return null;
     }
   };
@@ -174,1015 +132,409 @@ export function WearableHubScreen() {
   const stopScan = () => {
     scanStopRef.current?.();
     scanStopRef.current = null;
-    if (mountedRef.current) {
-      setIsScanning(false);
-    }
-  };
-
-  const stopMonitor = () => {
-    monitorStopRef.current?.();
-    monitorStopRef.current = null;
-    if (mountedRef.current) {
-      setIsMonitoring(false);
-    }
-  };
-
-  const disconnectCurrentDevice = async () => {
-    const connectedId = connectedDeviceIdRef.current;
-    if (!connectedId) {
-      return;
-    }
-    connectedDeviceIdRef.current = null;
-    await WearableBleGatewayService.disconnectDevice(connectedId);
+    if (mountedRef.current) setIsScanning(false);
   };
 
   const startScan = async () => {
     stopScan();
-    stopMonitor();
     setScanError(null);
     setConnectionError(null);
-    setMonitorError(null);
     setConnectionStage(null);
     setProfile(null);
     setCapabilityPreview(null);
-    setServiceSnapshots([]);
-    setLiveEvents([]);
     setSelectedCandidateId(null);
-    await disconnectCurrentDevice();
-
-    const nextPermissions = permissionState?.granted ? permissionState : await requestPermissions();
-    if (!nextPermissions?.granted) {
-      return;
+    if (connectedDeviceIdRef.current) {
+      await WearableBleGatewayService.disconnectDevice(connectedDeviceIdRef.current);
+      connectedDeviceIdRef.current = null;
     }
-
+    const perm = permissionState?.granted ? permissionState : await requestPermissions();
+    if (!perm?.granted) return;
     setScanCandidates([]);
     setIsScanning(true);
-
     try {
       scanStopRef.current = await WearableBleGatewayService.startScan({
         durationMs: 12000,
         onDevice: (device) => {
-          if (!mountedRef.current) {
-            return;
-          }
-          const candidate = WearableDeviceAdapterService.buildScanCandidate(device);
-          setScanCandidates((current) => upsertCandidate(current, candidate));
+          if (!mountedRef.current) return;
+          setScanCandidates((prev) => upsertCandidate(prev, WearableDeviceAdapterService.buildScanCandidate(device)));
         },
         onFinished: (devices) => {
-          if (!mountedRef.current) {
-            return;
-          }
+          if (!mountedRef.current) return;
           setIsScanning(false);
-          const adapted = devices.map((device) => WearableDeviceAdapterService.buildScanCandidate(device));
-          setScanCandidates(adapted);
+          setScanCandidates(devices.map((d) => WearableDeviceAdapterService.buildScanCandidate(d)));
         },
-        onError: (error) => {
-          if (!mountedRef.current) {
-            return;
-          }
+        onError: (err) => {
+          if (!mountedRef.current) return;
           setIsScanning(false);
-          setScanError(error.message);
+          setScanError(err.message);
         },
       });
-    } catch (error: any) {
-      const message = error?.message || t({ en: 'BLE scan failed to start.', zh: 'BLE 扫描启动失败。' });
-      if (mountedRef.current) {
-        setIsScanning(false);
-        setScanError(message);
-      }
+    } catch (e: any) {
+      if (mountedRef.current) { setIsScanning(false); setScanError(e?.message || 'Scan error'); }
     }
   };
 
   const connectCandidate = async (candidate: WearableScanCandidate) => {
     stopScan();
-    stopMonitor();
     setSelectedCandidateId(candidate.id);
     setConnectionError(null);
-    setMonitorError(null);
     setProfile(null);
     setCapabilityPreview(null);
     setServiceSnapshots([]);
-    setLiveEvents([]);
     setConnectionStage('connecting');
-
     if (connectedDeviceIdRef.current && connectedDeviceIdRef.current !== candidate.id) {
-      await disconnectCurrentDevice();
+      await WearableBleGatewayService.disconnectDevice(connectedDeviceIdRef.current);
+      connectedDeviceIdRef.current = null;
     }
-
     try {
-      const snapshot = await WearableBleGatewayService.connectAndInspect(candidate.raw, (stage) => {
-        if (mountedRef.current) {
-          setConnectionStage(stage);
-        }
+      const snap = await WearableBleGatewayService.connectAndInspect(candidate.raw, (stage) => {
+        if (mountedRef.current) setConnectionStage(stage);
       });
-
-      if (!mountedRef.current) {
-        return;
-      }
-
-      connectedDeviceIdRef.current = snapshot.device.id;
-      setServiceSnapshots(snapshot.services);
-
-      const nextProfile = WearableDeviceAdapterService.adaptConnectionSnapshot(snapshot);
-      const nextCapabilityPreview = WearableAgentCapabilityService.buildCapabilityPreview(nextProfile);
-
-      setProfile(nextProfile);
-      setCapabilityPreview(nextCapabilityPreview);
+      if (!mountedRef.current) return;
+      connectedDeviceIdRef.current = snap.device.id;
+      setServiceSnapshots(snap.services);
+      const p = WearableDeviceAdapterService.adaptConnectionSnapshot(snap);
+      const cap = WearableAgentCapabilityService.buildCapabilityPreview(p);
+      setProfile(p);
+      setCapabilityPreview(cap);
       setConnectionStage('done');
-      const records = await WearablePairingStoreService.save(nextProfile, nextCapabilityPreview.verificationEvent);
-      if (mountedRef.current) {
-        setPairedRecords(records);
-      }
-    } catch (error: any) {
-      const message = error?.message || t({ en: 'Device connection failed.', zh: '设备连接失败。' });
-      if (mountedRef.current) {
-        setConnectionStage(null);
-        setConnectionError(message);
-      }
+      const records = await WearablePairingStoreService.save(p, cap.verificationEvent);
+      if (mountedRef.current) setPairedRecords(records);
+    } catch (e: any) {
+      if (mountedRef.current) { setConnectionStage(null); setConnectionError(e?.message || 'Connection failed'); }
     }
-  };
-
-  const startMonitor = () => {
-    if (!profile || !firstNotifiableCharacteristic) {
-      return;
-    }
-
-    stopMonitor();
-    setMonitorError(null);
-    setLiveEvents([]);
-    setIsMonitoring(true);
-    monitorStopRef.current = WearableBleGatewayService.monitorCharacteristic(
-      profile.id,
-      firstNotifiableCharacteristic.serviceUuid,
-      firstNotifiableCharacteristic.uuid,
-      (event) => {
-        if (!mountedRef.current) {
-          return;
-        }
-        setLiveEvents((current) => [event, ...current].slice(0, 12));
-      },
-      (error) => {
-        if (!mountedRef.current) {
-          return;
-        }
-        setMonitorError(error.message);
-        setIsMonitoring(false);
-      },
-    );
-  };
-
-  const clearFlow = async () => {
-    stopScan();
-    stopMonitor();
-    await disconnectCurrentDevice();
-    if (!mountedRef.current) {
-      return;
-    }
-    setScanCandidates([]);
-    setSelectedCandidateId(null);
-    setScanError(null);
-    setConnectionError(null);
-    setMonitorError(null);
-    setConnectionStage(null);
-    setProfile(null);
-    setCapabilityPreview(null);
-    setServiceSnapshots([]);
-    setLiveEvents([]);
   };
 
   const removePairedRecord = async (deviceId: string) => {
     const records = await WearablePairingStoreService.remove(deviceId);
-    if (mountedRef.current) {
-      setPairedRecords(records);
-    }
+    if (mountedRef.current) setPairedRecords(records);
   };
 
-  const progressState = [
-    true,
-    permissionState?.granted ?? false,
-    isScanning || scanCandidates.length > 0,
-    selectedCandidateId !== null || connectionStage !== null,
-    capabilityPreview !== null,
-    pairedRecords.length > 0 || liveEvents.length > 0,
-  ];
+  const openMonitor = (deviceId: string) => {
+    navigation?.navigate?.('WearableMonitor', { deviceId });
+  };
 
-  const permissionSummary = permissionState
-    ? [
-        { label: t({ en: 'Bluetooth', zh: '蓝牙' }), value: permissionState.bluetooth },
-        { label: t({ en: 'Nearby', zh: '附近设备' }), value: permissionState.nearbyDevices },
-        { label: t({ en: 'Location', zh: '定位' }), value: permissionState.location },
-      ]
-    : [];
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.heroCard}>
-        <View style={styles.heroBadge}>
-          <Text style={styles.heroBadgeText}>{t({ en: 'Phase 1 shipped, Phase 2 started', zh: '第一阶段已落地，第二阶段已启动' })}</Text>
-        </View>
-        <Text style={styles.heroTitle}>{t({ en: 'Wearables now validate and persist against real GATT data', zh: '可穿戴设备现在按真实 GATT 数据完成验证与持久化' })}</Text>
-        <Text style={styles.heroSubtitle}>
-          {t({
-            en: 'This screen now covers the real phase-1 chain and begins phase 2 with paired-device persistence, known-device enrichment, and live characteristic monitoring for notifiable endpoints.',
-            zh: '这个页面现在已经覆盖真实第一阶段链路，并开始进入第二阶段：已配对设备持久化、已知设备增强和可通知特征的实时监听。',
-          })}
-        </Text>
-      </View>
+    <SafeAreaView style={st.safe} edges={['top']}>
+      <ScrollView style={st.scroll} contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
 
-      <View style={styles.progressCard}>
-        <Text style={styles.sectionTitle}>{t({ en: 'Implementation steps', zh: '实现步骤' })}</Text>
-        <View style={styles.progressRow}>
-          {[t({ en: 'Entry', zh: '入口' }), t({ en: 'Permissions', zh: '权限' }), t({ en: 'Scan', zh: '扫描' }), t({ en: 'Connect', zh: '连接' }), t({ en: 'Verify', zh: '验证' }), t({ en: 'Persist', zh: '持久化' })].map((label, index) => (
-            <View key={label} style={styles.progressStep}>
-              <View style={[styles.progressDot, progressState[index] && styles.progressDotActive]}>
-                <Text style={[styles.progressDotText, progressState[index] && styles.progressDotTextActive]}>{index + 1}</Text>
-              </View>
-              <Text style={[styles.progressLabel, progressState[index] && styles.progressLabelActive]}>{label}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.panel}>
-        <Text style={styles.sectionTitle}>{t({ en: 'Run the validation lane', zh: '运行验证链路' })}</Text>
-        <View style={styles.bulletList}>
-          <Bullet text={t({ en: 'Request runtime Bluetooth permissions instead of simulating toggles.', zh: '不再模拟开关，而是直接申请运行时蓝牙权限。' })} />
-          <Bullet text={t({ en: 'Scan real nearby wearables and normalize them through the device adaptation layer plus vendor registry.', zh: '扫描真实附近设备，并通过设备适配层和厂商注册表归一化。' })} />
-          <Bullet text={t({ en: 'Connect, discover GATT services, read one characteristic, persist the paired device, and optionally monitor live notifications.', zh: '连接后发现 GATT 服务、读取一个特征值、保存已配对设备，并可选开启实时通知监听。' })} />
+        {/* ── Header ── */}
+        <View style={st.header}>
+          <Text style={st.headerTitle}>{t({ en: 'Wearable Devices', zh: '穿戴设备' })}</Text>
+          <Text style={st.headerSub}>
+            {pairedRecords.length > 0
+              ? `${pairedRecords.length} ${t({ en: 'paired', zh: '已配对' })}`
+              : t({ en: 'Scan to add a device', zh: '搜索添加设备' })}
+          </Text>
         </View>
 
-        {permissionSummary.length > 0 && (
-          <View style={styles.summaryRow}>
-            {permissionSummary.map((item) => (
-              <View key={item.label} style={[styles.summaryChip, item.value ? styles.summaryChipOk : styles.summaryChipWarn]}>
-                <Text style={styles.summaryChipLabel}>{item.label}</Text>
-                <Text style={styles.summaryChipValue}>{item.value ? t({ en: 'Granted', zh: '已授权' }) : t({ en: 'Missing', zh: '缺失' })}</Text>
+        {/* ── Paired devices ── */}
+        {pairedRecords.length > 0 && (
+          <View style={st.section}>
+            <Text style={st.sectionLabel}>{t({ en: 'MY DEVICES', zh: '我的设备' })}</Text>
+            {pairedRecords.map((rec) => {
+              const kc = KIND_CFG[rec.kind] || KIND_CFG.unknown;
+              return (
+                <TouchableOpacity key={rec.id} style={st.pairedCard} onPress={() => openMonitor(rec.id)} activeOpacity={0.7}>
+                  <View style={[st.kindBadge, { backgroundColor: kc.color + '20' }]}>
+                    <Text style={st.kindEmoji}>{kc.icon}</Text>
+                  </View>
+                  <View style={st.pairedInfo}>
+                    <Text style={st.pairedName} numberOfLines={1}>{rec.name}</Text>
+                    <Text style={st.pairedMeta}>{t({ en: kc.en, zh: kc.zh })} · {relativeTime(rec.lastSeenAt)}</Text>
+                    <View style={st.chipRow}>
+                      {rec.serviceLabels.slice(0, 3).map((lbl) => (
+                        <View key={`${rec.id}-${lbl}`} style={st.chip}><Text style={st.chipText}>{lbl}</Text></View>
+                      ))}
+                    </View>
+                  </View>
+                  <View style={st.pairedRight}>
+                    <TouchableOpacity style={st.monitorBtn} onPress={() => openMonitor(rec.id)}>
+                      <Text style={st.monitorBtnText}>{t({ en: 'Monitor', zh: '监控' })}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => { void removePairedRecord(rec.id); }}>
+                      <Text style={st.removeText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+        {/* ── Quick health summary ── */}
+        {pairedRecords.length > 0 && (
+          <View style={st.healthRow}>
+            {[
+              { icon: '♥', label: t({ en: 'Heart', zh: '心率' }), val: '--', unit: 'bpm', c: '#EF4444' },
+              { icon: '🔋', label: t({ en: 'Battery', zh: '电量' }), val: '--', unit: '%', c: '#10B981' },
+              { icon: '🚶', label: t({ en: 'Steps', zh: '步数' }), val: '--', unit: '', c: '#3B82F6' },
+            ].map((m) => (
+              <View key={m.label} style={st.healthCard}>
+                <Text style={[st.healthIcon, { color: m.c }]}>{m.icon}</Text>
+                <Text style={st.healthVal}>{m.val}</Text>
+                <Text style={st.healthUnit}>{m.unit}</Text>
+                <Text style={st.healthLabel}>{m.label}</Text>
               </View>
             ))}
           </View>
         )}
 
-        <View style={styles.actionRowStack}>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => { void requestPermissions(); }}>
-            <Text style={styles.secondaryButtonText}>{t({ en: 'Request BLE permissions', zh: '申请 BLE 权限' })}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryButton} onPress={() => { void startScan(); }}>
-            <Text style={styles.primaryButtonText}>{isScanning ? t({ en: 'Scanning...', zh: '扫描中...' }) : t({ en: 'Scan nearby wearables', zh: '扫描附近可穿戴设备' })}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+        {/* ── Add device ── */}
+        <View style={st.section}>
+          <Text style={st.sectionLabel}>{t({ en: 'ADD DEVICE', zh: '添加设备' })}</Text>
 
-      {(scanError || connectionError || monitorError) && (
-        <View style={styles.errorCard}>
-          <Text style={styles.errorTitle}>{t({ en: 'Validation issue', zh: '验证问题' })}</Text>
-          <Text style={styles.errorText}>{scanError || connectionError || monitorError}</Text>
-        </View>
-      )}
-
-      {pairedRecords.length > 0 && (
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>{t({ en: 'Paired wearables', zh: '已配对设备' })}</Text>
-          {pairedRecords.map((record) => (
-            <View key={record.id} style={styles.pairedCard}>
-              <View style={styles.deviceHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.deviceName}>{record.name}</Text>
-                  <Text style={styles.deviceMeta}>{kindLabel(record.kind)} · {formatConnectionTime(record.lastSeenAt)}</Text>
-                </View>
-                <StatusPill status={record.supportTier} />
-              </View>
-              <View style={styles.tagRow}>
-                {record.serviceLabels.slice(0, 4).map((label) => (
-                  <View key={`${record.id}-${label}`} style={styles.tag}>
-                    <Text style={styles.tagText}>{label}</Text>
-                  </View>
-                ))}
-              </View>
-              <TouchableOpacity style={styles.inlineButton} onPress={() => { void removePairedRecord(record.id); }}>
-                <Text style={styles.inlineButtonText}>{t({ en: 'Remove', zh: '移除' })}</Text>
-              </TouchableOpacity>
-            </View>
-          ))}
-        </View>
-      )}
-
-      <View style={styles.panel}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{t({ en: 'Discovered devices', zh: '已发现设备' })}</Text>
-          <View style={styles.inlineStatus}>
-            <Text style={styles.inlineStatusLabel}>{stageLabel(connectionStage, t)}</Text>
-          </View>
-        </View>
-
-        <View style={styles.filterRow}>
-          {FILTERS.map((filter) => {
-            const label = filter.key === 'all'
-              ? t({ en: 'All', zh: '全部' })
-              : filter.key === 'ring'
-                ? t({ en: 'Rings', zh: '戒指' })
-                : filter.key === 'band'
-                  ? t({ en: 'Bands', zh: '手环' })
-                  : filter.key === 'clip'
-                    ? t({ en: 'Clips', zh: '夹式' })
-                    : t({ en: 'Sensors', zh: '传感器' });
-            return (
-              <TouchableOpacity
-                key={filter.key}
-                style={[styles.filterChip, scanFilter === filter.key && styles.filterChipActive]}
-                onPress={() => setScanFilter(filter.key)}
-              >
-                <Text style={[styles.filterChipText, scanFilter === filter.key && styles.filterChipTextActive]}>{filter.icon} {label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {isScanning && (
-          <View style={styles.scannerCard}>
-            <Text style={styles.scannerPulse}>⌁</Text>
-            <Text style={styles.scannerTitle}>{t({ en: 'Running real BLE discovery for 12 seconds', zh: '正在执行 12 秒真实 BLE 发现' })}</Text>
-            <Text style={styles.scannerHint}>{t({ en: 'Devices will appear below as they advertise.', zh: '设备一旦发出广播，就会显示在下方。' })}</Text>
-          </View>
-        )}
-
-        {!isScanning && filteredCandidates.length === 0 && (
-          <EmptyState text={t({ en: 'No wearable candidates yet. Start a scan with Bluetooth enabled and keep the device nearby.', zh: '还没有找到可穿戴候选设备。请先开启蓝牙并把设备放近后再扫描。' })} />
-        )}
-
-        {filteredCandidates.map((candidate) => (
-          <View key={candidate.id} style={[styles.deviceCard, selectedCandidateId === candidate.id && styles.deviceCardSelected]}>
-            <View style={styles.deviceHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.deviceName}>{candidate.name}</Text>
-                <Text style={styles.deviceMeta}>{kindLabel(candidate.kind)} · {candidate.signalLabel}</Text>
-              </View>
-              <StatusPill status={candidate.supportTier} />
-            </View>
-            <Text style={styles.deviceSummary}>{candidate.summary}</Text>
-            <View style={styles.tagRow}>
-              {candidate.serviceLabels.slice(0, 4).map((label) => (
-                <View key={`${candidate.id}-${label}`} style={styles.tag}>
-                  <Text style={styles.tagText}>{label}</Text>
-                </View>
-              ))}
-            </View>
-            <TouchableOpacity style={styles.primaryButtonCompact} onPress={() => { void connectCandidate(candidate); }}>
-              <Text style={styles.primaryButtonText}>{t({ en: 'Connect and inspect', zh: '连接并检查' })}</Text>
-            </TouchableOpacity>
-          </View>
-        ))}
-      </View>
-
-      {(selectedCandidate || profile || capabilityPreview || connectionStage) && (
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>{t({ en: 'Connection result', zh: '连接结果' })}</Text>
-          {selectedCandidate && (
-            <View style={styles.highlightCard}>
-              <Text style={styles.highlightLabel}>{t({ en: 'Selected device', zh: '已选设备' })}</Text>
-              <Text style={styles.highlightTitle}>{selectedCandidate.name}</Text>
-              <Text style={styles.highlightBody}>{t({ en: 'Current stage:', zh: '当前阶段：' })} {stageLabel(connectionStage, t)}</Text>
+          {(scanError || connectionError) && (
+            <View style={st.alertCard}>
+              <Text style={st.alertEmoji}>⚠️</Text>
+              <Text style={st.alertText}>{scanError || connectionError}</Text>
             </View>
           )}
 
-          {profile && (
-            <>
-              <View style={styles.keyValueCard}>
-                <KeyValueRow label={t({ en: 'Support tier', zh: '支持级别' })} value={profile.supportTier} />
-                <KeyValueRow label={t({ en: 'Services discovered', zh: '已发现服务' })} value={String(profile.servicesCount)} />
-                <KeyValueRow label={t({ en: 'Readable characteristics', zh: '可读特征数' })} value={String(profile.readableCount)} />
-                <KeyValueRow label={t({ en: 'Notifiable characteristics', zh: '可通知特征数' })} value={String(profile.notifiableCount)} />
-                <KeyValueRow label={t({ en: 'First read UUID', zh: '首个读取 UUID' })} value={profile.firstReadCharacteristicUuid ?? t({ en: 'None', zh: '无' })} />
-                <KeyValueRow label={t({ en: 'Connected at', zh: '连接时间' })} value={formatConnectionTime(profile.connectedAt)} />
-              </View>
+          <TouchableOpacity
+            style={[st.scanBtn, isScanning && st.scanBtnActive]}
+            onPress={() => { void startScan(); }}
+            disabled={isScanning}
+            activeOpacity={0.8}
+          >
+            {isScanning ? (
+              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+                <Text style={st.scanBtnIcon}>⌁</Text>
+              </Animated.View>
+            ) : (
+              <Text style={st.scanBtnIcon}>📡</Text>
+            )}
+            <Text style={st.scanBtnText}>
+              {isScanning
+                ? t({ en: 'Scanning...', zh: '搜索中...' })
+                : t({ en: 'Scan for Devices', zh: '搜索设备' })}
+            </Text>
+          </TouchableOpacity>
 
-              <View style={styles.subPanel}>
-                <Text style={styles.subPanelTitle}>{t({ en: 'Normalized profile', zh: '归一化画像' })}</Text>
-                <Text style={styles.deviceSummary}>{profile.summary}</Text>
-                <View style={styles.tagRow}>
-                  {profile.serviceLabels.map((label) => (
-                    <View key={`profile-${label}`} style={styles.tag}>
-                      <Text style={styles.tagText}>{label}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
+          {/* Filter chips */}
+          {(isScanning || scanCandidates.length > 0) && (
+            <View style={st.filterRow}>
+              {(['all', 'ring', 'band', 'clip', 'sensor'] as DeviceFilter[]).map((f) => {
+                const lbl = f === 'all'
+                  ? t({ en: 'All', zh: '全部' })
+                  : t({ en: KIND_CFG[f].en, zh: KIND_CFG[f].zh });
+                return (
+                  <TouchableOpacity key={f} style={[st.filterChip, scanFilter === f && st.filterChipOn]} onPress={() => setScanFilter(f)}>
+                    <Text style={[st.filterText, scanFilter === f && st.filterTextOn]}>
+                      {lbl}{f === 'all' ? ` (${scanCandidates.length})` : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
 
-              <View style={styles.subPanel}>
-                <Text style={styles.subPanelTitle}>{t({ en: 'Discovered services', zh: '已发现服务列表' })}</Text>
-                {serviceSnapshots.slice(0, 8).map((service) => (
-                  <View key={service.uuid} style={styles.serviceRow}>
-                    <Text style={styles.serviceUuid}>{service.uuid}</Text>
-                    <Text style={styles.serviceMeta}>{service.characteristics.length} {t({ en: 'characteristics', zh: '个特征' })}</Text>
+          {/* Scan results */}
+          {filteredCandidates.map((c) => {
+            const kc = KIND_CFG[c.kind] || KIND_CFG.unknown;
+            const sig = signalInfo(c.raw.rssi);
+            const isSel = selectedCandidateId === c.id;
+            const connecting = isSel && connectionStage != null && connectionStage !== 'done';
+            const connected = isSel && connectionStage === 'done';
+            return (
+              <View key={c.id} style={[st.scanCard, isSel && st.scanCardSel]}>
+                <View style={st.scanTop}>
+                  <View style={[st.kindBadge, { backgroundColor: kc.color + '20' }]}>
+                    <Text style={st.kindEmoji}>{kc.icon}</Text>
                   </View>
-                ))}
-              </View>
-
-              <View style={styles.subPanel}>
-                <Text style={styles.subPanelTitle}>{t({ en: 'Characteristic read', zh: '特征值读取' })}</Text>
-                <Text style={styles.payloadText}>
-                  {profile.firstReadPayload
-                    ? profile.firstReadPayload
-                    : profile.readError
-                      ? profile.readError
-                      : t({ en: 'No readable characteristic payload was returned.', zh: '没有返回可读特征值 Payload。' })}
-                </Text>
-              </View>
-
-              <View style={styles.subPanel}>
-                <Text style={styles.subPanelTitle}>{t({ en: 'Live monitoring', zh: '实时监听' })}</Text>
-                {firstNotifiableCharacteristic ? (
-                  <>
-                    <Text style={styles.deviceSummary}>{t({ en: 'The first notifiable characteristic is ready for phase-2 live monitoring.', zh: '首个可通知特征已经可用于第二阶段实时监听。' })}</Text>
-                    <Text style={styles.serviceUuid}>{firstNotifiableCharacteristic.serviceUuid} / {firstNotifiableCharacteristic.uuid}</Text>
-                    <View style={styles.actionRow}>
-                      <TouchableOpacity style={styles.secondaryButton} onPress={isMonitoring ? stopMonitor : startMonitor}>
-                        <Text style={styles.secondaryButtonText}>{isMonitoring ? t({ en: 'Stop monitor', zh: '停止监听' }) : t({ en: 'Start monitor', zh: '开始监听' })}</Text>
-                      </TouchableOpacity>
-                    </View>
-                    {liveEvents.length === 0 ? (
-                      <EmptyState text={t({ en: 'No live notification received yet.', zh: '尚未收到实时通知。' })} />
-                    ) : (
-                      liveEvents.map((event) => (
-                        <View key={event.id} style={styles.eventCard}>
-                          <Text style={styles.eventTime}>{formatConnectionTime(event.receivedAt)}</Text>
-                          <Text style={styles.serviceUuid}>{event.characteristicUuid}</Text>
-                          <Text style={styles.payloadText}>{event.value ?? t({ en: 'No payload', zh: '无 Payload' })}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.scanName} numberOfLines={1}>{c.name}</Text>
+                    <Text style={st.scanMeta}>{t({ en: kc.en, zh: kc.zh })} · {sig.label}</Text>
+                  </View>
+                  <View style={st.sigBars}>
+                    {[1, 2, 3, 4].map((i) => (
+                      <View key={i} style={[st.sigBar, { height: 4 + i * 3, backgroundColor: i <= sig.bars ? kc.color : colors.border }]} />
+                    ))}
+                  </View>
+                </View>
+                {c.serviceLabels.length > 0 && (
+                  <View style={st.chipRow}>
+                    {c.serviceLabels.slice(0, 4).map((lbl) => (
+                      <View key={`${c.id}-${lbl}`} style={st.chip}><Text style={st.chipText}>{lbl}</Text></View>
+                    ))}
+                  </View>
+                )}
+                {isSel && connectionStage && (
+                  <View style={st.stageRow}>
+                    {(['connecting', 'discovering', 'reading', 'done'] as const).map((s, i) => {
+                      const idx = ['connecting', 'discovering', 'reading', 'done'].indexOf(connectionStage);
+                      const past = idx >= i;
+                      return (
+                        <View key={s} style={st.stageItem}>
+                          <View style={[st.stageDot, past && st.stageDotDone, connectionStage === s && st.stageDotCur]} />
+                          <Text style={[st.stageText, past && st.stageTextDone]}>
+                            {s === 'connecting' ? t({ en: 'Connect', zh: '连接' })
+                              : s === 'discovering' ? t({ en: 'Discover', zh: '发现' })
+                                : s === 'reading' ? t({ en: 'Verify', zh: '验证' })
+                                  : t({ en: 'Done', zh: '完成' })}
+                          </Text>
                         </View>
-                      ))
-                    )}
-                  </>
-                ) : (
-                  <EmptyState text={t({ en: 'This device does not expose a notifiable characteristic yet.', zh: '这个设备当前没有暴露可通知特征。' })} />
+                      );
+                    })}
+                  </View>
+                )}
+                {!connected && !connecting && (
+                  <TouchableOpacity style={st.connectBtn} onPress={() => { void connectCandidate(c); }} activeOpacity={0.8}>
+                    <Text style={st.connectBtnText}>{t({ en: 'Connect & Pair', zh: '连接配对' })}</Text>
+                  </TouchableOpacity>
+                )}
+                {connecting && (
+                  <View style={st.connectingBar}>
+                    <Text style={st.connectingText}>{t({ en: 'Connecting...', zh: '正在连接...' })}</Text>
+                  </View>
+                )}
+                {connected && profile && (
+                  <View style={st.connectedBar}>
+                    <Text style={st.connectedIcon}>✓</Text>
+                    <Text style={st.connectedText}>{t({ en: 'Paired', zh: '已配对' })}</Text>
+                    <TouchableOpacity style={st.goMonitorBtn} onPress={() => openMonitor(c.id)}>
+                      <Text style={st.goMonitorText}>{t({ en: 'Open Monitor →', zh: '打开监控 →' })}</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
-            </>
+            );
+          })}
+
+          {/* Empty */}
+          {!isScanning && scanCandidates.length === 0 && pairedRecords.length === 0 && (
+            <View style={st.empty}>
+              <Text style={st.emptyEmoji}>⌚</Text>
+              <Text style={st.emptyTitle}>{t({ en: 'No Wearable Devices', zh: '无穿戴设备' })}</Text>
+              <Text style={st.emptyDesc}>
+                {t({ en: 'Tap the scan button to discover nearby Bluetooth LE wearables.', zh: '点击搜索按钮，发现附近的蓝牙低功耗穿戴设备。' })}
+              </Text>
+            </View>
           )}
-
-          {capabilityPreview && (
-            <>
-              <View style={styles.previewCard}>
-                <Text style={styles.previewTitle}>{capabilityPreview.title}</Text>
-                <Text style={styles.previewSummary}>{capabilityPreview.summary}</Text>
-                <Text style={styles.previewSectionLabel}>{t({ en: 'Trigger suggestions', zh: '触发建议' })}</Text>
-                {capabilityPreview.triggers.map((item) => (
-                  <Bullet key={item} text={item} />
-                ))}
-                <Text style={styles.previewSectionLabel}>{t({ en: 'Verification evidence', zh: '验证证据' })}</Text>
-                {capabilityPreview.evidence.map((item) => (
-                  <Bullet key={item} text={item} />
-                ))}
-              </View>
-
-              <View style={styles.subPanel}>
-                <Text style={styles.subPanelTitle}>{t({ en: 'Agent verification event', zh: 'Agent 验证事件' })}</Text>
-                <Text style={styles.jsonText}>{JSON.stringify(capabilityPreview.verificationEvent, null, 2)}</Text>
-              </View>
-            </>
-          )}
-
-          <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={() => { void clearFlow(); }}>
-              <Text style={styles.secondaryButtonText}>{t({ en: 'Disconnect and clear', zh: '断开并清空' })}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.primaryButtonCompact} onPress={() => { void startScan(); }}>
-              <Text style={styles.primaryButtonText}>{t({ en: 'Scan again', zh: '重新扫描' })}</Text>
-            </TouchableOpacity>
-          </View>
         </View>
-      )}
-    </ScrollView>
+
+        {/* ── Supported devices ── */}
+        <View style={st.supportSection}>
+          <Text style={st.supportTitle}>{t({ en: 'Supported Devices', zh: '支持的设备' })}</Text>
+          <View style={st.supportGrid}>
+            {(['ring', 'band', 'clip', 'sensor'] as const).map((k) => (
+              <View key={k} style={st.supportItem}>
+                <View style={[st.supportBadge, { backgroundColor: KIND_CFG[k].color + '15' }]}>
+                  <Text style={{ fontSize: 24 }}>{KIND_CFG[k].icon}</Text>
+                </View>
+                <Text style={st.supportLabel}>{t({ en: KIND_CFG[k].en, zh: KIND_CFG[k].zh })}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={st.supportHint}>
+            {t({ en: 'Any BLE device with standard GATT services is automatically recognized.', zh: '支持任何具有标准 GATT 服务的低功耗蓝牙设备。' })}
+          </Text>
+        </View>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-function Bullet({ text }: { text: string }) {
-  return (
-    <View style={styles.bulletRow}>
-      <View style={styles.bulletDot} />
-      <Text style={styles.bulletText}>{text}</Text>
-    </View>
-  );
-}
+// ── Styles ───────────────────────────────────────────────────────────────────
 
-function EmptyState({ text }: { text: string }) {
-  return (
-    <View style={styles.emptyCard}>
-      <Text style={styles.emptyText}>{text}</Text>
-    </View>
-  );
-}
-
-function KeyValueRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.keyValueRow}>
-      <Text style={styles.keyValueLabel}>{label}</Text>
-      <Text style={styles.keyValueValue}>{value}</Text>
-    </View>
-  );
-}
-
-function StatusPill({ status }: { status: WearableSupportTier }) {
-  const label = status === 'ready' ? 'Ready' : status === 'known' ? 'Known' : 'Beta';
-  return (
-    <View style={[styles.statusPill, status === 'ready' ? styles.statusReady : status === 'known' ? styles.statusKnown : styles.statusBeta]}>
-      <Text style={styles.statusPillText}>{label}</Text>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bgPrimary,
-  },
-  content: {
-    padding: 16,
-    gap: 14,
-  },
-  heroCard: {
-    backgroundColor: colors.bgCard,
-    borderWidth: 1,
-    borderColor: colors.accent + '33',
-    borderRadius: 22,
-    padding: 18,
-    gap: 10,
-  },
-  heroBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.accent + '22',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  heroBadgeText: {
-    color: colors.accent,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  heroTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.textPrimary,
-    lineHeight: 31,
-  },
-  heroSubtitle: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    lineHeight: 22,
-  },
-  progressCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 12,
-  },
-  progressRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  progressStep: {
-    alignItems: 'center',
-    width: '15.2%',
-    minWidth: 52,
-    gap: 6,
-  },
-  progressDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.cardAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  progressDotActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  progressDotText: {
-    color: colors.textSecondary,
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  progressDotTextActive: {
-    color: colors.textInverse,
-  },
-  progressLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-  },
-  progressLabelActive: {
-    color: colors.textPrimary,
-    fontWeight: '700',
-  },
-  panel: {
-    backgroundColor: colors.bgCard,
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 14,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-  },
-  sectionTitle: {
-    color: colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  bulletList: {
-    gap: 10,
-  },
-  bulletRow: {
-    flexDirection: 'row',
-    gap: 10,
-    alignItems: 'flex-start',
-  },
-  bulletDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.accent,
-    marginTop: 7,
-  },
-  bulletText: {
-    flex: 1,
-    color: colors.textSecondary,
-    lineHeight: 21,
-    fontSize: 14,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  summaryChip: {
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    minWidth: 96,
-  },
-  summaryChipOk: {
-    backgroundColor: colors.success + '15',
-    borderColor: colors.success + '55',
-  },
-  summaryChipWarn: {
-    backgroundColor: colors.warning + '15',
-    borderColor: colors.warning + '55',
-  },
-  summaryChipLabel: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  summaryChipValue: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontWeight: '800',
-    marginTop: 3,
-  },
-  actionRowStack: {
-    gap: 10,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  primaryButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  primaryButtonCompact: {
-    backgroundColor: colors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    flex: 1,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  secondaryButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    backgroundColor: colors.bgSecondary,
-  },
-  secondaryButtonText: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  inlineButton: {
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: colors.cardAlt,
-  },
-  inlineButtonText: {
-    color: colors.textPrimary,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  errorCard: {
-    backgroundColor: colors.error + '12',
-    borderColor: colors.error + '40',
-    borderWidth: 1,
-    borderRadius: 18,
-    padding: 14,
-    gap: 6,
-  },
-  errorTitle: {
-    color: colors.textPrimary,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  errorText: {
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  inlineStatus: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  inlineStatusLabel: {
-    color: colors.accent,
-    fontWeight: '700',
-    fontSize: 12,
-  },
+const st = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bgPrimary },
+  scroll: { flex: 1 },
+  content: { padding: 16, gap: 14 },
+  header: { paddingVertical: 8 },
+  headerTitle: { fontSize: 22, fontWeight: '700', color: colors.textPrimary },
+  headerSub: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  section: { gap: 10 },
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: colors.textMuted, letterSpacing: 1, textTransform: 'uppercase' },
   pairedCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: colors.bgCard, borderRadius: 16, padding: 14,
+    borderWidth: 1, borderColor: colors.border,
   },
-  filterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+  kindBadge: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  kindEmoji: { fontSize: 22 },
+  pairedInfo: { flex: 1 },
+  pairedName: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
+  pairedMeta: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
+  chip: { backgroundColor: colors.bgSecondary, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  chipText: { fontSize: 10, fontWeight: '600', color: colors.textMuted },
+  pairedRight: { alignItems: 'flex-end', gap: 8 },
+  monitorBtn: { backgroundColor: colors.primary, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  monitorBtnText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  removeText: { fontSize: 14, color: colors.textMuted, padding: 4 },
+  healthRow: { flexDirection: 'row', gap: 10 },
+  healthCard: {
+    flex: 1, backgroundColor: colors.bgCard, borderRadius: 14, padding: 12,
+    alignItems: 'center', gap: 2, borderWidth: 1, borderColor: colors.border,
   },
+  healthIcon: { fontSize: 20 },
+  healthVal: { fontSize: 22, fontWeight: '800', color: colors.textPrimary },
+  healthUnit: { fontSize: 11, color: colors.textMuted },
+  healthLabel: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  alertCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: '#FEF3C720', borderRadius: 12, padding: 12,
+  },
+  alertEmoji: { fontSize: 16 },
+  alertText: { flex: 1, fontSize: 13, color: colors.warning, lineHeight: 19 },
+  scanBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, backgroundColor: colors.primary, borderRadius: 16, paddingVertical: 16,
+  },
+  scanBtnActive: { opacity: 0.85 },
+  scanBtnIcon: { fontSize: 20, color: '#FFF' },
+  scanBtnText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   filterChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bgSecondary,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
+    backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.border,
   },
-  filterChipActive: {
-    backgroundColor: colors.accent + '22',
-    borderColor: colors.accent + '66',
+  filterChipOn: { backgroundColor: colors.primary + '18', borderColor: colors.primary },
+  filterText: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
+  filterTextOn: { color: colors.primary },
+  scanCard: {
+    backgroundColor: colors.bgCard, borderRadius: 16, padding: 14,
+    borderWidth: 1, borderColor: colors.border, gap: 10,
   },
-  filterChipText: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    fontWeight: '700',
+  scanCardSel: { borderColor: colors.primary },
+  scanTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  scanName: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
+  scanMeta: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  sigBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, height: 18 },
+  sigBar: { width: 4, borderRadius: 2 },
+  stageRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8 },
+  stageItem: { alignItems: 'center', gap: 4 },
+  stageDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.border },
+  stageDotDone: { backgroundColor: colors.success },
+  stageDotCur: { backgroundColor: colors.primary, borderWidth: 2, borderColor: colors.primary + '55' },
+  stageText: { fontSize: 10, color: colors.textMuted },
+  stageTextDone: { color: colors.success, fontWeight: '600' },
+  connectBtn: { backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  connectBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  connectingBar: { backgroundColor: colors.primary + '15', borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
+  connectingText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
+  connectedBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: colors.success + '15', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14,
   },
-  filterChipTextActive: {
-    color: colors.accent,
-  },
-  scannerCard: {
-    alignItems: 'center',
-    backgroundColor: colors.bgSecondary,
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 12,
-  },
-  scannerPulse: {
-    fontSize: 42,
-    color: colors.accent,
-  },
-  scannerTitle: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  scannerHint: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  emptyCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
-  },
-  emptyText: {
-    color: colors.textSecondary,
-    lineHeight: 21,
-  },
-  deviceCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 10,
-  },
-  deviceCardSelected: {
-    borderColor: colors.accent,
-  },
-  deviceHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  deviceName: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  deviceMeta: {
-    color: colors.textMuted,
-    fontSize: 12,
-    marginTop: 4,
-  },
-  deviceSummary: {
-    color: colors.textSecondary,
-    lineHeight: 20,
-    fontSize: 13,
-  },
-  statusPill: {
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  statusReady: {
-    backgroundColor: colors.success + '22',
-  },
-  statusKnown: {
-    backgroundColor: colors.warning + '22',
-  },
-  statusBeta: {
-    backgroundColor: colors.primary + '22',
-  },
-  statusPillText: {
-    color: colors.textPrimary,
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  tagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  tag: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  tagText: {
-    color: colors.textPrimary,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  highlightCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 6,
-  },
-  highlightLabel: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  highlightTitle: {
-    color: colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  highlightBody: {
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  keyValueCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 10,
-  },
-  keyValueRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  keyValueLabel: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    flex: 1,
-  },
-  keyValueValue: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontWeight: '700',
-    flex: 1,
-    textAlign: 'right',
-  },
-  subPanel: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 10,
-  },
-  subPanelTitle: {
-    color: colors.textPrimary,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  serviceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  serviceUuid: {
-    color: colors.accent,
-    fontSize: 12,
-    flex: 1,
-  },
-  serviceMeta: {
-    color: colors.textSecondary,
-    fontSize: 12,
-  },
-  payloadText: {
-    color: colors.textPrimary,
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  eventCard: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: 14,
-    padding: 12,
-    gap: 6,
-  },
-  eventTime: {
-    color: colors.textSecondary,
-    fontSize: 11,
-  },
-  previewCard: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: 18,
-    padding: 14,
-    gap: 10,
-  },
-  previewTitle: {
-    color: colors.textPrimary,
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  previewSummary: {
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  previewSectionLabel: {
-    color: colors.accent,
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 4,
-  },
-  jsonText: {
-    color: colors.textPrimary,
-    fontSize: 12,
-    lineHeight: 18,
-  },
+  connectedIcon: { color: colors.success, fontSize: 16, fontWeight: '700' },
+  connectedText: { color: colors.success, fontSize: 14, fontWeight: '600', flex: 1 },
+  goMonitorBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: colors.primary, borderRadius: 8 },
+  goMonitorText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  empty: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 32 },
+  emptyEmoji: { fontSize: 48, marginBottom: 12 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, marginBottom: 6 },
+  emptyDesc: { fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 22 },
+  supportSection: { gap: 12 },
+  supportTitle: { fontSize: 12, fontWeight: '700', color: colors.textMuted, letterSpacing: 0.5 },
+  supportGrid: { flexDirection: 'row', gap: 12 },
+  supportItem: { flex: 1, alignItems: 'center', gap: 8 },
+  supportBadge: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  supportLabel: { fontSize: 12, fontWeight: '600', color: colors.textPrimary },
+  supportHint: { fontSize: 12, color: colors.textMuted, lineHeight: 18, textAlign: 'center' },
 });

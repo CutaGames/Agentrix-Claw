@@ -15,6 +15,7 @@ export enum PaymentMethod {
   X402 = 'x402',
   MULTISIG = 'multisig',
   TRANSAK = 'transak',
+  STABLECOIN = 'stablecoin',
 }
 
 export enum PaymentStatus {

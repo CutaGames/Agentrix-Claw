@@ -17,6 +17,7 @@ import {
   Globe,
   X as XIcon,
   ArrowRight,
+  CircleDollarSign,
 } from 'lucide-react';
 import { useRouter } from 'next/router';
 import { QRCodeSVG } from 'qrcode.react';
@@ -54,7 +55,7 @@ interface SmartCheckoutProps {
   onCancel?: () => void;
 }
 
-type RouteType = 'quickpay' | 'provider' | 'wallet' | 'local-rail' | 'crypto-rail' | 'qrcode';
+type RouteType = 'quickpay' | 'provider' | 'wallet' | 'local-rail' | 'crypto-rail' | 'qrcode' | 'stablecoin';
 type Status = 'loading' | 'ready' | 'processing' | 'success' | 'error';
 
 const TESTNET_NETWORK = {
@@ -177,6 +178,9 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
   const [stripePaymentStage, setStripePaymentStage] = useState<'select' | 'confirm' | 'processing' | 'success'>('select');
   const [showWalletSelector, setShowWalletSelector] = useState(false);
   const [selectedProviderOption, setSelectedProviderOption] = useState<ProviderOption | null>(null);
+  const [stablecoinNetwork, setStablecoinNetwork] = useState<'ethereum' | 'solana' | 'polygon' | 'base'>('polygon');
+  const [stablecoinFeeInfo, setStablecoinFeeInfo] = useState<{ fee: number; feeRate: number; networkFee: number; netAmount: number } | null>(null);
+  const [isStablecoinAvailable, setIsStablecoinAvailable] = useState(false);
   const { activeSession, loadActiveSession, createSession, loading: sessionLoading } = useSessionManager();
   const { isConnected, defaultWallet, connect, connectors } = useWeb3();
   const tokenMetadataCache = useRef<Record<string, { address: string; decimals: number }>>({});
@@ -287,6 +291,15 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
             result = preflightResult.value as PreflightResult;
             setPreflightResult(result);
         }
+
+        // Check stablecoin availability (non-blocking)
+        paymentApi.getStablecoinStatus().then((sc) => {
+          if (sc?.available) {
+            setIsStablecoinAvailable(true);
+            // Pre-fetch fee for default network
+            paymentApi.getStablecoinFees(order.amount, 'polygon').then(setStablecoinFeeInfo).catch(() => {});
+          }
+        }).catch(() => {});
           
         // Default route logic
         const finalSession = session || activeSession || currentSession;
@@ -850,6 +863,60 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
     }
   };
 
+  const handleStablecoinPay = async () => {
+    setRouteType('stablecoin');
+    setStatus('processing');
+    setError(null);
+    try {
+      const result = await paymentApi.createStablecoinPayment({
+        amount: order.amount,
+        network: stablecoinNetwork,
+        orderId: order.id,
+        merchantId: order.merchantId,
+        description: order.description,
+      });
+
+      // Use Stripe's client secret for confirming the payment on the crypto side
+      // The payment is created - show success with the paymentIntentId for tracking
+      setPaymentResult({
+        paymentId: result.paymentId,
+        paymentIntentId: result.paymentIntentId,
+        amount: order.amount,
+        currency: 'USDC',
+        status: 'processing',
+        metadata: {
+          network: stablecoinNetwork,
+          stablecoin: 'usdc',
+          stripeClientSecret: result.clientSecret,
+        },
+      });
+      setStatus('success');
+      if (onSuccess) {
+        onSuccess({
+          paymentId: result.paymentId,
+          paymentIntentId: result.paymentIntentId,
+          amount: order.amount,
+          currency: 'USDC',
+          network: stablecoinNetwork,
+        });
+      }
+    } catch (err: any) {
+      console.error('Stablecoin payment failed:', err);
+      setError(err.message || 'Stablecoin payment failed');
+      setStatus('error');
+    }
+  };
+
+  const handleStablecoinNetworkChange = async (network: 'ethereum' | 'solana' | 'polygon' | 'base') => {
+    setStablecoinNetwork(network);
+    try {
+      const fees = await paymentApi.getStablecoinFees(order.amount, network);
+      setStablecoinFeeInfo(fees);
+    } catch {
+      // Non-critical, keep previous fee info
+    }
+  };
+
   const handleQRCodePay = async () => {
     setRouteType('qrcode');
     setStatus('processing');
@@ -1101,6 +1168,80 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
                     </div>
                 )}
             </div>
+
+            {/* Stablecoin USDC Card (Stripe MPP) */}
+            {isStablecoinAvailable && (
+            <div 
+                onClick={() => handleStablecoinPay()}
+                className={`relative group cursor-pointer rounded-xl border p-4 transition-all ${
+                    routeType === 'stablecoin'
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200' 
+                    : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-md'
+                }`}
+            >
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${
+                            routeType === 'stablecoin' ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-600'
+                        }`}>
+                            <CircleDollarSign size={20} />
+                        </div>
+                        <div>
+                            <div className={`font-bold ${routeType === 'stablecoin' ? 'text-white' : 'text-slate-900'}`}>
+                                USDC Payment
+                            </div>
+                            <div className={`text-xs ${routeType === 'stablecoin' ? 'text-blue-100' : 'text-slate-500'}`}>
+                                Stripe · {stablecoinNetwork.charAt(0).toUpperCase() + stablecoinNetwork.slice(1)} · No chargeback
+                            </div>
+                        </div>
+                    </div>
+                    <div className="text-right">
+                        <div className={`text-sm font-bold ${routeType === 'stablecoin' ? 'text-white' : 'text-slate-900'}`}>
+                            ${order.amount.toFixed(2)} USDC
+                        </div>
+                        {stablecoinFeeInfo && (
+                            <div className={`text-[10px] ${routeType === 'stablecoin' ? 'text-blue-200' : 'text-slate-400'}`}>
+                                Fee: ${stablecoinFeeInfo.fee.toFixed(2)}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                
+                {/* Network selector chips */}
+                <div className="mt-3 flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    {(['polygon', 'base', 'solana', 'ethereum'] as const).map((net) => (
+                        <button
+                            key={net}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleStablecoinNetworkChange(net);
+                            }}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                                stablecoinNetwork === net
+                                    ? routeType === 'stablecoin' 
+                                        ? 'bg-white/30 text-white' 
+                                        : 'bg-blue-100 text-blue-700'
+                                    : routeType === 'stablecoin'
+                                        ? 'bg-white/10 text-blue-200 hover:bg-white/20'
+                                        : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                            }`}
+                        >
+                            {net === 'ethereum' ? 'ETH' : net === 'polygon' ? 'Polygon' : net === 'base' ? 'Base' : 'Solana'}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Inline error for stablecoin */}
+                {routeType === 'stablecoin' && status === 'error' && error && (
+                    <div className="mt-3 p-2 bg-red-50/20 border border-red-200/30 rounded-lg flex items-start gap-2">
+                        <AlertCircle size={14} className="text-red-200 mt-0.5 shrink-0" />
+                        <div className="text-xs text-red-100 font-medium break-words">
+                            {error}
+                        </div>
+                    </div>
+                )}
+            </div>
+            )}
 
             {/* QR Code Pay Card */}
             <div 
@@ -1896,7 +2037,7 @@ export function SmartCheckout({ order, onSuccess, onCancel }: SmartCheckoutProps
                   <Loader2 className="animate-spin text-indigo-600 mx-auto mb-4" size={40} />
                   <div className="font-bold text-slate-900">Processing Payment...</div>
                   <div className="text-sm text-slate-500">
-                      {routeType === 'quickpay' ? 'Executing gasless transaction...' : 'Please confirm in your wallet'}
+                      {routeType === 'quickpay' ? 'Executing gasless transaction...' : routeType === 'stablecoin' ? 'Processing USDC payment via Stripe...' : 'Please confirm in your wallet'}
                   </div>
               </div>
           </div>

@@ -866,4 +866,162 @@ export const paymentApi = {
     }
     return result;
   },
+
+  // ========================================
+  // Stablecoin (USDC via Stripe MPP) API
+  // ========================================
+
+  /**
+   * 获取 Stablecoin 支付可用状态
+   */
+  getStablecoinStatus: async (): Promise<{
+    available: boolean;
+    supportedNetworks: string[];
+    supportedCurrencies: string[];
+    maxAmount: number;
+    currency: string;
+  }> => {
+    const result = await apiClient.get<{
+      available: boolean;
+      supportedNetworks: string[];
+      supportedCurrencies: string[];
+      maxAmount: number;
+      currency: string;
+    }>('/stablecoin-payments/status');
+    if (result === null) {
+      throw new Error('无法获取 Stablecoin 状态，请稍后重试');
+    }
+    return result;
+  },
+
+  /**
+   * 计算 Stablecoin 手续费
+   */
+  getStablecoinFees: async (amount: number, network: string): Promise<{
+    fee: number;
+    feeRate: number;
+    networkFee: number;
+    netAmount: number;
+  }> => {
+    const params = new URLSearchParams({
+      amount: amount.toString(),
+      network,
+    });
+    const result = await apiClient.get<{
+      fee: number;
+      feeRate: number;
+      networkFee: number;
+      netAmount: number;
+    }>(`/stablecoin-payments/fees?${params}`);
+    if (result === null) {
+      throw new Error('无法计算 Stablecoin 手续费，请稍后重试');
+    }
+    return result;
+  },
+
+  /**
+   * 获取可用的 Stablecoin 支付方式（按网络）
+   */
+  getStablecoinMethods: async (amount: number): Promise<{
+    methods: Array<{
+      network: string;
+      stablecoin: string;
+      fee: number;
+      available: boolean;
+    }>;
+  }> => {
+    const result = await apiClient.get<{
+      methods: Array<{
+        network: string;
+        stablecoin: string;
+        fee: number;
+        available: boolean;
+      }>;
+    }>(`/stablecoin-payments/methods?amount=${amount}`);
+    if (result === null) {
+      throw new Error('无法获取 Stablecoin 支付方式，请稍后重试');
+    }
+    return result;
+  },
+
+  /**
+   * 创建 Stablecoin PaymentIntent
+   */
+  createStablecoinPaymentIntent: async (params: {
+    amount: number;
+    network: string;
+    orderId?: string;
+    merchantId?: string;
+    agentId?: string;
+    description?: string;
+  }): Promise<{
+    paymentIntentId: string;
+    clientSecret: string;
+    amount: number;
+    currency: string;
+    stablecoin: string;
+    network: string;
+    status: string;
+  }> => {
+    const result = await apiClient.post<{
+      paymentIntentId: string;
+      clientSecret: string;
+      amount: number;
+      currency: string;
+      stablecoin: string;
+      network: string;
+      status: string;
+    }>('/stablecoin-payments/create-intent', params);
+    if (result === null) {
+      throw new Error('无法创建 Stablecoin 支付意图，请稍后重试');
+    }
+    return result;
+  },
+
+  /**
+   * 创建 Stablecoin 支付（含数据库记录）
+   */
+  createStablecoinPayment: async (params: {
+    amount: number;
+    network: string;
+    orderId?: string;
+    merchantId?: string;
+    agentId?: string;
+    description?: string;
+  }): Promise<{
+    paymentId: string;
+    clientSecret: string;
+    paymentIntentId: string;
+  }> => {
+    const result = await apiClient.post<{
+      paymentId: string;
+      clientSecret: string;
+      paymentIntentId: string;
+    }>('/stablecoin-payments/create-payment', params);
+    if (result === null) {
+      throw new Error('无法创建 Stablecoin 支付，请稍后重试');
+    }
+    return result;
+  },
+
+  /**
+   * 查询 Stablecoin 支付状态
+   */
+  getStablecoinPaymentStatus: async (paymentIntentId: string): Promise<{
+    status: string;
+    amount: number;
+    network: string;
+    confirmedAt?: string;
+  }> => {
+    const result = await apiClient.get<{
+      status: string;
+      amount: number;
+      network: string;
+      confirmedAt?: string;
+    }>(`/stablecoin-payments/${paymentIntentId}/status`);
+    if (result === null) {
+      throw new Error('无法获取 Stablecoin 支付状态，请稍后重试');
+    }
+    return result;
+  },
 };

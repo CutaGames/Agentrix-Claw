@@ -1,14 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  FlatList,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
@@ -27,76 +26,56 @@ import {
 
 type ScreenTab = 'live' | 'rules' | 'history';
 
-const CHANNEL_LABELS: Record<TelemetryChannel, { label: string; icon: string; unit: string }> = {
-  heart_rate: { label: 'Heart Rate', icon: '♥', unit: 'bpm' },
-  spo2: { label: 'SpO₂', icon: '○', unit: '%' },
-  temperature: { label: 'Temperature', icon: '🌡', unit: '°C' },
-  steps: { label: 'Steps', icon: '🚶', unit: '' },
-  battery: { label: 'Battery', icon: '🔋', unit: '%' },
-  accelerometer: { label: 'Accel', icon: '⟐', unit: '' },
-  custom: { label: 'Custom', icon: '◆', unit: '' },
+const CHANNEL_META: Record<TelemetryChannel, { label: string; icon: string; unit: string; color: string }> = {
+  heart_rate: { label: 'Heart Rate', icon: '♥', unit: 'bpm', color: '#EF4444' },
+  spo2: { label: 'SpO₂', icon: '○', unit: '%', color: '#8B5CF6' },
+  temperature: { label: 'Temperature', icon: '🌡', unit: '°C', color: '#F59E0B' },
+  steps: { label: 'Steps', icon: '🚶', unit: '', color: '#3B82F6' },
+  battery: { label: 'Battery', icon: '🔋', unit: '%', color: '#10B981' },
+  accelerometer: { label: 'Accel', icon: '⟐', unit: '', color: '#6366F1' },
+  custom: { label: 'Custom', icon: '◆', unit: '', color: '#6B7280' },
 };
 
 const DEFAULT_MONITORED_CHANNELS: MonitoredChannel[] = [
   {
-    channel: 'heart_rate',
-    serviceUuid: '180d',
-    characteristicUuid: '2a37',
-    label: 'Heart Rate',
-    parser: 'heart_rate_measurement',
-    intervalMs: 1000,
-    enabled: true,
-    lastValue: null,
-    lastUpdatedAt: null,
+    channel: 'heart_rate', serviceUuid: '180d', characteristicUuid: '2a37',
+    label: 'Heart Rate', parser: 'heart_rate_measurement', intervalMs: 1000,
+    enabled: true, lastValue: null, lastUpdatedAt: null,
   },
   {
-    channel: 'battery',
-    serviceUuid: '180f',
-    characteristicUuid: '2a19',
-    label: 'Battery',
-    parser: 'battery_level',
-    intervalMs: 5000,
-    enabled: true,
-    lastValue: null,
-    lastUpdatedAt: null,
+    channel: 'battery', serviceUuid: '180f', characteristicUuid: '2a19',
+    label: 'Battery', parser: 'battery_level', intervalMs: 5000,
+    enabled: true, lastValue: null, lastUpdatedAt: null,
   },
   {
-    channel: 'temperature',
-    serviceUuid: '1809',
-    characteristicUuid: '2a1c',
-    label: 'Temperature',
-    parser: 'temperature',
-    intervalMs: 5000,
-    enabled: true,
-    lastValue: null,
-    lastUpdatedAt: null,
+    channel: 'temperature', serviceUuid: '1809', characteristicUuid: '2a1c',
+    label: 'Temperature', parser: 'temperature', intervalMs: 5000,
+    enabled: true, lastValue: null, lastUpdatedAt: null,
   },
 ];
 
 function buildCollectorChannels(device: PairedWearableRecord): MonitoredChannel[] {
-  const supportsTemperature = device.kind === 'sensor' || device.serviceLabels.some((label) => /temp/i.test(label));
-
+  const supportsTemp = device.kind === 'sensor' || device.serviceLabels.some((l) => /temp/i.test(l));
   return DEFAULT_MONITORED_CHANNELS
-    .filter((channel) => supportsTemperature || channel.channel !== 'temperature')
-    .map((channel) => ({ ...channel }));
+    .filter((ch) => supportsTemp || ch.channel !== 'temperature')
+    .map((ch) => ({ ...ch }));
 }
 
-export function WearableMonitorScreen() {
+export function WearableMonitorScreen({ navigation, route }: any) {
   const { t } = useI18n();
+  const routeDeviceId = route?.params?.deviceId as string | undefined;
   const [activeTab, setActiveTab] = useState<ScreenTab>('live');
   const [collectorState, setCollectorState] = useState<CollectorState | null>(null);
   const [recentSamples, setRecentSamples] = useState<TelemetrySample[]>([]);
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [triggerHistory, setTriggerHistory] = useState<TriggerEvent[]>([]);
   const [pairedDevices, setPairedDevices] = useState<PairedWearableRecord[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(routeDeviceId || null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
     void initialize();
-    return () => {
-      mountedRef.current = false;
-    };
+    return () => { mountedRef.current = false; };
   }, []);
 
   useEffect(() => {
@@ -108,18 +87,14 @@ export function WearableMonitorScreen() {
 
   useEffect(() => {
     const unsub = WearableDataCollectorService.onSample((sample) => {
-      if (mountedRef.current) {
-        setRecentSamples((prev) => [sample, ...prev].slice(0, 50));
-      }
+      if (mountedRef.current) setRecentSamples((prev) => [sample, ...prev].slice(0, 50));
     });
     return unsub;
   }, []);
 
   useEffect(() => {
     const unsub = WearableAutomationEngineService.onTrigger((event) => {
-      if (mountedRef.current) {
-        setTriggerHistory((prev) => [event, ...prev].slice(0, 100));
-      }
+      if (mountedRef.current) setTriggerHistory((prev) => [event, ...prev].slice(0, 100));
     });
     return unsub;
   }, []);
@@ -128,9 +103,7 @@ export function WearableMonitorScreen() {
     const devices = await WearablePairingStoreService.list();
     if (!mountedRef.current) return;
     setPairedDevices(devices);
-    if (devices.length > 0) {
-      setSelectedDeviceId(devices[0].id);
-    }
+    if (!selectedDeviceId && devices.length > 0) setSelectedDeviceId(devices[0].id);
     await WearableAutomationEngineService.initialize();
     setRules(WearableAutomationEngineService.getRules());
     setTriggerHistory(WearableAutomationEngineService.getHistory());
@@ -139,29 +112,19 @@ export function WearableMonitorScreen() {
   const handleStartCollector = async () => {
     if (!selectedDeviceId) return;
     try {
-      const device = pairedDevices.find((item) => item.id === selectedDeviceId);
-      if (!device) {
-        throw new Error('Selected device not found');
-      }
-
+      const device = pairedDevices.find((d) => d.id === selectedDeviceId);
+      if (!device) throw new Error('Selected device not found');
       WearableDataCollectorService.configure(
         {
-          deviceId: device.id,
-          deviceName: device.name,
+          deviceId: device.id, deviceName: device.name,
           channels: buildCollectorChannels(device),
-          flushIntervalMs: 30_000,
-          maxBufferSize: 50,
-          reconnectMaxAttempts: 5,
-          reconnectDelayMs: 3_000,
+          flushIntervalMs: 30_000, maxBufferSize: 50,
+          reconnectMaxAttempts: 5, reconnectDelayMs: 3_000,
         },
         async (payload) => {
-          await apiFetch('/wearable-telemetry/upload', {
-            method: 'POST',
-            body: JSON.stringify(payload),
-          });
+          await apiFetch('/wearable-telemetry/upload', { method: 'POST', body: JSON.stringify(payload) });
         },
       );
-
       await WearableDataCollectorService.start();
       WearableAutomationEngineService.start();
     } catch (err: any) {
@@ -174,23 +137,15 @@ export function WearableMonitorScreen() {
     WearableAutomationEngineService.stop();
   };
 
-  const handlePauseCollector = () => {
-    WearableDataCollectorService.pause();
-  };
-
-  const handleResumeCollector = async () => {
-    await WearableDataCollectorService.resume();
-  };
+  const handlePauseCollector = () => { WearableDataCollectorService.pause(); };
+  const handleResumeCollector = async () => { await WearableDataCollectorService.resume(); };
 
   const handleAddTemplate = async (templateIndex: number) => {
     if (!selectedDeviceId) return;
     const templates = WearableAutomationEngineService.getTemplates();
     const template = templates[templateIndex];
     if (!template) return;
-    await WearableAutomationEngineService.addRule({
-      ...template.rule,
-      deviceId: selectedDeviceId,
-    });
+    await WearableAutomationEngineService.addRule({ ...template.rule, deviceId: selectedDeviceId });
     setRules(WearableAutomationEngineService.getRules());
   };
 
@@ -206,8 +161,7 @@ export function WearableMonitorScreen() {
       [
         { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
-          text: t({ en: 'Delete', zh: '删除' }),
-          style: 'destructive',
+          text: t({ en: 'Delete', zh: '删除' }), style: 'destructive',
           onPress: async () => {
             await WearableAutomationEngineService.deleteRule(ruleId);
             setRules(WearableAutomationEngineService.getRules());
@@ -230,46 +184,55 @@ export function WearableMonitorScreen() {
   const statusColor = useMemo(() => {
     switch (collectorState?.status) {
       case 'collecting': return colors.success;
-      case 'connecting':
-      case 'reconnecting': return colors.warning;
+      case 'connecting': case 'reconnecting': return colors.warning;
       case 'error': return colors.error;
       case 'paused': return '#8B8B8B';
       default: return colors.textMuted;
     }
   }, [collectorState?.status]);
 
+  const statusLabel = useMemo(() => {
+    switch (collectorState?.status) {
+      case 'collecting': return t({ en: 'Monitoring', zh: '监控中' });
+      case 'connecting': return t({ en: 'Connecting', zh: '连接中' });
+      case 'reconnecting': return t({ en: 'Reconnecting', zh: '重连中' });
+      case 'error': return t({ en: 'Error', zh: '错误' });
+      case 'paused': return t({ en: 'Paused', zh: '已暂停' });
+      default: return t({ en: 'Idle', zh: '空闲' });
+    }
+  }, [collectorState?.status, t]);
+
+  const selectedDevice = pairedDevices.find((d) => d.id === selectedDeviceId);
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={st.safe} edges={['top']}>
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>
-          {t({ en: 'Wearable Monitor', zh: '穿戴设备监控' })}
-        </Text>
-        <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-        <Text style={[styles.statusText, { color: statusColor }]}>
-          {collectorState?.status ?? 'idle'}
-        </Text>
+      <View style={st.header}>
+        <TouchableOpacity onPress={() => navigation?.goBack?.()} style={st.backBtn}>
+          <Text style={st.backIcon}>‹</Text>
+        </TouchableOpacity>
+        <View style={st.headerCenter}>
+          <Text style={st.headerTitle}>
+            {selectedDevice?.name || t({ en: 'Wearable Monitor', zh: '穿戴监控' })}
+          </Text>
+          <View style={st.statusRow}>
+            <View style={[st.statusDot, { backgroundColor: statusColor }]} />
+            <Text style={[st.statusLabel, { color: statusColor }]}>{statusLabel}</Text>
+          </View>
+        </View>
+        <View style={{ width: 36 }} />
       </View>
 
-      {/* Device Selector */}
-      {pairedDevices.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.deviceBar}>
+      {/* Device selector */}
+      {pairedDevices.length > 1 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.deviceBar} contentContainerStyle={{ paddingHorizontal: 16 }}>
           {pairedDevices.map((device) => (
             <TouchableOpacity
               key={device.id}
               onPress={() => setSelectedDeviceId(device.id)}
-              style={[
-                styles.deviceChip,
-                selectedDeviceId === device.id && styles.deviceChipActive,
-              ]}
+              style={[st.deviceChip, selectedDeviceId === device.id && st.deviceChipOn]}
             >
-              <Text style={styles.deviceChipIcon}>
-                {device.kind === 'ring' ? '◌' : device.kind === 'band' ? '▭' : '△'}
-              </Text>
-              <Text style={[
-                styles.deviceChipText,
-                selectedDeviceId === device.id && styles.deviceChipTextActive,
-              ]}>
+              <Text style={[st.deviceChipText, selectedDeviceId === device.id && st.deviceChipTextOn]}>
                 {device.name}
               </Text>
             </TouchableOpacity>
@@ -277,48 +240,42 @@ export function WearableMonitorScreen() {
         </ScrollView>
       )}
 
-      {/* Collector Controls */}
-      <View style={styles.controls}>
+      {/* Controls */}
+      <View style={st.controls}>
         {(!collectorState || collectorState.status === 'idle' || collectorState.status === 'error') && (
-          <TouchableOpacity style={styles.btnStart} onPress={handleStartCollector}>
-            <Text style={styles.btnText}>▶ {t({ en: 'Start', zh: '开始' })}</Text>
+          <TouchableOpacity style={st.ctrlBtnStart} onPress={handleStartCollector}>
+            <Text style={st.ctrlBtnText}>▶ {t({ en: 'Start', zh: '开始' })}</Text>
           </TouchableOpacity>
         )}
         {collectorState?.status === 'collecting' && (
           <>
-            <TouchableOpacity style={styles.btnPause} onPress={handlePauseCollector}>
-              <Text style={styles.btnText}>⏸ {t({ en: 'Pause', zh: '暂停' })}</Text>
+            <TouchableOpacity style={st.ctrlBtnPause} onPress={handlePauseCollector}>
+              <Text style={st.ctrlBtnText}>⏸ {t({ en: 'Pause', zh: '暂停' })}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.btnStop} onPress={handleStopCollector}>
-              <Text style={styles.btnText}>⏹ {t({ en: 'Stop', zh: '停止' })}</Text>
+            <TouchableOpacity style={st.ctrlBtnStop} onPress={handleStopCollector}>
+              <Text style={st.ctrlBtnText}>⏹ {t({ en: 'Stop', zh: '停止' })}</Text>
             </TouchableOpacity>
           </>
         )}
         {collectorState?.status === 'paused' && (
           <>
-            <TouchableOpacity style={styles.btnStart} onPress={handleResumeCollector}>
-              <Text style={styles.btnText}>▶ {t({ en: 'Resume', zh: '恢复' })}</Text>
+            <TouchableOpacity style={st.ctrlBtnStart} onPress={handleResumeCollector}>
+              <Text style={st.ctrlBtnText}>▶ {t({ en: 'Resume', zh: '恢复' })}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.btnStop} onPress={handleStopCollector}>
-              <Text style={styles.btnText}>⏹ {t({ en: 'Stop', zh: '停止' })}</Text>
+            <TouchableOpacity style={st.ctrlBtnStop} onPress={handleStopCollector}>
+              <Text style={st.ctrlBtnText}>⏹ {t({ en: 'Stop', zh: '停止' })}</Text>
             </TouchableOpacity>
           </>
         )}
-        <View style={styles.statsRow}>
-          <Text style={styles.statLabel}>
-            {t({ en: 'Collected', zh: '已采集' })}: {collectorState?.samplesCollected ?? 0}
-          </Text>
-          <Text style={styles.statLabel}>
-            {t({ en: 'Uploaded', zh: '已上传' })}: {collectorState?.samplesUploaded ?? 0}
-          </Text>
-          <Text style={styles.statLabel}>
-            {t({ en: 'Buffer', zh: '缓冲' })}: {WearableDataCollectorService.getBufferSize()}
-          </Text>
+        <View style={st.statsRow}>
+          <Text style={st.stat}>{t({ en: 'Collected', zh: '已采集' })}: {collectorState?.samplesCollected ?? 0}</Text>
+          <Text style={st.stat}>{t({ en: 'Uploaded', zh: '已上传' })}: {collectorState?.samplesUploaded ?? 0}</Text>
+          <Text style={st.stat}>{t({ en: 'Buffer', zh: '缓冲' })}: {WearableDataCollectorService.getBufferSize()}</Text>
         </View>
       </View>
 
       {/* Tabs */}
-      <View style={styles.tabBar}>
+      <View style={st.tabBar}>
         {([
           { key: 'live' as const, label: t({ en: 'Live Data', zh: '实时数据' }) },
           { key: 'rules' as const, label: t({ en: 'Rules', zh: '规则' }) },
@@ -327,49 +284,25 @@ export function WearableMonitorScreen() {
           <TouchableOpacity
             key={tab.key}
             onPress={() => setActiveTab(tab.key)}
-            style={[styles.tab, activeTab === tab.key && styles.tabActive]}
+            style={[st.tab, activeTab === tab.key && st.tabOn]}
           >
-            <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
-              {tab.label}
-            </Text>
+            <Text style={[st.tabText, activeTab === tab.key && st.tabTextOn]}>{tab.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
       {/* Tab Content */}
-      {activeTab === 'live' && (
-        <LiveDataTab
-          collectorState={collectorState}
-          recentSamples={recentSamples}
-          t={t}
-        />
-      )}
-      {activeTab === 'rules' && (
-        <RulesTab
-          rules={rules}
-          onToggle={handleToggleRule}
-          onDelete={handleDeleteRule}
-          onAddTemplate={handleAddTemplate}
-          t={t}
-        />
-      )}
-      {activeTab === 'history' && (
-        <HistoryTab
-          events={triggerHistory}
-          onAcknowledge={handleAcknowledgeEvent}
-          t={t}
-        />
-      )}
-    </View>
+      {activeTab === 'live' && <LiveDataTab collectorState={collectorState} recentSamples={recentSamples} t={t} />}
+      {activeTab === 'rules' && <RulesTab rules={rules} onToggle={handleToggleRule} onDelete={handleDeleteRule} onAddTemplate={handleAddTemplate} t={t} />}
+      {activeTab === 'history' && <HistoryTab events={triggerHistory} onAcknowledge={handleAcknowledgeEvent} t={t} />}
+    </SafeAreaView>
   );
 }
 
 // ── Live Data Tab ────────────────────────────────────────────────────────────
 
 function LiveDataTab({
-  collectorState,
-  recentSamples,
-  t,
+  collectorState, recentSamples, t,
 }: {
   collectorState: CollectorState | null;
   recentSamples: TelemetrySample[];
@@ -378,50 +311,48 @@ function LiveDataTab({
   const channels = collectorState?.channels ?? [];
 
   return (
-    <ScrollView style={styles.tabContent}>
-      {/* Channel Cards */}
+    <ScrollView style={st.tabContent} contentContainerStyle={{ paddingBottom: 40 }}>
       {channels.length > 0 ? (
-        <View style={styles.channelGrid}>
+        <View style={st.channelGrid}>
           {channels.filter((ch) => ch.enabled).map((ch) => {
-            const meta = CHANNEL_LABELS[ch.channel] || CHANNEL_LABELS.custom;
+            const meta = CHANNEL_META[ch.channel] || CHANNEL_META.custom;
             return (
-              <View key={ch.characteristicUuid} style={styles.channelCard}>
-                <Text style={styles.channelIcon}>{meta.icon}</Text>
-                <Text style={styles.channelLabel}>{meta.label}</Text>
-                <Text style={styles.channelValue}>
+              <View key={ch.characteristicUuid} style={st.channelCard}>
+                <View style={[st.channelIconBg, { backgroundColor: meta.color + '18' }]}>
+                  <Text style={[st.channelIcon, { color: meta.color }]}>{meta.icon}</Text>
+                </View>
+                <Text style={st.channelLabel}>{meta.label}</Text>
+                <Text style={st.channelValue}>
                   {ch.lastValue != null ? ch.lastValue.toFixed(1) : '--'}
                 </Text>
-                <Text style={styles.channelUnit}>{meta.unit}</Text>
+                <Text style={st.channelUnit}>{meta.unit}</Text>
                 {ch.lastUpdatedAt && (
-                  <Text style={styles.channelTime}>
-                    {new Date(ch.lastUpdatedAt).toLocaleTimeString()}
-                  </Text>
+                  <Text style={st.channelTime}>{new Date(ch.lastUpdatedAt).toLocaleTimeString()}</Text>
                 )}
               </View>
             );
           })}
         </View>
       ) : (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>📡</Text>
-          <Text style={styles.emptyText}>
+        <View style={st.emptyState}>
+          <Text style={st.emptyIcon}>📡</Text>
+          <Text style={st.emptyText}>
             {t({ en: 'No channels configured. Start the collector to begin monitoring.', zh: '暂无配置通道。启动采集器开始监控。' })}
           </Text>
         </View>
       )}
 
-      {/* Recent Samples Feed */}
-      <Text style={styles.sectionTitle}>
+      <Text style={st.sectionTitle}>
         {t({ en: 'Recent Samples', zh: '最近数据' })} ({recentSamples.length})
       </Text>
       {recentSamples.slice(0, 20).map((sample) => {
-        const meta = CHANNEL_LABELS[sample.channel] || CHANNEL_LABELS.custom;
+        const meta = CHANNEL_META[sample.channel] || CHANNEL_META.custom;
         return (
-          <View key={sample.id} style={styles.sampleRow}>
-            <Text style={styles.sampleIcon}>{meta.icon}</Text>
-            <Text style={styles.sampleChannel}>{meta.label}</Text>
-            <Text style={styles.sampleValue}>{sample.value.toFixed(1)} {sample.unit}</Text>
-            <Text style={styles.sampleTime}>{new Date(sample.timestamp).toLocaleTimeString()}</Text>
+          <View key={sample.id} style={st.sampleRow}>
+            <View style={[st.sampleDot, { backgroundColor: meta.color }]} />
+            <Text style={st.sampleChannel}>{meta.label}</Text>
+            <Text style={st.sampleValue}>{sample.value.toFixed(1)} {sample.unit}</Text>
+            <Text style={st.sampleTime}>{new Date(sample.timestamp).toLocaleTimeString()}</Text>
           </View>
         );
       })}
@@ -432,11 +363,7 @@ function LiveDataTab({
 // ── Rules Tab ────────────────────────────────────────────────────────────────
 
 function RulesTab({
-  rules,
-  onToggle,
-  onDelete,
-  onAddTemplate,
-  t,
+  rules, onToggle, onDelete, onAddTemplate, t,
 }: {
   rules: AutomationRule[];
   onToggle: (id: string) => void;
@@ -447,44 +374,43 @@ function RulesTab({
   const templates = WearableAutomationEngineService.getTemplates();
 
   return (
-    <ScrollView style={styles.tabContent}>
-      {/* Existing Rules */}
-      <Text style={styles.sectionTitle}>
+    <ScrollView style={st.tabContent} contentContainerStyle={{ paddingBottom: 40 }}>
+      <Text style={st.sectionTitle}>
         {t({ en: 'Active Rules', zh: '已有规则' })} ({rules.length})
       </Text>
 
       {rules.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>⚡</Text>
-          <Text style={styles.emptyText}>
+        <View style={st.emptyState}>
+          <Text style={st.emptyIcon}>⚡</Text>
+          <Text style={st.emptyText}>
             {t({ en: 'No automation rules yet. Add a template below.', zh: '暂无自动化规则。请从下方模板添加。' })}
           </Text>
         </View>
       ) : (
         rules.map((rule) => {
-          const meta = CHANNEL_LABELS[rule.channel] || CHANNEL_LABELS.custom;
+          const meta = CHANNEL_META[rule.channel] || CHANNEL_META.custom;
           return (
-            <View key={rule.id} style={[styles.ruleCard, !rule.enabled && styles.ruleCardDisabled]}>
-              <View style={styles.ruleHeader}>
-                <Text style={styles.ruleIcon}>{meta.icon}</Text>
-                <View style={styles.ruleInfo}>
-                  <Text style={styles.ruleName}>{rule.name}</Text>
-                  <Text style={styles.ruleCondition}>
+            <View key={rule.id} style={[st.ruleCard, !rule.enabled && st.ruleCardOff]}>
+              <View style={st.ruleHeader}>
+                <View style={[st.ruleIconBg, { backgroundColor: meta.color + '18' }]}>
+                  <Text style={{ fontSize: 18 }}>{meta.icon}</Text>
+                </View>
+                <View style={st.ruleInfo}>
+                  <Text style={st.ruleName}>{rule.name}</Text>
+                  <Text style={st.ruleCondition}>
                     {meta.label} {rule.condition} {rule.threshold}{rule.thresholdHigh != null ? `–${rule.thresholdHigh}` : ''} {meta.unit}
                   </Text>
                 </View>
-                <TouchableOpacity onPress={() => onToggle(rule.id)} style={styles.ruleToggle}>
-                  <View style={[styles.toggleTrack, rule.enabled && styles.toggleTrackOn]}>
-                    <View style={[styles.toggleThumb, rule.enabled && styles.toggleThumbOn]} />
+                <TouchableOpacity onPress={() => onToggle(rule.id)} style={st.ruleToggle}>
+                  <View style={[st.toggleTrack, rule.enabled && st.toggleTrackOn]}>
+                    <View style={[st.toggleThumb, rule.enabled && st.toggleThumbOn]} />
                   </View>
                 </TouchableOpacity>
               </View>
-              <View style={styles.ruleFooter}>
-                <Text style={styles.ruleStats}>
-                  {t({ en: 'Fired', zh: '触发' })}: {rule.triggerCount}x
-                </Text>
+              <View style={st.ruleFooter}>
+                <Text style={st.ruleStats}>{t({ en: 'Fired', zh: '触发' })}: {rule.triggerCount}x</Text>
                 <TouchableOpacity onPress={() => onDelete(rule.id)}>
-                  <Text style={styles.ruleDelete}>✕</Text>
+                  <Text style={st.ruleDelete}>✕</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -492,17 +418,16 @@ function RulesTab({
         })
       )}
 
-      {/* Template Library */}
-      <Text style={[styles.sectionTitle, { marginTop: 24 }]}>
+      <Text style={[st.sectionTitle, { marginTop: 24 }]}>
         {t({ en: 'Rule Templates', zh: '规则模板' })}
       </Text>
       {templates.map((tmpl, idx) => (
-        <TouchableOpacity key={idx} style={styles.templateCard} onPress={() => onAddTemplate(idx)}>
-          <View style={styles.templateInfo}>
-            <Text style={styles.templateName}>{tmpl.name}</Text>
-            <Text style={styles.templateDesc}>{tmpl.description}</Text>
+        <TouchableOpacity key={idx} style={st.templateCard} onPress={() => onAddTemplate(idx)}>
+          <View style={st.templateInfo}>
+            <Text style={st.templateName}>{tmpl.name}</Text>
+            <Text style={st.templateDesc}>{tmpl.description}</Text>
           </View>
-          <Text style={styles.templateAdd}>＋</Text>
+          <Text style={st.templateAdd}>＋</Text>
         </TouchableOpacity>
       ))}
     </ScrollView>
@@ -512,49 +437,42 @@ function RulesTab({
 // ── History Tab ──────────────────────────────────────────────────────────────
 
 function HistoryTab({
-  events,
-  onAcknowledge,
-  t,
+  events, onAcknowledge, t,
 }: {
   events: TriggerEvent[];
   onAcknowledge: (id: string) => void;
   t: ReturnType<typeof useI18n>['t'];
 }) {
   return (
-    <ScrollView style={styles.tabContent}>
-      <Text style={styles.sectionTitle}>
+    <ScrollView style={st.tabContent} contentContainerStyle={{ paddingBottom: 40 }}>
+      <Text style={st.sectionTitle}>
         {t({ en: 'Trigger History', zh: '触发历史' })} ({events.length})
       </Text>
 
       {events.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>🔔</Text>
-          <Text style={styles.emptyText}>
-            {t({ en: 'No trigger events yet.', zh: '暂无触发事件。' })}
-          </Text>
+        <View style={st.emptyState}>
+          <Text style={st.emptyIcon}>🔔</Text>
+          <Text style={st.emptyText}>{t({ en: 'No trigger events yet.', zh: '暂无触发事件。' })}</Text>
         </View>
       ) : (
         events.map((ev) => {
-          const meta = CHANNEL_LABELS[ev.channel] || CHANNEL_LABELS.custom;
+          const meta = CHANNEL_META[ev.channel] || CHANNEL_META.custom;
           return (
-            <View key={ev.id} style={[styles.triggerCard, !ev.acknowledged && styles.triggerCardNew]}>
-              <View style={styles.triggerHeader}>
-                <Text style={styles.triggerIcon}>{meta.icon}</Text>
-                <View style={styles.triggerInfo}>
-                  <Text style={styles.triggerName}>{ev.ruleName}</Text>
-                  <Text style={styles.triggerDetail}>
+            <View key={ev.id} style={[st.triggerCard, !ev.acknowledged && st.triggerCardNew]}>
+              <View style={st.triggerHeader}>
+                <View style={[st.ruleIconBg, { backgroundColor: meta.color + '18' }]}>
+                  <Text style={{ fontSize: 18 }}>{meta.icon}</Text>
+                </View>
+                <View style={st.triggerInfo}>
+                  <Text style={st.triggerName}>{ev.ruleName}</Text>
+                  <Text style={st.triggerDetail}>
                     {meta.label}: {ev.value.toFixed(1)} {ev.condition} {ev.threshold}
                   </Text>
-                  <Text style={styles.triggerTime}>
-                    {new Date(ev.triggeredAt).toLocaleString()}
-                  </Text>
+                  <Text style={st.triggerTime}>{new Date(ev.triggeredAt).toLocaleString()}</Text>
                 </View>
                 {!ev.acknowledged && (
-                  <TouchableOpacity
-                    style={styles.ackBtn}
-                    onPress={() => onAcknowledge(ev.id)}
-                  >
-                    <Text style={styles.ackBtnText}>✓</Text>
+                  <TouchableOpacity style={st.ackBtn} onPress={() => onAcknowledge(ev.id)}>
+                    <Text style={st.ackBtnText}>✓</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -568,146 +486,143 @@ function HistoryTab({
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20,
-    paddingTop: 16, paddingBottom: 8, gap: 8,
-  },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: colors.text, flex: 1 },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: { fontSize: 12, fontWeight: '600', textTransform: 'capitalize' },
+const st = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bgPrimary },
 
-  deviceBar: { paddingHorizontal: 16, maxHeight: 48, marginBottom: 8 },
+  // Header
+  header: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16,
+    paddingVertical: 10, gap: 12,
+  },
+  backBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: colors.bgSecondary, alignItems: 'center', justifyContent: 'center',
+  },
+  backIcon: { fontSize: 22, color: colors.textPrimary, marginTop: -2 },
+  headerCenter: { flex: 1 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  statusLabel: { fontSize: 12, fontWeight: '600', textTransform: 'capitalize' },
+
+  // Device bar
+  deviceBar: { maxHeight: 48, marginBottom: 4 },
   deviceChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: colors.surface, marginRight: 8,
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: colors.bgSecondary, marginRight: 8,
     borderWidth: 1, borderColor: 'transparent',
   },
-  deviceChipActive: { borderColor: colors.primary, backgroundColor: colors.primary + '18' },
-  deviceChipIcon: { fontSize: 14, color: colors.textMuted },
+  deviceChipOn: { borderColor: colors.primary, backgroundColor: colors.primary + '18' },
   deviceChipText: { fontSize: 13, color: colors.textMuted, fontWeight: '500' },
-  deviceChipTextActive: { color: colors.primary },
+  deviceChipTextOn: { color: colors.primary },
 
+  // Controls
   controls: {
-    paddingHorizontal: 20, paddingVertical: 12,
+    paddingHorizontal: 16, paddingVertical: 10,
     borderBottomWidth: 1, borderBottomColor: colors.border,
     flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8,
   },
-  btnStart: {
-    backgroundColor: colors.success, paddingHorizontal: 16, paddingVertical: 8,
-    borderRadius: 8,
-  },
-  btnPause: {
-    backgroundColor: colors.warning, paddingHorizontal: 16, paddingVertical: 8,
-    borderRadius: 8,
-  },
-  btnStop: {
-    backgroundColor: colors.error, paddingHorizontal: 16, paddingVertical: 8,
-    borderRadius: 8,
-  },
-  btnText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
+  ctrlBtnStart: { backgroundColor: colors.success, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 10 },
+  ctrlBtnPause: { backgroundColor: colors.warning, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 10 },
+  ctrlBtnStop: { backgroundColor: colors.error, paddingHorizontal: 18, paddingVertical: 9, borderRadius: 10 },
+  ctrlBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
   statsRow: { flexDirection: 'row', gap: 16, marginTop: 4, width: '100%' },
-  statLabel: { fontSize: 11, color: colors.textMuted },
+  stat: { fontSize: 11, color: colors.textMuted },
 
-  tabBar: {
-    flexDirection: 'row', borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
+  // Tabs
+  tabBar: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
   tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: colors.primary },
-  tabText: { fontSize: 13, fontWeight: '500', color: colors.textMuted },
-  tabTextActive: { color: colors.primary },
+  tabOn: { borderBottomWidth: 2, borderBottomColor: colors.primary },
+  tabText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
+  tabTextOn: { color: colors.primary },
 
-  tabContent: { flex: 1, paddingHorizontal: 20, paddingTop: 16 },
+  tabContent: { flex: 1, paddingHorizontal: 16, paddingTop: 16 },
 
   sectionTitle: {
-    fontSize: 14, fontWeight: '700', color: colors.text,
+    fontSize: 13, fontWeight: '700', color: colors.textMuted,
     marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5,
   },
 
+  // Channel cards
   channelGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 24 },
   channelCard: {
-    width: '47%', backgroundColor: colors.surface, borderRadius: 16,
+    width: '47%', backgroundColor: colors.bgCard, borderRadius: 16,
     padding: 16, alignItems: 'center', gap: 4,
     borderWidth: 1, borderColor: colors.border,
   },
-  channelIcon: { fontSize: 24 },
-  channelLabel: { fontSize: 11, color: colors.textMuted, fontWeight: '500' },
-  channelValue: { fontSize: 28, fontWeight: '700', color: colors.text },
+  channelIconBg: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  channelIcon: { fontSize: 20 },
+  channelLabel: { fontSize: 11, color: colors.textMuted, fontWeight: '500', marginTop: 4 },
+  channelValue: { fontSize: 28, fontWeight: '700', color: colors.textPrimary },
   channelUnit: { fontSize: 11, color: colors.textMuted },
   channelTime: { fontSize: 10, color: colors.textMuted, marginTop: 4 },
 
+  // Empty
   emptyState: { alignItems: 'center', paddingVertical: 40 },
   emptyIcon: { fontSize: 32, marginBottom: 8 },
   emptyText: { fontSize: 13, color: colors.textMuted, textAlign: 'center', paddingHorizontal: 20 },
 
+  // Samples
   sampleRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  sampleIcon: { fontSize: 16, width: 24, textAlign: 'center' },
+  sampleDot: { width: 8, height: 8, borderRadius: 4 },
   sampleChannel: { fontSize: 12, color: colors.textMuted, width: 80 },
-  sampleValue: { fontSize: 13, fontWeight: '600', color: colors.text, flex: 1 },
+  sampleValue: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, flex: 1 },
   sampleTime: { fontSize: 10, color: colors.textMuted },
 
+  // Rules
   ruleCard: {
-    backgroundColor: colors.surface, borderRadius: 12,
-    padding: 14, marginBottom: 10,
+    backgroundColor: colors.bgCard, borderRadius: 14, padding: 14, marginBottom: 10,
     borderWidth: 1, borderColor: colors.border,
   },
-  ruleCardDisabled: { opacity: 0.5 },
+  ruleCardOff: { opacity: 0.5 },
   ruleHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  ruleIcon: { fontSize: 20 },
+  ruleIconBg: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   ruleInfo: { flex: 1 },
-  ruleName: { fontSize: 14, fontWeight: '600', color: colors.text },
+  ruleName: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
   ruleCondition: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
   ruleToggle: { padding: 4 },
   toggleTrack: {
-    width: 36, height: 20, borderRadius: 10,
+    width: 40, height: 22, borderRadius: 11,
     backgroundColor: colors.border, justifyContent: 'center', paddingHorizontal: 2,
   },
   toggleTrackOn: { backgroundColor: colors.primary },
-  toggleThumb: {
-    width: 16, height: 16, borderRadius: 8,
-    backgroundColor: '#FFF',
-  },
+  toggleThumb: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#FFF' },
   toggleThumbOn: { alignSelf: 'flex-end' },
   ruleFooter: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginTop: 8, paddingTop: 8,
-    borderTopWidth: 1, borderTopColor: colors.border,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border,
   },
   ruleStats: { fontSize: 11, color: colors.textMuted },
   ruleDelete: { fontSize: 16, color: colors.error, padding: 4 },
 
+  // Templates
   templateCard: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.surface, borderRadius: 12,
-    padding: 14, marginBottom: 8,
+    backgroundColor: colors.bgCard, borderRadius: 14, padding: 14, marginBottom: 8,
     borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed',
   },
   templateInfo: { flex: 1 },
-  templateName: { fontSize: 13, fontWeight: '600', color: colors.text },
+  templateName: { fontSize: 13, fontWeight: '600', color: colors.textPrimary },
   templateDesc: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
   templateAdd: { fontSize: 22, color: colors.primary, paddingLeft: 12 },
 
+  // Triggers
   triggerCard: {
-    backgroundColor: colors.surface, borderRadius: 12,
-    padding: 14, marginBottom: 8,
+    backgroundColor: colors.bgCard, borderRadius: 14, padding: 14, marginBottom: 8,
     borderWidth: 1, borderColor: colors.border,
   },
   triggerCardNew: { borderColor: colors.warning, backgroundColor: colors.warning + '10' },
   triggerHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  triggerIcon: { fontSize: 20, marginTop: 2 },
   triggerInfo: { flex: 1 },
-  triggerName: { fontSize: 14, fontWeight: '600', color: colors.text },
+  triggerName: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
   triggerDetail: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
   triggerTime: { fontSize: 10, color: colors.textMuted, marginTop: 4 },
   ackBtn: {
-    backgroundColor: colors.success, width: 28, height: 28,
-    borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.success, width: 30, height: 30,
+    borderRadius: 15, alignItems: 'center', justifyContent: 'center',
   },
   ackBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
 });

@@ -1256,6 +1256,7 @@ export class PaymentService {
       [PaymentMethod.PASSKEY]: 0.0006,
       [PaymentMethod.MULTISIG]: 0.001, // 多签略高
       [PaymentMethod.TRANSAK]: 0.015, // Transak 默认费率 1.5%（可根据实际费率调整）
+      [PaymentMethod.STABLECOIN]: 0.015, // Stripe stablecoin 1.5%
     };
 
     const rate = channelFeeRates[paymentMethod] || 0.03; // 默认3%

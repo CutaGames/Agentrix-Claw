@@ -12,6 +12,7 @@ import { QuickPayGrantController } from './quick-pay-grant.controller';
 import { RefundController } from './refund.controller';
 import { QrPaymentController } from './qr-payment.controller';
 import { AmlScanController } from './aml-scan.controller';
+import { StablecoinPaymentController } from './stablecoin-payment.controller';
 import { PaymentService } from './payment.service';
 import { StripeService } from './stripe.service';
 import { StripeWebhookService } from './stripe-webhook.service';
@@ -28,6 +29,7 @@ import { AgentPaymentService } from './agent-payment.service';
 import { CryptoPaymentService } from './crypto-payment.service';
 import { QrPaymentService } from './qr-payment.service';
 import { AmlScanService } from './aml-scan.service';
+import { StablecoinPaymentService } from './stablecoin-payment.service';
 import { Payment } from '../../entities/payment.entity';
 import { User } from '../../entities/user.entity';
 import { AutoPayGrant } from '../../entities/auto-pay-grant.entity';
@@ -126,6 +128,7 @@ import { Commission } from '../../entities/commission.entity';
     TransakWebhookController,
     QrPaymentController,
     AmlScanController,
+    StablecoinPaymentController,
   ],
   providers: [
     PaymentService,
@@ -164,6 +167,7 @@ import { Commission } from '../../entities/commission.entity';
     OffRampCommissionService,
     OnRampCommissionService,
     BuyerFeeService,
+    StablecoinPaymentService,
   ],
   exports: [
     PaymentService,
@@ -192,6 +196,7 @@ import { Commission } from '../../entities/commission.entity';
     StripeWebhookService,
     StripeSettlementSchedulerService,
     StripeConnectService,
+    StablecoinPaymentService,
     TypeOrmModule,
   ],
 })
