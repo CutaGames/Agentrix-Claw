@@ -7,6 +7,7 @@
 
 import { io, type Socket } from "socket.io-client";
 import { API_BASE, apiFetch, type ChatMessage } from "./store";
+import { getDeviceId } from "./deviceId";
 
 // ─── Types ─────────────────────────────────────────────
 
@@ -39,20 +40,8 @@ let _socket: Socket | null = null;
 let _handlers: SyncEventHandler = {};
 let _heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let _token: string | null = null;
-let _deviceId: string = "";
 let _connected = false;
 let _clipboardSyncOutListener: EventListener | null = null;
-
-function getDeviceId(): string {
-  if (_deviceId) return _deviceId;
-  let id = localStorage.getItem("agentrix_desktop_device_id");
-  if (!id) {
-    id = `desktop-${crypto.randomUUID()}`;
-    localStorage.setItem("agentrix_desktop_device_id", id);
-  }
-  _deviceId = id;
-  return id;
-}
 
 export function isSessionSyncConnected(): boolean {
   return _connected;
