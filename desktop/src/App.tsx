@@ -39,11 +39,14 @@ export default function App() {
 
   useEffect(() => {
     loadToken();
+    // Periodically refresh instances to pick up model/config changes from mobile
+    const refreshInterval = setInterval(() => loadToken(), 30_000);
     // Restore saved theme
     const saved = localStorage.getItem("agentrix_theme");
     if (saved === "light" || saved === "dark") {
       document.documentElement.setAttribute("data-theme", saved);
     }
+    return () => clearInterval(refreshInterval);
   }, [loadToken]);
 
   useEffect(() => {

@@ -169,10 +169,9 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       fetchModels(token).then((m) => {
         if (Array.isArray(m) && m.length) {
           setModels(m);
-          // If user has a custom provider, default to their resolved model
+          // Use user's resolved model from any source (subscription, custom provider, agent-account)
           const activeInst = instances.find((i) => i.id === activeInstanceId);
-          if (activeInst?.hasCustomProvider && activeInst?.resolvedModel) {
-            // Don't override with platform model list — use user's own model
+          if (activeInst?.resolvedModel) {
             setSelectedModel(activeInst.resolvedModel);
           } else {
             setSelectedModel(m[0]?.id || "");
@@ -181,6 +180,14 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       });
     }
   }, [token]);
+
+  // Sync selected model when instances refresh (e.g., model changed from mobile)
+  useEffect(() => {
+    const activeInst = instances.find((i) => i.id === activeInstanceId);
+    if (activeInst?.resolvedModel && activeInst.resolvedModel !== selectedModel) {
+      setSelectedModel(activeInst.resolvedModel);
+    }
+  }, [instances, activeInstanceId]);
 
   useEffect(() => {
     listEndRef.current?.scrollIntoView({ behavior: "smooth" });
