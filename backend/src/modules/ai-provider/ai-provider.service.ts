@@ -583,8 +583,8 @@ export class AiProviderService {
   // ─── Test connectivity ──────────
 
   /** Get all models available to the user: platform default + user's configured provider models */
-  async getAvailableModels(userId: string): Promise<Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }>> {
-    const models: Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }> = [];
+  async getAvailableModels(userId: string): Promise<Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; billingType: 'platform' | 'subscription' | 'api-key'; positioning?: string; isDefault?: boolean }>> {
+    const models: Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; billingType: 'platform' | 'subscription' | 'api-key'; positioning?: string; isDefault?: boolean }> = [];
     const seenLabels = new Set<string>();
 
     // Platform default model (always available)
@@ -594,6 +594,7 @@ export class AiProviderService {
       provider: 'Agentrix Platform',
       providerId: 'platform',
       costTier: 'free_trial',
+      billingType: 'platform',
       positioning: '平台默认/免费额度',
       isDefault: true,
     });
@@ -616,6 +617,7 @@ export class AiProviderService {
           provider: providerDef.name,
           providerId: config.providerId,
           costTier: model.costTier,
+          billingType: providerDef.billingType,
           positioning: model.positioning,
         });
       }

@@ -14,6 +14,7 @@ import {
   type MobileAgentAccount as AgentAccount,
   type CreateMobileAgentAccountDto as CreateAgentDto,
 } from '../../services/agentPresenceAccount';
+import { apiFetch } from '../../services/api';
 
 // ──────────────────────────────────────────────
 // Types

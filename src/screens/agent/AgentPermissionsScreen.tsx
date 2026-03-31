@@ -327,8 +327,12 @@ export function AgentPermissionsScreen() {
       }
 
       if (activeInstance?.id) {
-        const updatedInstance = await bindAgentAccountToInstance(activeInstance.id, activeAgent.id);
-        updateInstance(activeInstance.id, { metadata: updatedInstance.metadata || { agentAccountId: activeAgent.id } });
+        try {
+          const updatedInstance = await bindAgentAccountToInstance(activeInstance.id, activeAgent.id);
+          updateInstance(activeInstance.id, { metadata: updatedInstance.metadata || { agentAccountId: activeAgent.id } });
+        } catch {
+          // Non-blocking: agent-account binding may fail if backend hasn't created the account yet
+        }
       }
 
       setPerms(verifiedPermissions);
