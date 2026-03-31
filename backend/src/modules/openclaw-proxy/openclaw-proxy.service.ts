@@ -200,10 +200,11 @@ export class OpenClawProxyService {
       .createQueryBuilder('message')
       .innerJoinAndSelect('message.session', 'session')
       .where('session.userId = :userId', { userId })
-      .andWhere('session.status = :status', { status: SessionStatus.ACTIVE })
+      // Include both ACTIVE sessions and any non-ACTIVE sessions that have recent messages
       .andWhere(`session.metadata ->> 'instanceId' = :instanceId`, { instanceId })
-      .orderBy('message.sequenceNumber', 'DESC')
-      .addOrderBy('message.createdAt', 'DESC')
+      // Order purely by creation time so newest messages are always found,
+      // regardless of per-session sequenceNumber (which resets for each new session)
+      .orderBy('message.createdAt', 'DESC')
       .take(limit)
       .getMany();
 
@@ -1177,7 +1178,16 @@ export class OpenClawProxyService {
     if (resolvedProvider) {
       const providerConfig = await this.aiProviderService.getDecryptedKey(userId, resolvedProvider);
       if (providerConfig) {
-        userCredentials = { ...providerConfig, providerId: resolvedProvider };
+        // Fill in catalog baseUrl when user didn't configure one (e.g. copilot-subscription, chatgpt-subscription)
+        let effectiveBaseUrl = providerConfig.baseUrl;
+        if (!effectiveBaseUrl) {
+          const catalogEntry = this.aiProviderService.getCatalog().find((p: any) => p.id === resolvedProvider);
+          if (typeof catalogEntry?.baseUrl === 'string' && catalogEntry.baseUrl) {
+            effectiveBaseUrl = catalogEntry.baseUrl;
+            this.logger.debug(`Using catalog baseUrl for ${resolvedProvider}: ${effectiveBaseUrl}`);
+          }
+        }
+        userCredentials = { ...providerConfig, baseUrl: effectiveBaseUrl, providerId: resolvedProvider };
       } else {
         const platformCredentials = this.getPlatformOpenAICompatibleCredentials(resolvedProvider);
         if (platformCredentials) {

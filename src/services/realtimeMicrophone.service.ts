@@ -26,7 +26,8 @@ const FRAME_LENGTH = 512;
 const SAMPLE_RATE = 16000;
 const SPEECH_START_THRESHOLD = 0.15;
 const SPEECH_END_THRESHOLD = 0.05;
-const SPEECH_END_FRAME_COUNT = 30;
+// Increased from 30 to 50 frames (~1.6s silence) to prevent mid-sentence splits
+const SPEECH_END_FRAME_COUNT = 50;
 const MIN_SPEECH_FRAME_COUNT = 8;
 const SPEECH_RESTART_COOLDOWN_FRAMES = 20;
 /**
@@ -40,16 +41,16 @@ const SPEECH_PRE_ROLL_FRAMES = 6;
 const SPEECH_POST_ROLL_FRAMES = 8;
 /**
  * Volume threshold for barge-in detection while mic is muted (agent speaking).
- * Must be well above speaker echo levels — phone speakers can hit 0.4-0.6.
- * Real user speech close to the mic typically exceeds 0.70.
+ * Lowered from 0.72 to 0.50 — phone users speaking at normal distance easily hit 0.50+
+ * but typical phone speaker echo stays below 0.45 on most devices.
  */
-const BARGE_IN_THRESHOLD = 0.72;
+const BARGE_IN_THRESHOLD = 0.50;
 /**
  * Number of consecutive loud frames required to confirm barge-in.
- * At 16kHz/512 frame size (~32ms/frame), 20 frames ≈ 640ms.
- * Requires sustained loud speech, not transient echo spikes.
+ * Reduced from 20 to 10 frames (~320ms) — enough to confirm real speech,
+ * while single-frame echo spikes still won't trigger false barge-in.
  */
-const BARGE_IN_FRAME_COUNT = 20;
+const BARGE_IN_FRAME_COUNT = 10;
 /**
  * Cooldown (ms) after mic is muted before barge-in detection activates.
  * Prevents initial TTS burst from triggering barge-in.
