@@ -1,4 +1,4 @@
-import { type CSSProperties, useState, useCallback, useMemo, type ReactNode } from "react";
+import { type CSSProperties, useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from "react";
 import type { ChatMessage } from "../services/store";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -119,7 +119,7 @@ export default function MessageBubble({ message, onRetry }: Props) {
       onMouseLeave={() => setHovering(false)}
     >
       {/* Collapsible thinking block */}
-      {thinkContent && <ThinkBlock content={thinkContent} />}
+      {thinkContent && <ThinkBlock content={thinkContent} isStreaming={message.streaming} />}
 
       {/* Tool call indicators */}
       {toolCalls.length > 0 && (
@@ -139,21 +139,39 @@ export default function MessageBubble({ message, onRetry }: Props) {
 
       {/* Tool progress indicators */}
       {toolProgress.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 6 }}>
           {toolProgress.map((tp, i) => (
-            <span key={i} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              padding: '2px 8px', borderRadius: 10, fontSize: 11,
-              background: tp.status === 'running' ? 'rgba(250, 204, 21, 0.12)' :
-                tp.status === 'done' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-              color: tp.status === 'running' ? '#fcd34d' :
-                tp.status === 'done' ? '#86efac' : '#fca5a5',
-              border: `1px solid ${tp.status === 'running' ? 'rgba(250, 204, 21, 0.2)' :
-                tp.status === 'done' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`,
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '4px 10px', borderRadius: 8, fontSize: 12,
+              background: tp.status === 'running' ? 'rgba(250, 204, 21, 0.08)' :
+                tp.status === 'done' ? 'rgba(34, 197, 94, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+              border: `1px solid ${tp.status === 'running' ? 'rgba(250, 204, 21, 0.15)' :
+                tp.status === 'done' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)'}`,
             }}>
-              {tp.status === 'running' ? '⏳' : tp.status === 'done' ? '✅' : '❌'} {tp.name}
-              {tp.detail && <span style={{ opacity: 0.7, marginLeft: 2 }}>({tp.detail})</span>}
-            </span>
+              {tp.status === 'running' ? (
+                <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite', fontSize: 13 }}>⚙️</span>
+              ) : tp.status === 'done' ? '✅' : '❌'}
+              <span style={{
+                fontWeight: 500,
+                color: tp.status === 'running' ? '#fcd34d' : tp.status === 'done' ? '#86efac' : '#fca5a5',
+              }}>
+                {tp.name}
+              </span>
+              {tp.status === 'running' && (
+                <span style={{
+                  marginLeft: 'auto', fontSize: 10, color: 'var(--text-dim)',
+                  animation: 'dotPulse 1.2s infinite',
+                }}>
+                  executing...
+                </span>
+              )}
+              {tp.detail && (
+                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: 0.7, color: '#fca5a5', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {tp.detail}
+                </span>
+              )}
+            </div>
           ))}
         </div>
       )}
@@ -194,6 +212,12 @@ export default function MessageBubble({ message, onRetry }: Props) {
                   }
                   // Extract language label from className
                   const lang = className?.replace("language-", "") || "";
+                  const codeText = extractTextFromChildren(children);
+                  // Render diff blocks with colored diff view
+                  if (lang === 'diff' || (codeText && (codeText.startsWith('--- ') || codeText.startsWith('@@') || codeText.match(/^[+-]{3}\s/)))) {
+                    const fileMatch = codeText.match(/^(?:---|\+\+\+)\s+([^\n]+)/);
+                    return <DiffBlock code={codeText} fileName={fileMatch?.[1]?.replace(/^[ab]\//, '')} />;
+                  }
                   return (
                     <>
                       {lang && (
@@ -382,8 +406,22 @@ function formatBytes(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function ThinkBlock({ content }: { content: string }) {
+function ThinkBlock({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(Date.now());
+
+  useEffect(() => {
+    if (!isStreaming) return;
+    startRef.current = Date.now();
+    const timer = setInterval(() => {
+      setElapsed(((Date.now() - startRef.current) / 1000));
+    }, 100);
+    return () => clearInterval(timer);
+  }, [isStreaming]);
+
+  const formatTime = (s: number) => s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+
   return (
     <details
       open={open}
@@ -396,16 +434,30 @@ function ThinkBlock({ content }: { content: string }) {
         border: "1px solid rgba(108,92,231,0.15)",
         fontSize: 12,
         color: "var(--text-dim)",
-        backgroundImage: open ? "none" : "linear-gradient(90deg, transparent, rgba(108,92,231,0.08), transparent)",
+        backgroundImage: (isStreaming && !open) ? "linear-gradient(90deg, transparent, rgba(108,92,231,0.12), transparent)" : "none",
         backgroundSize: "200% 100%",
-        animation: open ? "none" : "shimmerRibbon 2s linear infinite",
+        animation: (isStreaming && !open) ? "shimmerRibbon 1.5s linear infinite" : "none",
       }}
     >
-      <summary style={{ cursor: "pointer", fontWeight: 600, color: "var(--accent-light, #A29BFE)" }}>
-        💭 Thinking{open ? "" : "..."}
+      <summary style={{ cursor: "pointer", fontWeight: 600, color: "var(--accent-light, #A29BFE)", display: "flex", alignItems: "center", gap: 6 }}>
+        {isStreaming ? (
+          <span style={{ display: "inline-block", animation: "spin 1s linear infinite", fontSize: 14 }}>⚙️</span>
+        ) : "💭"}
+        {" "}Thinking{isStreaming ? "..." : ""}
+        {isStreaming && (
+          <span style={{ fontSize: 10, color: "var(--text-dim)", fontWeight: 400, marginLeft: "auto" }}>
+            {formatTime(elapsed)}
+          </span>
+        )}
+        {!isStreaming && content && (
+          <span style={{ fontSize: 10, color: "var(--text-dim)", fontWeight: 400, marginLeft: "auto" }}>
+            {content.split('\n').filter(Boolean).length} lines
+          </span>
+        )}
       </summary>
       <div style={{ marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
         {content}
+        {isStreaming && <span style={{ animation: "dotPulse 1.2s infinite" }}>▋</span>}
       </div>
     </details>
   );
@@ -422,6 +474,49 @@ function CopyCodeButton({ code }: { code: string }) {
     <button onClick={handleCopy} style={copyCodeBtnStyle} title="Copy code">
       {copied ? "✓" : "📋"}
     </button>
+  );
+}
+
+/** Renders unified diff with colored +/- lines */
+function DiffBlock({ code, fileName }: { code: string; fileName?: string }) {
+  const lines = code.split('\n');
+  let lineOld = 0, lineNew = 0;
+  return (
+    <div className="diff-block">
+      {fileName && (
+        <div className="diff-header">
+          <span>📄</span> {fileName}
+        </div>
+      )}
+      {lines.map((line, i) => {
+        let cls = 'diff-line diff-line-ctx';
+        let numDisplay = '';
+        if (line.startsWith('@@')) {
+          cls = 'diff-line diff-line-hunk';
+          const m = line.match(/@@ -(\d+)/);
+          if (m) { lineOld = parseInt(m[1]); lineNew = lineOld; }
+          numDisplay = '...';
+        } else if (line.startsWith('+')) {
+          cls = 'diff-line diff-line-add';
+          lineNew++;
+          numDisplay = String(lineNew);
+        } else if (line.startsWith('-')) {
+          cls = 'diff-line diff-line-del';
+          lineOld++;
+          numDisplay = String(lineOld);
+        } else {
+          lineOld++;
+          lineNew++;
+          numDisplay = String(lineNew);
+        }
+        return (
+          <div key={i} className={cls}>
+            <span className="diff-line-num">{numDisplay}</span>
+            <span className="diff-line-content">{line}</span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

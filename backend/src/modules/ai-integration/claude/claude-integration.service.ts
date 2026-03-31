@@ -959,6 +959,7 @@ export class ClaudeIntegrationService {
         const fnArgs = tc.function?.arguments
           ? (typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments)
           : tc.input || {};
+        if (options?.onChunk) options.onChunk(`\n[Tool Start] ${fnName}`);
         try {
           let result: any;
           if (options?.onToolCall) {
@@ -972,12 +973,14 @@ export class ClaudeIntegrationService {
             tool_use_id: tc.id || `tool-${Date.now()}`,
             content: JSON.stringify(result),
           });
+          if (options?.onChunk) options.onChunk(`\n[Tool Done] ${fnName}`);
         } catch (err: any) {
           toolResults.push({
             type: 'tool_result',
             tool_use_id: tc.id || `tool-${Date.now()}`,
             content: JSON.stringify({ success: false, error: err.message }),
           });
+          if (options?.onChunk) options.onChunk(`\n[Tool Error] ${fnName}: ${err.message}`);
         }
       }
       _lap(`round ${round + 1} tool execution done`);

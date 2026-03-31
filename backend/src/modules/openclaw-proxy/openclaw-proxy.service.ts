@@ -37,6 +37,7 @@ export interface ChatMessageDto {
   context?: Record<string, any>;
   model?: string;
   voiceId?: string;
+  mode?: 'ask' | 'agent' | 'plan';
 }
 
 export interface ChatStreamCallbacks {
@@ -1137,11 +1138,13 @@ export class OpenClawProxyService {
 
     // Skip tools for simple conversational messages to avoid 4-5s Bedrock tool processing overhead.
     // Tools will still be available for messages that likely need them.
-    const needsTools = this.messageNeedsTools(messageText);
+    // 'ask' mode always skips tools; 'agent'/'plan' respect the heuristic.
+    const needsTools = dto.mode !== 'ask' && this.messageNeedsTools(messageText);
     const effectiveTools = needsTools ? additionalTools : [];
     const effectiveOnToolCall = needsTools ? onToolCall : undefined;
     if (!needsTools) {
-      this.logger.log(`⚡ Simple message detected, skipping ${additionalTools.length} tools for faster response`);
+      const reason = dto.mode === 'ask' ? 'ask mode' : 'simple message detected';
+      this.logger.log(`⚡ Skipping ${additionalTools.length} tools: ${reason}`);
     }
 
     // Resolve model & provider FIRST so we can inject identity into system prompt

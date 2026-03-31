@@ -293,6 +293,7 @@ export function streamChat(opts: {
   sessionId: string;
   token: string;
   model?: string;
+  mode?: 'ask' | 'agent' | 'plan';
   onChunk: (chunk: string) => void;
   onMeta?: (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => void;
   onDone: () => void;
@@ -312,6 +313,7 @@ export function streamChat(opts: {
       message: opts.message,
       sessionId: opts.sessionId,
       model: opts.model,
+      mode: opts.mode,
     }),
     signal: ac.signal,
   };

@@ -131,6 +131,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   const [historyEntries, setHistoryEntries] = useState<SessionEntry[]>([]);
   const [activePlan, setActivePlan] = useState<AgentPlan | null>(null);
   const [crossDeviceOpen, setCrossDeviceOpen] = useState(false);
+  const [chatMode, setChatMode] = useState<'ask' | 'agent' | 'plan'>('agent');
   const activeAgent = useMemo<DesktopAgent | null>(
     () => agents.find((agent) => agent.id === activeAgentId) || null,
     [agents, activeAgentId],
@@ -903,6 +904,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
               sessionId: sessionIdRef.current,
               token,
               model: selectedModel || undefined,
+              mode: chatMode,
               onChunk: chunkHandler,
               onMeta: metaHandler,
               onDone: doneHandler(resolve),
@@ -1520,6 +1522,34 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
           gap: 8,
         }}
       >
+        {/* Agent mode selector */}
+        <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 2 }}>
+          {([
+            { key: 'ask' as const, label: '💬 Ask', desc: 'Quick Q&A, no tools' },
+            { key: 'agent' as const, label: '🤖 Agent', desc: 'Full agent with tools' },
+            { key: 'plan' as const, label: '📋 Plan', desc: 'Multi-step plan + approve' },
+          ]).map(m => (
+            <button
+              key={m.key}
+              onClick={() => setChatMode(m.key)}
+              title={m.desc}
+              style={{
+                flex: 1,
+                padding: '5px 8px',
+                borderRadius: 6,
+                border: 'none',
+                fontSize: 12,
+                fontWeight: chatMode === m.key ? 600 : 400,
+                background: chatMode === m.key ? 'var(--accent)' : 'transparent',
+                color: chatMode === m.key ? '#fff' : 'var(--text-dim)',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
         {!!pendingAttachments.length && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }} title={pendingAttachmentSummary}>
             {pendingAttachments.map((attachment) => (
