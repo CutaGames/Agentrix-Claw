@@ -180,10 +180,14 @@ jobs:
           retention-days: 30
 
       - name: Upload to download server
-        if: ${{ secrets.DEPLOY_SSH_KEY != '' }}
+        continue-on-error: true
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
+          if [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "No DEPLOY_SSH_KEY secret, skipping upload"
+            exit 0
+          fi
           echo "$DEPLOY_SSH_KEY" > /tmp/deploy.pem
           chmod 600 /tmp/deploy.pem
           DEST="/home/ubuntu/Agentrix/frontend/public/downloads"
