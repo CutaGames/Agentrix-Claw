@@ -7,6 +7,8 @@ package.json
 package-lock.json
 tsconfig.json
 .gitignore
+index.watch.js
+build-watch-apk.sh
 Agentrix Logo
 assets
 android/.gitignore

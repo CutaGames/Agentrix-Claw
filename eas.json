@@ -32,6 +32,14 @@
       "ios": {
         "autoIncrement": true
       }
+    },
+    "wearos": {
+      "distribution": "internal",
+      "channel": "wearos",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease -Pagentrix.wearos=true"
+      }
     }
   },
   "submit": {

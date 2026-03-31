@@ -19,6 +19,7 @@ on:
       - scripts/public-build/mobile_mirror_paths.txt
       - .github/workflows/build-apk.yml
       - .github/workflows/build-ios-simulator.yml
+      - .github/workflows/build-watch-apk.yml
       - .github/public-workflows/**
   workflow_dispatch:
 
@@ -100,6 +101,7 @@ jobs:
 
           copy_path ".github/workflows/build-apk.yml"
           copy_path ".github/workflows/build-ios-simulator.yml"
+          copy_path ".github/workflows/build-watch-apk.yml"
 
           mkdir -p "$TARGET_DIR/.github/workflows"
           cp "$SOURCE_DIR/.github/public-workflows/build-apk-trigger.yml" "$TARGET_DIR/.github/workflows/build-apk-trigger.yml"

@@ -9,7 +9,15 @@ def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
  * By default you don't need to apply any configuration, just uncomment the lines you need.
  */
 react {
-    entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
+    // Determine entry file based on build flag
+    // When building Wear OS: ./gradlew :app:assembleRelease -Pagentrix.wearos=true
+    def isWearBuild = gradle.startParameter.projectProperties.containsKey('agentrix.wearos') &&
+                      gradle.startParameter.projectProperties['agentrix.wearos'] == 'true'
+    if (isWearBuild) {
+        entryFile = file("${projectRoot}/index.watch.js")
+    } else {
+        entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
+    }
     reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
     hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
     codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
@@ -108,6 +116,9 @@ android {
             keyPassword 'android'
         }
     }
+    // Wear OS build: set via -Pagentrix.wearos=true on Gradle command line
+    def isWearBuild = (findProperty('agentrix.wearos') ?: 'false').toBoolean()
+
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
