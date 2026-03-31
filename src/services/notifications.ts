@@ -88,6 +88,14 @@ class NotificationService {
       lightColor: '#7C3AED',
     });
 
+    // Agent 审批通知
+    await Notifications.setNotificationChannelAsync('approvals', {
+      name: 'Agent 审批',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#3B82F6',
+    });
+
     // 收益通知
     await Notifications.setNotificationChannelAsync('earnings', {
       name: '收益到账',

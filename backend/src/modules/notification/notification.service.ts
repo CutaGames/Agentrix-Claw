@@ -65,7 +65,18 @@ export class NotificationService {
     const saved = await this.notificationRepository.save(notification);
     this.logger.log(`创建通知: ${saved.id} for user ${userId}`);
 
-    // 通过 WebSocket 发送通知（暂时禁用）
+    // Send push notification for important types (approval, transaction, etc.)
+    const pushTypes: string[] = ['approval', 'transaction', 'airdrop', 'earning', 'system'];
+    if (pushTypes.includes(saved.type)) {
+      this.sendPushNotification(userId, {
+        title: saved.title,
+        body: saved.message ?? saved.title,
+        data: { notificationId: saved.id, type: saved.type },
+        channelId: saved.type === 'approval' ? 'approvals' : saved.type === 'transaction' ? 'transactions' : undefined,
+      }).catch((err) => {
+        this.logger.warn(`Push notification failed for user ${userId}: ${err?.message}`);
+      });
+    }
     // try {
     //   this.wsGateway.sendNotification(userId, {
     //     id: saved.id,

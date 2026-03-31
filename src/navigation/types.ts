@@ -131,9 +131,18 @@ export type DiscoverStackParamList = {
   SocialListener: undefined;
 };
 
+export type TeamStackParamList = {
+  TeamDashboard: undefined;
+  TeamApprovalDetail: { notificationId: string; title: string };
+  TeamSpace: undefined;
+  TeamInvite: { workspaceId: string; workspaceName: string };
+  TeamAgentAccounts: undefined;
+};
+
 export type MainTabParamList = {
   Agent: undefined;
   Discover: undefined;
+  Team: undefined;
   Me: undefined;
 };
 

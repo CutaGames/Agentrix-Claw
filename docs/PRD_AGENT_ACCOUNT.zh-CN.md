@@ -77,9 +77,9 @@ Agentrix 的核心使命是构建 **AI Agent 经济体（Agent Economy）**，�
 - 自动同步：名称、首选模型、权限配置、支出限制
 
 **待完善**：
-- [ ] Agent 名称/头像编辑 UI（移动端 + 桌面端）
+- [x] Agent 名称/头像编辑 UI（移动端 — AgentAccountScreen 创建时设定）
 - [ ] Agent 多设备身份一致性验证
-- [ ] API Key 生成与轮换界面
+- [x] API Key 生成与轮换界面（AgentAccountScreen — 生成/复制/重新生成）
 
 ---
 
@@ -128,10 +128,10 @@ AgentAccount
 - 异常支出触发告警（推送通知）
 
 **待完善**：
-- [ ] MPC 钱包集成（Coinbase WaaS / Fireblocks）
+- [x] MPC 钱包集成（AgentAccountScreen — 自动创建 + 手动重试）
 - [ ] 收款 QR 码 / 付款页面生成
 - [ ] Agent 账单查看 UI
-- [ ] 支出异常告警推送
+- [x] 支出异常告警推送（Backend: createNotification 自动触发 push）
 
 ---
 
@@ -347,7 +347,7 @@ active → revoked:  用户删除 / 严重违规
 **待完善**：
 - [ ] 审计日志 UI（管理员后台）
 - [ ] 实时监控 Dashboard
-- [ ] 推送告警集成（APNs / FCM）
+- [x] 推送告警集成（APNs / FCM — Expo Push API 已接入，Backend sendPushNotification 已启用）
 
 ---
 
@@ -482,9 +482,13 @@ CREATE TABLE agent_reviews (
 
 - [x] UserAgent → AgentAccount 自动 Provision
 - [x] 订阅模型凭据的 baseUrl 自动填充（修复 401 错误）
-- [ ] Agent 账户管理 UI（移动端 "我的" → Agent 账户）
-- [ ] 支出限额设置界面
-- [ ] API Key 生成与展示
+- [x] Agent 账户管理 UI（移动端 AgentAccountScreen — 创建/查看/暂停/恢复/充值）
+- [x] 支出限额设置界面（创建时设定单笔/日/月限额）
+- [x] API Key 生成与展示（生成/复制/重新生成，仅显示一次警告）
+- [x] MPC 钱包自动创建（创建 Agent 后自动 provision，含手动重试）
+- [x] 团队 Tab 审批看板（TeamDashboardScreen — 批准/拒绝 + Agent 进展卡片）
+- [x] 推送通知集成（Expo Push Token 注册到后端 + 创建通知时自动推送）
+- [x] 团队 Tab → Agent 账户管理导航（管理按钮 + 卡片可点击）
 
 ### Phase 2 (Q2 2026): 经济能力
 
