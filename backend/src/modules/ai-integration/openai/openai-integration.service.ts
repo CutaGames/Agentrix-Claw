@@ -630,11 +630,19 @@ export class OpenAIIntegrationService {
     // 如果用户提供了 API Key，使用用户的；否则使用系统配置的
     let openai = this.openai;
     if (options?.userApiKey) {
-      const config: { apiKey: string; baseURL?: string } = { apiKey: options.userApiKey };
+      const config: any = { apiKey: options.userApiKey };
       // 如果用户指定了 baseURL，使用用户的；否则默认使用 OpenAI 官方 baseURL
       if (options.userBaseURL) {
         config.baseURL = options.userBaseURL.trim();
         this.logger.log(`使用用户指定的 baseURL: ${options.userBaseURL}`);
+        // GitHub Copilot API requires Editor-Version headers
+        if (options.userBaseURL.includes('githubcopilot.com')) {
+          config.defaultHeaders = {
+            'Editor-Version': 'vscode/1.100.0',
+            'Editor-Plugin-Version': 'copilot/1.300.0',
+            'Copilot-Integration-Id': 'vscode-chat',
+          };
+        }
       } else {
         // 用户提供 API Key 时，默认使用 OpenAI 官方 baseURL
         // 如果用户想用 API2D，需要明确指定 baseURL
@@ -658,6 +666,14 @@ export class OpenAIIntegrationService {
       // 调用 OpenAI API
       // 注意：新版本 OpenAI API 使用 tools，旧版本使用 functions
       // 为了兼容性，我们使用 tools（推荐）
+      // GPT-5.4 and GPT-5.4-mini require the /responses API endpoint
+      const modelName = options?.model || this.defaultModel;
+      const useResponsesApi = modelName.includes('gpt-5.4');
+
+      if (useResponsesApi) {
+        return await this.chatWithResponsesApi(openai, messages, tools, options);
+      }
+
       const completion = await openai.chat.completions.create({
         model: options?.model || this.defaultModel,
         messages: messages.map((msg) => ({
@@ -762,5 +778,158 @@ export class OpenAIIntegrationService {
       throw error;
     }
   }
-}
 
+  /**
+   * GPT-5.4/5.4-mini use OpenAI's Responses API (/responses) instead of Chat Completions.
+   * The Responses API has a different request/response format.
+   */
+  private async chatWithResponsesApi(
+    openai: any,
+    messages: Array<{ role: string; content: any }>,
+    tools: any[],
+    options?: any,
+  ): Promise<any> {
+    const model = options?.model || this.defaultModel;
+    this.logger.log(`Using Responses API for model: ${model}`);
+
+    // Convert tools from chat completions format to responses API format
+    const responsesTools = tools
+      .filter(t => t.type === 'function' && t.function)
+      .map(t => ({
+        type: 'function' as const,
+        name: t.function.name,
+        description: t.function.description,
+        parameters: t.function.parameters,
+      }));
+
+    // Build input: system message as instructions, rest as input items
+    const systemMsg = messages.find(m => m.role === 'system');
+    const nonSystemMessages = messages.filter(m => m.role !== 'system');
+
+    // Convert messages to Responses API input format
+    const input = nonSystemMessages.map(m => ({
+      role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
+      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+    }));
+
+    const maxToolRounds = 5;
+    let allToolCalls: any[] = [];
+
+    // Use raw fetch since openai SDK responses API may not be fully typed
+    const baseURL = (openai as any)?.baseURL || 'https://api.openai.com/v1';
+    const apiKey = (openai as any)?._options?.apiKey || (openai as any)?.apiKey;
+
+    const doRequest = async (currentInput: any[]) => {
+      const body: any = {
+        model,
+        input: currentInput,
+        max_output_tokens: options?.maxTokens || 2048,
+        temperature: options?.temperature || 0.7,
+      };
+      if (systemMsg) {
+        body.instructions = typeof systemMsg.content === 'string' ? systemMsg.content : JSON.stringify(systemMsg.content);
+      }
+      if (responsesTools.length > 0) {
+        body.tools = responsesTools;
+      }
+
+      const reqHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      };
+      // GitHub Copilot API requires editor headers
+      if (baseURL.includes('githubcopilot.com')) {
+        reqHeaders['Editor-Version'] = 'vscode/1.100.0';
+        reqHeaders['Editor-Plugin-Version'] = 'copilot/1.300.0';
+        reqHeaders['Copilot-Integration-Id'] = 'vscode-chat';
+      }
+
+      const resp = await fetch(`${baseURL}/responses`, {
+        method: 'POST',
+        headers: reqHeaders,
+        signal: AbortSignal.timeout(60000),
+        body: JSON.stringify(body),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        throw new Error(`Responses API HTTP ${resp.status}: ${errText.slice(0, 300)}`);
+      }
+
+      return await resp.json();
+    };
+
+    let currentInput: any[] = input;
+    for (let round = 0; round <= maxToolRounds; round++) {
+      const response = await doRequest(currentInput);
+
+      // Extract text output
+      let responseText = '';
+      const outputItems = response.output || [];
+      for (const item of outputItems) {
+        if (item.type === 'message') {
+          for (const c of (item.content || [])) {
+            if (c.type === 'output_text' || c.type === 'text') {
+              responseText += c.text || '';
+            }
+          }
+        }
+      }
+
+      // Also check output_text shortcut
+      if (!responseText && response.output_text) {
+        responseText = response.output_text;
+      }
+
+      // Check for function calls
+      const functionCalls = outputItems.filter((item: any) => item.type === 'function_call');
+      if (functionCalls.length === 0) {
+        return { text: responseText, functionCalls: allToolCalls.length > 0 ? allToolCalls : null };
+      }
+
+      if (round === maxToolRounds) {
+        this.logger.warn(`Responses API agent loop: max ${maxToolRounds} tool rounds reached`);
+        return { text: responseText, functionCalls: allToolCalls };
+      }
+
+      this.logger.log(`Responses API round ${round + 1}: ${functionCalls.length} tool call(s): ${functionCalls.map((fc: any) => fc.name).join(', ')}`);
+
+      // Execute tool calls
+      const toolResults = await Promise.all(
+        functionCalls.map(async (fc: any) => {
+          let parameters: Record<string, any> = {};
+          try { parameters = JSON.parse(fc.arguments || '{}'); } catch { parameters = {}; }
+
+          try {
+            let result: any;
+            if (options?.onToolCall) {
+              try {
+                const customResult = await options.onToolCall(fc.name, parameters);
+                if (customResult !== undefined) result = customResult;
+              } catch {
+                this.logger.warn(`Custom tool execution failed for ${fc.name}, falling back.`);
+              }
+            }
+            if (result === undefined) {
+              result = await this.executeFunctionCall(fc.name, parameters, options?.context || {});
+            }
+            return { type: 'function_call_output', call_id: fc.call_id, output: JSON.stringify(result) };
+          } catch (error: any) {
+            return { type: 'function_call_output', call_id: fc.call_id, output: JSON.stringify({ success: false, error: error.message }) };
+          }
+        }),
+      );
+
+      allToolCalls.push(...functionCalls.map((fc: any) => ({
+        id: fc.call_id,
+        name: fc.name,
+        arguments: fc.arguments,
+      })));
+
+      // Build input for next round: previous input + assistant output + tool results
+      currentInput = [...currentInput, ...outputItems, ...toolResults];
+    }
+
+    return { text: '', functionCalls: allToolCalls.length > 0 ? allToolCalls : null };
+  }
+}

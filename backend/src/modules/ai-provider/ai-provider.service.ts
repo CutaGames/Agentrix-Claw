@@ -61,7 +61,7 @@ const SUBSCRIPTION_MODEL_ALIASES: Record<string, string> = {
   'copilot-sub-grok-code-fast-1': 'grok-code-fast-1',
   'copilot-sub-claude-haiku-4.5': 'claude-haiku-4.5',
   'copilot-sub-gpt-5.4-mini': 'gpt-5.4-mini',
-  'copilot-sub-gemini-3-flash': 'gemini-3-flash',
+  'copilot-sub-gemini-3-flash': 'gemini-3-flash-preview',
   'copilot-sub-gpt-5.1': 'gpt-5.1',
   'copilot-sub-gpt-5.2': 'gpt-5.2',
   'copilot-sub-gpt-5.2-codex': 'gpt-5.2-codex',
@@ -71,7 +71,7 @@ const SUBSCRIPTION_MODEL_ALIASES: Record<string, string> = {
   'copilot-sub-claude-sonnet-4.5': 'claude-sonnet-4.5',
   'copilot-sub-claude-sonnet-4.6': 'claude-sonnet-4.6',
   'copilot-sub-gemini-2.5-pro': 'gemini-2.5-pro',
-  'copilot-sub-gemini-3.1-pro': 'gemini-3.1-pro',
+  'copilot-sub-gemini-3.1-pro': 'gemini-3.1-pro-preview',
   'copilot-sub-claude-opus-4.5': 'claude-opus-4.5',
   'copilot-sub-claude-opus-4.6': 'claude-opus-4.6',
   // ── Volcengine Savings Plan (火山引擎节省计划) ──
@@ -123,6 +123,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     id: 'copilot-subscription', name: 'GitHub Copilot Subscription', icon: '🪟', region: 'international', currency: 'USD', billingType: 'subscription',
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     credentialLabel: 'Copilot Token',
+    baseUrl: 'https://api.individual.githubcopilot.com',
     placeholder: {
       apiKey: 'ghu_xxxx... (GitHub OAuth Token)',
       baseUrl: 'https://api.individual.githubcopilot.com',
@@ -397,6 +398,59 @@ export class AiProviderService {
     return decipher.update(Buffer.from(encHex, 'hex')) + decipher.final('utf8');
   }
 
+  // ─── Copilot Token Exchange & Cache ──────────
+  // ghu_* tokens are long-lived but Copilot API needs a session token (~30 min)
+  private copilotTokenCache = new Map<string, { token: string; expiresAt: number }>();
+
+  /**
+   * Exchange a GitHub OAuth token (ghu_*) for a Copilot API session token.
+   * Caches results and auto-refreshes when expired.
+   */
+  async exchangeCopilotToken(ghuToken: string): Promise<string> {
+    // If the token doesn't look like a GitHub OAuth token, return as-is
+    if (!ghuToken.startsWith('ghu_') && !ghuToken.startsWith('gho_') && !ghuToken.startsWith('ghp_')) {
+      return ghuToken;
+    }
+
+    const cached = this.copilotTokenCache.get(ghuToken);
+    if (cached && cached.expiresAt > Date.now() + 60_000) { // 1 min buffer
+      return cached.token;
+    }
+
+    try {
+      const resp = await fetch('https://api.github.com/copilot_internal/v2/token', {
+        headers: {
+          'Authorization': `token ${ghuToken}`,
+          'User-Agent': 'GithubCopilot/1.300.0',
+          'Editor-Version': 'vscode/1.100.0',
+          'Editor-Plugin-Version': 'copilot/1.300.0',
+        },
+      });
+
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => '');
+        this.logger.warn(`Copilot token exchange failed: ${resp.status} ${body}`);
+        throw new BadRequestException(
+          `Copilot token 交换失败 (${resp.status})。请确认 GitHub 账户已开通 Copilot 订阅，并重新输入 Token。`,
+        );
+      }
+
+      const data = await resp.json() as { token: string; expires_at?: number };
+      const expiresAt = data.expires_at
+        ? data.expires_at * 1000
+        : Date.now() + 25 * 60 * 1000; // default 25 min if no expiry
+
+      this.copilotTokenCache.set(ghuToken, { token: data.token, expiresAt });
+      this.logger.log(`Copilot session token exchanged, expires in ${Math.round((expiresAt - Date.now()) / 60000)} min`);
+      return data.token;
+    } catch (err: any) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.error(`Copilot token exchange error: ${err.message}`);
+      // Fallback: return original token (might work if it's already a session token)
+      return ghuToken;
+    }
+  }
+
   // ─── Catalog ──────────
 
   getCatalog(): ProviderDef[] {
@@ -502,8 +556,12 @@ export class AiProviderService {
       config = this.repo.create({ userId, providerId: dto.providerId });
     }
 
-    config.encryptedApiKey = this.encrypt(dto.apiKey);
-    config.encryptedSecretKey = dto.secretKey ? this.encrypt(dto.secretKey) : undefined;
+    config.encryptedApiKey = dto.apiKey === '__saved__' && config.encryptedApiKey
+      ? config.encryptedApiKey
+      : this.encrypt(dto.apiKey);
+    config.encryptedSecretKey = dto.secretKey === '__saved__' && config.encryptedSecretKey
+      ? config.encryptedSecretKey
+      : dto.secretKey ? this.encrypt(dto.secretKey) : undefined;
     config.baseUrl = dto.baseUrl || undefined;
     config.region = dto.region || undefined;
     config.selectedModel = dto.selectedModel;
@@ -630,6 +688,13 @@ export class AiProviderService {
     const provider = this.getProviderDef(dto.providerId);
     if (!provider) throw new BadRequestException(`Unknown provider: ${dto.providerId}`);
 
+    // Resolve actual credentials when __saved__ placeholder is sent
+    if (dto.apiKey === '__saved__') {
+      const saved = await this.getDecryptedKey(userId, dto.providerId);
+      if (!saved) throw new BadRequestException('No saved credentials found for this provider');
+      dto = { ...dto, apiKey: saved.apiKey, secretKey: saved.secretKey || dto.secretKey, baseUrl: dto.baseUrl || saved.baseUrl };
+    }
+
     const start = Date.now();
     try {
       await this.doTestCall(dto);
@@ -693,7 +758,7 @@ export class AiProviderService {
         const defaultUrls: Record<string, string> = {
           openai: 'https://api.openai.com/v1',
           'chatgpt-subscription': '',
-          'copilot-subscription': '',
+          'copilot-subscription': 'https://api.individual.githubcopilot.com',
           deepseek: 'https://api.deepseek.com',
           'deepseek-plan': 'https://api.deepseek.com',
           xai: 'https://api.x.ai/v1',
@@ -710,17 +775,96 @@ export class AiProviderService {
           'zhipu-plan': 'https://open.bigmodel.cn/api/paas/v4',
         };
         const base = dto.baseUrl || defaultUrls[dto.providerId] || 'https://api.openai.com/v1';
-        if ((dto.providerId === 'chatgpt-subscription' || dto.providerId === 'copilot-subscription') && !dto.baseUrl) {
+        if (dto.providerId === 'chatgpt-subscription' && !dto.baseUrl) {
           if (!dto.apiKey || dto.apiKey.trim().length < 8) {
             throw new Error('Subscription token is required');
           }
           this.logger.log(`Skipping remote probe for ${dto.providerId} without baseUrl; token format accepted`);
           break;
         }
+        // For copilot-subscription, discover actual model names and validate availability
+        if (dto.providerId === 'copilot-subscription') {
+          // Exchange ghu_* token for Copilot session token
+          dto = { ...dto, apiKey: await this.exchangeCopilotToken(dto.apiKey) };
+          let copilotModelIds: string[] = [];
+          try {
+            const modelsResp = await fetch(`${base}/models`, {
+              headers: {
+                'Authorization': `Bearer ${dto.apiKey}`,
+                'Editor-Version': 'vscode/1.100.0',
+                'Editor-Plugin-Version': 'copilot/1.300.0',
+                'Copilot-Integration-Id': 'vscode-chat',
+              },
+              signal: AbortSignal.timeout(10000),
+            });
+            if (modelsResp.ok) {
+              const modelsData = await modelsResp.json();
+              copilotModelIds = (modelsData.data || []).map((m: any) => m.id);
+              this.logger.log(`Copilot available models (${copilotModelIds.length}): ${copilotModelIds.join(', ')}`);
+            } else {
+              const errBody = await modelsResp.text().catch(() => '');
+              this.logger.warn(`Copilot /models returned ${modelsResp.status}: ${errBody.slice(0, 200)}`);
+            }
+          } catch (e) {
+            this.logger.warn(`Failed to list Copilot models: ${(e as Error).message}`);
+          }
+
+          const resolvedModel = this.resolveExecutionModelId(dto.model);
+          // If model not in available list, give a clear diagnosis
+          if (copilotModelIds.length > 0 && !copilotModelIds.includes(resolvedModel)) {
+            // Check if a base version of the model is available (e.g. claude-sonnet-4 instead of claude-sonnet-4.6)
+            const family = resolvedModel.replace(/-[\d.]+(-preview)?$/, '');
+            const available = copilotModelIds.filter(m => m.startsWith(family));
+            const hint = available.length > 0
+              ? `同系列可用: ${available.join(', ')}`
+              : `当前可用 ${copilotModelIds.length} 个模型`;
+            throw new Error(
+              `模型 "${resolvedModel}" 当前不可用。Copilot token 可能已过期或高级模型配额已用完。` +
+              `请在 VS Code 中刷新 Copilot token 后重试。(${hint})`
+            );
+          }
+
+          this.logger.log(`Testing ${dto.providerId} model: ${dto.model} -> resolved: ${resolvedModel} at ${base}`);
+          // GPT-5.4 models require the /responses API instead of /chat/completions
+          const useResponsesApi = resolvedModel.includes('gpt-5.4');
+          const copilotHeaders: Record<string, string> = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${dto.apiKey}`,
+            'Editor-Version': 'vscode/1.100.0',
+            'Editor-Plugin-Version': 'copilot/1.300.0',
+            'Copilot-Integration-Id': 'vscode-chat',
+          };
+          if (useResponsesApi) {
+            const resp = await fetch(`${base}/responses`, {
+              method: 'POST',
+              headers: copilotHeaders,
+              body: JSON.stringify({ model: resolvedModel, input: 'Say hello', max_output_tokens: 50 }),
+              signal: AbortSignal.timeout(20000),
+            });
+            if (!resp.ok) {
+              const errText = await resp.text().then(t => t.slice(0, 300));
+              throw new Error(`HTTP ${resp.status}: ${errText}`);
+            }
+          } else {
+            const resp = await fetch(`${base}/chat/completions`, {
+              method: 'POST',
+              headers: copilotHeaders,
+              body: JSON.stringify({ model: resolvedModel, max_tokens: 10, messages: testMessage }),
+              signal: AbortSignal.timeout(15000),
+            });
+            if (!resp.ok) {
+              const errText = await resp.text().then(t => t.slice(0, 300));
+              throw new Error(`HTTP ${resp.status}: ${errText}`);
+            }
+          }
+          break;
+        }
+        const resolvedModel = this.resolveExecutionModelId(dto.model);
+        this.logger.log(`Testing ${dto.providerId} model: ${dto.model} -> resolved: ${resolvedModel} at ${base}`);
         const resp = await fetch(`${base}/chat/completions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${dto.apiKey}` },
-          body: JSON.stringify({ model: this.resolveExecutionModelId(dto.model), max_tokens: 10, messages: testMessage }),
+          body: JSON.stringify({ model: resolvedModel, max_tokens: 10, messages: testMessage }),
           signal: AbortSignal.timeout(15000),
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text().then(t => t.slice(0, 200))}`);

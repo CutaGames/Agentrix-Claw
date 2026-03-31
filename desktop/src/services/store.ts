@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { getDeviceId } from "./sessionSync";
 
 export const API_BASE = "https://api.agentrix.top/api";
 
@@ -314,6 +315,8 @@ export function streamChat(opts: {
       sessionId: opts.sessionId,
       model: opts.model,
       mode: opts.mode,
+      platform: 'desktop',
+      deviceId: getDeviceId(),
     }),
     signal: ac.signal,
   };

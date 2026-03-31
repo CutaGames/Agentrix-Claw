@@ -43,7 +43,7 @@ let _deviceId: string = "";
 let _connected = false;
 let _clipboardSyncOutListener: EventListener | null = null;
 
-function getDeviceId(): string {
+export function getDeviceId(): string {
   if (_deviceId) return _deviceId;
   let id = localStorage.getItem("agentrix_desktop_device_id");
   if (!id) {

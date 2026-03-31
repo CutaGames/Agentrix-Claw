@@ -30,6 +30,8 @@ import { emitAgentSyncEvent } from '../agent-intelligence/agent-sync.events';
 import { HookService } from '../hooks/hook.service';
 import { HookEventType } from '../../entities/hook-config.entity';
 import { McpServerRegistryService } from '../mcp-registry/mcp-server-registry.service';
+import { DesktopSyncService } from '../desktop-sync/desktop-sync.service';
+import { DesktopCommandStatus, DesktopCommandKind } from '../desktop-sync/dto/desktop-sync.dto';
 
 export interface ChatMessageDto {
   message: string | any[];
@@ -38,6 +40,8 @@ export interface ChatMessageDto {
   model?: string;
   voiceId?: string;
   mode?: 'ask' | 'agent' | 'plan';
+  platform?: 'desktop' | 'mobile' | 'web';
+  deviceId?: string;
 }
 
 export interface ChatStreamCallbacks {
@@ -87,6 +91,7 @@ export class OpenClawProxyService {
     private readonly hookService: HookService,
     @Inject(forwardRef(() => McpServerRegistryService))
     private readonly mcpRegistryService: McpServerRegistryService,
+    private readonly desktopSyncService: DesktopSyncService,
   ) {}
 
   private async ensureOwnedInstance(userId: string, instanceId: string): Promise<OpenClawInstance> {
@@ -749,6 +754,139 @@ export class OpenClawProxyService {
     };
   }
 
+  // ── Desktop Tool Schemas & Execution ───────────────────────────
+
+  private getDesktopToolSchemas(): any[] {
+    return [
+      {
+        name: 'desktop_read_file',
+        description: 'Read a file from the user\'s desktop/local filesystem. Returns file content as text. Use this for reading source code, config files, logs, etc.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            path: { type: 'string', description: 'Absolute or relative file path to read' },
+          },
+          required: ['path'],
+        },
+      },
+      {
+        name: 'desktop_list_directory',
+        description: 'List files and directories in a local folder on the user\'s desktop.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            path: { type: 'string', description: 'Directory path to list' },
+          },
+          required: ['path'],
+        },
+      },
+      {
+        name: 'desktop_write_file',
+        description: 'Write content to a file on the user\'s desktop. Creates the file if it doesn\'t exist. REQUIRES USER APPROVAL.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            path: { type: 'string', description: 'File path to write to' },
+            content: { type: 'string', description: 'Content to write' },
+          },
+          required: ['path', 'content'],
+        },
+      },
+      {
+        name: 'desktop_run_command',
+        description: 'Execute a shell command on the user\'s desktop (PowerShell on Windows, bash on Linux/Mac). REQUIRES USER APPROVAL.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            command: { type: 'string', description: 'Shell command to execute' },
+            workingDirectory: { type: 'string', description: 'Working directory (optional)' },
+          },
+          required: ['command'],
+        },
+      },
+    ];
+  }
+
+  /**
+   * Execute a desktop tool by creating a sync command and polling for result.
+   * Desktop client picks up the command via polling and submits the result.
+   */
+  private async executeDesktopTool(
+    userId: string,
+    toolName: string,
+    args: any,
+    deviceId?: string,
+  ): Promise<any> {
+    const kindMap: Record<string, string> = {
+      desktop_read_file: 'read-file',
+      desktop_list_directory: 'run-command',
+      desktop_write_file: 'write-file',
+      desktop_run_command: 'run-command',
+    };
+    const kind = kindMap[toolName] || 'run-command';
+
+    let payload: Record<string, unknown>;
+    let title: string;
+    if (toolName === 'desktop_read_file') {
+      payload = { path: args.path };
+      title = `Read file: ${args.path}`;
+    } else if (toolName === 'desktop_list_directory') {
+      // Use run-command with ls/dir to list directory
+      const isWin = (args.path || '').match(/^[A-Za-z]:/);
+      payload = { command: isWin ? `dir /b "${args.path}"` : `ls -la "${args.path}"` };
+      title = `List directory: ${args.path}`;
+    } else if (toolName === 'desktop_write_file') {
+      payload = { path: args.path, content: args.content };
+      title = `Write file: ${args.path}`;
+    } else if (toolName === 'desktop_run_command') {
+      payload = { command: args.command, workingDirectory: args.workingDirectory };
+      title = `Run: ${args.command?.slice(0, 80)}`;
+    } else {
+      return { error: `Unknown desktop tool: ${toolName}` };
+    }
+
+    // Create command for desktop client to pick up
+    const result = await this.desktopSyncService.createCommand(userId, {
+      title,
+      kind: kind as any,
+      payload,
+      targetDeviceId: deviceId || undefined,
+    });
+
+    if (!result?.command?.commandId) {
+      return { error: 'Failed to create desktop command' };
+    }
+
+    // Poll for completion (desktop client processes via 3s polling + socket acceleration)
+    const commandId = result.command.commandId;
+    const timeout = 30_000; // 30s max wait
+    const pollInterval = 500;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      await new Promise(r => setTimeout(r, pollInterval));
+      try {
+        const commands = await this.desktopSyncService.listCommands(userId, deviceId);
+        const cmd = commands.find((c: any) => c.commandId === commandId);
+        if (!cmd) continue;
+
+        if (cmd.status === DesktopCommandStatus.COMPLETED) {
+          return cmd.result || { success: true };
+        }
+        if (cmd.status === DesktopCommandStatus.FAILED) {
+          return { error: cmd.error || 'Desktop command failed' };
+        }
+        if (cmd.status === DesktopCommandStatus.REJECTED) {
+          return { error: 'Command was rejected by the user' };
+        }
+      } catch {
+        // ignore poll errors
+      }
+    }
+
+    return { error: '桌面端未响应（超时30秒）。请确认桌面客户端已打开并登录。' };
+  }
+
   private async buildPlatformHostedTools(userId: string, instance: OpenClawInstance): Promise<{
     additionalTools: any[];
     onToolCall: (name: string, args: any) => Promise<any>;
@@ -1137,12 +1275,28 @@ export class OpenClawProxyService {
     ]);
     _lap(`parallelQueries (tools=${additionalTools.length}, history=${persistedHistory.length})`);
 
+    // Inject desktop-native tools when request comes from the desktop client
+    const isDesktop = dto.platform === 'desktop';
+    let effectiveOnToolCallFn = onToolCall;
+    if (isDesktop) {
+      const desktopTools = this.getDesktopToolSchemas();
+      additionalTools.push(...desktopTools);
+      const deviceId = dto.deviceId;
+      effectiveOnToolCallFn = async (name: string, args: any) => {
+        if (name.startsWith('desktop_')) {
+          return this.executeDesktopTool(userId, name, args, deviceId);
+        }
+        return onToolCall(name, args);
+      };
+      this.logger.log(`🖥️ Desktop platform detected — injected ${desktopTools.length} desktop tools`);
+    }
+
     // Skip tools for simple conversational messages to avoid 4-5s Bedrock tool processing overhead.
     // Tools will still be available for messages that likely need them.
     // 'ask' mode always skips tools; 'agent'/'plan' respect the heuristic.
     const needsTools = dto.mode !== 'ask' && this.messageNeedsTools(messageText);
     const effectiveTools = needsTools ? additionalTools : [];
-    const effectiveOnToolCall = needsTools ? onToolCall : undefined;
+    const effectiveOnToolCall = needsTools ? effectiveOnToolCallFn : undefined;
     if (!needsTools) {
       const reason = dto.mode === 'ask' ? 'ask mode' : 'simple message detected';
       this.logger.log(`⚡ Skipping ${additionalTools.length} tools: ${reason}`);
@@ -1185,9 +1339,17 @@ export class OpenClawProxyService {
           if (typeof catalogEntry?.baseUrl === 'string' && catalogEntry.baseUrl) {
             effectiveBaseUrl = catalogEntry.baseUrl;
             this.logger.debug(`Using catalog baseUrl for ${resolvedProvider}: ${effectiveBaseUrl}`);
+          } else if (typeof catalogEntry?.placeholder?.baseUrl === 'string' && catalogEntry.placeholder.baseUrl) {
+            effectiveBaseUrl = catalogEntry.placeholder.baseUrl;
+            this.logger.debug(`Using catalog placeholder baseUrl for ${resolvedProvider}: ${effectiveBaseUrl}`);
           }
         }
-        userCredentials = { ...providerConfig, baseUrl: effectiveBaseUrl, providerId: resolvedProvider };
+        // For copilot-subscription: exchange ghu_* token for short-lived Copilot session token
+        let effectiveApiKey = providerConfig.apiKey;
+        if (resolvedProvider === 'copilot-subscription') {
+          effectiveApiKey = await this.aiProviderService.exchangeCopilotToken(providerConfig.apiKey);
+        }
+        userCredentials = { ...providerConfig, apiKey: effectiveApiKey, baseUrl: effectiveBaseUrl, providerId: resolvedProvider };
       } else {
         const platformCredentials = this.getPlatformOpenAICompatibleCredentials(resolvedProvider);
         if (platformCredentials) {

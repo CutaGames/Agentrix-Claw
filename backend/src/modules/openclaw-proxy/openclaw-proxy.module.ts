@@ -18,6 +18,7 @@ import { AiProviderModule } from '../ai-provider/ai-provider.module';
 import { AgentIntelligenceModule } from '../agent-intelligence/agent-intelligence.module';
 import { HookModule } from '../hooks/hook.module';
 import { McpRegistryModule } from '../mcp-registry/mcp-registry.module';
+import { DesktopSyncModule } from '../desktop-sync/desktop-sync.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { McpRegistryModule } from '../mcp-registry/mcp-registry.module';
     AgentIntelligenceModule,
     HookModule,
     McpRegistryModule,
+    DesktopSyncModule,
   ],
   providers: [OpenClawProxyService],
   controllers: [OpenClawProxyController],
