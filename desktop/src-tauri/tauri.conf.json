@@ -15,11 +15,16 @@
     },
     "windows": [
       {
-        "label": "main",
+        "label": "floating-ball",
         "title": "Agentrix",
-        "width": 400,
-        "height": 400,
+        "width": 64,
+        "height": 64,
         "url": "index.html",
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
         "dragDropEnabled": false
       }
     ]

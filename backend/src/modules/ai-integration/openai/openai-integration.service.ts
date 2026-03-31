@@ -625,6 +625,7 @@ export class OpenAIIntegrationService {
       userBaseURL?: string; // 用户提供的 baseURL（可选，如果不提供则使用系统配置的）
       additionalTools?: any[]; // 额外的工具定义 (OpenAI 格式: { type: 'function', function: { ... } })
       onToolCall?: (functionName: string, parameters: any) => Promise<any>; // 自定义工具执行回调
+      onChunk?: (text: string) => void; // 流式输出回调
     },
   ): Promise<any> {
     // 如果用户提供了 API Key，使用用户的；否则使用系统配置的
@@ -674,7 +675,7 @@ export class OpenAIIntegrationService {
         return await this.chatWithResponsesApi(openai, messages, tools, options);
       }
 
-      const completion = await openai.chat.completions.create({
+      const completion = await this.streamOrComplete(openai, {
         model: options?.model || this.defaultModel,
         messages: messages.map((msg) => ({
           role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
@@ -684,7 +685,7 @@ export class OpenAIIntegrationService {
         tool_choice: tools.length > 0 ? 'auto' : undefined,
         temperature: options?.temperature || 0.7,
         max_tokens: options?.maxTokens || 2048,
-      });
+      }, options?.onChunk);
 
       // Multi-turn agent loop: keep calling LLM while it returns tool calls
       const maxToolRounds = 5;
@@ -759,14 +760,14 @@ export class OpenAIIntegrationService {
         // Build messages for next round
         currentMessages = [...currentMessages, message as any, ...toolResults];
 
-        const nextCompletion = await openai.chat.completions.create({
+        const nextCompletion = await this.streamOrComplete(openai, {
           model: options?.model || this.defaultModel,
           messages: currentMessages,
           tools: tools.length > 0 ? tools : undefined,
           tool_choice: tools.length > 0 ? 'auto' : undefined,
           temperature: options?.temperature || 0.7,
           max_tokens: options?.maxTokens || 2048,
-        });
+        }, options?.onChunk);
 
         message = nextCompletion.choices[0].message;
         responseText = message.content || '';
@@ -777,6 +778,65 @@ export class OpenAIIntegrationService {
       this.logger.error(`OpenAI API调用失败: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  /**
+   * Helper: stream or complete an OpenAI chat call.
+   * When onChunk is provided, uses streaming and reassembles the response.
+   * Returns a completion-shaped object with choices[0].message.
+   */
+  private async streamOrComplete(
+    openai: any,
+    params: Record<string, any>,
+    onChunk?: (text: string) => void,
+  ): Promise<any> {
+    if (!onChunk) {
+      return openai.chat.completions.create(params);
+    }
+
+    // Streaming mode
+    const stream = await openai.chat.completions.create({ ...params, stream: true });
+    let content = '';
+    const toolCallsMap: Record<number, { id: string; type: string; function: { name: string; arguments: string } }> = {};
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices?.[0]?.delta;
+      if (!delta) continue;
+
+      // Text content
+      if (delta.content) {
+        content += delta.content;
+        onChunk(delta.content);
+      }
+
+      // Tool calls (streamed incrementally)
+      if (delta.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          if (!toolCallsMap[tc.index]) {
+            toolCallsMap[tc.index] = {
+              id: tc.id || '',
+              type: 'function',
+              function: { name: '', arguments: '' },
+            };
+          }
+          const entry = toolCallsMap[tc.index];
+          if (tc.id) entry.id = tc.id;
+          if (tc.function?.name) entry.function.name += tc.function.name;
+          if (tc.function?.arguments) entry.function.arguments += tc.function.arguments;
+        }
+      }
+    }
+
+    const toolCalls = Object.values(toolCallsMap);
+    return {
+      choices: [{
+        message: {
+          role: 'assistant',
+          content: content || null,
+          tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+        },
+      }],
+    };
   }
 
   /**
@@ -879,6 +939,11 @@ export class OpenAIIntegrationService {
       // Also check output_text shortcut
       if (!responseText && response.output_text) {
         responseText = response.output_text;
+      }
+
+      // Emit text via onChunk for streaming
+      if (responseText && options?.onChunk) {
+        options.onChunk(responseText);
       }
 
       // Check for function calls

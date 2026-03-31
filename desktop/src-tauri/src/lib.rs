@@ -455,9 +455,9 @@ pub fn run() {
             desktop_bridge_keychain_delete,
         ])
         .setup(|app| {
-            // Grant WebView2 permissions (microphone, camera, etc.) on the main window
+            // Grant WebView2 permissions (microphone, camera, etc.) on the floating-ball window
             #[cfg(target_os = "windows")]
-            if let Some(main_window) = app.get_webview_window("main") {
+            if let Some(main_window) = app.get_webview_window("floating-ball") {
                 grant_webview2_permissions(&main_window);
             }
 
@@ -493,7 +493,7 @@ pub fn run() {
                 .on_menu_event(move |app_handle, event| {
                     match event.id().as_ref() {
                         "show_hide" => {
-                            if let Some(win) = app_handle.get_webview_window("main") {
+                            if let Some(win) = app_handle.get_webview_window("floating-ball") {
                                 if win.is_visible().unwrap_or(false) {
                                     let _ = win.hide();
                                 } else {

@@ -245,7 +245,7 @@ pub fn set_panel_position_near_ball(app: AppHandle) -> Result<(), String> {
 
 /// Snap the floating-ball window to the nearest screen edge (half-hidden).
 pub fn snap_ball_to_edge(app: AppHandle) -> Result<(), String> {
-    let win = app.get_webview_window("main").ok_or("main window not found")?;
+    let win = app.get_webview_window("floating-ball").ok_or("floating-ball window not found")?;
     let pos = win.outer_position().map_err(|e| e.to_string())?;
     let size = win.outer_size().map_err(|e| e.to_string())?;
 
@@ -333,7 +333,7 @@ pub fn get_monitors(app: AppHandle) -> Result<Vec<MonitorInfo>, String> {
 pub fn move_ball_to_monitor(app: AppHandle, monitor_index: usize) -> Result<(), String> {
     let monitors: Vec<_> = app.available_monitors().map_err(|e| e.to_string())?;
     let target = monitors.get(monitor_index).ok_or("Monitor index out of range")?;
-    let win = app.get_webview_window("main").ok_or("main window not found")?;
+    let win = app.get_webview_window("floating-ball").ok_or("floating-ball window not found")?;
 
     // Place ball at center-right of the target monitor initially
     let mx = target.position().x as f64;

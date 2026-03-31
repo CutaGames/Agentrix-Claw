@@ -1517,6 +1517,7 @@ export class OpenClawProxyService {
         onToolCall: effectiveOnToolCall,
         userApiKey: userCredentials?.apiKey,
         userBaseURL: userCredentials?.baseUrl,
+        onChunk: streamingCallbacks?.onChunk,
       });
     } else {
       result = await this.claudeIntegrationService.chatWithFunctions(messages, {
