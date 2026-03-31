@@ -312,7 +312,7 @@ export default function App() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "transparent",
+          background: "#FF0000",
         }}
       >
         <FloatingBall onTap={handleBallClick} />
