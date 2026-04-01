@@ -155,7 +155,7 @@ export class DesktopSyncService {
 
     const message = this.formatApprovalMessage(saved);
     await this.notificationService.createNotification(userId, {
-      type: NotificationType.SYSTEM,
+      type: NotificationType.APPROVAL as any,
       title: `Desktop approval required · ${saved.riskLevel}`,
       message,
     });

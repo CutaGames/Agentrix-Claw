@@ -238,5 +238,41 @@ export class NotificationService {
       return false;
     }
   }
+
+  /**
+   * Approve a notification (for approval-type notifications).
+   * Marks it as read and sets approvalStatus to 'approved'.
+   */
+  async approveNotification(userId: string, id: string) {
+    const notification = await this.notificationRepository.findOne({
+      where: { id, userId },
+    });
+    if (!notification) {
+      throw new NotFoundException('通知不存在');
+    }
+    notification.read = true;
+    (notification as any).approvalStatus = 'approved';
+    await this.notificationRepository.save(notification);
+    this.logger.log(`Notification ${id} approved by user ${userId}`);
+    return { message: '已批准' };
+  }
+
+  /**
+   * Reject a notification (for approval-type notifications).
+   * Marks it as read and sets approvalStatus to 'rejected'.
+   */
+  async rejectNotification(userId: string, id: string) {
+    const notification = await this.notificationRepository.findOne({
+      where: { id, userId },
+    });
+    if (!notification) {
+      throw new NotFoundException('通知不存在');
+    }
+    notification.read = true;
+    (notification as any).approvalStatus = 'rejected';
+    await this.notificationRepository.save(notification);
+    this.logger.log(`Notification ${id} rejected by user ${userId}`);
+    return { message: '已拒绝' };
+  }
 }
 

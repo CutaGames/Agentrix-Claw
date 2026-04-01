@@ -7,7 +7,7 @@ import { mmkvStorage } from './mmkvStorage';
 
 export interface AppNotification {
   id: string;
-  type: 'agent_chat' | 'skill_install' | 'payment' | 'referral' | 'system';
+  type: 'agent_chat' | 'skill_install' | 'payment' | 'referral' | 'system' | 'approval';
   title: string;
   body: string;
   read: boolean;
@@ -18,6 +18,7 @@ export interface AppNotification {
 interface NotificationState {
   notifications: AppNotification[];
   unreadCount: number;
+  approvalCount: number;
   pushToken: string | null;
 
   // Actions
@@ -26,6 +27,7 @@ interface NotificationState {
   markAllRead: () => void;
   clearNotifications: () => void;
   setPushToken: (token: string | null) => void;
+  setApprovalCount: (count: number) => void;
 }
 
 export const useNotificationStore = create<NotificationState>()(
@@ -33,7 +35,10 @@ export const useNotificationStore = create<NotificationState>()(
     (set, get) => ({
       notifications: [],
       unreadCount: 0,
+      approvalCount: 0,
       pushToken: null,
+
+      setApprovalCount: (count) => set({ approvalCount: count }),
 
       addNotification: (item) => {
         const notification: AppNotification = {

@@ -13,6 +13,8 @@ export enum NotificationType {
   SYSTEM = 'system',
   SECURITY = 'security',
   PROMOTION = 'promotion',
+  APPROVAL = 'approval',
+  TRANSACTION = 'transaction',
 }
 
 // ── Device Push Token (persistent push token registry) ────────────────────────
@@ -74,6 +76,12 @@ export class Notification {
 
   @Column({ nullable: true })
   actionUrl: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  data: Record<string, any>;
+
+  @Column({ length: 20, nullable: true })
+  approvalStatus: 'pending' | 'approved' | 'rejected' | null;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -77,6 +77,20 @@ export class NotificationController {
     return this.notificationService.deleteNotification(req.user.id, id);
   }
 
+  @Post(':id/approve')
+  @ApiOperation({ summary: '批准审批请求' })
+  @ApiResponse({ status: 200, description: '已批准' })
+  async approveNotification(@Request() req, @Param('id') id: string) {
+    return this.notificationService.approveNotification(req.user.id, id);
+  }
+
+  @Post(':id/reject')
+  @ApiOperation({ summary: '拒绝审批请求' })
+  @ApiResponse({ status: 200, description: '已拒绝' })
+  async rejectNotification(@Request() req, @Param('id') id: string) {
+    return this.notificationService.rejectNotification(req.user.id, id);
+  }
+
   /**
    * POST /api/notifications/register
    * Register a device push token for the current user.

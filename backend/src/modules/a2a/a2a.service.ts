@@ -5,12 +5,14 @@
  * quality assessment, reputation tracking, and webhook callbacks.
  */
 
-import { Injectable, Logger, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, Inject, forwardRef, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { A2ATask, A2ATaskStatus, A2ATaskPriority, A2ADeliverable, A2AQualityAssessment, A2ACallback } from '../../entities/a2a-task.entity';
 import { AgentReputation } from '../../entities/agent-reputation.entity';
 import { AP2MandateEntity, MandateStatus } from '../../entities/ap2-mandate.entity';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../../entities/notification.entity';
 import * as crypto from 'crypto';
 import axios from 'axios';
 
@@ -84,6 +86,8 @@ export class A2AService {
     private readonly reputationRepository: Repository<AgentReputation>,
     @InjectRepository(AP2MandateEntity)
     private readonly mandateRepository: Repository<AP2MandateEntity>,
+    @Optional() @Inject(forwardRef(() => NotificationService))
+    private readonly notificationService?: NotificationService,
   ) {}
 
   // ==================== Task Lifecycle ====================
@@ -131,6 +135,17 @@ export class A2AService {
 
     // Update reputation stats
     await this.incrementTaskCount(dto.targetAgentId);
+
+    // Send notification to requester about task creation
+    if (dto.requesterUserId && this.notificationService) {
+      this.notificationService.createNotification(dto.requesterUserId, {
+        type: NotificationType.APPROVAL,
+        title: `A2A任务已创建: ${dto.title}`,
+        message: `任务已派发给目标Agent，等待接受`,
+        actionUrl: `/a2a/tasks/${saved.id}`,
+        metadata: { taskId: saved.id, event: 'task.created' },
+      } as any).catch(err => this.logger.warn(`A2A notification failed: ${err?.message}`));
+    }
 
     // Fire webhook
     await this.fireCallback(saved, 'task.created');
@@ -198,6 +213,17 @@ export class A2AService {
     const saved = await this.taskRepository.save(task);
     this.logger.log(`A2A task delivered: ${taskId} with ${dto.deliverables.length} deliverables`);
 
+    // Notify requester that deliverables are ready for review
+    if (task.requesterUserId && this.notificationService) {
+      this.notificationService.createNotification(task.requesterUserId, {
+        type: NotificationType.APPROVAL,
+        title: `A2A交付待审核: ${task.title}`,
+        message: `Agent已提交${dto.deliverables.length}个交付物，请审核`,
+        actionUrl: `/a2a/tasks/${taskId}`,
+        metadata: { taskId, event: 'task.delivered', approvalStatus: 'pending' },
+      } as any).catch(err => this.logger.warn(`A2A delivery notification failed: ${err?.message}`));
+    }
+
     await this.fireCallback(saved, 'task.delivered');
     return saved;
   }
@@ -234,6 +260,17 @@ export class A2AService {
       // Settle payment if mandate exists
       if (task.mandateId && task.agreedPrice) {
         await this.settlePayment(task);
+      }
+
+      // Notify requester about completion
+      if (task.requesterUserId && this.notificationService) {
+        this.notificationService.createNotification(task.requesterUserId, {
+          type: NotificationType.SYSTEM,
+          title: `A2A任务已完成: ${task.title}`,
+          message: `质量评分: ${assessment.score}`,
+          actionUrl: `/a2a/tasks/${taskId}`,
+          metadata: { taskId, event: 'task.completed', score: assessment.score },
+        } as any).catch(err => this.logger.warn(`A2A completion notification failed: ${err?.message}`));
       }
 
       await this.fireCallback(task, 'task.completed');

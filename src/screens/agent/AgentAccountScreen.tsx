@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   RefreshControl, ActivityIndicator, Alert, Modal,
-  TextInput, ScrollView, Platform, StatusBar,
+  TextInput, ScrollView, Platform, StatusBar, Clipboard,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
@@ -47,6 +47,13 @@ async function suspendAgent(agentId: string): Promise<void> {
 
 async function resumeAgent(agentId: string): Promise<void> {
   await setAgentPresenceAccountStatus(agentId, 'active');
+}
+
+async function generateAgentApiKey(agentId: string): Promise<{ apiKey: string; prefix: string }> {
+  const res = await apiFetch<{ data: { apiKey: string; prefix: string } }>(`/agent-accounts/${agentId}/api-key`, {
+    method: 'POST',
+  });
+  return res.data;
 }
 
 // ──────────────────────────────────────────────
@@ -209,6 +216,9 @@ export function AgentAccountScreen() {
   const [showCreate, setShowCreate] = useState(false);
   const [walletLoading, setWalletLoading] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [apiKeyLoading, setApiKeyLoading] = useState<string | null>(null);
+  // { [agentId]: { key?: string (full, shown once); prefix?: string } }
+  const [apiKeys, setApiKeys] = useState<Record<string, { key?: string; prefix?: string }>>({});
 
   const { data: agents = [], isLoading, refetch } = useQuery({
     queryKey: ['agent-accounts'],
@@ -327,7 +337,33 @@ export function AgentAccountScreen() {
     );
   };
 
-  const renderAgent = ({ item: agent }: { item: AgentAccount }) => (
+  const handleGenerateApiKey = (agent: AgentAccount) => {
+    Alert.alert(
+      t({ en: 'Generate API Key', zh: '生成 API Key' }),
+      t({ en: `Generate a new API Key for "${agent.name}"?\n\nThis will invalidate any existing key.`, zh: `为"${agent.name}"生成新 API Key？\n\n这将使旧 Key 失效。` }),
+      [
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+        {
+          text: t({ en: 'Generate', zh: '生成' }),
+          onPress: async () => {
+            setApiKeyLoading(agent.id);
+            try {
+              const result = await generateAgentApiKey(agent.id);
+              setApiKeys((prev) => ({ ...prev, [agent.id]: { key: result.apiKey, prefix: result.prefix } }));
+            } catch (err: any) {
+              Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || t({ en: 'Failed to generate API Key.', zh: '生成 API Key 失败。' }));
+            } finally {
+              setApiKeyLoading(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const renderAgent = ({ item: agent }: { item: AgentAccount }) => {
+    const agentApiKey = apiKeys[agent.id];
+    return (
     <View style={styles.card}>
       {/* Card header */}
       <View style={styles.cardHeader}>
@@ -446,8 +482,57 @@ export function AgentAccountScreen() {
           <Text style={styles.actionBtnText}>📋 {t({ en: 'Txs', zh: '交易' })}</Text>
         </TouchableOpacity>
       </View>
+
+      {/* API Key section */}
+      {agentApiKey?.key ? (
+        <View style={styles.apiKeyBox}>
+          <View style={styles.apiKeyHeader}>
+            <Text style={styles.apiKeyLabel}>🔑 API Key</Text>
+            <TouchableOpacity
+              onPress={() => {
+                Clipboard.setString(agentApiKey.key!);
+                Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'API Key copied to clipboard.', zh: 'API Key 已复制到剪贴板。' }));
+              }}
+            >
+              <Text style={styles.apiKeyCopyBtn}>{t({ en: 'Copy', zh: '复制' })}</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.apiKeyText} numberOfLines={2} selectable>{agentApiKey.key}</Text>
+          <Text style={styles.apiKeyWarn}>
+            ⚠️ {t({ en: 'Store this key now — it will not be shown again.', zh: '请立即保存此 Key，关闭后无法再次查看。' })}
+          </Text>
+        </View>
+      ) : agentApiKey?.prefix ? (
+        <View style={styles.apiKeyExisting}>
+          <Text style={styles.apiKeyExistingText}>🔑 {agentApiKey.prefix}***</Text>
+          <TouchableOpacity
+            style={styles.apiKeyRegenBtn}
+            onPress={() => handleGenerateApiKey(agent)}
+            disabled={apiKeyLoading === agent.id}
+          >
+            {apiKeyLoading === agent.id ? (
+              <ActivityIndicator color={colors.accent} size="small" />
+            ) : (
+              <Text style={styles.apiKeyRegenText}>{t({ en: 'Regenerate', zh: '重新生成' })}</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={styles.apiKeyBtn}
+          onPress={() => handleGenerateApiKey(agent)}
+          disabled={apiKeyLoading === agent.id}
+        >
+          {apiKeyLoading === agent.id ? (
+            <ActivityIndicator color={colors.accent} size="small" />
+          ) : (
+            <Text style={styles.apiKeyBtnText}>🔑 {t({ en: 'Generate API Key', zh: '生成 API Key' })}</Text>
+          )}
+        </TouchableOpacity>
+      )}
     </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -617,6 +702,57 @@ const styles = StyleSheet.create({
   headerCard: { marginBottom: 8, gap: 4 },
   headerTitle: { fontSize: 18, fontWeight: '800', color: colors.textPrimary },
   headerSub: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
+  // API Key
+  apiKeyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.accent + '66',
+    paddingVertical: 9,
+    backgroundColor: colors.accent + '0f',
+  },
+  apiKeyBtnText: { fontSize: 13, color: colors.accent, fontWeight: '600' },
+  apiKeyBox: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 10,
+    padding: 12,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.accent + '55',
+  },
+  apiKeyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  apiKeyLabel: { fontSize: 12, color: colors.accent, fontWeight: '700' },
+  apiKeyCopyBtn: { fontSize: 12, color: colors.accent, fontWeight: '600', textDecorationLine: 'underline' },
+  apiKeyText: {
+    fontSize: 11,
+    color: '#a5f3fc',
+    fontFamily: 'monospace',
+    letterSpacing: 0.3,
+    lineHeight: 17,
+  },
+  apiKeyWarn: { fontSize: 11, color: '#f59e0b', lineHeight: 16 },
+  apiKeyExisting: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  apiKeyExistingText: { flex: 1, fontSize: 12, color: colors.textMuted, fontFamily: 'monospace' },
+  apiKeyRegenBtn: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  apiKeyRegenText: { fontSize: 12, color: colors.textSecondary, fontWeight: '600' },
 });
 
 const modal = StyleSheet.create({

@@ -4,6 +4,7 @@ import { Text, View } from 'react-native';
 import { MainTabParamList } from './types';
 import { AgentStackNavigator } from './AgentStackNavigator';
 import { DiscoverStackNavigator } from './DiscoverStackNavigator';
+import { TeamStackNavigator } from './TeamStackNavigator';
 import { MeStackNavigator } from './MeStackNavigator';
 import { colors } from '../theme/colors';
 import { useNotificationStore } from '../stores/notificationStore';
@@ -38,6 +39,7 @@ function TabIcon({ emoji, focused, badge }: { emoji: string; focused: boolean; b
 export function MainTabNavigator() {
   const { t } = useI18n();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const approvalCount = useNotificationStore((s) => s.approvalCount);
   const initialRouteName = 'Agent';
 
   return (
@@ -77,6 +79,14 @@ export function MainTabNavigator() {
         options={{
           title: t({ en: 'Discover', zh: '发现' }),
           tabBarIcon: ({ focused }) => <TabIcon emoji="🔍" focused={focused} />,
+        }}
+      />
+      <Tab.Screen
+        name="Team"
+        component={TeamStackNavigator}
+        options={{
+          title: t({ en: 'Team', zh: '团队' }),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="👥" focused={focused} badge={approvalCount} />,
         }}
       />
       <Tab.Screen

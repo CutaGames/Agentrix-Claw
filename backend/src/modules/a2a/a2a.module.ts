@@ -12,6 +12,7 @@ import { AgentReputation } from '../../entities/agent-reputation.entity';
 import { AP2MandateEntity } from '../../entities/ap2-mandate.entity';
 import { A2AService } from './a2a.service';
 import { A2AController } from './a2a.controller';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { A2AController } from './a2a.controller';
       AgentReputation,
       AP2MandateEntity,
     ]),
+    forwardRef(() => NotificationModule),
   ],
   controllers: [A2AController],
   providers: [A2AService],
