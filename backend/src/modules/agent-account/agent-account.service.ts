@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as crypto from 'crypto';
 import { AgentAccount, AgentAccountStatus, AgentType, AgentRiskLevel } from '../../entities/agent-account.entity';
 import { Account, AccountOwnerType, AccountWalletType, AccountChainType, AccountStatus } from '../../entities/account.entity';
 
@@ -429,5 +430,30 @@ export class AgentAccountService {
     await this.agentAccountRepository.save(agent);
 
     return savedAccount;
+  }
+
+  /**
+   * 生成 API Key
+   * 生成 ak_ 前缀的 API Key，哈希存储，只返回完整 key 一次
+   */
+  async generateApiKey(id: string): Promise<{ apiKey: string; prefix: string }> {
+    const agent = await this.findById(id);
+
+    // 生成随机 key: ak_<32位随机十六进制>
+    const rawSecret = crypto.randomBytes(32).toString('hex');
+    const apiKey = `ak_${rawSecret}`;
+
+    // 取前缀（前10个字符用于展示）
+    const prefix = `ak_${rawSecret.slice(0, 6)}`;
+
+    // SHA-256 哈希存储
+    const hash = crypto.createHash('sha256').update(apiKey).digest('hex');
+
+    agent.apiSecretHash = hash;
+    agent.apiKeyPrefix = prefix;
+    await this.agentAccountRepository.save(agent);
+
+    // 返回完整 key（仅此一次）
+    return { apiKey, prefix };
   }
 }

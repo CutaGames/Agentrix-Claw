@@ -48,7 +48,7 @@ export class OpenClawInstance {
   @Column({ nullable: true })
   cloudInstanceId?: string;
 
-  @Column({ length: 100, nullable: true })
+  @Column({ type: 'text', nullable: true })
   personality?: string;
 
   @Column({ default: false })

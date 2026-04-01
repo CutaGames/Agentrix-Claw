@@ -233,4 +233,18 @@ export class AgentAccountController {
       message: '钱包关联成功',
     };
   }
+
+  @Post(':id/api-key')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '生成 Agent API Key' })
+  @ApiParam({ name: 'id', description: 'Agent 账户 ID' })
+  @ApiResponse({ status: 200, description: '返回 API Key（仅显示一次）' })
+  async generateApiKey(@Param('id') id: string) {
+    const result = await this.agentAccountService.generateApiKey(id);
+    return {
+      success: true,
+      data: result,
+      message: '请立即保存此 API Key，关闭后将无法再次查看。',
+    };
+  }
 }
