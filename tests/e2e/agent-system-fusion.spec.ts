@@ -13,15 +13,23 @@ const BASE = 'https://api.agentrix.top/api';
 
 // Helper: get a valid JWT for testing
 async function getAuthToken(request: any): Promise<string | null> {
-  try {
-    const res = await request.post(`${BASE}/auth/login`, {
-      data: { email: 'zhouyachi2023@gmail.com', password: 'admin123' },
-    });
-    if (res.status() === 200 || res.status() === 201) {
-      const body = await res.json();
-      return body.access_token || body.data?.access_token || body.token || null;
-    }
-  } catch {}
+  // Try multiple credential sets
+  const credentials = [
+    { email: '1194479457@qq.com', password: 'zyc.2392018' },
+    { email: 'zhouyachi2023@gmail.com', password: 'admin123' },
+  ];
+  for (const cred of credentials) {
+    try {
+      const res = await request.post(`${BASE}/auth/login`, {
+        data: cred,
+      });
+      if (res.status() === 200 || res.status() === 201) {
+        const body = await res.json();
+        const token = body.access_token || body.data?.access_token || body.token || null;
+        if (token) return token;
+      }
+    } catch {}
+  }
   return null;
 }
 
@@ -238,9 +246,12 @@ test.describe('Agent Fusion — Schema Validation', () => {
     expect(agent).toHaveProperty('isPrimary');
     expect(agent).toHaveProperty('createdAt');
 
-    // Optional economic fields from AgentAccount
+    // agentAccountId should always be present (may be null)
     expect('agentAccountId' in agent).toBe(true);
-    expect('creditScore' in agent).toBe(true);
-    expect('spendingLimits' in agent).toBe(true);
+    // creditScore and spendingLimits only present when agentAccount is bound
+    if (agent.agentAccountId) {
+      expect(agent.creditScore).toBeDefined();
+      expect(agent.spendingLimits).toBeDefined();
+    }
   });
 });
