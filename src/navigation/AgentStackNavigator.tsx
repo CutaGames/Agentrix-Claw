@@ -62,6 +62,7 @@ import { VoiceChatScreen } from '../screens/agent/VoiceChatScreen';
 import { TeamSpaceScreen } from '../screens/agent/TeamSpaceScreen';
 import { TeamInviteScreen } from '../screens/agent/TeamInviteScreen';
 import { AgentAccountScreen } from '../screens/agent/AgentAccountScreen';
+import { AgentBalanceScreen } from '../screens/agent/AgentBalanceScreen';
 import { AgentPermissionsScreen } from '../screens/agent/AgentPermissionsScreen';
 import { AgentToolsScreen } from '../screens/agent/AgentToolsScreen';
 import { WearableHubScreen } from '../screens/agent/WearableHubScreen';
@@ -119,6 +120,7 @@ export function AgentStackNavigator() {
       <Stack.Screen name="TeamSpace" component={TeamSpaceScreen} options={{ title: t({ en: 'Team Spaces', zh: '团队空间' }), headerShown: false }} />
       <Stack.Screen name="TeamInvite" component={TeamInviteScreen} options={{ title: t({ en: 'Invite Members', zh: '邀请成员' }), headerShown: false }} />
       <Stack.Screen name="AgentAccount" component={AgentAccountScreen} options={{ title: t({ en: 'Agent Accounts', zh: '智能体账户' }) }} />
+      <Stack.Screen name="AgentBalance" component={AgentBalanceScreen} options={{ title: t({ en: 'Balance & Transactions', zh: '余额与交易' }) }} />
       <Stack.Screen name="AgentPermissions" component={AgentPermissionsScreen} options={{ title: t({ en: 'Permissions & Security', zh: '权限与安全' }) }} />
       <Stack.Screen name="AgentTools" component={AgentToolsScreen} options={{ title: t({ en: 'Agent Tools', zh: '系统工具' }) }} />
       <Stack.Screen name="AgentSpace" component={AgentSpaceScreen} options={{ title: t({ en: 'Agent Space', zh: 'Agent 协作空间' }) }} />

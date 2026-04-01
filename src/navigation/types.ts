@@ -32,6 +32,7 @@ export type AgentStackParamList = {
   WorkflowList: undefined;
   WorkflowDetail: { workflowId?: string };
   AgentAccount: undefined;
+  AgentBalance: { agentAccountId: string; agentName: string };
   AgentPermissions: { agentAccountId?: string } | undefined;
   AgentTools: { instanceId?: string };
   // Agent Space (collaboration rooms)
@@ -137,6 +138,8 @@ export type TeamStackParamList = {
   TeamSpace: undefined;
   TeamInvite: { workspaceId: string; workspaceName: string };
   TeamAgentAccounts: undefined;
+  TaskBoard: undefined;
+  TaskDetail: { taskId: string };
 };
 
 export type MainTabParamList = {

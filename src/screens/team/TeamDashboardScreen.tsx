@@ -684,6 +684,12 @@ export function TeamDashboardScreen({ navigation }: Props) {
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity
             style={styles.headerBtn}
+            onPress={() => navigation.navigate('TaskBoard')}
+          >
+            <Text style={styles.headerBtnText}>📋 {t({ en: 'Tasks', zh: '任务' })}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerBtn}
             onPress={() => navigation.navigate('TeamAgentAccounts')}
           >
             <Text style={styles.headerBtnText}>🤖 {t({ en: 'Accounts', zh: '账户' })}</Text>
@@ -773,6 +779,21 @@ export function TeamDashboardScreen({ navigation }: Props) {
             ))}
           </>
         )}
+
+        {/* ═══ Quick Access: Task Board ═══ */}
+        <TouchableOpacity
+          style={styles.taskBoardBanner}
+          onPress={() => navigation.navigate('TaskBoard')}
+          activeOpacity={0.7}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.taskBoardTitle}>📋 {t({ en: 'Task Board', zh: '任务看板' })}</Text>
+            <Text style={styles.taskBoardSub}>
+              {t({ en: 'Create tasks, browse marketplace, track progress', zh: '创建任务、浏览市场、跟踪进度' })}
+            </Text>
+          </View>
+          <Text style={styles.taskBoardArrow}>→</Text>
+        </TouchableOpacity>
 
         {/* ═══ Approvals section ═══ */}
         <View style={[styles.sectionHeader, { marginTop: 8 }]}>
@@ -1026,6 +1047,22 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   createAgentBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  // Task Board banner
+  taskBoardBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: colors.accent + '11',
+    borderWidth: 1,
+    borderColor: colors.accent + '33',
+    gap: 10,
+  },
+  taskBoardTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+  taskBoardSub: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  taskBoardArrow: { fontSize: 20, color: colors.accent, fontWeight: '700' },
 });
 
 const cards = StyleSheet.create({

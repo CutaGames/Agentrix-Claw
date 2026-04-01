@@ -5,6 +5,8 @@ import {
   TextInput, ScrollView, Platform, StatusBar, Clipboard,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import {
@@ -14,6 +16,7 @@ import {
   type CreateUnifiedAgentDto,
 } from '../../services/unifiedAgent';
 import { apiFetch } from '../../services/api';
+import type { AgentStackParamList } from '../../navigation/types';
 
 // ──────────────────────────────────────────────
 // Types
@@ -56,6 +59,35 @@ async function generateAgentApiKey(agentId: string): Promise<{ apiKey: string; p
     method: 'POST',
   });
   return res.data;
+}
+
+// Balance API
+interface AgentBalance {
+  platformBalance: { amount: string; currency: string };
+  onchainBalance?: { amount: string; currency: string; chain: string };
+}
+
+async function fetchAgentBalance(agentAccountId: string): Promise<AgentBalance> {
+  const res = await apiFetch<AgentBalance>(`/agent-accounts/${agentAccountId}/balance`);
+  return res;
+}
+
+// On-chain status API
+interface OnchainStatus {
+  registered: boolean;
+  chain?: string;
+  contractAddress?: string;
+  attestationUid?: string;
+  status?: 'pending' | 'confirmed' | 'failed';
+}
+
+async function fetchOnchainStatus(agentAccountId: string): Promise<OnchainStatus> {
+  const res = await apiFetch<OnchainStatus>(`/agent-accounts/${agentAccountId}/onchain-status`);
+  return res;
+}
+
+async function registerOnchain(agentAccountId: string): Promise<any> {
+  return apiFetch(`/agent-accounts/${agentAccountId}/onchain-register`, { method: 'POST' });
 }
 
 // ──────────────────────────────────────────────
@@ -211,15 +243,161 @@ const STATUS_COLOR: Record<string, string> = {
   disconnected: '#6b7280',
 };
 
+// ──────────────────────────────────────────────
+// Balance Badge (inline in agent card)
+// ──────────────────────────────────────────────
+function BalanceBadge({ agentAccountId, t: _t }: { agentAccountId?: string; t: ReturnType<typeof useI18n>['t'] }) {
+  const { data: balance } = useQuery({
+    queryKey: ['agent-balance', agentAccountId],
+    queryFn: () => fetchAgentBalance(agentAccountId!),
+    enabled: !!agentAccountId,
+    retry: false,
+    staleTime: 30_000,
+  });
+  if (!balance) return null;
+  const amt = parseFloat(balance.platformBalance.amount || '0');
+  const chainAmt = balance.onchainBalance ? parseFloat(balance.onchainBalance.amount || '0') : 0;
+  return (
+    <View style={balBadge.row}>
+      <View style={balBadge.chip}>
+        <Text style={balBadge.label}>{_t({ en: 'Platform', zh: '平台' })}</Text>
+        <Text style={balBadge.value}>${amt.toFixed(2)}</Text>
+      </View>
+      {chainAmt > 0 && (
+        <View style={[balBadge.chip, balBadge.chipChain]}>
+          <Text style={[balBadge.label, { color: '#a78bfa' }]}>{_t({ en: 'On-chain', zh: '链上' })}</Text>
+          <Text style={[balBadge.value, { color: '#a78bfa' }]}>${chainAmt.toFixed(2)}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+const balBadge = StyleSheet.create({
+  row: { flexDirection: 'row', gap: 6 },
+  chip: {
+    flex: 1,
+    backgroundColor: '#22c55e18',
+    borderRadius: 10,
+    padding: 8,
+    alignItems: 'center',
+    gap: 2,
+    borderWidth: 1,
+    borderColor: '#22c55e33',
+  },
+  chipChain: {
+    backgroundColor: '#a78bfa18',
+    borderColor: '#a78bfa33',
+  },
+  label: { fontSize: 10, color: '#22c55e', fontWeight: '600' },
+  value: { fontSize: 14, color: '#22c55e', fontWeight: '800' },
+});
+
+// ──────────────────────────────────────────────
+// Chain Identity Badge
+// ──────────────────────────────────────────────
+function ChainIdentityBadge({ agentAccountId, t: _t }: { agentAccountId?: string; t: ReturnType<typeof useI18n>['t'] }) {
+  const queryClient = useQueryClient();
+  const { data: onchain } = useQuery({
+    queryKey: ['onchain-status', agentAccountId],
+    queryFn: () => fetchOnchainStatus(agentAccountId!),
+    enabled: !!agentAccountId,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleRegister = async () => {
+    if (!agentAccountId) return;
+    Alert.alert(
+      _t({ en: 'Register On-Chain Identity', zh: '注册链上身份' }),
+      _t({ en: 'This will create an on-chain attestation for this agent. Gas fees are subsidized.', zh: '这将为该智能体创建链上身份证明，Gas费由平台补贴。' }),
+      [
+        { text: _t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+        {
+          text: _t({ en: 'Register', zh: '注册' }),
+          onPress: async () => {
+            setLoading(true);
+            try {
+              await registerOnchain(agentAccountId);
+              queryClient.invalidateQueries({ queryKey: ['onchain-status', agentAccountId] });
+              Alert.alert('✅', _t({ en: 'On-chain registration submitted!', zh: '链上注册已提交！' }));
+            } catch (err: any) {
+              Alert.alert(_t({ en: 'Error', zh: '错误' }), err?.message || _t({ en: 'Registration failed.', zh: '注册失败。' }));
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  if (!onchain) return null;
+  if (onchain.registered) {
+    return (
+      <View style={chainBadge.confirmed}>
+        <Text style={chainBadge.confirmedIcon}>⛓️</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={chainBadge.confirmedText}>{_t({ en: 'On-Chain Identity', zh: '链上身份' })}</Text>
+          <Text style={chainBadge.chainName}>{onchain.chain || 'BSC Testnet'}</Text>
+        </View>
+        <Text style={chainBadge.confirmedStatus}>{_t({ en: 'Verified', zh: '已认证' })}</Text>
+      </View>
+    );
+  }
+  return (
+    <TouchableOpacity style={chainBadge.register} onPress={handleRegister} disabled={loading}>
+      {loading ? (
+        <ActivityIndicator color="#a78bfa" size="small" />
+      ) : (
+        <>
+          <Text style={chainBadge.registerIcon}>⛓️</Text>
+          <Text style={chainBadge.registerText}>{_t({ en: 'Register On-Chain Identity', zh: '注册链上身份' })}</Text>
+        </>
+      )}
+    </TouchableOpacity>
+  );
+}
+const chainBadge = StyleSheet.create({
+  confirmed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#a78bfa15',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#a78bfa33',
+  },
+  confirmedIcon: { fontSize: 16 },
+  confirmedText: { fontSize: 12, color: '#a78bfa', fontWeight: '700' },
+  chainName: { fontSize: 10, color: colors.textMuted, marginTop: 1 },
+  confirmedStatus: { fontSize: 11, color: '#22c55e', fontWeight: '700' },
+  register: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#a78bfa44',
+    paddingVertical: 9,
+    backgroundColor: '#a78bfa11',
+  },
+  registerIcon: { fontSize: 14 },
+  registerText: { fontSize: 13, color: '#a78bfa', fontWeight: '600' },
+});
+
 export function AgentAccountScreen() {
   const { t } = useI18n();
+  const navigation = useNavigation<NativeStackNavigationProp<AgentStackParamList>>();
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [walletLoading, setWalletLoading] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [apiKeyLoading, setApiKeyLoading] = useState<string | null>(null);
   // { [agentId]: { key?: string (full, shown once); prefix?: string } }
-  const [apiKeys, setApiKeys] = useState<Record<string, { key?: string; prefix?: string }>>({});
+  const [apiKeys, setApiKeys] = useState<Record<string, { key?: string; prefix?: string }>({});
 
   const { data: agents = [], isLoading, refetch } = useQuery({
     queryKey: ['agent-accounts'],
@@ -411,10 +589,41 @@ export function AgentAccountScreen() {
         </View>
       )}
 
-      {/* Wallet — temporarily hidden pending unified wallet API */}
-      {/* 
-      {(agent as any).walletAddress ? (...) : (...)}
-      */}
+      {/* Wallet address display */}
+      {(agent as any).walletAddress ? (
+        <TouchableOpacity
+          style={styles.walletRowActive}
+          onPress={() => {
+            Clipboard.setString((agent as any).walletAddress);
+            Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'Wallet address copied.', zh: '钱包地址已复制。' }));
+          }}
+        >
+          <Text style={styles.walletIcon}>🔐</Text>
+          <Text style={styles.walletAddress} numberOfLines={1}>{(agent as any).walletAddress}</Text>
+          <Text style={{ fontSize: 11, color: colors.textMuted }}>📋</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={styles.openWalletBtn}
+          onPress={() => handleOpenWallet(agent)}
+          disabled={walletLoading === agent.id}
+        >
+          {walletLoading === agent.id ? (
+            <ActivityIndicator color={colors.accent} size="small" />
+          ) : (
+            <>
+              <Text style={styles.openWalletIcon}>🔐</Text>
+              <Text style={styles.openWalletText}>{t({ en: 'Open Wallet', zh: '打开独立钱包' })}</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
+
+      {/* Balance display */}
+      <BalanceBadge agentAccountId={agent.agentAccountId} t={t} />
+
+      {/* Chain Identity */}
+      <ChainIdentityBadge agentAccountId={agent.agentAccountId} t={t} />
 
       {/* Actions row */}
       <View style={styles.actionsRow}>
@@ -444,9 +653,7 @@ export function AgentAccountScreen() {
         )}
         <TouchableOpacity
           style={styles.actionBtn}
-          onPress={() =>
-            Alert.alert(t({ en: 'Transactions', zh: '交易记录' }), t({ en: `Transaction history for ${agent.name} will open in the Orders tab.`, zh: `${agent.name} 的交易记录会在订单页中打开。` }))
-          }
+          onPress={() => navigation.navigate('AgentBalance' as any, { agentAccountId: agent.agentAccountId, agentName: agent.name })}
         >
           <Text style={styles.actionBtnText}>📋 {t({ en: 'Txs', zh: '交易' })}</Text>
         </TouchableOpacity>
