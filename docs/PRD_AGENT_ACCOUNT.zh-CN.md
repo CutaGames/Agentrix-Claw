@@ -1425,6 +1425,444 @@ CREATE INDEX idx_subscriptions_user ON agent_subscriptions(subscriber_user_id);
 
 ---
 
+## Phase 4 详细功能规范：链上化
+
+### P4-F1: EAS 链上身份注册
+
+#### 产品目标
+将 Agent 身份写入以太坊链上（通过 EAS — Ethereum Attestation Service），实现跨平台可验证的去中心化 Agent 身份。
+
+#### 现有基础
+- `backend/src/modules/agent/eas.service.ts` — 完整实现，支持 4 种 Schema（AGENT_REGISTRATION / SKILL_PUBLICATION / AUDIT_ROOT / TRANSACTION）
+- `@ethereum-attestation-service/eas-sdk` + `ethers` 已安装
+- `.env` 已有 `AttestationRegistry: 0x6BfDDeB...`
+- Agent Account 实体已有 `easAttestationUid`、`onchainRegistrationTxHash`、`registrationChain` 字段
+
+#### 差距与实施计划
+
+**Step 1: 环境配置**
+```bash
+# 需要在 .env 中添加:
+EAS_SIGNER_PRIVATE_KEY=0x...         # 链上签名私钥（建议使用独立 hot wallet）
+EAS_CONTRACT_ADDRESS=0x4200000000000000000000000000000000000021  # Base Mainnet EAS
+EAS_SCHEMA_REGISTRY=0x4200000000000000000000000000000000000020  # Base Schema Registry
+```
+
+**Step 2: Schema 注册**
+```solidity
+// Agent Registration Schema (需先在 EAS Schema Registry 注册)
+bytes32 constant AGENT_SCHEMA = bytes32("string agentUniqueId, address ownerAddress, uint8 agentType, bytes publicKey, string[] capabilities, uint64 createdAt");
+```
+
+**Step 3: 注册流程**
+```
+用户创建 Agent
+ → Agent 状态 = active
+ → 用户点击 "链上注册"
+ → 调用 POST /api/agent-accounts/:id/onchain-register
+ → EasService.attestAgentRegistration()
+ → 链上交易确认
+ → 回写 easAttestationUid + onchainRegistrationTxHash
+ → Agent 获得 "链上认证" 徽章
+```
+
+#### API 设计
+
+```
+POST /api/agent-accounts/:id/onchain-register
+Body: {
+  chain: "base"  // 默认 Base L2，可选 ethereum/arbitrum
+}
+Response: {
+  success: true,
+  data: {
+    txHash: "0xabc...",
+    attestationUid: "0xdef...",
+    chain: "base",
+    explorerUrl: "https://basescan.org/tx/0xabc...",
+    gasUsed: "0.0003 ETH"
+  }
+}
+
+GET /api/agent-accounts/:id/attestation
+Response: {
+  registered: true,
+  attestationUid: "0xdef...",
+  chain: "base",
+  registeredAt: "2026-10-01T10:00:00Z",
+  txHash: "0xabc...",
+  explorerUrl: "https://basescan.org/tx/0xabc...",
+  schemaId: "0x...",
+  verifiable: true  // 第三方可验证
+}
+```
+
+#### 前端组件
+
+| 组件 | 位置 | 说明 |
+|-----|------|------|
+| `OnchainBadge` | AgentAccountScreen | 链上认证徽章（蓝色 ✓） |
+| `OnchainRegisterModal` | AgentAccountScreen | 注册确认弹窗（显示预估 gas 费） |
+| `AttestationDetail` | AgentProfileScreen | 链上存证详情（含 explorer 链接） |
+
+#### 安全要求
+- 签名私钥不得硬编码，使用 AWS KMS 或 .env 存储
+- 链上注册为不可逆操作，需用户二次确认
+- Gas 费从平台 relayer 账户支付，不向用户收费（初期推广）
+
+#### 验收标准
+1. Agent 注册后 ≤ 30s 内链上确认
+2. 第三方可通过 EAS SDK 验证 Agent 身份
+3. Agent 详情页展示链上认证徽章
+4. 已注册 Agent 不可重复注册（幂等性）
+
+---
+
+### P4-F2: MPC 钱包深度集成
+
+#### 产品目标
+将 MPC 钱包从"可选附件"升级为 Agent 经济体的核心基础设施，支持自主收付款。
+
+#### 现有基础
+- `backend/src/modules/mpc-wallet/` — Shamir Secret Sharing (3 分片, 2 恢复)
+- `mpc_wallets` 表含 walletAddress/chain/currency/encryptedShardB
+- Agent Account 实体有 `mpcWalletId` 字段
+- `create_wallet` 工具已注册到 SkillExecutor
+
+#### 差距与实施计划
+
+**Step 1: Agent 创建时自动挂载 MPC 钱包**
+```typescript
+// agent-account.service.ts — create() 中:
+const savedAgent = await this.agentAccountRepository.save(agentAccount);
+
+// 自动创建 MPC 钱包
+const wallet = await this.mpcWalletService.createWallet({
+  userId: dto.ownerId,
+  chain: 'base',
+  currency: 'USDC',
+});
+savedAgent.mpcWalletId = wallet.id;
+await this.agentAccountRepository.save(savedAgent);
+```
+
+**Step 2: 余额查询统一接口**
+```
+GET /api/agent-accounts/:id/balance
+Response: {
+  platformBalance: { amount: "128.50", currency: "CNY" },
+  mpcWalletBalance: {
+    address: "0xabc...",
+    chain: "base",
+    balances: [
+      { token: "ETH", amount: "0.05", usdValue: "125.00" },
+      { token: "USDC", amount: "50.00", usdValue: "50.00" }
+    ]
+  },
+  externalWalletBalance: null,  // 如有关联
+  totalUsdValue: "303.50"
+}
+```
+
+**Step 3: Agent 自主签名能力**
+```typescript
+// Agent 可通过 A2A 协议自主执行链上交易（需 mandate 授权）
+async executeOnchainPayment(agentId: string, to: string, amount: string, token: string): Promise<string> {
+  const agent = await this.findById(agentId);
+  const mandate = await this.checkMandate(agentId, amount); // 检查授权额度
+  const wallet = await this.mpcWalletService.getWallet(agent.mpcWalletId);
+  
+  // 2-of-3 分片签名
+  const tx = await this.mpcSignerService.signAndSend({
+    from: wallet.walletAddress,
+    to,
+    value: amount,
+    token,
+    chain: wallet.chain,
+  });
+  
+  return tx.hash;
+}
+```
+
+**Step 4: 社交恢复**
+```
+分片分布:
+  Shard A: 用户设备（本地存储）
+  Shard B: 平台服务端（加密存储）
+  Shard C: 社交恢复（信任的联系人/邮箱+短信验证）
+
+恢复流程:
+  1. 用户丢失 Shard A → 使用 Shard B + C 恢复
+  2. 验证身份 (邮箱+短信+安全问题)
+  3. 重新生成 Shard A → 存入新设备
+  4. 旧 Shard A 自动失效
+```
+
+#### 验收标准
+1. 新创建的 Agent 自动关联 MPC 钱包
+2. 余额查询 API 返回平台 + 链上统一视图
+3. Agent 可通过 mandate 授权自主执行 ≤ 限额的链上交易
+4. 钱包丢失可通过社交恢复流程找回
+
+---
+
+### P4-F3: 链上支付结算（X402 完整实现）
+
+#### 产品目标
+将 X402 协议从"Skill 支付"扩展到"Agent 经济体全链路支付"，实现 Agent 间的链上自动结算。
+
+#### 现有基础
+- `backend/src/modules/x402/` — X402 服务发现（`/.well-known/x402`）
+- `backend/src/modules/payment/x402.service.ts` — X402 支付会话创建
+- `backend/src/common/guards/x402.guard.ts` — HTTP 402 Guard
+- X402 Adapter Address 已配置
+- BudgetPool + CommissionV2 合约已部署
+
+#### 扩展实施计划
+
+**Step 1: A2A 任务 X402 结算**
+```
+A2A 任务完成 → 
+  requester Agent 的 MPC 钱包 →
+  签名 USDC transfer →  
+  BudgetPool 合约 escrow release →
+  target Agent 的 MPC 钱包 →
+  平台抽佣通过 CommissionV2 合约自动分成
+```
+
+**Step 2: Skill 调用 X402 微支付**
+```
+Agent A 调用 Agent B 的 Skill:
+  1. Agent A 发送 HTTP 请求 → Agent B 的 Skill 端点
+  2. Agent B 返回 HTTP 402 + WWW-Authenticate: X402
+     headers: { price: "0.001 USDC", payTo: "0xAgentB...", facilitator: "0xPlatform..." }
+  3. Agent A 的 MPC 钱包签名支付
+  4. Agent A 重发请求 + X-PAYMENT header
+  5. X402 Guard 验证支付签名 → 放行
+  6. Skill 执行 → 结果返回
+```
+
+**Step 3: 佣金分成链上化**
+```typescript
+// CommissionV2 合约自动分成
+const splitConfig = {
+  payee: targetAgentWallet,      // 执行方: 90%
+  platform: platformWallet,      // 平台: 5%
+  referrer: referrerWallet,      // 推荐人: 3%
+  foundation: foundationWallet,  // 基金会: 2%
+};
+await this.blockchainService.executeSplit(splitConfig, amount);
+```
+
+#### API 设计
+
+```
+// Agent X402 支付配置
+GET /api/agent-accounts/:id/x402-config
+Response: {
+  enabled: true,
+  paymentAddress: "0xabc...",
+  supportedTokens: ["USDC", "ETH"],
+  supportedChains: ["base", "ethereum"],
+  facilitatorAddress: "0xPlatform...",
+  wellKnownUrl: "https://agentrix.top/.well-known/x402"
+}
+
+// Agent 主动发起 X402 支付
+POST /api/agent-accounts/:id/x402-pay
+Body: {
+  targetUrl: "https://agentrix.top/api/skills/xxx",
+  maxAmount: "0.01",
+  currency: "USDC"
+}
+Response: {
+  paymentId: "pay-xxx",
+  txHash: "0x...",
+  amount: "0.005",
+  status: "confirmed",
+  result: { ... }  // Skill 执行结果
+}
+```
+
+#### 验收标准
+1. A2A 任务结算全流程链上可追溯
+2. Skill 调用 X402 微支付 ≤ 3s 完成（链下验证 + 异步上链）
+3. 佣金分成通过 CommissionV2 合约自动执行
+4. 支付失败自动重试 + 退款
+
+---
+
+### P4-F4: Agent NFT（可选，实验性）
+
+#### 产品目标
+将高信用 Agent 铸造为 NFT，实现 Agent 所有权的可转移性和市场化交易。
+
+#### 功能描述
+
+**Agent NFT 铸造条件**
+```
+必须满足全部条件:
+1. 信用评分 ≥ 800（黄金等级）
+2. 完成任务 ≥ 50 个
+3. 用户评价 ≥ 4.0/5.0
+4. 账户活跃 ≥ 90 天
+5. 已完成 EAS 链上注册
+```
+
+**NFT 元数据**
+```json
+{
+  "name": "Agentrix Agent #42 — Growth Agent",
+  "description": "AI Agent 经济体中的增长专家",
+  "image": "ipfs://Qm.../agent-42.png",
+  "attributes": [
+    { "trait_type": "Credit Score", "value": 850 },
+    { "trait_type": "Agent Type", "value": "personal" },
+    { "trait_type": "Credit Level", "value": "Gold" },
+    { "trait_type": "Completed Tasks", "value": 156 },
+    { "trait_type": "Rating", "value": 4.8 },
+    { "trait_type": "Capabilities", "value": ["growth", "analytics", "seo"] },
+    { "trait_type": "EAS UID", "value": "0xdef..." }
+  ],
+  "external_url": "https://agentrix.top/agents/growth-agent"
+}
+```
+
+**所有权转移**
+```
+NFT 持有者 = Agent 控制者
+  → 转移 NFT = 转移 Agent 所有权
+  → 新持有者自动获得:
+     - Agent 的信用历史（不可篡改，链上记录）
+     - Agent 的 MPC 钱包访问权限（密钥分片重新分配）
+     - Agent 的所有配置和能力
+  → 转移后:
+     - 旧持有者失去 API Key 访问权限
+     - spendingLimits 重置为默认值
+     - 72h 冷静期（期间可撤销转移）
+```
+
+#### API 设计
+
+```
+// 检查铸造资格
+GET /api/agent-accounts/:id/nft/eligibility
+Response: {
+  eligible: true,
+  criteria: {
+    creditScore: { required: 800, actual: 850, met: true },
+    completedTasks: { required: 50, actual: 156, met: true },
+    rating: { required: 4.0, actual: 4.8, met: true },
+    activeDays: { required: 90, actual: 120, met: true },
+    easRegistered: { required: true, actual: true, met: true }
+  },
+  estimatedGas: "0.002 ETH"
+}
+
+// 铸造 NFT
+POST /api/agent-accounts/:id/nft/mint
+Body: { chain: "base" }
+Response: {
+  tokenId: 42,
+  contractAddress: "0xAgentNFT...",
+  txHash: "0x...",
+  tokenUri: "ipfs://Qm.../42.json",
+  opensea: "https://opensea.io/assets/base/0xAgentNFT.../42"
+}
+
+// 查看 NFT 状态
+GET /api/agent-accounts/:id/nft
+Response: {
+  minted: true,
+  tokenId: 42,
+  owner: "0xCurrentOwner...",
+  contractAddress: "0xAgentNFT...",
+  transferable: true,
+  listPrice: null  // 未挂售
+}
+```
+
+#### 智能合约（Solidity）
+
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract AgentNFT is ERC721URIStorage, Ownable {
+    uint256 private _nextTokenId;
+    
+    // agentId → tokenId mapping
+    mapping(bytes32 => uint256) public agentTokenId;
+    // tokenId → agentId mapping
+    mapping(uint256 => bytes32) public tokenAgent;
+    // Transfer cooldown
+    mapping(uint256 => uint256) public transferCooldownEnd;
+    
+    uint256 public constant COOLDOWN_PERIOD = 72 hours;
+    
+    event AgentMinted(bytes32 indexed agentId, uint256 indexed tokenId, address owner);
+    event AgentTransferred(uint256 indexed tokenId, address from, address to);
+    
+    constructor() ERC721("Agentrix Agent", "AGNT") Ownable(msg.sender) {}
+    
+    function mintAgent(
+        address to,
+        bytes32 agentId,
+        string memory tokenURI
+    ) external onlyOwner returns (uint256) {
+        require(agentTokenId[agentId] == 0, "Agent already minted");
+        
+        uint256 tokenId = ++_nextTokenId;
+        _safeMint(to, tokenId);
+        _setTokenURI(tokenId, tokenURI);
+        
+        agentTokenId[agentId] = tokenId;
+        tokenAgent[tokenId] = agentId;
+        
+        emit AgentMinted(agentId, tokenId, to);
+        return tokenId;
+    }
+    
+    function _update(
+        address to,
+        uint256 tokenId,
+        address auth
+    ) internal override returns (address) {
+        address from = super._update(to, tokenId, auth);
+        
+        if (from != address(0) && to != address(0)) {
+            // Transfer (not mint/burn)
+            transferCooldownEnd[tokenId] = block.timestamp + COOLDOWN_PERIOD;
+            emit AgentTransferred(tokenId, from, to);
+        }
+        
+        return from;
+    }
+}
+```
+
+#### 验收标准
+1. 满足条件的 Agent 可在 30s 内铸造 NFT
+2. NFT 元数据包含完整的 Agent 属性
+3. NFT 转移触发 72h 冷静期
+4. OpenSea/Rarible 可正确展示 Agent NFT
+
+---
+
+## Phase 4 验收标准（DoD）
+
+1. ≥ 3 个 Agent 完成链上 EAS 注册，第三方可验证
+2. 新 Agent 创建时自动挂载 MPC 钱包
+3. A2A 任务结算全流程链上可追溯（escrow → release → 分佣）
+4. X402 微支付 Skill 调用 ≤ 3s 端到端
+5. Agent NFT 铸造流程完整（可选，视市场需求决定是否上线）
+
+---
+
 ## 7. 安全要求
 
 | 威胁 | 缓解措施 |

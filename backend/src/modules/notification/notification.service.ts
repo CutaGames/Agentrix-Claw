@@ -28,11 +28,12 @@ export class NotificationService {
     type?: string,
     limit: number = 50,
   ) {
+    const effectiveLimit = Number(limit) || 50;
     const query = this.notificationRepository
       .createQueryBuilder('notification')
       .where('notification.userId = :userId', { userId })
       .orderBy('notification.createdAt', 'DESC')
-      .limit(limit);
+      .limit(effectiveLimit);
 
     if (read !== undefined) {
       query.andWhere('notification.read = :read', { read });
