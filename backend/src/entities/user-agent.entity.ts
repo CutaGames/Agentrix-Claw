@@ -36,6 +36,12 @@ export interface MemoryConfig {
   autoPromote: boolean;              // 是否自动将高重要性 session 记忆提升为 agent 级
 }
 
+/**
+ * @deprecated Use OpenClawInstance + AgentAccount instead.
+ * Retained for backward compatibility. No new records should be created.
+ * Fields like channelBindings, delegationLevel, memoryConfig have been
+ * migrated to openclaw_instances table.
+ */
 @Entity('user_agents')
 export class UserAgent {
   @PrimaryGeneratedColumn('uuid')

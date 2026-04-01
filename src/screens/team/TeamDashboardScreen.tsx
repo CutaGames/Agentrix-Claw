@@ -1,8 +1,8 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   RefreshControl, ActivityIndicator, Alert, ScrollView,
-  Platform, StatusBar,
+  Platform, StatusBar, Linking,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -11,7 +11,8 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { apiFetch } from '../../services/api';
-import { fetchAgentPresenceAccounts, type MobileAgentAccount } from '../../services/agentPresenceAccount';
+import { fetchUnifiedAgents, type UnifiedAgent } from '../../services/unifiedAgent';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ──────────────────────────────────────────────
 // Types
@@ -26,6 +27,40 @@ export interface ApprovalItem {
   requestedAt: string;
   agentName?: string;
   data?: Record<string, any>;
+}
+
+// Team API types
+interface TeamAgent {
+  id: string;
+  codename: string;
+  name: string;
+  agentUniqueId: string;
+  status: string;
+  creditScore: number;
+  modelTier?: string;
+}
+
+interface MyTeam {
+  templateSlug: string;
+  templateName: string;
+  agents: TeamAgent[];
+}
+
+interface TeamTemplate {
+  slug: string;
+  name: string;
+  description: string;
+  teamSize: number;
+  usageCount: number;
+  visibility: string;
+  tags: string[];
+  roles: Array<{
+    codename: string;
+    name: string;
+    description: string;
+    modelTier: string;
+    approvalLevel: string;
+  }>;
 }
 
 // ──────────────────────────────────────────────
@@ -58,6 +93,41 @@ async function approveNotification(id: string): Promise<void> {
 async function rejectNotification(id: string): Promise<void> {
   await apiFetch(`/notifications/${id}/reject`, { method: 'POST' });
 }
+
+// ──────────────────────────────────────────────
+// Team API helpers
+// ──────────────────────────────────────────────
+
+async function fetchMyTeams(): Promise<MyTeam[]> {
+  try {
+    const res = await apiFetch<any>('/agent-teams/my-teams');
+    return Array.isArray(res) ? res : (res?.data ?? []);
+  } catch {
+    return [];
+  }
+}
+
+async function fetchTeamTemplates(): Promise<TeamTemplate[]> {
+  try {
+    const res = await apiFetch<any>('/agent-teams/templates');
+    return Array.isArray(res) ? res : (res?.data ?? []);
+  } catch {
+    return [];
+  }
+}
+
+async function provisionTeam(templateSlug: string, prefix: string): Promise<any> {
+  return apiFetch('/agent-teams/provision', {
+    method: 'POST',
+    body: JSON.stringify({ templateSlug, teamNamePrefix: prefix }),
+  });
+}
+
+async function disbandTeam(templateSlug: string): Promise<any> {
+  return apiFetch(`/agent-teams/my-teams/${templateSlug}`, { method: 'DELETE' });
+}
+
+const ONBOARDING_KEY = 'team_onboarding_dismissed';
 
 // ──────────────────────────────────────────────
 // Risk level badge
@@ -168,7 +238,7 @@ const STATUS_COLOR: Record<string, string> = {
   disconnected: '#6b7280',
 };
 
-function AgentProgressCard({ agent, t, onPress }: { agent: MobileAgentAccount; t: (p: { en: string; zh: string }) => string; onPress?: () => void }) {
+function AgentProgressCard({ agent, t, onPress }: { agent: UnifiedAgent; t: (p: { en: string; zh: string }) => string; onPress?: () => void }) {
   const statusColor = STATUS_COLOR[agent.status] ?? '#6b7280';
   const score = agent.creditScore ?? 720;
   const scoreColor = score >= 800 ? '#22c55e' : score >= 500 ? '#3b82f6' : score >= 200 ? '#f59e0b' : '#ef4444';
@@ -219,6 +289,215 @@ function AgentProgressCard({ agent, t, onPress }: { agent: MobileAgentAccount; t
 }
 
 // ──────────────────────────────────────────────
+// Onboarding Guide (first-time user)
+// ──────────────────────────────────────────────
+
+const GUIDE_STEPS = [
+  { icon: '🤖', en: 'Create an agent team from a template — or build your own', zh: '从模板创建 Agent 团队，或自己定制' },
+  { icon: '💬', en: 'Talk to any agent via @codename in chat', zh: '在聊天中用 @codename 和任意 Agent 对话' },
+  { icon: '✅', en: 'Review and approve agent requests here', zh: '在这里审核 Agent 的操作请求' },
+  { icon: '⛓️', en: 'Optionally register agents on-chain for verifiable identity', zh: '可选：将 Agent 身份上链以获得可验证性' },
+];
+
+function OnboardingGuide({ t, onDismiss }: { t: (p: { en: string; zh: string }) => string; onDismiss: () => void }) {
+  return (
+    <View style={guide.container}>
+      <View style={guide.header}>
+        <Text style={guide.title}>👋 {t({ en: 'Welcome to Agent Team', zh: '欢迎来到 Agent 团队' })}</Text>
+        <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Text style={guide.dismiss}>✕</Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={guide.subtitle}>
+        {t({ en: 'Your AI team works 24/7. Here\'s how to get started:', zh: '你的 AI 团队全天候工作。快速入门：' })}
+      </Text>
+      {GUIDE_STEPS.map((step, i) => (
+        <View key={i} style={guide.step}>
+          <Text style={guide.stepIcon}>{step.icon}</Text>
+          <Text style={guide.stepText}>{t({ en: step.en, zh: step.zh })}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const guide = StyleSheet.create({
+  container: {
+    margin: 16, marginBottom: 8, backgroundColor: colors.accent + '11',
+    borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.accent + '33',
+  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  title: { fontSize: 16, fontWeight: '800', color: colors.textPrimary },
+  dismiss: { fontSize: 16, color: colors.textMuted, padding: 4 },
+  subtitle: { fontSize: 13, color: colors.textSecondary, marginBottom: 10, lineHeight: 18 },
+  step: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
+  stepIcon: { fontSize: 16, width: 24, textAlign: 'center' },
+  stepText: { fontSize: 13, color: colors.textPrimary, flex: 1, lineHeight: 18 },
+});
+
+// ──────────────────────────────────────────────
+// Team Agent Role Card (within a team group)
+// ──────────────────────────────────────────────
+
+const MODEL_TIER_BADGE: Record<string, { label: string; color: string }> = {
+  opus: { label: '💎 Opus', color: '#a855f7' },
+  sonnet: { label: '🔥 Sonnet', color: '#f97316' },
+  'haiku-3.5': { label: '⚡ Haiku', color: '#06b6d4' },
+  'gpt-4o-mini': { label: '🆓 Mini', color: '#22c55e' },
+};
+
+function TeamAgentRow({ agent, t }: { agent: TeamAgent; t: (p: { en: string; zh: string }) => string }) {
+  const tier = MODEL_TIER_BADGE[agent.modelTier ?? ''] ?? { label: agent.modelTier ?? '—', color: '#6b7280' };
+  const scoreColor = agent.creditScore >= 800 ? '#22c55e' : agent.creditScore >= 500 ? '#3b82f6' : '#f59e0b';
+  const statusColor = agent.status === 'active' ? '#22c55e' : agent.status === 'suspended' ? '#f59e0b' : '#ef4444';
+
+  return (
+    <View style={teamRow.container}>
+      <View style={teamRow.left}>
+        <Text style={teamRow.codename}>@{agent.codename}</Text>
+        <Text style={teamRow.name} numberOfLines={1}>{agent.name}</Text>
+      </View>
+      <View style={teamRow.right}>
+        <View style={[teamRow.tierBadge, { backgroundColor: tier.color + '18', borderColor: tier.color + '44' }]}>
+          <Text style={[teamRow.tierText, { color: tier.color }]}>{tier.label}</Text>
+        </View>
+        <Text style={[teamRow.score, { color: scoreColor }]}>{agent.creditScore}</Text>
+        <View style={[teamRow.statusDot, { backgroundColor: statusColor }]} />
+      </View>
+    </View>
+  );
+}
+
+const teamRow = StyleSheet.create({
+  container: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: colors.border },
+  left: { flex: 1, gap: 1 },
+  codename: { fontSize: 13, fontWeight: '700', color: colors.accent },
+  name: { fontSize: 11, color: colors.textMuted },
+  right: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tierBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1 },
+  tierText: { fontSize: 10, fontWeight: '600' },
+  score: { fontSize: 12, fontWeight: '700', width: 32, textAlign: 'right' },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+});
+
+// ──────────────────────────────────────────────
+// My Team Group Card (shows all agents in a team)
+// ──────────────────────────────────────────────
+
+function MyTeamGroupCard({ 
+  team, t, onDisband 
+}: { 
+  team: MyTeam; 
+  t: (p: { en: string; zh: string }) => string;
+  onDisband: () => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const activeCount = team.agents.filter(a => a.status === 'active').length;
+
+  return (
+    <View style={teamGroup.card}>
+      <TouchableOpacity style={teamGroup.header} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
+        <View style={{ flex: 1 }}>
+          <Text style={teamGroup.title}>{team.templateName}</Text>
+          <Text style={teamGroup.meta}>
+            {activeCount}/{team.agents.length} {t({ en: 'active', zh: '活跃' })} · {team.templateSlug}
+          </Text>
+        </View>
+        <Text style={teamGroup.arrow}>{expanded ? '▼' : '▶'}</Text>
+      </TouchableOpacity>
+
+      {expanded && (
+        <>
+          {team.agents.map(agent => (
+            <TeamAgentRow key={agent.id} agent={agent} t={t} />
+          ))}
+          <View style={teamGroup.actions}>
+            <TouchableOpacity style={teamGroup.actionBtn} onPress={onDisband}>
+              <Text style={teamGroup.actionText}>🗑 {t({ en: 'Disband', zh: '解散团队' })}</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+const teamGroup = StyleSheet.create({
+  card: {
+    backgroundColor: colors.bgCard, borderRadius: 16, padding: 14,
+    marginHorizontal: 16, marginBottom: 10, borderWidth: 1, borderColor: colors.border,
+  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  title: { fontSize: 15, fontWeight: '800', color: colors.textPrimary },
+  meta: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  arrow: { fontSize: 12, color: colors.textMuted },
+  actions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8, gap: 10 },
+  actionBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: '#ef444411', borderWidth: 1, borderColor: '#ef444433' },
+  actionText: { fontSize: 12, fontWeight: '600', color: '#ef4444' },
+});
+
+// ──────────────────────────────────────────────
+// Template Picker Card (for creating new team)
+// ──────────────────────────────────────────────
+
+function TemplatePickerCard({
+  template, t, onSelect, disabled,
+}: {
+  template: TeamTemplate;
+  t: (p: { en: string; zh: string }) => string;
+  onSelect: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <View style={tplCard.card}>
+      <View style={tplCard.header}>
+        <View style={{ flex: 1 }}>
+          <Text style={tplCard.name}>{template.name}</Text>
+          <Text style={tplCard.desc} numberOfLines={2}>{template.description}</Text>
+        </View>
+        <View style={tplCard.sizeBadge}>
+          <Text style={tplCard.sizeText}>{template.teamSize}👤</Text>
+        </View>
+      </View>
+      <View style={tplCard.rolePreview}>
+        {template.roles.slice(0, 5).map(r => (
+          <View key={r.codename} style={tplCard.rolePill}>
+            <Text style={tplCard.roleText}>@{r.codename}</Text>
+          </View>
+        ))}
+        {template.roles.length > 5 && (
+          <Text style={tplCard.moreRoles}>+{template.roles.length - 5}</Text>
+        )}
+      </View>
+      <TouchableOpacity style={[tplCard.createBtn, disabled && { opacity: 0.5 }]} onPress={onSelect} disabled={disabled}>
+        <Text style={tplCard.createText}>
+          ＋ {t({ en: 'Create This Team', zh: '创建此团队' })}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const tplCard = StyleSheet.create({
+  card: {
+    backgroundColor: colors.bgCard, borderRadius: 16, padding: 14,
+    marginHorizontal: 16, marginBottom: 10, borderWidth: 1, borderColor: colors.accent + '33',
+    gap: 10,
+  },
+  header: { flexDirection: 'row', gap: 10 },
+  name: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+  desc: { fontSize: 12, color: colors.textMuted, marginTop: 2, lineHeight: 16 },
+  sizeBadge: { backgroundColor: colors.accent + '18', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
+  sizeText: { fontSize: 13, fontWeight: '700', color: colors.accent },
+  rolePreview: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  rolePill: { backgroundColor: colors.bgSecondary, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: colors.border },
+  roleText: { fontSize: 11, fontWeight: '600', color: colors.accent },
+  moreRoles: { fontSize: 11, color: colors.textMuted, alignSelf: 'center' },
+  createBtn: { backgroundColor: colors.accent, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  createText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+});
+
+// ──────────────────────────────────────────────
 // Team Dashboard Screen
 // ──────────────────────────────────────────────
 
@@ -229,6 +508,18 @@ export function TeamDashboardScreen({ navigation }: Props) {
   const queryClient = useQueryClient();
   const setApprovalCount = useNotificationStore((s) => s.setApprovalCount);
   const [actionLoading, setActionLoading] = React.useState<{ id: string; action: 'approve' | 'reject' } | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [provisioning, setProvisioning] = useState(false);
+
+  // Check if onboarding was dismissed
+  useEffect(() => {
+    AsyncStorage.getItem(ONBOARDING_KEY).then(v => { if (v === 'true') setShowOnboarding(false); });
+  }, []);
+
+  const dismissOnboarding = useCallback(() => {
+    setShowOnboarding(false);
+    AsyncStorage.setItem(ONBOARDING_KEY, 'true');
+  }, []);
 
   const {
     data: approvals = [],
@@ -246,7 +537,27 @@ export function TeamDashboardScreen({ navigation }: Props) {
     refetch: refetchAgents,
   } = useQuery({
     queryKey: ['agent-accounts'],
-    queryFn: () => fetchAgentPresenceAccounts(),
+    queryFn: () => fetchUnifiedAgents(),
+    retry: false,
+  });
+
+  // Fetch team data from the new team API
+  const {
+    data: myTeams = [],
+    isLoading: loadingTeams,
+    refetch: refetchTeams,
+  } = useQuery({
+    queryKey: ['my-teams'],
+    queryFn: fetchMyTeams,
+    retry: false,
+  });
+
+  const {
+    data: templates = [],
+    isLoading: loadingTemplates,
+  } = useQuery({
+    queryKey: ['team-templates'],
+    queryFn: fetchTeamTemplates,
     retry: false,
   });
 
@@ -296,19 +607,94 @@ export function TeamDashboardScreen({ navigation }: Props) {
     );
   }, [queryClient, t]);
 
-  const isRefreshing = loadingApprovals || loadingAgents;
+  const handleProvision = useCallback(async (slug: string, name: string) => {
+    Alert.alert(
+      t({ en: 'Create Team', zh: '创建团队' }),
+      t({ en: `Create a "${name}" team? This is free.`, zh: `创建「${name}」团队？创建免费。` }),
+      [
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+        {
+          text: t({ en: 'Create', zh: '创建' }),
+          onPress: async () => {
+            setProvisioning(true);
+            try {
+              await provisionTeam(slug, '');
+              queryClient.invalidateQueries({ queryKey: ['my-teams'] });
+              queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
+              Alert.alert(
+                t({ en: 'Team Created! 🎉', zh: '团队创建成功！🎉' }),
+                t({
+                  en: 'Your agent team is ready. Each agent can be invoked via @codename in chat.',
+                  zh: '你的 Agent 团队已就绪。在聊天中用 @代号 即可调用任意 Agent。',
+                }),
+              );
+            } catch (e: any) {
+              const msg = e?.message ?? '';
+              if (msg.includes('已经')) {
+                Alert.alert(t({ en: 'Already Created', zh: '已创建' }), t({ en: 'You already have this team.', zh: '你已有该团队。' }));
+              } else {
+                Alert.alert(t({ en: 'Error', zh: '错误' }), msg || t({ en: 'Failed to create team.', zh: '团队创建失败。' }));
+              }
+            } finally {
+              setProvisioning(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [queryClient, t]);
+
+  const handleDisband = useCallback((slug: string, name: string) => {
+    Alert.alert(
+      t({ en: 'Disband Team', zh: '解散团队' }),
+      t({ en: `Disband "${name}"? All agents will be revoked.`, zh: `解散「${name}」？所有 Agent 将被撤销。` }),
+      [
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+        {
+          text: t({ en: 'Disband', zh: '解散' }),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await disbandTeam(slug);
+              queryClient.invalidateQueries({ queryKey: ['my-teams'] });
+              queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
+            } catch {
+              Alert.alert(t({ en: 'Error', zh: '错误' }), t({ en: 'Failed to disband.', zh: '解散失败。' }));
+            }
+          },
+        },
+      ],
+    );
+  }, [queryClient, t]);
+
+  const isRefreshing = loadingApprovals || loadingAgents || loadingTeams;
+  const hasTeams = myTeams.length > 0;
+  const totalTeamAgents = myTeams.reduce((sum, team) => sum + team.agents.length, 0);
+
+  // Templates the user hasn't created yet
+  const availableTemplates = templates.filter(
+    tpl => !myTeams.some(team => team.templateSlug === tpl.slug)
+  );
 
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{t({ en: 'Team', zh: '团队' })}</Text>
-        <TouchableOpacity
-          style={styles.headerBtn}
-          onPress={() => navigation.navigate('TeamSpace')}
-        >
-          <Text style={styles.headerBtnText}>👥 {t({ en: 'Spaces', zh: '空间' })}</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => navigation.navigate('TeamAgentAccounts')}
+          >
+            <Text style={styles.headerBtnText}>🤖 {t({ en: 'Accounts', zh: '账户' })}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => navigation.navigate('TeamSpace')}
+          >
+            <Text style={styles.headerBtnText}>👥 {t({ en: 'Spaces', zh: '空间' })}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -317,37 +703,79 @@ export function TeamDashboardScreen({ navigation }: Props) {
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
-            onRefresh={() => { refetchApprovals(); refetchAgents(); }}
+            onRefresh={() => { refetchApprovals(); refetchAgents(); refetchTeams(); }}
             tintColor={colors.accent}
           />
         }
       >
-        {/* Approval summary card */}
+        {/* Onboarding guide for first-time users */}
+        {showOnboarding && <OnboardingGuide t={t} onDismiss={dismissOnboarding} />}
+
+        {/* Summary card */}
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryCount}>{approvals.length}</Text>
-              <Text style={styles.summaryLabel}>{t({ en: 'Pending Approvals', zh: '待审批' })}</Text>
+              <Text style={styles.summaryCount}>{myTeams.length}</Text>
+              <Text style={styles.summaryLabel}>{t({ en: 'Teams', zh: '团队' })}</Text>
             </View>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
-              <Text style={[styles.summaryCount, { color: '#22c55e' }]}>
-                {agents.filter((a) => a.status === 'active').length}
-              </Text>
-              <Text style={styles.summaryLabel}>{t({ en: 'Active Agents', zh: '活跃 Agent' })}</Text>
+              <Text style={[styles.summaryCount, { color: '#22c55e' }]}>{totalTeamAgents}</Text>
+              <Text style={styles.summaryLabel}>{t({ en: 'Team Agents', zh: '团队 Agent' })}</Text>
             </View>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
-              <Text style={[styles.summaryCount, { color: '#f59e0b' }]}>
-                {agents.filter((a) => a.status === 'suspended').length}
-              </Text>
-              <Text style={styles.summaryLabel}>{t({ en: 'Suspended', zh: '已暂停' })}</Text>
+              <Text style={[styles.summaryCount, { color: '#f59e0b' }]}>{approvals.length}</Text>
+              <Text style={styles.summaryLabel}>{t({ en: 'Pending', zh: '待审批' })}</Text>
             </View>
           </View>
         </View>
 
-        {/* Approvals section */}
+        {/* ═══ My Teams section ═══ */}
         <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>🏢 {t({ en: 'My Agent Teams', zh: '我的 Agent 团队' })}</Text>
+        </View>
+
+        {loadingTeams ? (
+          <ActivityIndicator color={colors.accent} style={{ marginVertical: 20 }} />
+        ) : hasTeams ? (
+          myTeams.map(team => (
+            <MyTeamGroupCard
+              key={team.templateSlug}
+              team={team}
+              t={t}
+              onDisband={() => handleDisband(team.templateSlug, team.templateName)}
+            />
+          ))
+        ) : (
+          <View style={styles.emptySection}>
+            <Text style={styles.emptyIcon}>🏗️</Text>
+            <Text style={styles.emptyText}>
+              {t({ en: 'No teams yet — create one below!', zh: '还没有团队 — 从下方模板创建！' })}
+            </Text>
+          </View>
+        )}
+
+        {/* ═══ Available Templates (if user has un-created templates) ═══ */}
+        {availableTemplates.length > 0 && (
+          <>
+            <View style={[styles.sectionHeader, { marginTop: 8 }]}>
+              <Text style={styles.sectionTitle}>📋 {t({ en: 'Team Templates', zh: '团队模板' })}</Text>
+            </View>
+            {availableTemplates.map(tpl => (
+              <TemplatePickerCard
+                key={tpl.slug}
+                template={tpl}
+                t={t}
+                onSelect={() => handleProvision(tpl.slug, tpl.name)}
+                disabled={provisioning}
+              />
+            ))}
+          </>
+        )}
+
+        {/* ═══ Approvals section ═══ */}
+        <View style={[styles.sectionHeader, { marginTop: 8 }]}>
           <Text style={styles.sectionTitle}>⏳ {t({ en: 'Pending Approvals', zh: '待审批请求' })}</Text>
           {approvals.length > 0 && (
             <View style={styles.badge}>
@@ -378,9 +806,9 @@ export function TeamDashboardScreen({ navigation }: Props) {
           ))
         )}
 
-        {/* Agent progress section */}
+        {/* ═══ Individual Agent Accounts (legacy / standalone) ═══ */}
         <View style={[styles.sectionHeader, { marginTop: 8 }]}>
-          <Text style={styles.sectionTitle}>🤖 {t({ en: 'Agent Progress', zh: 'Agent 进展' })}</Text>
+          <Text style={styles.sectionTitle}>🤖 {t({ en: 'Agent Accounts', zh: 'Agent 账户' })}</Text>
           <TouchableOpacity
             style={styles.manageBtnSmall}
             onPress={() => navigation.navigate('TeamAgentAccounts')}
@@ -403,7 +831,7 @@ export function TeamDashboardScreen({ navigation }: Props) {
             </TouchableOpacity>
           </View>
         ) : (
-          agents.map((agent) => (
+          agents.slice(0, 5).map((agent) => (
             <AgentProgressCard
               key={agent.id}
               agent={agent}
@@ -411,6 +839,16 @@ export function TeamDashboardScreen({ navigation }: Props) {
               onPress={() => navigation.navigate('TeamAgentAccounts')}
             />
           ))
+        )}
+        {agents.length > 5 && (
+          <TouchableOpacity
+            style={[styles.manageBtnSmall, { alignSelf: 'center', marginBottom: 8 }]}
+            onPress={() => navigation.navigate('TeamAgentAccounts')}
+          >
+            <Text style={styles.manageBtnText}>
+              {t({ en: `View all ${agents.length} agents`, zh: `查看全部 ${agents.length} 个 Agent` })} →
+            </Text>
+          </TouchableOpacity>
         )}
 
         <View style={{ height: 40 }} />

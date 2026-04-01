@@ -8,28 +8,29 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import {
-  fetchAgentPresenceAccounts,
-  createAgentPresenceAccount,
-  setAgentPresenceAccountStatus,
-  type MobileAgentAccount as AgentAccount,
-  type CreateMobileAgentAccountDto as CreateAgentDto,
-} from '../../services/agentPresenceAccount';
+  fetchUnifiedAgents,
+  createUnifiedAgent,
+  type UnifiedAgent,
+  type CreateUnifiedAgentDto,
+} from '../../services/unifiedAgent';
 import { apiFetch } from '../../services/api';
 
 // ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
+type AgentAccount = UnifiedAgent;
+type CreateAgentDto = CreateUnifiedAgentDto;
 
 // ──────────────────────────────────────────────
 // API helpers
 // ──────────────────────────────────────────────
 
 async function fetchAgentAccounts(): Promise<AgentAccount[]> {
-  return fetchAgentPresenceAccounts();
+  return fetchUnifiedAgents();
 }
 
 async function createAgentAccount(dto: CreateAgentDto): Promise<AgentAccount> {
-  return createAgentPresenceAccount(dto);
+  return createUnifiedAgent(dto);
 }
 
 async function openWalletForAgent(agentId: string): Promise<{ walletAddress: string }> {
@@ -42,11 +43,12 @@ async function openWalletForAgent(agentId: string): Promise<{ walletAddress: str
 }
 
 async function suspendAgent(agentId: string): Promise<void> {
-  await setAgentPresenceAccountStatus(agentId, 'suspended');
+  // Use openclaw-connection to pause the instance
+  await apiFetch(`/openclaw-connection/instances/${agentId}/pause`, { method: 'POST' });
 }
 
 async function resumeAgent(agentId: string): Promise<void> {
-  await setAgentPresenceAccountStatus(agentId, 'active');
+  await apiFetch(`/openclaw-connection/instances/${agentId}/resume`, { method: 'POST' });
 }
 
 async function generateAgentApiKey(agentId: string): Promise<{ apiKey: string; prefix: string }> {
@@ -89,7 +91,6 @@ function CreateAgentModal({
     onCreate({
       name: name.trim(),
       description: description.trim() || undefined,
-      agentType,
       spendingLimits: {
         singleTxLimit: Number(singleTxLimit) || 100,
         dailyLimit: Number(dailyLimit) || 500,
@@ -410,38 +411,10 @@ export function AgentAccountScreen() {
         </View>
       )}
 
-      {/* Wallet */}
-      {agent.walletAddress ? (
-        <TouchableOpacity style={styles.walletRowActive} onPress={() => handleOpenWallet(agent)}>
-          <Text style={styles.walletIcon}>💳</Text>
-          <Text style={styles.walletAddress} numberOfLines={1}>
-            {agent.walletAddress.slice(0, 14)}...{agent.walletAddress.slice(-8)}
-          </Text>
-          {/* Balance chip */}
-          {agent.balance != null && (
-            <View style={styles.balanceChip}>
-              <Text style={styles.balanceText}>
-                {agent.balance.toFixed(4)} {agent.balanceCurrency ?? 'USDT'}
-              </Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      ) : (
-        <TouchableOpacity
-          style={styles.openWalletBtn}
-          onPress={() => handleOpenWallet(agent)}
-          disabled={walletLoading === agent.id}
-        >
-          {walletLoading === agent.id ? (
-            <ActivityIndicator color={colors.accent} size="small" />
-          ) : (
-            <>
-              <Text style={styles.openWalletIcon}>🔐</Text>
-              <Text style={styles.openWalletText}>{t({ en: 'Open Independent Wallet', zh: '打开独立钱包' })}</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      )}
+      {/* Wallet — temporarily hidden pending unified wallet API */}
+      {/* 
+      {(agent as any).walletAddress ? (...) : (...)}
+      */}
 
       {/* Actions row */}
       <View style={styles.actionsRow}>
@@ -463,15 +436,11 @@ export function AgentAccountScreen() {
             )}
           </TouchableOpacity>
         )}
-        {agent.walletAddress && (
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.actionBtnFund]}
-            onPress={() =>
-              Alert.alert(t({ en: 'Fund Agent', zh: '给智能体充值' }), t({ en: `Top up agent wallet:\n${agent.walletAddress}\n\nSend USDT (BSC) to this address.`, zh: `请向该智能体钱包充值：\n${agent.walletAddress}\n\n请向此地址发送 USDT（BSC）。` }))
-            }
-          >
-            <Text style={[styles.actionBtnText, { color: '#22c55e' }]}>💰 {t({ en: 'Fund', zh: '充值' })}</Text>
-          </TouchableOpacity>
+        {/* Credit Score */}
+        {agent.creditScore != null && (
+          <View style={[styles.actionBtn, styles.actionBtnFund]}>
+            <Text style={[styles.actionBtnText, { color: '#22c55e' }]}>⭐ {agent.creditScore}</Text>
+          </View>
         )}
         <TouchableOpacity
           style={styles.actionBtn}

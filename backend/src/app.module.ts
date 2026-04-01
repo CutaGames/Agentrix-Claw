@@ -66,6 +66,8 @@ import { X402DiscoveryModule } from './modules/x402/x402-discovery.module';
 import { UnifiedMarketplaceModule } from './modules/unified-marketplace/unified-marketplace.module';
 // 账户体系优化模块
 import { AgentAccountModule } from './modules/agent-account/agent-account.module';
+import { AgentTeamModule } from './modules/agent-team/agent-team.module';
+import { UnifiedAgentModule } from './modules/unified-agent/unified-agent.module';
 import { AccountModule } from './modules/account/account.module';
 import { KYCModule } from './modules/kyc/kyc.module';
 import { DeveloperAccountModule } from './modules/developer-account/developer-account.module';
@@ -184,6 +186,8 @@ import { McpRegistryModule } from './modules/mcp-registry/mcp-registry.module';
     UnifiedMarketplaceModule,
     // 账户体系优化
     AgentAccountModule,
+    AgentTeamModule,
+    UnifiedAgentModule,
     AccountModule,
     KYCModule,
     DeveloperAccountModule,

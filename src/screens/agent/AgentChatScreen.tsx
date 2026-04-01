@@ -780,12 +780,12 @@ export function AgentChatScreen() {
       } catch {}
       // Load per-agent preferred model from the bound agent account
       try {
-        const agentAccountId = activeInstance?.metadata?.agentAccountId;
+        const agentAccountId = activeInstance?.metadata?.agentAccountId || activeInstance?.agentAccountId;
         if (agentAccountId) {
-          const { getAgentPresenceAccount } = await import('../../services/agentPresenceAccount');
-          const agent = await getAgentPresenceAccount(agentAccountId);
-          if (agent.preferredModel) {
-            setAgentPreferredModel(agent.preferredModel);
+          const { getUnifiedAgent } = await import('../../services/unifiedAgent');
+          const agent = await getUnifiedAgent(activeInstance!.id);
+          if (agent.defaultModel) {
+            setAgentPreferredModel(agent.defaultModel);
           }
           if (agent.metadata?.voice_id) {
             setAgentVoiceId(agent.metadata.voice_id);
@@ -2352,11 +2352,10 @@ export function AgentChatScreen() {
                       setAgentPreferredModel(m.id);
                       setResolvedModelLabel(m.label);
                       setShowModelPicker(false);
-                      const agentAccountId = activeInstance?.metadata?.agentAccountId;
+                      const agentAccountId = activeInstance?.metadata?.agentAccountId || activeInstance?.agentAccountId;
                       if (agentAccountId) {
                         try {
-                          const { updateAgentPresenceAccount } = await import('../../services/agentPresenceAccount');
-                          await updateAgentPresenceAccount(agentAccountId, { preferredModel: m.id });
+                          // Model switch is handled by switchInstanceModel below
                         } catch {}
                       }
                       if (instanceId) {

@@ -119,10 +119,13 @@ export class OpenClawProxyService {
    */
   private messageNeedsTools(text: string): boolean {
     const lower = text.toLowerCase().trim();
-    // Very short messages (<15 chars) without action keywords are conversational
-    if (lower.length < 15) {
-      const actionWords = /search|find|buy|pay|install|execute|run|publish|balance|order|skill|product|task|agent|airdrop|token|wallet|price|send|transfer|discover|recommend|marketplace|资金|余额|搜索|安装|执行|购买|支付|发布|查询|技能|商品|任务/;
-      if (!actionWords.test(lower)) return false;
+    const pathLikePattern = /([a-z]:\\|\\|\/|\.tsx?\b|\.jsx?\b|\.json\b|\.md\b|package\.json|readme|src\/|backend\/|desktop\/)/i;
+    const actionWords = /search|find|buy|pay|install|execute|run|publish|balance|order|skill|product|task|agent|airdrop|token|wallet|price|send|transfer|discover|recommend|marketplace|read|write|edit|modify|change|fix|analy[sz]e|inspect|debug|list|open|grep|workspace|file|folder|directory|project|repo|code|patch|continue|resume|next|follow up|资金|余额|搜索|安装|执行|购买|支付|发布|查询|技能|商品|任务|继续|接着|下一步|修复|修改|查看|检查|分析|目录|文件夹|文件|代码|工作区|项目|仓库|编辑|列出|运行|命令/;
+    if (pathLikePattern.test(text)) {
+      return true;
+    }
+    if (lower.length < 15 && !actionWords.test(lower)) {
+      return false;
     }
     return true;
   }
@@ -150,7 +153,7 @@ export class OpenClawProxyService {
     const session = this.sessionRepo.create({
       userId,
       sessionId: resolvedClientSessionId,
-      agentId: typeof instance.metadata?.agentAccountId === 'string' ? instance.metadata.agentAccountId : undefined,
+      agentId: instance.agentAccountId || (typeof instance.metadata?.agentAccountId === 'string' ? instance.metadata.agentAccountId : undefined),
       title: instance.name || 'OpenClaw Agent',
       status: SessionStatus.ACTIVE,
       metadata: {
@@ -659,9 +662,8 @@ export class OpenClawProxyService {
   }
 
   private async resolveRuntimePermissionProfile(userId: string, instance: OpenClawInstance): Promise<RuntimePermissionProfile | null> {
-    const agentAccountId = typeof instance.metadata?.agentAccountId === 'string'
-      ? instance.metadata.agentAccountId
-      : undefined;
+    const agentAccountId = instance.agentAccountId
+      || (typeof instance.metadata?.agentAccountId === 'string' ? instance.metadata.agentAccountId : undefined);
 
     if (!agentAccountId) return null;
 
@@ -756,22 +758,54 @@ export class OpenClawProxyService {
 
   // ── Desktop Tool Schemas & Execution ───────────────────────────
 
+  public buildDesktopToolBridge(
+    userId: string,
+    deviceId?: string,
+    sessionId?: string,
+  ): {
+    additionalTools: any[];
+    onToolCall: (name: string, args: any) => Promise<any>;
+  } {
+    const additionalTools = this.getDesktopToolSchemas();
+    return {
+      additionalTools,
+      onToolCall: async (name: string, args: any) => {
+        if (!name.startsWith('desktop_')) {
+          return undefined;
+        }
+        return this.executeDesktopTool(userId, name, args, deviceId, sessionId);
+      },
+    };
+  }
+
+  public shouldUseTools(mode: 'ask' | 'agent' | 'plan' | undefined, messageText: string): boolean {
+    if (mode === 'ask') {
+      return false;
+    }
+    if (mode === 'plan') {
+      return true;
+    }
+    return this.messageNeedsTools(messageText);
+  }
+
   private getDesktopToolSchemas(): any[] {
     return [
       {
         name: 'desktop_read_file',
-        description: 'Read a file from the user\'s desktop/local filesystem. Returns file content as text. Use this for reading source code, config files, logs, etc.',
+        description: 'Read a file from the user\'s desktop/local filesystem. Relative paths are resolved from the selected workspace when available. Prefer targeted reads with startLine/endLine for large source files.',
         input_schema: {
           type: 'object' as const,
           properties: {
             path: { type: 'string', description: 'Absolute or relative file path to read' },
+            startLine: { type: 'number', description: '1-based start line for a partial read (optional)' },
+            endLine: { type: 'number', description: '1-based inclusive end line for a partial read (optional)' },
           },
           required: ['path'],
         },
       },
       {
         name: 'desktop_list_directory',
-        description: 'List files and directories in a local folder on the user\'s desktop.',
+        description: 'List files and directories in a local folder. Relative paths are resolved from the selected workspace when available. Returns structured entries instead of raw shell output.',
         input_schema: {
           type: 'object' as const,
           properties: {
@@ -800,6 +834,7 @@ export class OpenClawProxyService {
           properties: {
             command: { type: 'string', description: 'Shell command to execute' },
             workingDirectory: { type: 'string', description: 'Working directory (optional)' },
+            timeoutMs: { type: 'number', description: 'Maximum runtime in milliseconds (optional, defaults to 10 minutes)' },
           },
           required: ['command'],
         },
@@ -816,10 +851,11 @@ export class OpenClawProxyService {
     toolName: string,
     args: any,
     deviceId?: string,
+    sessionId?: string,
   ): Promise<any> {
     const kindMap: Record<string, string> = {
       desktop_read_file: 'read-file',
-      desktop_list_directory: 'run-command',
+      desktop_list_directory: 'list-directory',
       desktop_write_file: 'write-file',
       desktop_run_command: 'run-command',
     };
@@ -828,18 +864,27 @@ export class OpenClawProxyService {
     let payload: Record<string, unknown>;
     let title: string;
     if (toolName === 'desktop_read_file') {
-      payload = { path: args.path };
+      payload = {
+        path: args.path,
+        ...(typeof args.startLine === 'number' ? { startLine: Math.max(1, Math.floor(args.startLine)) } : {}),
+        ...(typeof args.endLine === 'number' ? { endLine: Math.max(1, Math.floor(args.endLine)) } : {}),
+      };
       title = `Read file: ${args.path}`;
     } else if (toolName === 'desktop_list_directory') {
-      // Use run-command with ls/dir to list directory
-      const isWin = (args.path || '').match(/^[A-Za-z]:/);
-      payload = { command: isWin ? `dir /b "${args.path}"` : `ls -la "${args.path}"` };
+      payload = { path: args.path };
       title = `List directory: ${args.path}`;
     } else if (toolName === 'desktop_write_file') {
       payload = { path: args.path, content: args.content };
       title = `Write file: ${args.path}`;
     } else if (toolName === 'desktop_run_command') {
-      payload = { command: args.command, workingDirectory: args.workingDirectory };
+      const requestedTimeoutMs = typeof args.timeoutMs === 'number'
+        ? Math.max(5_000, Math.min(args.timeoutMs, 30 * 60_000))
+        : 10 * 60_000;
+      payload = {
+        command: args.command,
+        workingDirectory: args.workingDirectory,
+        timeoutMs: requestedTimeoutMs,
+      };
       title = `Run: ${args.command?.slice(0, 80)}`;
     } else {
       return { error: `Unknown desktop tool: ${toolName}` };
@@ -851,6 +896,7 @@ export class OpenClawProxyService {
       kind: kind as any,
       payload,
       targetDeviceId: deviceId || undefined,
+      sessionId,
     });
 
     if (!result?.command?.commandId) {
@@ -859,9 +905,12 @@ export class OpenClawProxyService {
 
     // Poll for completion (desktop client processes via 3s polling + socket acceleration)
     const commandId = result.command.commandId;
-    const timeout = 30_000; // 30s max wait
+    const timeout = kind === 'run-command'
+      ? Math.max(Number(payload.timeoutMs || 10 * 60_000) + 15_000, 120_000)
+      : 120_000;
     const pollInterval = 500;
     const startTime = Date.now();
+    let latestCommand: any;
 
     while (Date.now() - startTime < timeout) {
       await new Promise(r => setTimeout(r, pollInterval));
@@ -869,6 +918,7 @@ export class OpenClawProxyService {
         const commands = await this.desktopSyncService.listCommands(userId, deviceId);
         const cmd = commands.find((c: any) => c.commandId === commandId);
         if (!cmd) continue;
+        latestCommand = cmd;
 
         if (cmd.status === DesktopCommandStatus.COMPLETED) {
           return cmd.result || { success: true };
@@ -884,7 +934,20 @@ export class OpenClawProxyService {
       }
     }
 
-    return { error: '桌面端未响应（超时30秒）。请确认桌面客户端已打开并登录。' };
+    if (kind === 'run-command' && latestCommand?.status === DesktopCommandStatus.CLAIMED) {
+      return {
+        pending: true,
+        commandId,
+        status: latestCommand.status,
+        message: '桌面命令仍在后台运行。请查看桌面任务时间线了解进度。',
+      };
+    }
+
+    return {
+      error: kind === 'run-command'
+        ? '桌面命令长时间未完成。若桌面客户端已开始执行，可在桌面任务时间线继续查看进度。'
+        : '桌面端未响应（超时2分钟）。请确认桌面客户端已打开并登录。',
+    };
   }
 
   private async buildPlatformHostedTools(userId: string, instance: OpenClawInstance): Promise<{
@@ -1279,22 +1342,22 @@ export class OpenClawProxyService {
     const isDesktop = dto.platform === 'desktop';
     let effectiveOnToolCallFn = onToolCall;
     if (isDesktop) {
-      const desktopTools = this.getDesktopToolSchemas();
-      additionalTools.push(...desktopTools);
-      const deviceId = dto.deviceId;
+      const desktopBridge = this.buildDesktopToolBridge(userId, dto.deviceId, sessionId);
+      additionalTools.push(...desktopBridge.additionalTools);
       effectiveOnToolCallFn = async (name: string, args: any) => {
-        if (name.startsWith('desktop_')) {
-          return this.executeDesktopTool(userId, name, args, deviceId);
+        const desktopResult = await desktopBridge.onToolCall(name, args);
+        if (desktopResult !== undefined) {
+          return desktopResult;
         }
         return onToolCall(name, args);
       };
-      this.logger.log(`🖥️ Desktop platform detected — injected ${desktopTools.length} desktop tools`);
+      this.logger.log(`🖥️ Desktop platform detected — injected ${desktopBridge.additionalTools.length} desktop tools`);
     }
 
     // Skip tools for simple conversational messages to avoid 4-5s Bedrock tool processing overhead.
     // Tools will still be available for messages that likely need them.
     // 'ask' mode always skips tools; 'agent'/'plan' respect the heuristic.
-    const needsTools = dto.mode !== 'ask' && this.messageNeedsTools(messageText);
+    const needsTools = this.shouldUseTools(dto.mode, messageText);
     const effectiveTools = needsTools ? additionalTools : [];
     const effectiveOnToolCall = needsTools ? effectiveOnToolCallFn : undefined;
     if (!needsTools) {

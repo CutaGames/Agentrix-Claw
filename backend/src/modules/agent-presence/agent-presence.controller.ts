@@ -30,6 +30,11 @@ import {
 } from './dto/agent-presence.dto';
 import { MemoryScope } from '../../entities/agent-memory.entity';
 
+/**
+ * @deprecated Use /agents/unified for new agent operations.
+ * This controller remains for backward compatibility with channel bindings,
+ * memories, handoffs, and legacy mobile clients.
+ */
 @ApiTags('agent-presence')
 @Controller('agent-presence')
 @UseGuards(JwtAuthGuard)

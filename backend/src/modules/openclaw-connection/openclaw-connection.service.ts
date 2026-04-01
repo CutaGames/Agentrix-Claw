@@ -379,13 +379,14 @@ export class OpenClawConnectionService implements OnModuleInit {
       }
     }
 
+    // 使用正式 FK 列（同时保持 metadata 向后兼容）
+    instance.agentAccountId = resolvedAccountId || null;
     const nextMetadata = { ...(instance.metadata || {}) };
     if (resolvedAccountId) {
       nextMetadata.agentAccountId = resolvedAccountId;
     } else {
       delete nextMetadata.agentAccountId;
     }
-
     instance.metadata = Object.keys(nextMetadata).length > 0 ? nextMetadata : null as any;
     return this.instanceRepo.save(instance);
   }

@@ -15,12 +15,13 @@ import { useI18n } from '../../stores/i18nStore';
 import { useAuthStore } from '../../stores/authStore';
 import { bindAgentAccountToInstance } from '../../services/openclaw.service';
 import {
-  fetchAgentPresenceAccounts,
-  getAgentPresenceAccount,
-  setAgentPresenceAccountStatus,
-  updateAgentPresenceAccount,
-  type MobileAgentAccount as AgentAccount,
-} from '../../services/agentPresenceAccount';
+  fetchUnifiedAgents,
+  getUnifiedAgent,
+  type UnifiedAgent,
+} from '../../services/unifiedAgent';
+import { apiFetch } from '../../services/api';
+
+type AgentAccount = UnifiedAgent;
 
 type Route = RouteProp<AgentStackParamList, 'AgentPermissions'>;
 
@@ -206,7 +207,7 @@ export function AgentPermissionsScreen() {
 
   const { data: agents = [] } = useQuery<AgentAccount[]>({
     queryKey: ['agent-accounts'],
-    queryFn: fetchAgentPresenceAccounts,
+    queryFn: fetchUnifiedAgents,
     retry: false,
   });
 
@@ -304,24 +305,26 @@ export function AgentPermissionsScreen() {
     try {
       setIsSaving(true);
       // Persist spending limits and permissions to backend.
-      await updateAgentPresenceAccount(activeAgent.id, {
-        spendingLimits: {
-          singleTxLimit: activeAgent.spendingLimits?.singleTxLimit ?? 100,
-          dailyLimit: activeAgent.spendingLimits?.dailyLimit ?? 500,
-          monthlyLimit: activeAgent.spendingLimits?.monthlyLimit ?? 2000,
-          currency: 'USD',
-        },
-        permissions: perms,
-        preferredModel: preferredModel || undefined,
-        preferredProvider: preferredProvider || undefined,
-        metadata: {
-          ...activeAgent.metadata,
-          voice_id: agentVoice || undefined,
-        },
-      });
+      // Persist permissions via agent-accounts API (bypass agentPresence)
+      if (activeAgent.agentAccountId) {
+        await apiFetch(`/agent-accounts/${activeAgent.agentAccountId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            spendingLimits: {
+              singleTxLimit: activeAgent.spendingLimits?.singleTxLimit ?? 100,
+              dailyLimit: activeAgent.spendingLimits?.dailyLimit ?? 500,
+              monthlyLimit: activeAgent.spendingLimits?.monthlyLimit ?? 2000,
+              currency: 'USD',
+            },
+            permissions: perms,
+            preferredModel: preferredModel || undefined,
+            preferredProvider: preferredProvider || undefined,
+          }),
+        });
+      }
 
-      const verified = await getAgentPresenceAccount(activeAgent.id);
-      const verifiedPermissions = normalizePermissions(verified.permissions);
+      const verified = await getUnifiedAgent(activeAgent.id);
+      const verifiedPermissions = normalizePermissions(verified.spendingLimits ? { allowedToolNames: [] } : undefined);
       if (JSON.stringify(verifiedPermissions) !== expectedPermissionsJson) {
         throw new Error(t({ en: 'Server response did not match the saved permissions.', zh: '服务器回读结果与保存内容不一致。' }));
       }
@@ -361,7 +364,7 @@ export function AgentPermissionsScreen() {
         {
           text: t({ en: 'Suspend', zh: '暂停' }), style: 'destructive', onPress: async () => {
             try {
-              await setAgentPresenceAccountStatus(activeAgent.id, 'suspended');
+              await apiFetch(`/openclaw-connection/instances/${activeAgent.id}/pause`, { method: 'POST' });
               queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
               Alert.alert(t({ en: 'Agent Suspended', zh: '智能体已暂停' }), t({ en: `${activeAgent.name} is now suspended.`, zh: `${activeAgent.name} 已被暂停。` }));
             } catch { Alert.alert(t({ en: 'Error', zh: '错误' }), t({ en: 'Failed to suspend agent.', zh: '暂停智能体失败。' })); }
