@@ -396,4 +396,54 @@ export const agentAccountApi = {
     const agent = extractData<AgentPresenceAgent>(response);
     return agent ? mapAgentToAccount(agent) : null;
   },
+
+  // ========== Phase 4: 链上身份 ==========
+
+  // 链上注册 Agent（Gas 由平台代付）
+  onchainRegister: async (id: string, chain: string = 'bsc-testnet'): Promise<{
+    erc8004SessionId?: string;
+    easAttestationUid?: string;
+    txHash?: string;
+    chain: string;
+    gasSponsored: boolean;
+  } | null> => {
+    const response = await apiClient.post<{ success: boolean; data: any }>(`/agent-accounts/${id}/onchain-register`, { chain });
+    return extractData(response);
+  },
+
+  // 查询链上注册状态
+  getOnchainStatus: async (id: string): Promise<{
+    registered: boolean;
+    easAttestationUid?: string;
+    erc8004SessionId?: string;
+    chain?: string;
+    gasSponsored: boolean;
+    registrationFee: string;
+  } | null> => {
+    const response = await apiClient.get<{ success: boolean; data: any }>(`/agent-accounts/${id}/onchain-status`);
+    return extractData(response);
+  },
+
+  // 查询余额（平台+链上统一视图）
+  getBalance: async (id: string): Promise<{
+    platformBalance: { amount: string; currency: string };
+    mpcWallet: { address: string; chain: string } | null;
+    externalWallet: { address: string } | null;
+    gasAvailable: boolean;
+  } | null> => {
+    const response = await apiClient.get<{ success: boolean; data: any }>(`/agent-accounts/${id}/balance`);
+    return extractData(response);
+  },
+
+  // 查询链上能力档案
+  getCapabilities: async (id: string): Promise<{
+    identity: { registered: boolean; sessionActive: boolean; chain?: string };
+    registration: { easUid?: string; verified: boolean };
+    skills: string[];
+    creditLevel: string;
+    gasSponsored: boolean;
+  } | null> => {
+    const response = await apiClient.get<{ success: boolean; data: any }>(`/agent-accounts/${id}/capabilities`);
+    return extractData(response);
+  },
 };

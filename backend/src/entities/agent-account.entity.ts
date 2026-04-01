@@ -231,6 +231,19 @@ export class AgentAccount {
   easAttestationUid?: string;
 
   /**
+   * ERC-8004 Identity Session ID
+   * 链上经济身份
+   */
+  @Column({ nullable: true, length: 100 })
+  erc8004SessionId?: string;
+
+  /**
+   * ERC-8004 Session 过期时间
+   */
+  @Column({ nullable: true })
+  sessionExpiry?: Date;
+
+  /**
    * 链上注册交易哈希
    */
   @Column({ nullable: true, length: 100 })

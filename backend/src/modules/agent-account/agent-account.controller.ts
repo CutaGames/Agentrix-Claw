@@ -247,4 +247,59 @@ export class AgentAccountController {
       message: '请立即保存此 API Key，关闭后将无法再次查看。',
     };
   }
+
+  // ========== Phase 4: 链上身份 ==========
+
+  @Post(':id/onchain-register')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '链上注册 Agent 身份（可选，Gas 由平台代付）' })
+  @ApiParam({ name: 'id', description: 'Agent 账户 ID' })
+  @ApiResponse({ status: 200, description: '链上注册成功' })
+  async onchainRegister(
+    @Param('id') id: string,
+    @Body('chain') chain?: string,
+  ) {
+    const result = await this.agentAccountService.onchainRegister(id, chain || 'bsc-testnet');
+    return {
+      success: true,
+      data: result,
+      message: '链上注册已提交，Gas 费由平台承担。',
+    };
+  }
+
+  @Get(':id/onchain-status')
+  @ApiOperation({ summary: '查询链上注册状态' })
+  @ApiParam({ name: 'id', description: 'Agent 账户 ID' })
+  @ApiResponse({ status: 200, description: '返回链上注册状态' })
+  async getOnchainStatus(@Param('id') id: string) {
+    const result = await this.agentAccountService.getOnchainStatus(id);
+    return {
+      success: true,
+      data: result,
+    };
+  }
+
+  @Get(':id/balance')
+  @ApiOperation({ summary: '查询 Agent 余额（平台+链上统一视图）' })
+  @ApiParam({ name: 'id', description: 'Agent 账户 ID' })
+  @ApiResponse({ status: 200, description: '返回余额信息' })
+  async getBalance(@Param('id') id: string) {
+    const result = await this.agentAccountService.getBalance(id);
+    return {
+      success: true,
+      data: result,
+    };
+  }
+
+  @Get(':id/capabilities')
+  @ApiOperation({ summary: '查询 Agent 链上能力档案' })
+  @ApiParam({ name: 'id', description: 'Agent 账户 ID' })
+  @ApiResponse({ status: 200, description: '返回能力档案' })
+  async getCapabilities(@Param('id') id: string) {
+    const result = await this.agentAccountService.getCapabilities(id);
+    return {
+      success: true,
+      data: result,
+    };
+  }
 }

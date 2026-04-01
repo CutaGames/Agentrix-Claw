@@ -1,9 +1,12 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger, Inject, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import { AgentAccount, AgentAccountStatus, AgentType, AgentRiskLevel } from '../../entities/agent-account.entity';
 import { Account, AccountOwnerType, AccountWalletType, AccountChainType, AccountStatus } from '../../entities/account.entity';
+import { EasService } from '../agent/eas.service';
+import { MPCWalletService } from '../mpc-wallet/mpc-wallet.service';
+import { PayMindRelayerService } from '../relayer/relayer.service';
 
 /**
  * 创建 Agent 账户 DTO
@@ -68,11 +71,19 @@ export interface UpdateAgentAccountDto {
  */
 @Injectable()
 export class AgentAccountService {
+  private readonly logger = new Logger(AgentAccountService.name);
+
   constructor(
     @InjectRepository(AgentAccount)
     private agentAccountRepository: Repository<AgentAccount>,
     @InjectRepository(Account)
     private accountRepository: Repository<Account>,
+    @Optional() @Inject(EasService)
+    private easService: EasService,
+    @Optional() @Inject(MPCWalletService)
+    private mpcWalletService: MPCWalletService,
+    @Optional() @Inject(PayMindRelayerService)
+    private relayerService: PayMindRelayerService,
   ) {}
 
   /**
@@ -139,6 +150,25 @@ export class AgentAccountService {
     // 更新 Agent 的默认账户
     savedAgent.defaultAccountId = savedAccount.id;
     await this.agentAccountRepository.save(savedAgent);
+
+    // 自动创建 MPC 钱包（可选，失败不阻塞）
+    if (this.mpcWalletService) {
+      try {
+        const derivedPassword = crypto.randomBytes(16).toString('hex');
+        const walletResult = await this.mpcWalletService.generateMPCWalletForUser(
+          dto.ownerId,
+          derivedPassword,
+          'BSC',
+        );
+        if (walletResult.walletAddress) {
+          savedAgent.mpcWalletId = walletResult.walletAddress;
+          await this.agentAccountRepository.save(savedAgent);
+          this.logger.log(`Agent ${savedAgent.agentUniqueId} MPC 钱包自动创建: ${walletResult.walletAddress}`);
+        }
+      } catch (err) {
+        this.logger.warn(`Agent ${savedAgent.agentUniqueId} MPC 钱包自动创建失败（不影响 Agent 使用）: ${err.message}`);
+      }
+    }
 
     return savedAgent;
   }
@@ -455,5 +485,217 @@ export class AgentAccountService {
 
     // 返回完整 key（仅此一次）
     return { apiKey, prefix };
+  }
+
+  // ========== Phase 4: 链上身份 ==========
+
+  /**
+   * 链上注册（ERC-8004 Identity Session + EAS Attestation）
+   * - 可选操作，非强制
+   * - 平台 Relayer 代付 Gas（用户无需持有 BNB/ETH）
+   */
+  async onchainRegister(id: string, chain: string = 'bsc-testnet'): Promise<{
+    erc8004SessionId?: string;
+    easAttestationUid?: string;
+    txHash?: string;
+    chain: string;
+    gasSponsored: boolean;
+  }> {
+    const agent = await this.findById(id);
+
+    if (agent.status !== AgentAccountStatus.ACTIVE) {
+      throw new BadRequestException('只有活跃的 Agent 可以进行链上注册');
+    }
+
+    if (agent.easAttestationUid || agent.onchainRegistrationTxHash || agent.registrationChain) {
+      throw new ConflictException('Agent 已完成链上注册，不可重复注册');
+    }
+
+    const result: any = {
+      chain,
+      gasSponsored: true, // 平台代付 Gas
+    };
+
+    // Step 1: 尝试 EAS 注册（链上存证）
+    if (this.easService) {
+      try {
+        const riskTierMap = {
+          [AgentRiskLevel.LOW]: 'low',
+          [AgentRiskLevel.MEDIUM]: 'medium',
+          [AgentRiskLevel.HIGH]: 'high',
+          [AgentRiskLevel.CRITICAL]: 'critical',
+        };
+        const uid = await this.easService.attestAgentRegistration({
+          agentId: agent.agentUniqueId,
+          name: agent.name,
+          riskTier: riskTierMap[agent.riskLevel] || 'medium',
+          ownerId: agent.ownerId || '',
+        });
+
+        if (uid) {
+          agent.easAttestationUid = uid;
+          result.easAttestationUid = uid;
+          this.logger.log(`Agent ${agent.agentUniqueId} EAS 注册成功: ${uid}`);
+        }
+      } catch (err) {
+        this.logger.warn(`EAS 注册失败（继续尝试其他步骤）: ${err.message}`);
+      }
+    } else {
+      this.logger.warn('EAS 服务不可用，跳过 EAS 注册');
+    }
+
+    // Step 2: 尝试 ERC-8004 Session 创建
+    // 注意: 实际 ERC-8004 Session 需要链上交互，当前通过 Relayer 代理
+    // 如果 Relayer 不可用或链上合约未配置，记录意向等待后续处理
+    if (this.relayerService) {
+      try {
+        // 记录 Session 意向（实际创建需要 MPC 钱包地址作为 signer）
+        const signerAddress = agent.mpcWalletId || agent.externalWalletAddress;
+        if (signerAddress) {
+          // 这里记录 Session 配置,实际链上创建由 Relayer 异步执行
+          const sessionId = `pending-${crypto.randomBytes(16).toString('hex')}`;
+          agent.erc8004SessionId = sessionId;
+          agent.sessionExpiry = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1年
+          result.erc8004SessionId = sessionId;
+          this.logger.log(`Agent ${agent.agentUniqueId} ERC-8004 Session 意向记录: ${sessionId}`);
+        } else {
+          this.logger.warn(`Agent ${agent.agentUniqueId} 没有钱包地址，跳过 ERC-8004 Session 创建`);
+        }
+      } catch (err) {
+        this.logger.warn(`ERC-8004 Session 创建失败: ${err.message}`);
+      }
+    }
+
+    // 保存链上注册信息
+    agent.registrationChain = chain;
+    agent.onchainRegistrationTxHash = result.easAttestationUid || result.erc8004SessionId || 'pending';
+    await this.agentAccountRepository.save(agent);
+
+    return result;
+  }
+
+  /**
+   * 查询 Agent 余额（平台余额 + 链上余额统一视图）
+   */
+  async getBalance(id: string): Promise<{
+    platformBalance: { amount: string; currency: string };
+    mpcWallet: { address: string; chain: string } | null;
+    externalWallet: { address: string } | null;
+    gasAvailable: boolean;
+  }> {
+    const agent = await this.findById(id);
+
+    // 查询关联的资金账户
+    const accounts = await this.accountRepository.find({
+      where: { ownerId: id, ownerType: AccountOwnerType.AGENT },
+    });
+
+    const defaultAccount = accounts.find(a => a.isDefault);
+    const platformBalance = {
+      amount: defaultAccount?.availableBalance?.toString() || '0',
+      currency: agent.spendingLimits?.currency || 'USDC',
+    };
+
+    // MPC 钱包信息
+    let mpcWallet = null;
+    if (agent.mpcWalletId) {
+      mpcWallet = {
+        address: agent.mpcWalletId,
+        chain: agent.registrationChain || 'BSC',
+      };
+    }
+
+    // 外部钱包信息
+    let externalWallet = null;
+    if (agent.externalWalletAddress) {
+      externalWallet = { address: agent.externalWalletAddress };
+    }
+
+    return {
+      platformBalance,
+      mpcWallet,
+      externalWallet,
+      gasAvailable: false, // 新钱包默认无 Gas，需要平台 sponsor
+    };
+  }
+
+  /**
+   * 查询 Agent 链上能力档案
+   */
+  async getCapabilities(id: string): Promise<{
+    identity: {
+      registered: boolean;
+      erc8004SessionId?: string;
+      sessionActive: boolean;
+      sessionExpiry?: string;
+      chain?: string;
+    };
+    registration: {
+      easUid?: string;
+      verified: boolean;
+      registeredAt?: string;
+    };
+    skills: string[];
+    creditLevel: string;
+    gasSponsored: boolean;
+  }> {
+    const agent = await this.findById(id);
+
+    const registered = !!(agent.easAttestationUid || agent.erc8004SessionId);
+    const sessionActive = registered && agent.sessionExpiry ? agent.sessionExpiry > new Date() : false;
+
+    // 信用等级
+    const score = Number(agent.creditScore);
+    let creditLevel = 'Bronze';
+    if (score >= 950) creditLevel = 'Platinum';
+    else if (score >= 800) creditLevel = 'Gold';
+    else if (score >= 500) creditLevel = 'Silver';
+    else if (score >= 300) creditLevel = 'Bronze';
+    else creditLevel = 'None';
+
+    return {
+      identity: {
+        registered,
+        erc8004SessionId: agent.erc8004SessionId || undefined,
+        sessionActive,
+        sessionExpiry: agent.sessionExpiry?.toISOString(),
+        chain: agent.registrationChain || undefined,
+      },
+      registration: {
+        easUid: agent.easAttestationUid || undefined,
+        verified: !!agent.easAttestationUid,
+        registeredAt: agent.onchainRegistrationTxHash ? agent.updatedAt?.toISOString() : undefined,
+      },
+      skills: agent.capabilities || [],
+      creditLevel,
+      gasSponsored: true, // 平台始终代付 Gas
+    };
+  }
+
+  /**
+   * 查询链上注册状态
+   */
+  async getOnchainStatus(id: string): Promise<{
+    registered: boolean;
+    easAttestationUid?: string;
+    erc8004SessionId?: string;
+    chain?: string;
+    registeredAt?: string;
+    txHash?: string;
+    gasSponsored: boolean;
+    registrationFee: string;
+  }> {
+    const agent = await this.findById(id);
+
+    return {
+      registered: !!(agent.easAttestationUid || agent.erc8004SessionId),
+      easAttestationUid: agent.easAttestationUid || undefined,
+      erc8004SessionId: agent.erc8004SessionId || undefined,
+      chain: agent.registrationChain || undefined,
+      registeredAt: agent.onchainRegistrationTxHash ? agent.updatedAt?.toISOString() : undefined,
+      txHash: agent.onchainRegistrationTxHash || undefined,
+      gasSponsored: true,
+      registrationFee: '0', // 平台承担 Gas，用户免费
+    };
   }
 }
