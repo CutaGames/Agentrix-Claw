@@ -19,7 +19,6 @@ import {
   getUnifiedAgent,
   type UnifiedAgent,
 } from '../../services/unifiedAgent';
-import { apiFetch } from '../../services/api';
 
 type AgentAccount = UnifiedAgent;
 
