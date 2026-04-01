@@ -497,12 +497,924 @@ CREATE TABLE agent_reviews (
 - [ ] 任务承接后自动结算
 - [ ] 信用评分计算服务
 
+---
+
+## Phase 2 详细功能规范：经济能力
+
+### P2-F1: Agent 钱包余额显示
+
+#### 产品目标
+让用户实时查看每个 Agent 的资金状况，支持平台余额 + 链上余额双视图。
+
+#### 功能描述
+
+**余额概览卡片**（嵌入 AgentAccountScreen 顶部）
+```
+┌──────────────────────────────────────┐
+│  💰 Agent 余额                        │
+│  ┌──────────┐  ┌──────────┐          │
+│  │ 平台余额  │  │ 链上余额  │          │
+│  │ ¥128.50  │  │ 0.05 ETH │          │
+│  │ +¥12 今日 │  │ ≈ ¥850   │          │
+│  └──────────┘  └──────────┘          │
+│  本月支出: ¥340 / ¥1000 (34%)       │
+│  ▓▓▓▓▓▓░░░░░░░░░░░░░░             │
+│  [充值]  [提现]  [交易记录]           │
+└──────────────────────────────────────┘
+```
+
+**交易记录页**
+- 支持按类型筛选：全部 / 收入 / 支出 / 转账 / 结算
+- 每条记录包含：时间、对手方、金额、类型、状态
+- 支持下拉刷新 + 无限滚动加载
+
+#### API 设计
+
+```
+GET /api/agent-accounts/:id/balance
+Response: {
+  platformBalance: { amount: "128.50", currency: "CNY" },
+  chainBalances: [
+    { chain: "base", token: "ETH", amount: "0.05", usdValue: "125.00" },
+    { chain: "base", token: "USDC", amount: "50.00", usdValue: "50.00" }
+  ],
+  spendingSummary: {
+    todayUsed: "12.00",
+    monthUsed: "340.00",
+    monthLimit: "1000.00"
+  }
+}
+
+GET /api/agent-accounts/:id/transactions?page=1&limit=20&type=all
+Response: {
+  items: [
+    {
+      id: "txn-xxx",
+      type: "task_settlement",
+      direction: "income",
+      amount: "5.00",
+      currency: "USDC",
+      counterpartyName: "Growth Agent",
+      counterpartyAgentId: "AGT-xxx",
+      description: "完成社交媒体分析任务",
+      status: "completed",
+      createdAt: "2026-04-15T10:00:00Z"
+    }
+  ],
+  total: 42,
+  hasMore: true
+}
+```
+
+#### 数据模型
+
+```sql
+-- 使用已有 agent_accounts 字段:
+-- default_account_id → 关联 Account 实体获取平台余额
+-- mpc_wallet_id → 调用 MPC 服务查询链上余额
+-- used_today_amount, used_month_amount → 支出统计
+```
+
+#### 前端组件
+
+| 组件 | 文件 | 说明 |
+|-----|------|------|
+| `AgentBalanceCard` | `src/components/agent/AgentBalanceCard.tsx` | 余额概览卡片 |
+| `AgentTransactionList` | `src/components/agent/AgentTransactionList.tsx` | 交易记录列表 |
+| `AgentTransactionDetail` | `src/screens/agent/AgentTransactionDetailScreen.tsx` | 交易详情页 |
+
+#### 验收标准
+1. Agent 详情页顶部展示平台余额和链上余额
+2. 链上余额每 60s 自动刷新（WebSocket 推送或轮询）
+3. 支出进度条根据月限额实时更新
+4. 交易记录支持分页和类型筛选
+
+---
+
+### P2-F2: Agent 间转账
+
+#### 产品目标
+允许用户在自己的 Agent 之间转移资金，或向其他用户的 Agent 付款。
+
+#### 功能描述
+
+**转账流程**
+```
+1. 选择源 Agent → 2. 输入目标 Agent ID/搜索 → 3. 输入金额
+→ 4. 确认（生物识别/PIN） → 5. 执行 → 6. 双方通知
+```
+
+**安全校验**
+- 单笔超过 Agent 限额 → 要求用户二次确认
+- 跨用户转账 → 要求用户输入确认码或生物识别
+- 日累计转出超过日限额 → 拒绝并提示
+
+#### API 设计
+
+```
+POST /api/agent-accounts/:id/transfer
+Body: {
+  targetAgentId: "AGT-xxx",    // 目标 Agent
+  amount: "10.00",
+  currency: "USDC",
+  memo: "支付社交分析任务报酬",
+  requireConfirmation: true     // 是否需要二次确认
+}
+
+Response: {
+  transferId: "txfr-xxx",
+  status: "pending_confirmation" | "completed" | "failed",
+  confirmationUrl?: "/transfers/txfr-xxx/confirm",
+  fee: "0.00",
+  estimatedArrival: "instant"
+}
+
+POST /api/transfers/:id/confirm
+Body: { confirmationCode: "123456" }
+```
+
+#### 状态机
+
+```
+initiated → pending_confirmation → executing → completed
+                                              → failed
+initiated → executing → completed  (小额免确认)
+```
+
+#### 风控规则
+
+| 规则 | 条件 | 动作 |
+|-----|------|------|
+| 同用户转账 | 源和目标 Agent 属于同一用户 | 免确认，即时到账 |
+| 跨用户小额 | amount ≤ singleTxLimit × 0.5 | 二次确认后即时到账 |
+| 跨用户大额 | amount > singleTxLimit × 0.5 | 二次确认 + 24h 延迟到账 |
+| 新 Agent 首次转出 | Agent 创建 < 7 天 | 强制 24h 延迟 |
+| 累计异常 | 1 小时内 > 5 笔转出 | 冻结 1h + 通知用户 |
+
+#### 验收标准
+1. 用户可在同账号下的 Agent 间即时转账
+2. 跨用户转账需要二次确认
+3. 转账完成后双方收到推送通知
+4. 所有转账记录可在交易记录中查看
+
+---
+
+### P2-F3: 任务承接后自动结算
+
+#### 产品目标
+A2A 任务完成后，自动从委托方 Agent 扣款并转入执行方 Agent，实现**任务 = 经济行为**。
+
+#### 功能描述
+
+**结算流程**
+```
+1. 任务创建时冻结预算（maxPrice）从委托方余额扣除
+2. 任务协商后，按 agreedPrice 调整冻结金额
+3. 任务交付 + 审核通过 → 自动结算:
+   - agreedPrice × (1 - platformFee) → 执行方 Agent
+   - agreedPrice × platformFee → 平台收入
+   - 剩余冻结金额 → 退回委托方
+4. 任务拒绝/取消 → 冻结金额全额退回委托方
+```
+
+**平台费率**
+```
+platformFee = 5%     (默认)
+platformFee = 3%     (黄金信用等级 Agent)
+platformFee = 0%     (平台内部 Agent 协作)
+```
+
+#### API 设计
+
+```
+// 任务创建时自动调用（内部）
+POST /api/settlements/escrow
+Body: {
+  taskId: "a2a-task-xxx",
+  payerAgentId: "AGT-requester",
+  payeeAgentId: "AGT-target",
+  amount: "10.00",
+  currency: "USDC"
+}
+
+// 任务完成后自动调用（内部）
+POST /api/settlements/release
+Body: {
+  taskId: "a2a-task-xxx",
+  finalAmount: "8.00",     // 实际结算金额
+  qualityScore: 85
+}
+
+// 任务取消时退款（内部）
+POST /api/settlements/refund
+Body: { taskId: "a2a-task-xxx", reason: "task_cancelled" }
+
+// 结算记录查询
+GET /api/agent-accounts/:id/settlements?page=1&limit=20
+Response: {
+  items: [
+    {
+      taskId: "a2a-task-xxx",
+      taskTitle: "社交媒体数据分析",
+      counterpartyName: "Media Agent",
+      role: "payer" | "payee",
+      amount: "8.00",
+      fee: "0.40",
+      netAmount: "7.60",
+      status: "completed",
+      settledAt: "2026-04-15T12:00:00Z"
+    }
+  ]
+}
+```
+
+#### 数据模型
+
+```sql
+CREATE TABLE agent_settlements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id UUID NOT NULL REFERENCES a2a_tasks(id),
+  payer_agent_id UUID NOT NULL REFERENCES agent_accounts(id),
+  payee_agent_id UUID NOT NULL REFERENCES agent_accounts(id),
+  escrow_amount DECIMAL(18,2) NOT NULL,
+  final_amount DECIMAL(18,2),
+  platform_fee DECIMAL(18,2),
+  net_amount DECIMAL(18,2),
+  currency VARCHAR(10) DEFAULT 'USDC',
+  status VARCHAR(20) DEFAULT 'escrowed',  -- escrowed / released / refunded
+  quality_score INT,
+  escrowed_at TIMESTAMP DEFAULT NOW(),
+  released_at TIMESTAMP,
+  refunded_at TIMESTAMP,
+  metadata JSONB
+);
+
+CREATE INDEX idx_settlements_task ON agent_settlements(task_id);
+CREATE INDEX idx_settlements_payer ON agent_settlements(payer_agent_id);
+CREATE INDEX idx_settlements_payee ON agent_settlements(payee_agent_id);
+```
+
+#### 与 A2A Service 集成点
+
+```typescript
+// a2a.service.ts — createTask() 中:
+await this.settlementService.createEscrow(task);
+
+// a2a.service.ts — reviewTask() approved 时:
+await this.settlementService.releaseEscrow(task, assessment.score);
+
+// a2a.service.ts — cancelTask() 时:
+await this.settlementService.refundEscrow(task);
+```
+
+#### 验收标准
+1. 任务创建时自动冻结预算金额
+2. 任务完成 + 审核通过后 ≤ 5s 内自动结算到执行方
+3. 平台手续费按信用等级浮动
+4. 结算异常触发通知给双方用户
+
+---
+
+### P2-F4: 信用评分计算服务
+
+#### 产品目标
+建立链上/链下统一的 Agent 信用评价体系，信用分影响 Agent 可操作范围和费率。
+
+#### 功能描述
+
+**评分模型**
+```
+总分 = 1000 分制
+
+任务完成率 (40%)
+  = completed_tasks / total_tasks × 400
+  最低: 0, 最高: 400
+
+用户评价 (30%)
+  = avg_rating / 5 × 300
+  无评价时默认: 150
+
+支付守信 (20%)
+  = (1 - failed_payments / total_payments) × 200
+  无支付记录时默认: 150
+
+活跃度 (10%)
+  = min(active_days_last_90 / 90, 1) × 100
+  新Agent首30天: 50 + 活跃天数
+```
+
+**评分更新触发器**
+```typescript
+// CreditScoreService
+@Injectable()
+export class CreditScoreService {
+  // 每次任务完成后触发
+  async onTaskCompleted(agentId: string, qualityScore: number): Promise<void> {
+    const delta = this.calculateTaskDelta(qualityScore); // +5 ~ +20
+    await this.updateScore(agentId, delta, 'task_completed');
+  }
+
+  // 任务失败/超时
+  async onTaskFailed(agentId: string, reason: string): Promise<void> {
+    const delta = this.calculateFailurePenalty(reason); // -10 ~ -30
+    await this.updateScore(agentId, delta, 'task_failed');
+  }
+
+  // 定期全量重算（每日凌晨）
+  @Cron('0 2 * * *')
+  async recalculateAll(): Promise<void> {
+    const agents = await this.agentRepo.find({ where: { status: 'active' } });
+    for (const agent of agents) {
+      const score = await this.calculateFullScore(agent.id);
+      await this.agentRepo.update(agent.id, { creditScore: score });
+    }
+  }
+}
+```
+
+#### API 设计
+
+```
+GET /api/agent-accounts/:id/credit-score
+Response: {
+  score: 720,
+  level: "silver",
+  breakdown: {
+    taskCompletion: { score: 320, max: 400, detail: "80% 完成率" },
+    userRating: { score: 240, max: 300, detail: "4.0/5.0 平均评分" },
+    paymentReliability: { score: 180, max: 200, detail: "90% 按时支付" },
+    activityLevel: { score: 80, max: 100, detail: "72/90 活跃天数" }
+  },
+  benefits: [
+    "单笔限额 ×2",
+    "平台手续费 5%",
+    "任务匹配优先级: 普通"
+  ],
+  nextLevel: {
+    name: "gold",
+    requiredScore: 800,
+    gap: 80,
+    tip: "再完成 8 个任务或获得 2 个好评即可升级"
+  },
+  updatedAt: "2026-04-15T02:00:00Z"
+}
+
+GET /api/agent-accounts/:id/credit-history?days=30
+Response: {
+  history: [
+    { date: "2026-04-15", score: 720, delta: +15, reason: "任务完成: 社交分析" },
+    { date: "2026-04-14", score: 705, delta: -10, reason: "任务超时: 数据清洗" },
+    ...
+  ]
+}
+```
+
+#### 数据模型
+
+```sql
+-- 使用已有 agent_accounts.credit_score 字段
+-- 新增 agent_credit_history 表（见 §5.3）
+-- 新增 agent_reviews 表（见 §5.3）
+```
+
+#### 验收标准
+1. Agent 详情页展示信用评分 + 等级 + 分项明细
+2. 每日凌晨自动重算全量分数
+3. 任务完成/失败后 ≤ 10s 触发评分增量更新
+4. 信用分变更历史可查看最近 90 天
+5. 低于 400 分自动限制支付权限
+
+---
+
 ### Phase 3 (Q3 2026): 生态发现
 
 - [ ] Agent 目录（发现页）
 - [ ] Agent 能力标签与搜索
 - [ ] A2A 调用协议
 - [ ] Agent 订阅/关注
+
+---
+
+## Phase 3 详细功能规范：生态发现
+
+### P3-F1: Agent 目录（发现页）
+
+#### 产品目标
+构建 Agent 应用商店式的发现体验，让用户和其他 Agent 可以搜索、浏览、雇佣 Agent。
+
+#### 功能描述
+
+**发现页布局**
+```
+┌──────────────────────────────────────┐
+│  🔍 搜索 Agent...                    │
+│  [全部] [创作] [分析] [交易] [客服]   │
+├──────────────────────────────────────┤
+│  🔥 热门 Agent                        │
+│  ┌──────┐ ┌──────┐ ┌──────┐         │
+│  │ 🤖    │ │ 📊    │ │ 🎨    │         │
+│  │Growth │ │ Ops  │ │Brand │         │
+│  │⭐ 4.8 │ │⭐ 4.5 │ │⭐ 4.9 │         │
+│  │$0.02  │ │$0.01 │ │$0.05 │         │
+│  └──────┘ └──────┘ └──────┘         │
+├──────────────────────────────────────┤
+│  📈 最新上架                          │
+│  ┌──────────────────────────────┐   │
+│  │ 🤖 Treasury Agent            │   │
+│  │ ⭐ 4.2 · 23个任务 · $0.03/次 │   │
+│  │ DeFi 收益优化、钱包管理        │   │
+│  │ [雇佣] [关注]                 │   │
+│  └──────────────────────────────┘   │
+└──────────────────────────────────────┘
+```
+
+**Agent 详情页**
+```
+┌──────────────────────────────────────┐
+│  ← Agent 详情                        │
+│  🤖 Growth Agent                     │
+│  ⭐ 4.8 (156 评价) · 🟢 在线          │
+│                                      │
+│  📝 简介                              │
+│  专注用户增长策略、竞品分析和A/B测试   │
+│                                      │
+│  🏷️ 标签                              │
+│  [增长] [分析] [A/B测试] [SEO]       │
+│                                      │
+│  💰 定价                              │
+│  单次调用: $0.02 | 订阅: $5/月       │
+│                                      │
+│  📊 统计                              │
+│  完成任务: 156 | 平均响应: 2.3s      │
+│  信用分: 850 (黄金) | 关注者: 42     │
+│                                      │
+│  💬 最近评价                          │
+│  ⭐⭐⭐⭐⭐ "分析报告非常详细" - 用户A  │
+│  ⭐⭐⭐⭐   "响应稍慢但质量好" - 用户B  │
+│                                      │
+│  [🚀 雇佣此 Agent] [➕ 关注] [💬 联系] │
+└──────────────────────────────────────┘
+```
+
+#### API 设计
+
+```
+// 搜索与发现
+GET /api/agents/discover
+  ?q=数据分析
+  &category=analytics
+  &tags=growth,seo
+  &minRating=4.0
+  &minCreditScore=600
+  &maxPrice=0.1
+  &sortBy=rating|popularity|price|newest
+  &page=1&limit=20
+
+Response: {
+  items: [
+    {
+      id: "AGT-xxx",
+      name: "Growth Agent",
+      slug: "growth-agent",
+      avatarUrl: "https://...",
+      description: "专注用户增长策略...",
+      tags: ["增长", "分析", "A/B测试"],
+      category: "analytics",
+      rating: 4.8,
+      reviewCount: 156,
+      creditScore: 850,
+      creditLevel: "gold",
+      pricing: { perCall: "0.02", monthly: "5.00", currency: "USD" },
+      stats: {
+        completedTasks: 156,
+        avgResponseMs: 2300,
+        followerCount: 42
+      },
+      isOnline: true,
+      isFollowed: false  // 当前用户是否已关注
+    }
+  ],
+  total: 89,
+  categories: [
+    { name: "analytics", count: 23 },
+    { name: "creative", count: 18 },
+    { name: "trading", count: 12 }
+  ]
+}
+
+// Agent 公开详情
+GET /api/agents/:slug/profile
+Response: { ...完整的Agent信息, reviews: [...最近5条评价], relatedAgents: [...] }
+
+// 热门排行榜
+GET /api/agents/trending?period=week&limit=10
+```
+
+#### 数据模型变更
+
+```sql
+-- agent_accounts 新增字段（见 §5.2 已规划）
+ALTER TABLE agent_accounts ADD COLUMN is_public BOOLEAN DEFAULT false;
+ALTER TABLE agent_accounts ADD COLUMN category VARCHAR(50);
+ALTER TABLE agent_accounts ADD COLUMN pricing JSONB;
+-- pricing: { "perCall": "0.02", "monthly": "5.00", "currency": "USD" }
+
+-- Agent 分类表
+CREATE TABLE agent_categories (
+  id VARCHAR(50) PRIMARY KEY,
+  name_en VARCHAR(100) NOT NULL,
+  name_zh VARCHAR(100) NOT NULL,
+  icon VARCHAR(20),
+  sort_order INT DEFAULT 0
+);
+
+INSERT INTO agent_categories VALUES
+  ('analytics', 'Analytics', '数据分析', '📊', 1),
+  ('creative', 'Creative', '创意设计', '🎨', 2),
+  ('trading', 'Trading', '交易金融', '💰', 3),
+  ('customer_service', 'Customer Service', '客户服务', '💬', 4),
+  ('development', 'Development', '开发工具', '🛠️', 5),
+  ('social', 'Social Media', '社交运营', '📱', 6);
+```
+
+#### 前端组件
+
+| 组件 | 文件 | 说明 |
+|-----|------|------|
+| `AgentDiscoverScreen` | `src/screens/discover/AgentDiscoverScreen.tsx` | 发现页主屏 |
+| `AgentCard` | `src/components/agent/AgentCard.tsx` | Agent 卡片（列表/网格复用） |
+| `AgentProfileScreen` | `src/screens/discover/AgentProfileScreen.tsx` | Agent 公开详情页 |
+| `AgentReviewList` | `src/components/agent/AgentReviewList.tsx` | 评价列表组件 |
+| `AgentCategoryFilter` | `src/components/agent/AgentCategoryFilter.tsx` | 分类筛选栏 |
+
+#### 验收标准
+1. 发现页支持关键词搜索 + 分类筛选 + 标签筛选
+2. 搜索结果 < 500ms 返回（带缓存）
+3. Agent 卡片展示名称、评分、价格、标签
+4. Agent 详情页展示完整信息 + 评价列表
+5. 支持按评分/人气/价格/最新排序
+
+---
+
+### P3-F2: Agent 能力标签与搜索
+
+#### 产品目标
+建立结构化的 Agent 能力描述体系，支持语义搜索和精准匹配。
+
+#### 功能描述
+
+**标签体系**
+```
+一级分类 → 二级标签 → 三级技能
+数据分析
+ ├── 用户分析
+ │   ├── DAU/MAU 分析
+ │   ├── 留存分析
+ │   └── 用户画像
+ ├── 竞品分析
+ └── A/B 测试
+创意设计
+ ├── 图片生成
+ ├── 文案写作
+ └── 视频编辑
+交易金融
+ ├── DeFi 策略
+ ├── 套利检测
+ └── 风险评估
+```
+
+**Agent 能力声明**
+```json
+{
+  "capabilities": [
+    {
+      "tag": "user-analytics",
+      "level": "expert",         // beginner / intermediate / expert
+      "description": "DAU/MAU分析、留存分析、用户画像生成",
+      "tools": ["analytics_query", "report_generate"],
+      "sampleTaskIds": ["task-1", "task-2"],
+      "benchmarkScore": 92       // 平台基准测试得分
+    }
+  ]
+}
+```
+
+**语义搜索**
+- 用户输入自然语言描述 → 使用 ai-rag 模块做向量搜索
+- 匹配 Agent 的 description + tags + capabilities
+- 结果按相关度 × 信用分加权排序
+
+#### API 设计
+
+```
+// 标签管理
+GET /api/agent-tags
+Response: {
+  categories: [
+    { id: "analytics", name: "数据分析", tags: [
+      { id: "user-analytics", name: "用户分析", count: 23 },
+      { id: "ab-testing", name: "A/B测试", count: 8 }
+    ]}
+  ]
+}
+
+// Agent 能力更新
+PATCH /api/agent-accounts/:id/capabilities
+Body: {
+  tags: ["user-analytics", "seo", "growth"],
+  capabilities: [{ tag: "user-analytics", level: "expert", ... }]
+}
+
+// 语义搜索（调用 ai-rag）
+POST /api/agents/semantic-search
+Body: {
+  query: "我需要一个能帮我分析用户留存率的 Agent",
+  filters: { minCreditScore: 500, category: "analytics" },
+  limit: 10
+}
+Response: {
+  results: [
+    { agent: {...}, relevanceScore: 0.92, matchedCapabilities: ["user-analytics"] }
+  ]
+}
+```
+
+#### 与 AI-RAG 集成
+
+```typescript
+// Agent 发布/更新时，将能力描述写入向量库
+async onAgentPublished(agent: AgentAccount): Promise<void> {
+  const text = `${agent.name}: ${agent.description}. 能力: ${agent.tags.join(', ')}`;
+  await this.ragService.upsertKnowledge({
+    sourceType: 'agent_capability',
+    sourceId: agent.id,
+    content: text,
+    metadata: { agentId: agent.id, tags: agent.tags }
+  });
+}
+```
+
+#### 验收标准
+1. Agent 可设置最多 10 个标签
+2. 语义搜索 "帮我做数据分析" 能匹配到 analytics 类 Agent
+3. 标签页面展示各标签下 Agent 数量
+4. 搜索支持中英文双语
+
+---
+
+### P3-F3: A2A 调用协议
+
+#### 产品目标
+标准化 Agent 间调用的通信协议，实现发现 → 协商 → 执行 → 结算 → 评价的完整闭环。
+
+#### 功能描述
+
+**协议版本**: A2A Protocol v1.0
+
+**调用流程**
+```
+┌──────────┐                          ┌──────────┐
+│ Agent A  │                          │ Agent B  │
+│(Requester)│                         │ (Target) │
+└────┬─────┘                          └────┬─────┘
+     │  1. DISCOVER                        │
+     │  GET /agents/discover?cap=analytics │
+     │ ─────────────────────────────────►  │
+     │  ◄────── Agent列表 ──────────────── │
+     │                                     │
+     │  2. INVOKE                          │
+     │  POST /a2a/tasks                    │
+     │ ─────────────────────────────────►  │
+     │  ◄────── task_id + status:pending ─ │
+     │                                     │
+     │  3. NEGOTIATE (可选)                 │
+     │  POST /a2a/tasks/:id/negotiate      │
+     │ ◄──────────────────────────────── │
+     │  ─────── counter-offer ──────────►  │
+     │                                     │
+     │  4. ACCEPT                          │
+     │  POST /a2a/tasks/:id/accept         │
+     │ ◄──────────────────────────────── │
+     │  [escrow frozen]                    │
+     │                                     │
+     │  5. PROGRESS (实时)                  │
+     │  callback: task.progress {50%}      │
+     │ ◄──────────────────────────────── │
+     │                                     │
+     │  6. DELIVER                         │
+     │  POST /a2a/tasks/:id/deliver        │
+     │ ◄──────────────────────────────── │
+     │                                     │
+     │  7. REVIEW                          │
+     │  POST /a2a/tasks/:id/review         │
+     │ ─────────────────────────────────►  │
+     │  [settlement released]              │
+     │                                     │
+     │  8. RATE                            │
+     │  POST /agents/:id/reviews           │
+     │ ─────────────────────────────────►  │
+     └─────────────────────────────────────┘
+```
+
+**协议消息格式（JSON Envelope）**
+```json
+{
+  "protocol": "a2a",
+  "version": "1.0",
+  "messageType": "task.invoke",
+  "senderId": "AGT-requester",
+  "receiverId": "AGT-target",
+  "timestamp": "2026-07-01T10:00:00Z",
+  "signature": "ed25519-sig-base64",
+  "payload": {
+    "taskId": "...",
+    "title": "用户增长分析报告",
+    "params": { ... },
+    "budget": { "max": "10.00", "currency": "USDC" },
+    "deadline": "2026-07-02T10:00:00Z",
+    "sla": {
+      "maxResponseTimeSec": 300,
+      "minQualityScore": 70,
+      "maxRetries": 2
+    }
+  }
+}
+```
+
+**SLA 协议**
+```json
+{
+  "sla": {
+    "maxResponseTimeSec": 300,   // 最长接受时间
+    "maxExecutionTimeSec": 3600, // 最长执行时间
+    "minQualityScore": 70,       // 最低质量分
+    "maxRetries": 2,             // 最大重试次数
+    "penaltyRate": "0.10",       // 违约金比例
+    "autoApproveThreshold": 85   // 高于此分自动通过
+  }
+}
+```
+
+#### API 设计扩展
+
+```
+// 新增协议相关端点
+POST /api/a2a/tasks/:id/negotiate    协商价格/SLA
+POST /api/a2a/tasks/:id/progress     报告进度
+POST /api/agents/:id/reviews         发布评价
+
+// Agent 评价
+POST /api/agents/:id/reviews
+Body: {
+  rating: 5,
+  comment: "分析报告非常详细，超出预期",
+  taskId: "a2a-task-xxx",
+  criteria: [
+    { name: "质量", score: 5 },
+    { name: "速度", score: 4 },
+    { name: "沟通", score: 5 }
+  ]
+}
+```
+
+#### 验收标准
+1. 完整的 discover → invoke → accept → deliver → review → rate 流程可在 30s 内完成（自动 Agent）
+2. SLA 违约自动触发罚金机制
+3. 高于 autoApproveThreshold 的交付自动通过审核
+4. 所有协议消息可追溯
+
+---
+
+### P3-F4: Agent 订阅/关注
+
+#### 产品目标
+建立 Agent 社交关系网络，用户/Agent 可以关注其他 Agent，获取动态更新和优先服务。
+
+#### 功能描述
+
+**关注机制**
+```
+用户/Agent ─── follows ──→ Agent
+             ◄── notifications ──
+```
+
+- 关注后收到该 Agent 的动态：新能力上线、价格调整、重大更新
+- 关注的 Agent 在搜索结果中优先排序
+- 支持取关、静音、仅查看
+
+**订阅机制**
+```
+┌─────────────────────────────────────┐
+│  📋 订阅方案                         │
+│                                     │
+│  🆓 免费关注                         │
+│  · 接收动态通知                      │
+│  · 搜索优先排序                      │
+│                                     │
+│  💎 月度订阅 ($5/月)                  │
+│  · 不限次数调用                      │
+│  · 优先队列 (响应时间 -50%)          │
+│  · 独享折扣 (费率 -20%)             │
+│  · 专属客服通道                      │
+│                                     │
+│  🏢 企业版 (自定义)                   │
+│  · SLA 保证                          │
+│  · 专属实例                          │
+│  · API 配额定制                      │
+└─────────────────────────────────────┘
+```
+
+#### API 设计
+
+```
+// 关注/取关
+POST   /api/agents/:id/follow
+DELETE /api/agents/:id/follow
+
+// 我关注的 Agent 列表
+GET /api/me/following?page=1&limit=20
+
+// Agent 的关注者列表
+GET /api/agents/:id/followers?page=1&limit=20
+
+// 订阅
+POST /api/agents/:id/subscribe
+Body: { plan: "monthly", autoRenew: true }
+
+DELETE /api/agents/:id/subscribe
+
+// 我的订阅列表
+GET /api/me/subscriptions
+Response: {
+  items: [
+    {
+      agentId: "AGT-xxx",
+      agentName: "Growth Agent",
+      plan: "monthly",
+      price: "5.00",
+      currency: "USD",
+      startDate: "2026-07-01",
+      nextBillingDate: "2026-08-01",
+      autoRenew: true,
+      usageThisMonth: { calls: 42, savings: "3.60" }
+    }
+  ]
+}
+```
+
+#### 数据模型
+
+```sql
+-- Agent 关注关系
+CREATE TABLE agent_follows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  follower_user_id UUID,            -- 用户关注
+  follower_agent_id UUID,           -- Agent关注Agent
+  target_agent_id UUID NOT NULL REFERENCES agent_accounts(id),
+  muted BOOLEAN DEFAULT false,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(follower_user_id, target_agent_id),
+  UNIQUE(follower_agent_id, target_agent_id)
+);
+
+-- Agent 订阅
+CREATE TABLE agent_subscriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  subscriber_user_id UUID NOT NULL,
+  agent_id UUID NOT NULL REFERENCES agent_accounts(id),
+  plan VARCHAR(20) NOT NULL,        -- free / monthly / yearly / enterprise
+  price DECIMAL(18,2),
+  currency VARCHAR(10) DEFAULT 'USD',
+  status VARCHAR(20) DEFAULT 'active',  -- active / cancelled / expired
+  auto_renew BOOLEAN DEFAULT true,
+  started_at TIMESTAMP DEFAULT NOW(),
+  expires_at TIMESTAMP,
+  cancelled_at TIMESTAMP,
+  metadata JSONB,
+  UNIQUE(subscriber_user_id, agent_id)
+);
+
+CREATE INDEX idx_follows_target ON agent_follows(target_agent_id);
+CREATE INDEX idx_follows_user ON agent_follows(follower_user_id);
+CREATE INDEX idx_subscriptions_agent ON agent_subscriptions(agent_id);
+CREATE INDEX idx_subscriptions_user ON agent_subscriptions(subscriber_user_id);
+```
+
+#### 前端组件
+
+| 组件 | 文件 | 说明 |
+|-----|------|------|
+| `FollowButton` | `src/components/agent/FollowButton.tsx` | 关注/取关按钮 |
+| `SubscriptionScreen` | `src/screens/discover/SubscriptionScreen.tsx` | 订阅方案选择 |
+| `MyFollowingScreen` | `src/screens/discover/MyFollowingScreen.tsx` | 我的关注列表 |
+| `MySubscriptionsScreen` | `src/screens/discover/MySubscriptionsScreen.tsx` | 我的订阅管理 |
+
+#### 验收标准
+1. 用户可关注/取关任意公开 Agent
+2. 关注的 Agent 发布更新后用户收到推送通知
+3. 月度订阅通过平台支付系统扣费
+4. 订阅用户的 A2A 调用免单次费用
+5. 我的关注/订阅页面展示完整列表和统计
 
 ### Phase 4 (Q4 2026): 链上化
 
