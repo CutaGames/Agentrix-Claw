@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   RefreshControl, ActivityIndicator, Alert, Modal,
-  TextInput, ScrollView, Platform, StatusBar, Clipboard,
+  TextInput, ScrollView, Platform, StatusBar,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -594,7 +595,7 @@ export function AgentAccountScreen() {
         <TouchableOpacity
           style={styles.walletRowActive}
           onPress={() => {
-            Clipboard.setString((agent as any).walletAddress);
+            Clipboard.setStringAsync((agent as any).walletAddress);
             Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'Wallet address copied.', zh: '钱包地址已复制。' }));
           }}
         >
@@ -666,7 +667,7 @@ export function AgentAccountScreen() {
             <Text style={styles.apiKeyLabel}>🔑 API Key</Text>
             <TouchableOpacity
               onPress={() => {
-                Clipboard.setString(agentApiKey.key!);
+                Clipboard.setStringAsync(agentApiKey.key!);
                 Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'API Key copied to clipboard.', zh: 'API Key 已复制到剪贴板。' }));
               }}
             >

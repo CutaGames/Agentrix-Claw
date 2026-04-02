@@ -171,10 +171,13 @@ async function chatWithAgent(agentName: string, message: string): Promise<string
 // Task Status
 // ──────────────────────────────────────────────
 const TASK_STATUS: Record<string, { label: string; labelZh: string; color: string; icon: string }> = {
-  open: { label: 'Open', labelZh: '待开始', color: '#3b82f6', icon: '📋' },
+  pending:     { label: 'Pending',     labelZh: '待处理', color: '#6366f1', icon: '📋' },
+  accepted:    { label: 'Accepted',    labelZh: '已接受', color: '#3b82f6', icon: '✋' },
+  open:        { label: 'Open',        labelZh: '待开始', color: '#6366f1', icon: '📋' },
   in_progress: { label: 'In Progress', labelZh: '进行中', color: '#f59e0b', icon: '⚙️' },
-  completed: { label: 'Completed', labelZh: '已完成', color: '#22c55e', icon: '✅' },
-  cancelled: { label: 'Cancelled', labelZh: '已取消', color: '#ef4444', icon: '❌' },
+  delivered:   { label: 'Delivered',   labelZh: '已交付', color: '#8b5cf6', icon: '📦' },
+  completed:   { label: 'Completed',   labelZh: '已完成', color: '#22c55e', icon: '✅' },
+  cancelled:   { label: 'Cancelled',   labelZh: '已取消', color: '#ef4444', icon: '❌' },
 };
 
 // ──────────────────────────────────────────────

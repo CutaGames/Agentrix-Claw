@@ -94,10 +94,13 @@ async function completeTask(taskId: string): Promise<void> {
 // Status metadata
 // ──────────────────────────────────────────────
 const STATUS_META: Record<string, { label: { en: string; zh: string }; color: string; icon: string }> = {
-  open: { label: { en: 'Open', zh: '待开始' }, color: '#3b82f6', icon: '📋' },
+  pending:     { label: { en: 'Pending', zh: '待处理' },     color: '#6366f1', icon: '📋' },
+  accepted:    { label: { en: 'Accepted', zh: '已接受' },    color: '#3b82f6', icon: '✋' },
+  open:        { label: { en: 'Open', zh: '待开始' },        color: '#6366f1', icon: '📋' },
   in_progress: { label: { en: 'In Progress', zh: '进行中' }, color: '#f59e0b', icon: '⚙️' },
-  completed: { label: { en: 'Completed', zh: '已完成' }, color: '#22c55e', icon: '✅' },
-  cancelled: { label: { en: 'Cancelled', zh: '已取消' }, color: '#ef4444', icon: '❌' },
+  delivered:   { label: { en: 'Delivered', zh: '已交付' },   color: '#8b5cf6', icon: '📦' },
+  completed:   { label: { en: 'Completed', zh: '已完成' },   color: '#22c55e', icon: '✅' },
+  cancelled:   { label: { en: 'Cancelled', zh: '已取消' },   color: '#ef4444', icon: '❌' },
 };
 
 const TASK_TYPES = [
@@ -277,9 +280,9 @@ export function TaskBoardScreen() {
   );
 
   // Stats
-  const totalActive = myTasks.filter(t => t.status === 'in_progress').length;
-  const totalOpen = myTasks.filter(t => t.status === 'open').length;
-  const totalDone = myTasks.filter(t => t.status === 'completed').length;
+  const totalActive = myTasks.filter(t => t.status === 'in_progress' || t.status === 'accepted').length;
+  const totalOpen = myTasks.filter(t => t.status === 'open' || t.status === 'pending').length;
+  const totalDone = myTasks.filter(t => t.status === 'completed' || t.status === 'delivered').length;
 
   const loading = tasksLoading || teamsLoading;
 
