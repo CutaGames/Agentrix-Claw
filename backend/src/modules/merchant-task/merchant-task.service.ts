@@ -46,7 +46,7 @@ export class MerchantTaskService {
   async createTask(userId: string, dto: CreateTaskDto): Promise<MerchantTask> {
     const task = this.taskRepository.create({
       userId,
-      merchantId: dto.merchantId,
+      merchantId: dto.merchantId || userId,
       type: dto.type,
       title: dto.title,
       description: dto.description,
@@ -88,9 +88,16 @@ export class MerchantTaskService {
    * 商户接受任务
    */
   async acceptTask(merchantId: string, taskId: string): Promise<MerchantTask> {
-    const task = await this.taskRepository.findOne({
+    let task = await this.taskRepository.findOne({
       where: { id: taskId, merchantId },
     });
+
+    // Also try by userId (for tasks created by the same user)
+    if (!task) {
+      task = await this.taskRepository.findOne({
+        where: { id: taskId, userId: merchantId },
+      });
+    }
 
     if (!task) {
       throw new NotFoundException('任务不存在');
@@ -135,9 +142,16 @@ export class MerchantTaskService {
     taskId: string,
     dto: UpdateTaskProgressDto,
   ): Promise<MerchantTask> {
-    const task = await this.taskRepository.findOne({
+    let task = await this.taskRepository.findOne({
       where: { id: taskId, merchantId },
     });
+
+    // Also try by userId (for tasks created by the same user)
+    if (!task) {
+      task = await this.taskRepository.findOne({
+        where: { id: taskId, userId: merchantId },
+      });
+    }
 
     if (!task) {
       throw new NotFoundException('任务不存在');
@@ -201,9 +215,16 @@ export class MerchantTaskService {
    * 完成任务
    */
   async completeTask(merchantId: string, taskId: string): Promise<MerchantTask> {
-    const task = await this.taskRepository.findOne({
+    let task = await this.taskRepository.findOne({
       where: { id: taskId, merchantId },
     });
+
+    // Also try by userId (for tasks created by the same user)
+    if (!task) {
+      task = await this.taskRepository.findOne({
+        where: { id: taskId, userId: merchantId },
+      });
+    }
 
     if (!task) {
       throw new NotFoundException('任务不存在');

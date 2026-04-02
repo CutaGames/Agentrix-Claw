@@ -69,8 +69,8 @@ interface AgentBalance {
 }
 
 async function fetchAgentBalance(agentAccountId: string): Promise<AgentBalance> {
-  const res = await apiFetch<AgentBalance>(`/agent-accounts/${agentAccountId}/balance`);
-  return res;
+  const res = await apiFetch<{ success: boolean; data: AgentBalance }>(`/agent-accounts/${agentAccountId}/balance`);
+  return res.data ?? res as any;
 }
 
 // On-chain status API
@@ -83,8 +83,8 @@ interface OnchainStatus {
 }
 
 async function fetchOnchainStatus(agentAccountId: string): Promise<OnchainStatus> {
-  const res = await apiFetch<OnchainStatus>(`/agent-accounts/${agentAccountId}/onchain-status`);
-  return res;
+  const res = await apiFetch<{ success: boolean; data: OnchainStatus }>(`/agent-accounts/${agentAccountId}/onchain-status`);
+  return res.data ?? res as any;
 }
 
 async function registerOnchain(agentAccountId: string): Promise<any> {

@@ -38,7 +38,8 @@ interface TransactionPage {
 // API
 // ──────────────────────────────────────────────
 async function fetchBalance(agentAccountId: string): Promise<AgentBalance> {
-  return apiFetch<AgentBalance>(`/agent-accounts/${agentAccountId}/balance`);
+  const res = await apiFetch<{ success: boolean; data: AgentBalance }>(`/agent-accounts/${agentAccountId}/balance`);
+  return res.data ?? res as any;
 }
 
 async function fetchTransactions(
