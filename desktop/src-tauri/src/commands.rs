@@ -35,6 +35,16 @@ pub struct DesktopReadFileResult {
     pub path: String,
     pub content: String,
     pub size: u64,
+    pub total_lines: usize,
+    pub start_line: usize,
+    pub end_line: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopListDirectoryResult {
+    pub path: String,
+    pub entries: Vec<FileEntry>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -133,6 +143,26 @@ fn load_workspace_dir() -> Result<Option<PathBuf>, String> {
 
 fn require_workspace_dir() -> Result<PathBuf, String> {
     load_workspace_dir()?.ok_or("No workspace directory set".into())
+}
+
+fn resolve_user_path(path: &str) -> Result<PathBuf, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Path is required".into());
+    }
+
+    let candidate = PathBuf::from(trimmed);
+    if candidate.is_absolute() {
+        return Ok(candidate);
+    }
+
+    if let Some(workspace) = load_workspace_dir()? {
+        return validate_path(&workspace, trimmed);
+    }
+
+    std::env::current_dir()
+        .map(|cwd| cwd.join(trimmed))
+        .map_err(|e| e.to_string())
 }
 
 fn store_workspace_dir(path: PathBuf) -> Result<String, String> {
@@ -455,6 +485,40 @@ pub fn write_workspace_file(relative_path: String, content: String) -> Result<()
     std::fs::write(&target, &content).map_err(|e| e.to_string())
 }
 
+pub fn list_directory(path: String) -> Result<DesktopListDirectoryResult, String> {
+    let target = if path.trim().is_empty() {
+        load_workspace_dir()?
+            .or_else(|| std::env::current_dir().ok())
+            .ok_or("Unable to resolve directory".to_string())?
+    } else {
+        resolve_user_path(&path)?
+    };
+
+    if !target.is_dir() {
+        return Err(format!("Not a directory: {}", target.display()));
+    }
+
+    let mut entries = Vec::new();
+    for entry in std::fs::read_dir(&target).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let ft = entry.file_type().map_err(|e| e.to_string())?;
+        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+        entries.push(FileEntry {
+            name,
+            is_dir: ft.is_dir(),
+            size,
+        });
+    }
+
+    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
+
+    Ok(DesktopListDirectoryResult {
+        path: target.display().to_string(),
+        entries,
+    })
+}
+
 fn build_shell_command(command: &str) -> Command {
     #[cfg(target_os = "windows")]
     {
@@ -482,10 +546,14 @@ fn read_pipe(mut pipe: Option<impl Read>) -> String {
 pub fn run_command(command: String, working_directory: Option<String>, timeout_ms: u64) -> Result<DesktopCommandResult, String> {
     let started = Instant::now();
     let mut shell = build_shell_command(&command);
-    if let Some(dir) = working_directory.as_ref() {
-        if !dir.trim().is_empty() {
-            shell.current_dir(dir);
-        }
+    let resolved_working_directory = if let Some(dir) = working_directory.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
+        Some(dir.to_string())
+    } else {
+        load_workspace_dir()?.map(|workspace| workspace.display().to_string())
+    };
+
+    if let Some(dir) = resolved_working_directory.as_ref() {
+        shell.current_dir(dir);
     }
     shell.stdout(Stdio::piped()).stderr(Stdio::piped());
 
@@ -498,7 +566,7 @@ pub fn run_command(command: String, working_directory: Option<String>, timeout_m
             let stderr = read_pipe(child.stderr.take());
             return Ok(DesktopCommandResult {
                 command,
-                working_directory,
+                working_directory: resolved_working_directory.clone(),
                 stdout,
                 stderr,
                 exit_code: status.code(),
@@ -514,7 +582,7 @@ pub fn run_command(command: String, working_directory: Option<String>, timeout_m
             let stderr = read_pipe(child.stderr.take());
             return Ok(DesktopCommandResult {
                 command,
-                working_directory,
+                working_directory: resolved_working_directory.clone(),
                 stdout,
                 stderr,
                 exit_code: None,
@@ -527,31 +595,50 @@ pub fn run_command(command: String, working_directory: Option<String>, timeout_m
     }
 }
 
-pub fn read_file(path: String) -> Result<DesktopReadFileResult, String> {
-    let target = PathBuf::from(&path);
+pub fn read_file(path: String, start_line: Option<usize>, end_line: Option<usize>) -> Result<DesktopReadFileResult, String> {
+    let target = resolve_user_path(&path)?;
     if !target.is_file() {
-        return Err(format!("Not a file: {}", path));
+        return Err(format!("Not a file: {}", target.display()));
     }
     let metadata = std::fs::metadata(&target).map_err(|e| e.to_string())?;
     if metadata.len() > 2 * 1024 * 1024 {
         return Err("File too large (>2MB).".into());
     }
-    let content = std::fs::read_to_string(&target).map_err(|e| e.to_string())?;
+    let full_content = std::fs::read_to_string(&target).map_err(|e| e.to_string())?;
+    let all_lines: Vec<&str> = full_content.lines().collect();
+    let total_lines = all_lines.len();
+    let (resolved_start_line, resolved_end_line, content) = if total_lines == 0 {
+        (0usize, 0usize, String::new())
+    } else {
+        let requested_start = start_line.unwrap_or(1).max(1);
+        let requested_end = end_line.unwrap_or(total_lines).max(requested_start);
+        let clamped_start = requested_start.min(total_lines);
+        let clamped_end = requested_end.min(total_lines);
+        (
+            clamped_start,
+            clamped_end,
+            all_lines[(clamped_start - 1)..clamped_end].join("\n"),
+        )
+    };
+
     Ok(DesktopReadFileResult {
-        path,
+        path: target.display().to_string(),
         content,
         size: metadata.len(),
+        total_lines,
+        start_line: resolved_start_line,
+        end_line: resolved_end_line,
     })
 }
 
 pub fn write_file(path: String, content: String) -> Result<DesktopWriteFileResult, String> {
-    let target = PathBuf::from(&path);
+    let target = resolve_user_path(&path)?;
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     std::fs::write(&target, content.as_bytes()).map_err(|e| e.to_string())?;
     Ok(DesktopWriteFileResult {
-        path,
+        path: target.display().to_string(),
         bytes_written: content.as_bytes().len(),
     })
 }

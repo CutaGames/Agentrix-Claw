@@ -8,9 +8,7 @@
  * - 8.4 Shared workspace management
  */
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
-import { useAuthStore, type ChatMessage } from "../services/store";
-
-const API_BASE = import.meta.env.VITE_API_BASE || "https://api.agentrix.top/api";
+import { API_BASE, useAuthStore, type ChatMessage } from "../services/store";
 
 // ── Types ──────────────────────────────────────────────
 

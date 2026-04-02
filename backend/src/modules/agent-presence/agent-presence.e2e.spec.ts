@@ -16,6 +16,7 @@ import { ChannelRegistry } from './channel/channel-registry';
 import { SessionHandoffService } from './handoff/session-handoff.service';
 import { AgentTaskSchedulerService } from './scheduler/agent-task-scheduler.service';
 import { OperationsDashboardService } from './scheduler/operations-dashboard.service';
+import { UnifiedDeviceService } from './unified-device.service';
 
 import { UserAgent, UserAgentStatus } from '../../entities/user-agent.entity';
 import { ConversationEvent } from '../../entities/conversation-event.entity';
@@ -154,6 +155,20 @@ describe('Agent Presence E2E', () => {
         SessionHandoffService,
         AgentTaskSchedulerService,
         OperationsDashboardService,
+        {
+          provide: UnifiedDeviceService,
+          useValue: {
+            getAllDevices: jest.fn().mockResolvedValue([]),
+            getOnlineDevices: jest.fn().mockResolvedValue([]),
+            getDeviceStats: jest.fn().mockResolvedValue({
+              totalDevices: 0,
+              onlineDevices: 0,
+              offlineDevices: 0,
+              bySource: { agentPresence: 0, desktopSync: 0 },
+            }),
+            syncDesktopHeartbeat: jest.fn().mockResolvedValue({ ok: true }),
+          },
+        },
         { provide: getRepositoryToken(UserAgent), useValue: agentRepo },
         { provide: getRepositoryToken(ConversationEvent), useValue: eventRepo },
         { provide: getRepositoryToken(AgentSharePolicy), useValue: sharePolicyRepo },

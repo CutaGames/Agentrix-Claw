@@ -539,7 +539,12 @@ export class BedrockIntegrationService {
       };
 
       if (systemMessage) {
-        body.system = systemMessage.content;
+        // Support prompt caching: if system content is an array of blocks with cache_control, pass as-is
+        if (Array.isArray(systemMessage.content) && systemMessage.content.some((b: any) => b.cache_control)) {
+          body.system = systemMessage.content;
+        } else {
+          body.system = systemMessage.content;
+        }
       }
 
       // 如果有工具定义，添加工具 (Bedrock Anthropic Tool Use 格式)

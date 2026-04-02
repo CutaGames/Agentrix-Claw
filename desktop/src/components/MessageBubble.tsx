@@ -1,8 +1,10 @@
-import { type CSSProperties, useState, useCallback, useMemo, type ReactNode } from "react";
+import { type CSSProperties, useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from "react";
 import type { ChatMessage } from "../services/store";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import DiffView from "./DiffView";
+import TerminalOutput from "./TerminalOutput";
 
 function extractTextFromChildren(children: ReactNode): string {
   if (typeof children === "string") return children;
@@ -23,8 +25,8 @@ export default function MessageBubble({ message, onRetry }: Props) {
   const isUser = message.role === "user";
   const isError = message.error;
 
-  // Extract <think>...</think> and [Thinking]...[/Thinking] blocks, plus tool markers
-  const { thinkContent, displayContent, toolCalls, toolProgress } = useMemo(() => {
+  // Extract <think>...</think> and [Thinking]...[/Thinking] blocks, plus tool markers, diff blocks, terminal output
+  const { thinkContent, displayContent, toolCalls, toolProgress, diffBlocks, terminalBlocks } = useMemo(() => {
     const text = message.content;
     // Legacy <think> tags
     const thinkMatch = text.match(/^<think>([\s\S]*?)<\/think>\s*/);
@@ -85,11 +87,32 @@ export default function MessageBubble({ message, onRetry }: Props) {
       return '';
     });
 
+    // Extract diff code blocks (```diff ... ```)
+    const diffs: { content: string; fileName?: string }[] = [];
+    rest = rest.replace(/```diff\n([\s\S]*?)```/g, (_m, content) => {
+      const firstLine = content.split('\n')[0] || '';
+      const fileMatch = firstLine.match(/^(?:---|\+\+\+|diff --git)\s+(?:a\/)?(.+?)(?:\s|$)/);
+      diffs.push({ content: content.trim(), fileName: fileMatch?.[1] });
+      return `[DIFF_BLOCK_${diffs.length - 1}]`;
+    });
+
+    // Extract terminal/bash code blocks with output markers
+    const terminals: { command?: string; output: string }[] = [];
+    rest = rest.replace(/```(?:terminal|bash|sh|shell)\n([\s\S]*?)```/g, (_m, content) => {
+      const lines = content.trim().split('\n');
+      const cmdLine = lines[0]?.startsWith('$') ? lines[0].slice(1).trim() : undefined;
+      const output = cmdLine ? lines.slice(1).join('\n') : content.trim();
+      terminals.push({ command: cmdLine, output });
+      return `[TERMINAL_BLOCK_${terminals.length - 1}]`;
+    });
+
     return {
       thinkContent: thinkingContent,
       displayContent: rest.trim(),
       toolCalls: tools,
       toolProgress: progress,
+      diffBlocks: diffs,
+      terminalBlocks: terminals,
     };
   }, [message.content]);
 
@@ -119,7 +142,7 @@ export default function MessageBubble({ message, onRetry }: Props) {
       onMouseLeave={() => setHovering(false)}
     >
       {/* Collapsible thinking block */}
-      {thinkContent && <ThinkBlock content={thinkContent} />}
+      {thinkContent && <ThinkBlock content={thinkContent} streaming={message.streaming} />}
 
       {/* Tool call indicators */}
       {toolCalls.length > 0 && (
@@ -151,7 +174,15 @@ export default function MessageBubble({ message, onRetry }: Props) {
               border: `1px solid ${tp.status === 'running' ? 'rgba(250, 204, 21, 0.2)' :
                 tp.status === 'done' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`,
             }}>
-              {tp.status === 'running' ? '⏳' : tp.status === 'done' ? '✅' : '❌'} {tp.name}
+              {tp.status === 'running' ? (
+                <span style={{
+                  display: 'inline-block', width: 10, height: 10,
+                  border: '2px solid rgba(250,204,21,0.3)',
+                  borderTopColor: '#fcd34d',
+                  borderRadius: '50%',
+                  animation: 'spin-slow 0.8s linear infinite',
+                }} />
+              ) : tp.status === 'done' ? '✅' : '❌'} {tp.name}
               {tp.detail && <span style={{ opacity: 0.7, marginLeft: 2 }}>({tp.detail})</span>}
             </span>
           ))}
@@ -173,63 +204,8 @@ export default function MessageBubble({ message, onRetry }: Props) {
           <span style={{ whiteSpace: "pre-wrap" }}>{displayContent}</span>
         ) : (
           <div className="md-body">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeHighlight]}
-              components={{
-                pre({ children, ...props }) {
-                  // Extract code text for copy button
-                  const codeText = extractTextFromChildren(children);
-                  return (
-                    <pre style={preStyle} {...props}>
-                      {children}
-                      {codeText && <CopyCodeButton code={codeText} />}
-                    </pre>
-                  );
-                },
-                code({ children, className, ...props }) {
-                  const isInline = !className;
-                  if (isInline) {
-                    return <code style={inlineCodeStyle} {...props}>{children}</code>;
-                  }
-                  // Extract language label from className
-                  const lang = className?.replace("language-", "") || "";
-                  return (
-                    <>
-                      {lang && (
-                        <div style={codeLangLabelStyle}>{lang}</div>
-                      )}
-                      <code {...props} className={className}>{children}</code>
-                    </>
-                  );
-                },
-                a({ children, href, ...props }) {
-                  const handleClick = async (e: React.MouseEvent) => {
-                    e.preventDefault();
-                    if (href) {
-                      try {
-                        const { invoke } = await import("@tauri-apps/api/core");
-                        await invoke("desktop_bridge_open_browser", { url: href });
-                      } catch {
-                        window.open(href, "_blank");
-                      }
-                    }
-                  };
-                  return <a href={href} onClick={handleClick} style={{ color: "var(--accent-light)", cursor: "pointer" }} {...props}>{children}</a>;
-                },
-                table({ children, ...props }) {
-                  return <table style={tableStyle} {...props}>{children}</table>;
-                },
-                th({ children, ...props }) {
-                  return <th style={thStyle} {...props}>{children}</th>;
-                },
-                td({ children, ...props }) {
-                  return <td style={tdStyle} {...props}>{children}</td>;
-                },
-              }}
-            >
-              {displayContent}
-            </ReactMarkdown>
+            {/* Render content segments: split by diff/terminal block placeholders */}
+            {renderContentWithBlocks(displayContent, diffBlocks, terminalBlocks)}
           </div>
         )
       )}
@@ -382,8 +358,111 @@ function formatBytes(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function ThinkBlock({ content }: { content: string }) {
+/** Split displayContent by [DIFF_BLOCK_N] / [TERMINAL_BLOCK_N] placeholders and render each segment */
+function renderContentWithBlocks(
+  content: string,
+  diffBlocks: { content: string; fileName?: string }[],
+  terminalBlocks: { command?: string; output: string }[],
+) {
+  const parts = content.split(/(\[DIFF_BLOCK_\d+\]|\[TERMINAL_BLOCK_\d+\])/g);
+  return parts.map((part, i) => {
+    const diffMatch = part.match(/^\[DIFF_BLOCK_(\d+)\]$/);
+    if (diffMatch) {
+      const idx = parseInt(diffMatch[1], 10);
+      const block = diffBlocks[idx];
+      if (block) {
+        return <DiffView key={`diff-${i}`} diff={block.content} fileName={block.fileName} />;
+      }
+    }
+    const termMatch = part.match(/^\[TERMINAL_BLOCK_(\d+)\]$/);
+    if (termMatch) {
+      const idx = parseInt(termMatch[1], 10);
+      const block = terminalBlocks[idx];
+      if (block) {
+        return <TerminalOutput key={`term-${i}`} command={block.command} output={block.output} />;
+      }
+    }
+    // Regular markdown segment
+    if (part.trim()) {
+      return <MarkdownSegment key={`md-${i}`} content={part} />;
+    }
+    return null;
+  });
+}
+
+function MarkdownSegment({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeHighlight]}
+      components={{
+        pre({ children, ...props }) {
+          const codeText = extractTextFromChildren(children);
+          return (
+            <pre style={preStyle} {...props}>
+              {children}
+              {codeText && <CopyCodeButton code={codeText} />}
+            </pre>
+          );
+        },
+        code({ children, className, ...props }) {
+          const isInline = !className;
+          if (isInline) {
+            return <code style={inlineCodeStyle} {...props}>{children}</code>;
+          }
+          const lang = className?.replace("language-", "") || "";
+          return (
+            <>
+              {lang && <div style={codeLangLabelStyle}>{lang}</div>}
+              <code {...props} className={className}>{children}</code>
+            </>
+          );
+        },
+        a({ children, href, ...props }) {
+          const handleClick = async (e: React.MouseEvent) => {
+            e.preventDefault();
+            if (href) {
+              try {
+                const { invoke } = await import("@tauri-apps/api/core");
+                await invoke("desktop_bridge_open_browser", { url: href });
+              } catch {
+                window.open(href, "_blank");
+              }
+            }
+          };
+          return <a href={href} onClick={handleClick} style={{ color: "var(--accent-light)", cursor: "pointer" }} {...props}>{children}</a>;
+        },
+        table({ children, ...props }) {
+          return <table style={tableStyle} {...props}>{children}</table>;
+        },
+        th({ children, ...props }) {
+          return <th style={thStyle} {...props}>{children}</th>;
+        },
+        td({ children, ...props }) {
+          return <td style={tdStyle} {...props}>{children}</td>;
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
+
+function ThinkBlock({ content, streaming }: { content: string; streaming?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const startTime = useRef(Date.now());
+
+  // Elapsed timer while streaming
+  useEffect(() => {
+    if (!streaming) return;
+    startTime.current = Date.now();
+    const interval = setInterval(() => {
+      setElapsed(Math.round((Date.now() - startTime.current) / 100) / 10);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [streaming]);
+
   return (
     <details
       open={open}
@@ -401,8 +480,24 @@ function ThinkBlock({ content }: { content: string }) {
         animation: open ? "none" : "shimmerRibbon 2s linear infinite",
       }}
     >
-      <summary style={{ cursor: "pointer", fontWeight: 600, color: "var(--accent-light, #A29BFE)" }}>
-        💭 Thinking{open ? "" : "..."}
+      <summary style={{ cursor: "pointer", fontWeight: 600, color: "var(--accent-light, #A29BFE)", display: "flex", alignItems: "center", gap: 6 }}>
+        {streaming && (
+          <span style={{
+            display: "inline-block",
+            width: 12, height: 12,
+            border: "2px solid rgba(108,92,231,0.3)",
+            borderTopColor: "var(--accent-light, #A29BFE)",
+            borderRadius: "50%",
+            animation: "spin-slow 0.8s linear infinite",
+            flexShrink: 0,
+          }} />
+        )}
+        <span>💭 Thinking{open ? "" : "..."}</span>
+        {streaming && elapsed > 0 && (
+          <span style={{ fontWeight: 400, fontSize: 10, opacity: 0.7, marginLeft: 4 }}>
+            {elapsed.toFixed(1)}s
+          </span>
+        )}
       </summary>
       <div style={{ marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
         {content}

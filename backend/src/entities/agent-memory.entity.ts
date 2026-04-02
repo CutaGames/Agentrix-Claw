@@ -30,6 +30,8 @@ export enum MemoryScope {
 @Index(['sessionId', 'createdAt'])
 @Index(['agentId', 'type', 'createdAt'])
 @Index(['agentId', 'scope'])
+@Index(['userId', 'scope'])
+@Index(['userId', 'agentId', 'type'])
 export class AgentMemory {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -39,6 +41,9 @@ export class AgentMemory {
 
   @Column({ nullable: true })
   sessionId: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  userId?: string;
 
   @Column({ type: 'uuid', nullable: true })
   agentId?: string;

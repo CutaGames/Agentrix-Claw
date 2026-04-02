@@ -16,6 +16,8 @@ import { GeminiIntegrationModule } from '../ai-integration/gemini/gemini-integra
 import { OpenAIIntegrationModule } from '../ai-integration/openai/openai-integration.module';
 import { AiProviderModule } from '../ai-provider/ai-provider.module';
 import { AgentIntelligenceModule } from '../agent-intelligence/agent-intelligence.module';
+import { AgentContextModule } from '../agent-context/agent-context.module';
+import { AgentOrchestrationModule } from '../agent-orchestration/agent-orchestration.module';
 import { HookModule } from '../hooks/hook.module';
 import { McpRegistryModule } from '../mcp-registry/mcp-registry.module';
 import { DesktopSyncModule } from '../desktop-sync/desktop-sync.module';
@@ -31,6 +33,8 @@ import { DesktopSyncModule } from '../desktop-sync/desktop-sync.module';
     forwardRef(() => OpenAIIntegrationModule),
     AiProviderModule,
     AgentIntelligenceModule,
+    AgentContextModule,
+    AgentOrchestrationModule,
     HookModule,
     McpRegistryModule,
     DesktopSyncModule,

@@ -50,6 +50,7 @@ export enum DesktopCommandKind {
   CONTEXT = 'context',
   ACTIVE_WINDOW = 'active-window',
   LIST_WINDOWS = 'list-windows',
+  LIST_DIRECTORY = 'list-directory',
   RUN_COMMAND = 'run-command',
   READ_FILE = 'read-file',
   WRITE_FILE = 'write-file',

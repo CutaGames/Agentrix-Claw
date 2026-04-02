@@ -11,6 +11,12 @@ import {
   DesktopCommand,
 } from '../../entities/desktop-sync.entity';
 import {
+  SharedWorkspace,
+  SharedWorkspaceMember,
+  SharedWorkspaceSession,
+  DeviceMediaTransfer,
+} from '../../entities/shared-workspace.entity';
+import {
   DesktopApprovalDecision,
   DesktopApprovalRiskLevel,
   DesktopCommandKind,
@@ -52,6 +58,10 @@ describe('DesktopSyncService', () => {
   let taskRepo: ReturnType<typeof mockRepo>;
   let approvalRepo: ReturnType<typeof mockRepo>;
   let commandRepo: ReturnType<typeof mockRepo>;
+  let workspaceRepo: ReturnType<typeof mockRepo>;
+  let workspaceMemberRepo: ReturnType<typeof mockRepo>;
+  let workspaceSessionRepo: ReturnType<typeof mockRepo>;
+  let mediaTransferRepo: ReturnType<typeof mockRepo>;
 
   beforeEach(async () => {
     devicePresenceRepo = mockRepo();
@@ -59,6 +69,10 @@ describe('DesktopSyncService', () => {
     taskRepo = mockRepo();
     approvalRepo = mockRepo();
     commandRepo = mockRepo();
+    workspaceRepo = mockRepo();
+    workspaceMemberRepo = mockRepo();
+    workspaceSessionRepo = mockRepo();
+    mediaTransferRepo = mockRepo();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -69,6 +83,10 @@ describe('DesktopSyncService', () => {
         { provide: getRepositoryToken(DesktopTask), useValue: taskRepo },
         { provide: getRepositoryToken(DesktopApproval), useValue: approvalRepo },
         { provide: getRepositoryToken(DesktopCommand), useValue: commandRepo },
+        { provide: getRepositoryToken(SharedWorkspace), useValue: workspaceRepo },
+        { provide: getRepositoryToken(SharedWorkspaceMember), useValue: workspaceMemberRepo },
+        { provide: getRepositoryToken(SharedWorkspaceSession), useValue: workspaceSessionRepo },
+        { provide: getRepositoryToken(DeviceMediaTransfer), useValue: mediaTransferRepo },
       ],
     }).compile();
 

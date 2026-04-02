@@ -2,10 +2,8 @@ import { useState, useEffect, useRef, useCallback, type CSSProperties } from "re
 import { QRCodeSVG } from "qrcode.react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import agentrixLogo from "../assets/agentrix-logo.png";
-import { useAuthStore } from "../services/store";
+import { API_BASE, useAuthStore } from "../services/store";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
-
-const API_BASE = "https://api.agentrix.top/api";
 const PAIR_POLL_INTERVAL = 2000;
 const PAIR_TTL = 300_000; // 5 min
 

@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Body, Query, Req, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Req, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { ClaudeIntegrationService } from './claude-integration.service';
 import { AiProviderService } from '../../ai-provider/ai-provider.service';
+import { OpenClawProxyService } from '../../openclaw-proxy/openclaw-proxy.service';
+import { AgentContextService } from '../../agent-context/agent-context.service';
 
 @Controller('claude')
 export class ClaudeIntegrationController {
@@ -14,6 +16,9 @@ export class ClaudeIntegrationController {
     private jwtService: JwtService,
     private configService: ConfigService,
     private aiProviderService: AiProviderService,
+    @Inject(forwardRef(() => OpenClawProxyService))
+    private openClawProxyService: OpenClawProxyService,
+    private agentContextService: AgentContextService,
   ) {}
 
   /** Best-effort userId extraction from Bearer token (no guard — stays public). */
@@ -122,8 +127,12 @@ export class ClaudeIntegrationController {
     @Req() req: Request,
     @Body()
     body: {
-      messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+      messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string | any[] }>;
       anthropicApiKey?: string; // 用户提供的 API Key（可选）
+      sessionId?: string;
+      mode?: 'ask' | 'agent' | 'plan';
+      platform?: 'desktop' | 'mobile' | 'web';
+      deviceId?: string;
       context?: {
         userId?: string;
         sessionId?: string;
@@ -136,7 +145,11 @@ export class ClaudeIntegrationController {
       };
     },
   ) {
-    const { messages, anthropicApiKey, context = {}, options } = body;
+    const { messages, anthropicApiKey, context = {}, options, sessionId, mode, platform, deviceId } = body;
+
+    if (!context.sessionId && sessionId) {
+      context.sessionId = sessionId;
+    }
 
     // Extract userId from JWT if not already in context
     if (!context.userId) {
@@ -147,60 +160,35 @@ export class ClaudeIntegrationController {
       return { error: 'messages array is required and must not be empty' };
     }
 
+    const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
+    const lastUserText = typeof lastUserMessage?.content === 'string'
+      ? lastUserMessage.content
+      : Array.isArray(lastUserMessage?.content)
+        ? lastUserMessage.content
+          .map((block: any) => typeof block === 'string' ? block : block?.text || '')
+          .join(' ')
+        : '';
+
     // If the client already provides a system message, use it as-is.
-    // Otherwise inject the default personal agent system prompt.
+    // Otherwise inject the layered context from shared AgentContextService.
     const hasClientSystemMessage = messages.some(m => m.role === 'system');
 
-    const defaultSystemPrompt = `You are the user's own personal AI agent on Agentrix platform. You can help the user with anything they need — answering questions, researching topics, writing, coding, analysis, and more.
-
-The chat client is a rich mobile app with full media support:
-- Images: Include image URLs (or markdown ![alt](url)) in your reply and they will render as inline image cards.
-- Audio: Every message has a "Play Audio" button for TTS playback. Voice is fully supported.
-- Files: File URLs render as downloadable cards.
-NEVER say the chat is "text-only" or that it cannot display images, play audio, or handle media.
-
-Reliability rules:
-- Never invent desktop sync state, local file access, wallet balances, marketplace totals, installed skills, or task counts.
-- Only state wallet balances, asset status, marketplace counts, and similar facts after a successful tool call or explicit data in the conversation.
-- If the required tool or live instance is unavailable, say that directly instead of guessing.
-
-## Tool Capabilities — USE THEM when relevant:
-### Marketplace & Skills
-- **Web search** (search_web): search for up-to-date information
-- **Marketplace products** (search_agentrix_products): search goods, services, APIs, resources
-- **AI Skills** (skill_search, skill_install, skill_execute): search, install, and run AI skills from OpenClaw Hub
-- **Publish** (skill_publish, resource_publish): publish new skills or resources to the marketplace
-
-### Commerce & Payment
-- **Shopping** (add_to_agentrix_cart, view_agentrix_cart, checkout_agentrix_cart, buy_agentrix_product): full e-commerce flow
-- **Orders & Payment** (get_agentrix_order, pay_agentrix_order): order tracking and payment
-- **Marketplace purchase** (marketplace_purchase): purchase skills/resources with wallet balance
-
-### Wallet & Finance
-- **Wallet Balance** (get_balance): check the agent's wallet balance and available funds — ALWAYS call this when user asks about their balance
-- **Asset Overview** (asset_overview): comprehensive view of wallet assets, chains, and protocol status
-
-### Task Marketplace
-- **Tasks** (task_search, task_post, task_accept, task_submit): search, post, accept, and complete tasks/bounties
-
-### Share & Social
-- **Share** (share_content): generate share links and posters for any marketplace item
-
-## Image Generation
-You CAN generate images by searching for image generation skills (call skill_search for "image generation", "DALL-E", etc.), installing them, and executing them. NEVER say "I cannot generate images".
-
-## Screenshot & Browser
-You CAN take screenshots via installable skills. Call skill_search for "screenshot" or "browser automation".
-
-${context.userId ? `Authenticated User ID: ${context.userId}` : 'User is not authenticated — some features may be limited.'}
-${context.sessionId ? `Session: ${context.sessionId}` : ''}
-
-Always reply in the same language the user uses. When the user asks to do something, call the appropriate tool — never say you cannot do it if a tool exists for it.`;
-
-    const baseMessages = hasClientSystemMessage ? messages : [
-      { role: 'system' as const, content: defaultSystemPrompt },
-      ...messages,
-    ];
+    let baseMessages: typeof messages;
+    if (hasClientSystemMessage) {
+      baseMessages = messages;
+    } else {
+      // Phase 3: Use shared context builder for consistent system prompts across both chat paths
+      const builtContext = await this.agentContextService.buildContext({
+        userId: context.userId || '',
+        sessionId: context.sessionId,
+        needsTools: mode !== 'ask',
+        modelLabel: options?.model || 'AI',
+      });
+      baseMessages = [
+        { role: 'system' as const, content: builtContext.systemPrompt },
+        ...messages,
+      ];
+    }
 
     // Convert image attachment URLs in user messages to Claude multimodal content blocks
     const allMessages = baseMessages.map(m => {
@@ -236,12 +224,43 @@ Always reply in the same language the user uses. When the user asks to do someth
       }
     }
 
-    const result = await this.claudeService.chatWithFunctions(allMessages, {
+    const chatOptions: {
+      model?: string;
+      temperature?: number;
+      maxTokens?: number;
+      enableModelRouting?: boolean;
+      context: { userId?: string; sessionId?: string };
+      userApiKey?: string;
+      userCredentials?: { apiKey: string; secretKey?: string; region?: string; baseUrl?: string; providerId: string; model?: string };
+      additionalTools?: any[];
+      onToolCall?: (name: string, args: any) => Promise<any>;
+    } = {
       ...options,
       context,
       userApiKey: anthropicApiKey,
       userCredentials: userCreds,
-    });
+    };
+
+    if (mode === 'ask') {
+      chatOptions.additionalTools = [];
+    } else if (platform === 'desktop' && context.userId) {
+      const shouldUseTools = this.openClawProxyService.shouldUseTools(mode, lastUserText);
+      if (shouldUseTools) {
+        const desktopBridge = this.openClawProxyService.buildDesktopToolBridge(
+          context.userId,
+          deviceId,
+          context.sessionId,
+        );
+        const baseTools = await this.claudeService.getFunctionSchemas();
+        chatOptions.additionalTools = [...baseTools, ...desktopBridge.additionalTools];
+        chatOptions.onToolCall = desktopBridge.onToolCall;
+        this.logger.log(`🖥️ Desktop Claude chat detected — injected ${desktopBridge.additionalTools.length} desktop tools`);
+      } else {
+        chatOptions.additionalTools = [];
+      }
+    }
+
+    const result = await this.claudeService.chatWithFunctions(allMessages, chatOptions);
 
     return result;
   }

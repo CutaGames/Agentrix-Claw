@@ -391,7 +391,7 @@ Execute this step now. Use the appropriate tool if specified. Report the result 
   ): Promise<void> {
     const existing = await this.memoryRepo.findOne({
       where: scope === MemoryScope.USER
-        ? { agentId: agentId || undefined, key, scope }
+        ? { userId, agentId: agentId || undefined, key, scope }
         : { sessionId, key, scope },
     });
 
@@ -402,6 +402,7 @@ Execute this step now. Use the appropriate tool if specified. Report the result 
     } else {
       const mem = this.memoryRepo.create({
         sessionId: scope === MemoryScope.USER ? undefined : sessionId,
+        userId,
         agentId,
         key,
         value,
@@ -445,12 +446,14 @@ Execute this step now. Use the appropriate tool if specified. Report the result 
     }
 
     // 3. User-scoped memories (shared across agents)
-    const userMems = await this.memoryRepo.find({
-      where: { agentId: agentId || undefined, scope: MemoryScope.USER },
-      order: { updatedAt: 'DESC' },
-      take: Math.min(limit, 5),
-    });
-    memories.push(...userMems);
+    if (userId) {
+      const userMems = await this.memoryRepo.find({
+        where: { userId, scope: MemoryScope.USER },
+        order: { updatedAt: 'DESC' },
+        take: Math.min(limit, 5),
+      });
+      memories.push(...userMems);
+    }
 
     return memories;
   }

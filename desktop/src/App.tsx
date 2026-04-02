@@ -31,6 +31,24 @@ function getWindowView(): string {
 export default function App() {
   const windowLabel = getWindowView();
   const [panelOpen, setPanelOpen] = useState(false);
+
+  // ── Window resize helper for single-window mode ──
+  const resizeMainWindow = useCallback(async (width: number, height: number) => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("desktop_bridge_resize_ball_window", { width, height });
+    } catch {}
+  }, []);
+
+  // When panelOpen changes, resize the main window accordingly
+  useEffect(() => {
+    if (windowLabel !== "main" && windowLabel !== "dev") return;
+    if (panelOpen) {
+      resizeMainWindow(480, 640);
+    } else {
+      resizeMainWindow(80, 80);
+    }
+  }, [panelOpen, windowLabel, resizeMainWindow]);
   const [onboarded, setOnboarded] = useState(() => localStorage.getItem("agentrix_onboarded") === "1");
   const { token, isGuest, loadToken, enterGuest } = useAuthStore();
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>(getNetworkStatus());
@@ -146,6 +164,12 @@ export default function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [panelOpen]);
+
+  useEffect(() => {
+    const handler = () => setPanelOpen(true);
+    window.addEventListener("agentrix:approval-new", handler);
+    return () => window.removeEventListener("agentrix:approval-new", handler);
+  }, []);
 
   // Register Tauri global shortcuts (runs once, chat/default only)
   useEffect(() => {
@@ -315,7 +339,10 @@ export default function App() {
           background: "#FF0000",
         }}
       >
-        <FloatingBall onTap={handleBallClick} />
+        <FloatingBall
+          onTap={handleBallClick}
+          onOpenPro={handleBallClick}
+        />
       </div>
     );
   }
@@ -374,7 +401,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div
-        style={{ width: "100%", height: "100%", background: "var(--bg-dark)" }}
+        style={{ width: "100%", height: "100%", background: panelOpen ? "var(--bg-dark)" : "transparent" }}
       >
         {panelOpen ? (
           <ChatPanel onClose={() => setPanelOpen(false)} networkStatus={networkStatus} />
@@ -386,9 +413,10 @@ export default function App() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              background: "transparent",
             }}
           >
-            <FloatingBall onTap={() => setPanelOpen(true)} />
+            <FloatingBall onTap={() => setPanelOpen(true)} onOpenPro={() => setPanelOpen(true)} />
           </div>
         )}
       </div>

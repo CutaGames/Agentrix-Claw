@@ -1,15 +1,16 @@
 /**
  * Web-based audio queue player for streaming TTS.
  * Plays TTS audio URLs sequentially, one sentence at a time.
- * Desktop counterpart of mobile's expo-av AudioQueuePlayer.
+ * Uses Web Audio API for reliable autoplay in Tauri WebView2.
  */
 
-const API_BASE = "https://api.agentrix.top/api";
+import { API_BASE } from "./store";
 
 export class AudioQueuePlayer {
   private queue: string[] = [];
   private isPlaying = false;
-  private currentAudio: HTMLAudioElement | null = null;
+  private audioCtx: AudioContext | null = null;
+  private currentSource: AudioBufferSourceNode | null = null;
   private token: string;
   private onFinishedAll: (() => void) | null;
   private onPlayStateChange: ((playing: boolean) => void) | null;
@@ -22,6 +23,14 @@ export class AudioQueuePlayer {
     this.token = token;
     this.onFinishedAll = onFinishedAll || null;
     this.onPlayStateChange = onPlayStateChange || null;
+    // Create AudioContext immediately (should be within user gesture context)
+    try {
+      this.audioCtx = new AudioContext();
+      // Resume in case it's suspended
+      void this.audioCtx.resume();
+    } catch {
+      console.warn("[AudioQueuePlayer] Failed to create AudioContext");
+    }
   }
 
   /** Enqueue a text sentence for TTS playback */
@@ -48,35 +57,63 @@ export class AudioQueuePlayer {
     const url = this.queue.shift()!;
 
     try {
-      // Fetch with auth then play from blob URL
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${this.token}` },
       });
       if (!res.ok) {
+        console.warn("[AudioQueuePlayer] TTS fetch failed:", res.status);
         this.playNext();
         return;
       }
 
-      const blob = await res.blob();
+      const arrayBuffer = await res.arrayBuffer();
+      if (!arrayBuffer.byteLength) {
+        this.playNext();
+        return;
+      }
+
+      // Try Web Audio API first (no autoplay restrictions)
+      if (this.audioCtx) {
+        try {
+          await this.audioCtx.resume();
+          const audioBuffer = await this.audioCtx.decodeAudioData(arrayBuffer.slice(0));
+          const source = this.audioCtx.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(this.audioCtx.destination);
+          this.currentSource = source;
+
+          source.onended = () => {
+            this.currentSource = null;
+            this.playNext();
+          };
+
+          source.start();
+          return;
+        } catch (e) {
+          console.warn("[AudioQueuePlayer] Web Audio fallback to HTMLAudio:", e);
+        }
+      }
+
+      // Fallback: HTMLAudioElement
+      const blob = new Blob([arrayBuffer], { type: "audio/mpeg" });
       const blobUrl = URL.createObjectURL(blob);
       const audio = new Audio(blobUrl);
-      this.currentAudio = audio;
 
       audio.onended = () => {
         URL.revokeObjectURL(blobUrl);
-        this.currentAudio = null;
         this.playNext();
       };
 
       audio.onerror = () => {
         URL.revokeObjectURL(blobUrl);
-        this.currentAudio = null;
+        console.warn("[AudioQueuePlayer] HTMLAudio playback error");
         this.playNext();
       };
 
       await audio.play();
-    } catch {
-      this.currentAudio = null;
+    } catch (e) {
+      console.warn("[AudioQueuePlayer] playNext error:", e);
+      this.currentSource = null;
       this.playNext();
     }
   }
@@ -84,10 +121,13 @@ export class AudioQueuePlayer {
   /** Stop all playback and clear queue */
   stopAll() {
     this.queue = [];
-    if (this.currentAudio) {
-      this.currentAudio.pause();
-      this.currentAudio.src = "";
-      this.currentAudio = null;
+    if (this.currentSource) {
+      try { this.currentSource.stop(); } catch {}
+      this.currentSource = null;
+    }
+    if (this.audioCtx) {
+      try { void this.audioCtx.close(); } catch {}
+      this.audioCtx = null;
     }
     this.isPlaying = false;
     this.onPlayStateChange?.(false);

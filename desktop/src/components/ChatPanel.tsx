@@ -24,6 +24,8 @@ import VoiceButton from "./VoiceButton";
 import FloatingBall from "./FloatingBall";
 import SettingsPanel from "./SettingsPanel";
 import FileTreePanel from "./FileTreePanel";
+import ApprovalSheet from "./ApprovalSheet";
+import TaskTimeline, { type TaskRunState, type TaskTimelineEntry, type TaskTimelineStatus } from "./TaskTimeline";
 import { gitStatus, gitDiff, gitLog, gitCommit, gitBranchList } from "../services/git";
 import { captureScreen } from "../services/screenshot";
 import NotificationCenter, { NotificationBadge } from "./NotificationCenter";
@@ -41,6 +43,12 @@ import {
   readWorkspaceFile,
   writeWorkspaceFile,
 } from "../services/workspace";
+import { getDesktopDeviceId } from "../services/desktop";
+import {
+  fetchDesktopSyncState,
+  respondDesktopApproval,
+  type DesktopRemoteApproval,
+} from "../services/desktopSync";
 import { pushSessionSync, isSessionSyncConnected } from "../services/sessionSync";
 import { trackEvent } from "../services/analytics";
 import {
@@ -52,6 +60,11 @@ import {
 import PlanPanel from "./PlanPanel";
 import { ContextVisualizer } from "./ContextVisualizer";
 import CrossDevicePanel from "./CrossDevicePanel";
+import AgentEconomyPanel from "./AgentEconomyPanel";
+import MemoryPanel from "./MemoryPanel";
+import HandoffBanner from "./HandoffBanner";
+import WearableNotification from "./WearableNotification";
+import { startOfflineCache, stopOfflineCache, getQueueLength } from "../services/offlineCache";
 import {
   listSessionEntries,
   loadSessionMessages,
@@ -89,6 +102,25 @@ interface Props {
 }
 
 type BallState = "idle" | "recording" | "thinking" | "speaking";
+type ChatMode = "ask" | "agent" | "plan";
+
+type SessionRuntimeState = {
+  sending: boolean;
+  desktopTaskStatus: TaskRunState;
+  desktopTimelineEntries: TaskTimelineEntry[];
+  pendingApproval: DesktopRemoteApproval | null;
+  rememberApprovalForSession: boolean;
+};
+
+function createEmptySessionRuntimeState(): SessionRuntimeState {
+  return {
+    sending: false,
+    desktopTaskStatus: "idle",
+    desktopTimelineEntries: [],
+    pendingApproval: null,
+    rememberApprovalForSession: false,
+  };
+}
 
 type IncomingHandoffSnapshot = {
   title?: string;
@@ -112,7 +144,6 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     useAuthStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
   const [ballState, setBallState] = useState<BallState>("idle");
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [ttsEnabled, setTtsEnabled] = useState(true);
@@ -129,8 +160,15 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   const [notifOpen, setNotifOpen] = useState(false);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [historyEntries, setHistoryEntries] = useState<SessionEntry[]>([]);
-  const [activePlan, setActivePlan] = useState<AgentPlan | null>(null);
   const [crossDeviceOpen, setCrossDeviceOpen] = useState(false);
+  const [economyPanelOpen, setEconomyPanelOpen] = useState(false);
+  const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
+  const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+  const desktopDeviceId = useMemo(() => getDesktopDeviceId(), []);
+  const [chatMode, setChatMode] = useState<ChatMode>(() => {
+    const saved = localStorage.getItem("agentrix_chat_mode");
+    return saved === "ask" || saved === "plan" ? saved : "agent";
+  });
   const activeAgent = useMemo<DesktopAgent | null>(
     () => agents.find((agent) => agent.id === activeAgentId) || null,
     [agents, activeAgentId],
@@ -142,9 +180,13 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   const [tabs, setTabs] = useState<ChatTab[]>([{ id: defaultTabId, sessionId: defaultSessionId, title: "New Chat", unread: false }]);
   const [activeTabId, setActiveTabId] = useState(defaultTabId);
   const tabMessagesCache = useRef<Record<string, ChatMessage[]>>({});
+  const [sessionRuntime, setSessionRuntime] = useState<Record<string, SessionRuntimeState>>({});
+  const sessionRuntimeRef = useRef<Record<string, SessionRuntimeState>>({});
+  const [sessionPlans, setSessionPlans] = useState<Record<string, AgentPlan | null>>({});
 
   const sessionIdRef = useRef(defaultSessionId);
   const abortRef = useRef<AbortController | null>(null);
+  const sessionAbortControllersRef = useRef<Record<string, AbortController | null>>({});
   const listEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
@@ -152,9 +194,265 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   // Track whether the current send was voice-initiated for auto-TTS
   const voiceInitiatedRef = useRef(false);
 
+  const activeSessionRuntime = useMemo(
+    () => sessionRuntime[sessionIdRef.current] || createEmptySessionRuntimeState(),
+    [sessionRuntime, activeTabId],
+  );
+  const sending = activeSessionRuntime.sending;
+  const desktopTaskStatus = activeSessionRuntime.desktopTaskStatus;
+  const desktopTimelineEntries = activeSessionRuntime.desktopTimelineEntries;
+  const pendingApproval = activeSessionRuntime.pendingApproval;
+  const rememberApprovalForSession = activeSessionRuntime.rememberApprovalForSession;
+  const activePlan = sessionPlans[sessionIdRef.current] || null;
+
+  // Token bar state — lightweight context usage for input area
+  const [tokenUsage, setTokenUsage] = useState<{ percent: number; used: number; total: number } | null>(null);
+  const tokenFetchRef = useRef(0);
+
+  // Real-time SSE cost tracking (P0: Precise cost display)
+  const [streamCost, setStreamCost] = useState<{
+    inputTokens: number; outputTokens: number;
+    cacheReadTokens: number; totalCostUsd: number;
+    model: string;
+  } | null>(null);
+  // Compaction status hint (P1: auto-compaction)
+  const [compactionInfo, setCompactionInfo] = useState<{
+    isCompacted: boolean; turnIndex: number; contextTokens: number;
+  } | null>(null);
+  const fetchTokenUsage = useCallback(async () => {
+    if (!token || !sessionIdRef.current) return;
+    const stamp = ++tokenFetchRef.current;
+    try {
+      const { apiFetch, API_BASE } = await import("../services/store");
+      const url = `${API_BASE}/agent-intelligence/sessions/${encodeURIComponent(sessionIdRef.current)}/context-usage${activeInstanceId ? `?instanceId=${activeInstanceId}` : ""}`;
+      const res = await apiFetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok && stamp === tokenFetchRef.current) {
+        const data = await res.json();
+        setTokenUsage({ percent: data.usagePercent, used: data.estimatedTokens, total: data.contextWindowSize });
+      }
+    } catch {}
+  }, [token, activeInstanceId]);
+
+  // Fetch token usage on tab switch, after send, and periodically
+  useEffect(() => {
+    fetchTokenUsage();
+  }, [activeTabId, fetchTokenUsage]);
+  useEffect(() => {
+    if (!sending) fetchTokenUsage();
+  }, [sending, fetchTokenUsage]);
+
   const refreshHistory = useCallback(async () => {
     setHistoryEntries(await listSessionEntries());
   }, []);
+
+  useEffect(() => {
+    sessionRuntimeRef.current = sessionRuntime;
+  }, [sessionRuntime]);
+
+  const patchSessionRuntime = useCallback(
+    (
+      sessionId: string,
+      patch:
+        | Partial<SessionRuntimeState>
+        | ((current: SessionRuntimeState) => Partial<SessionRuntimeState>),
+    ) => {
+      setSessionRuntime((prev) => {
+        const current = prev[sessionId] || createEmptySessionRuntimeState();
+        const delta = typeof patch === "function" ? patch(current) : patch;
+        return {
+          ...prev,
+          [sessionId]: {
+            ...current,
+            ...delta,
+          },
+        };
+      });
+    },
+    [],
+  );
+
+  const setPlanForSession = useCallback((sessionId: string, plan: AgentPlan | null) => {
+    setSessionPlans((prev) => ({
+      ...prev,
+      [sessionId]: plan,
+    }));
+  }, []);
+
+  const persistMessagesForSession = useCallback(
+    (sessionId: string, nextMessages: ChatMessage[]) => {
+      if (nextMessages.length === 0) {
+        return;
+      }
+
+      void persistSession(sessionId, nextMessages).then(() => refreshHistory());
+
+      const firstUser = nextMessages.find((message) => message.role === "user");
+      const title = firstUser?.content?.slice(0, 50) || "New Chat";
+
+      setTabs((prev) => prev.map((tab) => (
+        tab.sessionId === sessionId
+          ? {
+              ...tab,
+              title,
+            }
+          : tab
+      )));
+
+      pushSessionSync(sessionId, nextMessages, title);
+    },
+    [refreshHistory],
+  );
+
+  const updateSessionMessages = useCallback(
+    (
+      sessionId: string,
+      updater: (messages: ChatMessage[]) => ChatMessage[],
+      options?: { persist?: boolean; markUnread?: boolean },
+    ) => {
+      const currentMessages = tabMessagesCache.current[sessionId] || [];
+      const nextMessages = updater(currentMessages);
+      tabMessagesCache.current[sessionId] = nextMessages;
+
+      if (sessionId === sessionIdRef.current) {
+        setMessages(nextMessages);
+      }
+
+      if (options?.markUnread && sessionId !== sessionIdRef.current) {
+        setTabs((prev) => prev.map((tab) => (
+          tab.sessionId === sessionId
+            ? { ...tab, unread: true }
+            : tab
+        )));
+      }
+
+      if (options?.persist) {
+        persistMessagesForSession(sessionId, nextMessages);
+      }
+
+      return nextMessages;
+    },
+    [persistMessagesForSession],
+  );
+
+  const abortSession = useCallback((sessionId: string) => {
+    const controller = sessionAbortControllersRef.current[sessionId];
+    if (controller) {
+      controller.abort();
+      sessionAbortControllersRef.current[sessionId] = null;
+    }
+    patchSessionRuntime(sessionId, { sending: false });
+    if (sessionId === sessionIdRef.current) {
+      abortRef.current = null;
+    }
+  }, [patchSessionRuntime]);
+
+  const applyDesktopSyncState = useCallback((state: any) => {
+    const tasks = Array.isArray(state?.tasks) ? state.tasks : [];
+    const deviceTasks = tasks.filter((task: any) => task?.deviceId === desktopDeviceId);
+    const approvals = Array.isArray(state?.approvals) ? state.approvals : [];
+
+    const taskGroups = new Map<string, any[]>();
+    const taskSessionMap = new Map<string, string>();
+    for (const task of deviceTasks) {
+      const sessionId = typeof task?.sessionId === "string" && task.sessionId.trim()
+        ? task.sessionId
+        : "__global__";
+      taskSessionMap.set(task.taskId, sessionId);
+      const existing = taskGroups.get(sessionId) || [];
+      existing.push(task);
+      taskGroups.set(sessionId, existing);
+    }
+
+    const approvalBySession = new Map<string, DesktopRemoteApproval>();
+    for (const approval of approvals) {
+      if (approval?.deviceId !== desktopDeviceId || approval?.status !== "pending") {
+        continue;
+      }
+      const sessionId = taskSessionMap.get(approval.taskId) || "__global__";
+      const current = approvalBySession.get(sessionId);
+      if (!current || Date.parse(approval.requestedAt || "") >= Date.parse(current.requestedAt || "")) {
+        approvalBySession.set(sessionId, approval);
+      }
+    }
+
+    const deriveTaskStatus = (sessionTasks: any[]): TaskRunState => {
+      if (sessionTasks.some((task) => task?.status === "need-approve")) return "need-approve";
+      if (sessionTasks.some((task) => task?.status === "executing")) return "executing";
+      const latestTask = [...sessionTasks].sort((left, right) => {
+        const leftTime = Number(left?.finishedAt || left?.startedAt || Date.parse(left?.updatedAt || "") || 0);
+        const rightTime = Number(right?.finishedAt || right?.startedAt || Date.parse(right?.updatedAt || "") || 0);
+        return rightTime - leftTime;
+      })[0];
+      return (latestTask?.status as TaskRunState) || "idle";
+    };
+
+    const toTimelineStatus = (status: TaskRunState): TaskTimelineStatus => {
+      if (status === "executing") return "running";
+      if (status === "need-approve") return "waiting-approval";
+      if (status === "failed") return "failed";
+      return "completed";
+    };
+
+    const buildTimelineEntries = (sessionTasks: any[]): TaskTimelineEntry[] => {
+      return sessionTasks
+        .flatMap((task) => {
+          if (Array.isArray(task?.timeline) && task.timeline.length > 0) {
+            return task.timeline;
+          }
+          return [{
+            id: `${task.taskId}-summary`,
+            title: task?.title || "Desktop task",
+            detail: task?.summary,
+            kind: "run-command",
+            riskLevel: "L0",
+            status: toTimelineStatus((task?.status as TaskRunState) || "completed"),
+            startedAt: Number(task?.startedAt || Date.parse(task?.updatedAt || "") || Date.now()),
+            finishedAt: typeof task?.finishedAt === "number" ? task.finishedAt : undefined,
+          }];
+        })
+        .sort((left, right) => Number(left?.startedAt || 0) - Number(right?.startedAt || 0))
+        .slice(-12);
+    };
+
+    const knownSessionIds = new Set<string>([
+      ...tabs.map((tab) => tab.sessionId),
+      ...taskGroups.keys(),
+      ...approvalBySession.keys(),
+    ]);
+
+    setSessionRuntime((prev) => {
+      const next = { ...prev };
+      for (const sessionId of knownSessionIds) {
+        const current = next[sessionId] || createEmptySessionRuntimeState();
+        const sessionTasks = taskGroups.get(sessionId) || [];
+        const approval = approvalBySession.get(sessionId) || null;
+        next[sessionId] = {
+          ...current,
+          desktopTaskStatus: sessionTasks.length > 0 ? deriveTaskStatus(sessionTasks) : "idle",
+          desktopTimelineEntries: sessionTasks.length > 0 ? buildTimelineEntries(sessionTasks) : [],
+          pendingApproval: approval,
+          rememberApprovalForSession: approval ? current.rememberApprovalForSession : false,
+        };
+      }
+      return next;
+    });
+  }, [desktopDeviceId, tabs]);
+
+  const approvalSheetRequest = useMemo(
+    () => pendingApproval
+      ? {
+          title: pendingApproval.title,
+          description: pendingApproval.description,
+          riskLevel: pendingApproval.riskLevel,
+          canRememberForSession: pendingApproval.riskLevel !== "L3" && Boolean(pendingApproval.sessionKey),
+        }
+      : null,
+    [pendingApproval],
+  );
+
+  const setRememberApprovalForSession = useCallback((value: boolean) => {
+    patchSessionRuntime(sessionIdRef.current, { rememberApprovalForSession: value });
+  }, [patchSessionRuntime]);
 
   // Load workspace directory
   useEffect(() => {
@@ -180,6 +478,19 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       });
     }
   }, [token]);
+
+  useEffect(() => {
+    localStorage.setItem("agentrix_chat_mode", chatMode);
+  }, [chatMode]);
+
+  useEffect(() => {
+    if (!token) {
+      setSessionRuntime({});
+      setSessionPlans({});
+      return;
+    }
+    fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
+  }, [token, activeTabId, applyDesktopSyncState]);
 
   // Sync selected model when instances refresh (e.g., model changed from mobile)
   useEffect(() => {
@@ -225,10 +536,11 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     setTabs(prev => [...prev, newTab]);
     setActiveTabId(id);
     sessionIdRef.current = sid;
+    abortRef.current = null;
     setMessages([]);
     setPendingAttachments([]);
+    setInput("");
     setBallState("idle");
-    abortRef.current?.abort();
     audioPlayerRef.current?.stopAll();
     sentenceAccRef.current?.reset();
     trackEvent("tab_new");
@@ -238,7 +550,6 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     if (tabId === activeTabId) return;
     // Save current tab's messages to cache
     tabMessagesCache.current[sessionIdRef.current] = messages;
-    abortRef.current?.abort();
     audioPlayerRef.current?.stopAll();
     sentenceAccRef.current?.reset();
     // Find target tab
@@ -257,15 +568,32 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       setMessages(stored);
       tabMessagesCache.current[target.sessionId] = stored;
     }
+    abortRef.current = sessionAbortControllersRef.current[target.sessionId] || null;
     setPendingAttachments([]);
-    setBallState("idle");
+    setInput("");
+    setBallState((sessionRuntimeRef.current[target.sessionId] || createEmptySessionRuntimeState()).sending ? "thinking" : "idle");
   }, [activeTabId, tabs, messages]);
 
   const closeTab = useCallback(async (tabId: string) => {
     if (tabs.length <= 1) return; // keep at least one tab
     const idx = tabs.findIndex(t => t.id === tabId);
+    const closingTab = tabs[idx];
     const newTabs = tabs.filter(t => t.id !== tabId);
     setTabs(newTabs);
+    if (closingTab) {
+      abortSession(closingTab.sessionId);
+      setSessionRuntime((prev) => {
+        const next = { ...prev };
+        delete next[closingTab.sessionId];
+        return next;
+      });
+      setSessionPlans((prev) => {
+        const next = { ...prev };
+        delete next[closingTab.sessionId];
+        return next;
+      });
+      delete tabMessagesCache.current[closingTab.sessionId];
+    }
     // If closing active tab, switch to adjacent
     if (tabId === activeTabId) {
       const nextIdx = Math.min(idx, newTabs.length - 1);
@@ -279,10 +607,12 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         const stored = await loadSessionMessages(nextTab.sessionId);
         setMessages(stored);
       }
+      abortRef.current = sessionAbortControllersRef.current[nextTab.sessionId] || null;
       setPendingAttachments([]);
-      setBallState("idle");
+      setInput("");
+      setBallState((sessionRuntimeRef.current[nextTab.sessionId] || createEmptySessionRuntimeState()).sending ? "thinking" : "idle");
     }
-  }, [tabs, activeTabId]);
+  }, [tabs, activeTabId, abortSession]);
 
   // Persist tabs whenever they change
   useEffect(() => {
@@ -332,14 +662,15 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     const nextTitle = snapshot?.title || `Handoff from ${payload.sourceDeviceId || "mobile"}`;
 
     tabMessagesCache.current[sessionIdRef.current] = messages;
-    abortRef.current?.abort();
     audioPlayerRef.current?.stopAll();
     sentenceAccRef.current?.reset();
 
     setTabs((prev) => [...prev, { id: nextTabId, sessionId: nextSessionId, title: nextTitle, unread: false }]);
     setActiveTabId(nextTabId);
     sessionIdRef.current = nextSessionId;
+    abortRef.current = null;
     setPendingAttachments([]);
+    setInput("");
     setBallState("idle");
     setMessages(
       restoredMessages.length > 0
@@ -401,27 +732,27 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     [workspaceDir],
   );
 
-  const appendChunk = useCallback((msgId: string, chunk: string) => {
-    setMessages((prev) =>
+  const appendChunk = useCallback((sessionId: string, msgId: string, chunk: string) => {
+    updateSessionMessages(sessionId, (prev) =>
       prev.map((m) =>
         m.id === msgId ? { ...m, content: m.content + chunk } : m,
       ),
     );
-  }, []);
+  }, [updateSessionMessages]);
 
-  const finalizeMessage = useCallback((msgId: string) => {
-    setMessages((prev) => {
-      const updated = prev.map((m) =>
-        m.id === msgId ? { ...m, streaming: false } : m,
-      );
-      // Notify if window not focused
-      const msg = updated.find((m) => m.id === msgId);
-      if (msg) {
-        notifyIfBackground("Agentrix", msg.content.slice(0, 100));
-      }
-      return updated;
-    });
-  }, []);
+  const finalizeMessage = useCallback((sessionId: string, msgId: string) => {
+    const updated = updateSessionMessages(
+      sessionId,
+      (prev) => prev.map((m) => (
+        m.id === msgId ? { ...m, streaming: false } : m
+      )),
+      { persist: true, markUnread: true },
+    );
+    const msg = updated.find((m) => m.id === msgId);
+    if (msg) {
+      notifyIfBackground("Agentrix", msg.content.slice(0, 100));
+    }
+  }, [updateSessionMessages]);
 
   // Handle slash commands locally
   const handleSlashCommand = useCallback(async (text: string): Promise<boolean> => {
@@ -429,10 +760,11 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
 
     // /new — new chat
     if (trimmed === "/new" || trimmed === "/clear") {
-      abortRef.current?.abort();
+      abortSession(sessionIdRef.current);
       audioPlayerRef.current?.stopAll();
       sentenceAccRef.current?.reset();
       sessionIdRef.current = `session-${Date.now()}`;
+      abortRef.current = null;
       setMessages([]);
       setPendingAttachments([]);
       setBallState("idle");
@@ -791,21 +1123,31 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       content,
       createdAt: Date.now(),
     }]);
-  }, []);
+  }, [abortSession]);
 
   const handleSend = useCallback(
     async (overrideText?: string) => {
       const text = (overrideText || input).trim();
-      if ((!text && pendingAttachments.length === 0) || sending || uploadingAttachments) return;
-      if (!overrideText) setInput("");
+      const targetSessionId = sessionIdRef.current;
+      const targetRuntime = sessionRuntimeRef.current[targetSessionId] || createEmptySessionRuntimeState();
 
-      // Handle slash commands locally
+      if ((!text && pendingAttachments.length === 0) || targetRuntime.sending || uploadingAttachments) {
+        return;
+      }
+
+      if (!overrideText) {
+        setInput("");
+      }
+
       if (text.startsWith("/") && pendingAttachments.length === 0) {
         const handled = await handleSlashCommand(text);
-        if (handled) return;
+        if (handled) {
+          return;
+        }
       }
 
       const outboundText = serializeMessageForModel(text, pendingAttachments);
+      const currentMessagesForSession = tabMessagesCache.current[targetSessionId] || messages;
 
       const userMsg: ChatMessage = {
         id: `u-${Date.now()}`,
@@ -823,13 +1165,19 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         createdAt: Date.now(),
       };
 
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      updateSessionMessages(targetSessionId, (prev) => [...prev, userMsg, assistantMsg], { persist: true });
       setPendingAttachments([]);
-      setSending(true);
-      setBallState("thinking");
-      trackEvent("chat_send", { hasAttachments: pendingAttachments.length > 0, model: selectedModel });
+      patchSessionRuntime(targetSessionId, { sending: true });
+      if (targetSessionId === sessionIdRef.current) {
+        setBallState("thinking");
+      }
 
-      // Set up streaming TTS if enabled and voice-initiated
+      trackEvent("chat_send", {
+        hasAttachments: pendingAttachments.length > 0,
+        model: selectedModel,
+        mode: chatMode,
+      });
+
       const shouldStreamTTS = ttsEnabled && token && voiceInitiatedRef.current;
       let audioPlayer: AudioQueuePlayer | null = null;
       let sentenceAcc: SentenceAccumulator | null = null;
@@ -838,7 +1186,11 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         audioPlayer = new AudioQueuePlayer(
           token!,
           () => setBallState("idle"),
-          (playing) => { if (playing) setBallState("speaking"); },
+          (playing) => {
+            if (playing) {
+              setBallState("speaking");
+            }
+          },
         );
         audioPlayerRef.current = audioPlayer;
         sentenceAcc = new SentenceAccumulator((sentence) => {
@@ -848,10 +1200,11 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       }
 
       if (token) {
-        const history = messages.slice(-10).map((m) => ({
-          role: m.role,
-          content: serializeMessageForModel(m.content, m.attachments || []),
+        const history = currentMessagesForSession.slice(-25).map((message) => ({
+          role: message.role,
+          content: serializeMessageForModel(message.content, message.attachments || []),
         }));
+
         if (activeAgent) {
           history.unshift({
             role: "system",
@@ -861,80 +1214,146 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         history.push({ role: "user", content: outboundText });
 
         const chunkHandler = (chunk: string) => {
-          if (!audioPlayer?.playing) setBallState("speaking");
-          appendChunk(assistantId, chunk);
+          if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
+            setBallState("speaking");
+          }
+          appendChunk(targetSessionId, assistantId, chunk);
           sentenceAcc?.push(chunk);
         };
+
         const metaHandler = (meta: { resolvedModel?: string; resolvedModelLabel?: string; plan?: AgentPlan }) => {
-          setMessages((prev) =>
-            prev.map((m) => m.id === assistantId ? { ...m, meta } : m),
+          updateSessionMessages(targetSessionId, (prev) =>
+            prev.map((message) => message.id === assistantId ? { ...message, meta } : message),
           );
-          if (meta.plan) setActivePlan(meta.plan);
-        };
-        const doneHandler = (resolve: () => void) => () => {
-          finalizeMessage(assistantId);
-          sentenceAcc?.flush();
-          // Check for plan in the final message content
-          if (token) {
-            getActivePlan(token, sessionIdRef.current)
-              .then((p) => { if (p) setActivePlan(p); })
-              .catch(() => {});
+          if (meta.plan) {
+            setPlanForSession(targetSessionId, meta.plan);
           }
+        };
+
+        // P0: Real-time SSE event handler — captures usage, turn_info, approval events
+        const eventHandler = (event: import("../../../shared/stream-parser").StreamEvent) => {
+          if (event.type === "usage") {
+            setStreamCost({
+              inputTokens: event.inputTokens,
+              outputTokens: event.outputTokens,
+              cacheReadTokens: event.cacheReadTokens || 0,
+              totalCostUsd: event.totalCostUsd || 0,
+              model: event.model || "",
+            });
+            // Also update the token bar with real-time data
+            if (event.inputTokens + event.outputTokens > 0) {
+              setTokenUsage((prev) => prev ? {
+                ...prev,
+                used: event.inputTokens + event.outputTokens,
+                percent: prev.total > 0 ? Math.round(((event.inputTokens + event.outputTokens) / prev.total) * 100) : prev.percent,
+              } : prev);
+            }
+          } else if (event.type === "turn_info") {
+            if (event.isCompacted) {
+              setCompactionInfo({
+                isCompacted: true,
+                turnIndex: event.turnIndex,
+                contextTokens: event.contextTokens,
+              });
+            }
+          } else if (event.type === "approval_required") {
+            // Dispatch event for FloatingBall approval badge
+            window.dispatchEvent(new CustomEvent("agentrix:approval-needed", {
+              detail: {
+                toolCallId: event.toolCallId,
+                toolName: event.toolName,
+                riskLevel: event.riskLevel,
+                reason: event.reason,
+              },
+            }));
+          }
+        };
+
+        const doneHandler = (resolve: () => void) => () => {
+          finalizeMessage(targetSessionId, assistantId);
+          sentenceAcc?.flush();
+          sessionAbortControllersRef.current[targetSessionId] = null;
+          if (targetSessionId === sessionIdRef.current) {
+            abortRef.current = null;
+          }
+          patchSessionRuntime(targetSessionId, { sending: false });
+          // Clear stream cost after completion, refresh token bar
+          setStreamCost(null);
+          fetchTokenUsage();
+          getActivePlan(token, targetSessionId)
+            .then((plan) => {
+              if (plan) {
+                setPlanForSession(targetSessionId, plan);
+              }
+            })
+            .catch(() => {});
           resolve();
         };
+
         const errorHandler = (resolve: () => void) => (err: string) => {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, content: `Error: ${err}`, error: true, streaming: false }
-                : m,
-            ),
+          updateSessionMessages(
+            targetSessionId,
+            (prev) => prev.map((message) => (
+              message.id === assistantId
+                ? { ...message, content: `Error: ${err}`, error: true, streaming: false }
+                : message
+            )),
+            { persist: true, markUnread: true },
           );
+          sessionAbortControllersRef.current[targetSessionId] = null;
+          if (targetSessionId === sessionIdRef.current) {
+            abortRef.current = null;
+          }
+          patchSessionRuntime(targetSessionId, { sending: false });
           resolve();
         };
 
         await new Promise<void>((resolve) => {
-          let ac: AbortController;
+          let controller: AbortController;
           if (activeInstanceId) {
-            // Route through OpenClaw proxy — uses this instance's model/API config
-            ac = streamChat({
+            controller = streamChat({
               instanceId: activeInstanceId,
               message: outboundText,
-              sessionId: sessionIdRef.current,
+              sessionId: targetSessionId,
               token,
               model: selectedModel || undefined,
+              mode: chatMode,
               onChunk: chunkHandler,
               onMeta: metaHandler,
+              onEvent: eventHandler,
               onDone: doneHandler(resolve),
               onError: errorHandler(resolve),
             });
           } else {
-            // Fallback: direct Claude chat (no instance)
-            ac = streamDirectChat({
+            controller = streamDirectChat({
               messages: history,
-              sessionId: sessionIdRef.current,
+              sessionId: targetSessionId,
               agentId: activeAgentId,
               token,
+              mode: chatMode,
               onChunk: chunkHandler,
               onDone: doneHandler(resolve),
               onError: errorHandler(resolve),
             });
           }
-          abortRef.current = ac;
+
+          sessionAbortControllersRef.current[targetSessionId] = controller;
+          if (targetSessionId === sessionIdRef.current) {
+            abortRef.current = controller;
+          }
         });
       }
 
-      setSending(false);
+      patchSessionRuntime(targetSessionId, { sending: false });
       voiceInitiatedRef.current = false;
-      // If no audio queued, reset ball state immediately
-      if (!audioPlayer?.playing) {
+      if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
         setBallState("idle");
       }
     },
     [
       input,
-      sending,
       activeAgent,
+      activeAgentId,
       activeInstanceId,
       token,
       selectedModel,
@@ -942,10 +1361,14 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       pendingAttachments,
       appendChunk,
       finalizeMessage,
+      patchSessionRuntime,
+      setPlanForSession,
       ttsEnabled,
       serializeMessageForModel,
       uploadingAttachments,
       handleSlashCommand,
+      chatMode,
+      updateSessionMessages,
     ],
   );
 
@@ -1028,6 +1451,26 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
     [handleSend],
   );
 
+  const handleDesktopApprovalDecision = useCallback(
+    async (decision: "approved" | "rejected") => {
+      if (!token || !pendingApproval) {
+        return;
+      }
+
+      try {
+        const response = await respondDesktopApproval(token, pendingApproval.approvalId, {
+          decision,
+          rememberForSession: decision === "approved" ? rememberApprovalForSession : false,
+        });
+        window.dispatchEvent(new CustomEvent("agentrix:approval-response-local", { detail: response.approval }));
+        await fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
+      } catch (error: any) {
+        window.alert(error?.message || "Failed to submit approval decision");
+      }
+    },
+    [applyDesktopSyncState, pendingApproval, rememberApprovalForSession, token],
+  );
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -1057,15 +1500,17 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   const loadSession = useCallback(async (sid: string) => {
     const stored = await loadSessionMessages(sid);
     if (stored.length === 0) return;
-    abortRef.current?.abort();
+    abortSession(sessionIdRef.current);
     audioPlayerRef.current?.stopAll();
     sentenceAccRef.current?.reset();
     sessionIdRef.current = sid;
+    abortRef.current = sessionAbortControllersRef.current[sid] || null;
     setMessages(stored);
     setPendingAttachments([]);
+    setInput("");
     setBallState("idle");
     setHistoryOpen(false);
-  }, []);
+  }, [abortSession]);
 
   const deleteSession = useCallback(async (sid: string) => {
     await removeSession(sid);
@@ -1101,6 +1546,45 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   useEffect(() => {
     return subscribeNotifications(() => setUnreadNotifCount(getUnreadCount()));
   }, []);
+
+  // Offline cache lifecycle
+  useEffect(() => {
+    startOfflineCache();
+    const checkQueue = setInterval(() => {
+      getQueueLength().then(setOfflineQueueCount).catch(() => {});
+    }, 10_000);
+    return () => {
+      stopOfflineCache();
+      clearInterval(checkQueue);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleState = (event: Event) => {
+      applyDesktopSyncState((event as CustomEvent).detail);
+    };
+    const handleApprovalNew = (event: Event) => {
+      const approval = (event as CustomEvent).detail as DesktopRemoteApproval | undefined;
+      if (approval?.deviceId === desktopDeviceId && approval.status === "pending" && token) {
+        fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
+      }
+    };
+    const handleApprovalResponse = (event: Event) => {
+      const approval = (event as CustomEvent).detail as DesktopRemoteApproval | undefined;
+      if (approval?.approvalId && approval.status !== "pending" && token) {
+        fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
+      }
+    };
+
+    window.addEventListener("agentrix:desktop-sync-state", handleState);
+    window.addEventListener("agentrix:approval-new", handleApprovalNew as EventListener);
+    window.addEventListener("agentrix:approval-response-local", handleApprovalResponse as EventListener);
+    return () => {
+      window.removeEventListener("agentrix:desktop-sync-state", handleState);
+      window.removeEventListener("agentrix:approval-new", handleApprovalNew as EventListener);
+      window.removeEventListener("agentrix:approval-response-local", handleApprovalResponse as EventListener);
+    };
+  }, [applyDesktopSyncState, desktopDeviceId, token]);
 
   // Listen for clipboard quick-action sends from FloatingBall
   useEffect(() => {
@@ -1291,6 +1775,12 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         <button onClick={() => setCrossDeviceOpen(true)} style={iconBtnStyle} title="Cross-Device Hub">
           🔗
         </button>
+        <button onClick={() => setEconomyPanelOpen(true)} style={iconBtnStyle} title="Agent Economy">
+          💰
+        </button>
+        <button onClick={() => setMemoryPanelOpen(true)} style={iconBtnStyle} title="Memory">
+          🧠
+        </button>
         <button onClick={() => setSettingsOpen(true)} style={iconBtnStyle} title="Settings">
           ⚙
         </button>
@@ -1379,6 +1869,17 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         />
       )}
 
+      {/* Agent Economy panel */}
+      <AgentEconomyPanel open={economyPanelOpen} onClose={() => setEconomyPanelOpen(false)} />
+
+      {/* Memory panel */}
+      <MemoryPanel
+        open={memoryPanelOpen}
+        onClose={() => setMemoryPanelOpen(false)}
+        token={token}
+        sessionId={sessionIdRef.current}
+      />
+
       {/* History sidebar */}
       {historyOpen && (
         <div style={{
@@ -1446,6 +1947,56 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         </div>
       )}
 
+      {(desktopTaskStatus !== "idle" || desktopTimelineEntries.length > 0) && (
+        <TaskTimeline status={desktopTaskStatus} entries={desktopTimelineEntries} />
+      )}
+
+      {/* Cross-device handoff banner */}
+      <div style={{ padding: "0 16px" }}>
+        <HandoffBanner
+          onAccept={(handoffId, ctx) => {
+            const msgs = (ctx as any)?.messages;
+            if (Array.isArray(msgs)) {
+              setMessages(msgs.map((m: any, i: number) => ({
+                id: m.id || `handoff-${i}`,
+                role: m.role || "user",
+                content: m.content || "",
+                createdAt: m.createdAt || Date.now(),
+              })));
+            }
+          }}
+        />
+        <WearableNotification />
+      </div>
+
+      {/* Offline queue indicator */}
+      {offlineQueueCount > 0 && networkStatus !== "online" && (
+        <div style={{
+          margin: "4px 16px", padding: "6px 10px", borderRadius: 6,
+          background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.2)",
+          fontSize: 11, color: "#fbbf24", display: "flex", alignItems: "center", gap: 6,
+        }}>
+          <span>📤</span>
+          <span>{offlineQueueCount} 条消息排队中，恢复网络后自动发送</span>
+        </div>
+      )}
+
+      {/* Compaction status hint */}
+      {compactionInfo?.isCompacted && (
+        <div style={{
+          margin: "8px 16px", padding: "8px 12px", borderRadius: 8,
+          background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)",
+          fontSize: 12, color: "#fbbf24", display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <span>🗜️</span>
+          <span>上下文已自动压缩 · Turn {compactionInfo.turnIndex} · {(compactionInfo.contextTokens / 1000).toFixed(1)}K tokens</span>
+          <button
+            onClick={() => setCompactionInfo(null)}
+            style={{ marginLeft: "auto", background: "none", border: "none", color: "#fbbf24", cursor: "pointer", fontSize: 14 }}
+          >✕</button>
+        </div>
+      )}
+
       {/* Messages */}
       <div
         style={{
@@ -1490,13 +2041,15 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
             onApprove={async () => {
               if (!token) return;
               const updated = await approvePlanApi(token, sessionIdRef.current);
-              if (updated) setActivePlan(updated);
+              if (updated) setPlanForSession(sessionIdRef.current, updated);
+              // Auto-switch to agent mode to track execution
+              if (chatMode === "plan") setChatMode("agent");
               handleSend("approve");
             }}
             onReject={async () => {
               if (!token) return;
               const updated = await rejectPlanApi(token, sessionIdRef.current, "rejected by user");
-              if (updated) setActivePlan(updated);
+              if (updated) setPlanForSession(sessionIdRef.current, updated);
             }}
           />
         )}
@@ -1520,6 +2073,62 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
           gap: 8,
         }}
       >
+        {/* Token usage bar + real-time cost */}
+        {(tokenUsage || streamCost) && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>Context</span>
+            <div style={{ flex: 1, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+              <div style={{
+                height: "100%", borderRadius: 2, transition: "width 0.4s ease",
+                width: `${Math.min(tokenUsage?.percent ?? 0, 100)}%`,
+                background: (tokenUsage?.percent ?? 0) > 75 ? "#ef4444" : (tokenUsage?.percent ?? 0) > 50 ? "#f59e0b" : "#6C5CE7",
+              }} />
+            </div>
+            <span style={{ fontSize: 9, color: "var(--text-dim)", flexShrink: 0 }}>
+              {tokenUsage ? `${tokenUsage.percent}% · ${(tokenUsage.used / 1000).toFixed(1)}k/${(tokenUsage.total / 1000).toFixed(0)}k` : ""}
+              {streamCost ? ` · $${streamCost.totalCostUsd.toFixed(4)}` : ""}
+              {streamCost?.cacheReadTokens ? " ♻️" : ""}
+              {streamCost?.model ? ` · ${streamCost.model.split("/").pop()?.split("-").slice(0, 3).join("-") || streamCost.model}` : ""}
+            </span>
+          </div>
+        )}
+        <div style={inputToolbarStyle}>
+          <div style={modeRailStyle}>
+            {CHAT_MODE_OPTIONS.map((option) => {
+              const active = option.id === chatMode;
+              return (
+                <button
+                  key={option.id}
+                  onClick={() => setChatMode(option.id)}
+                  style={{
+                    ...modeChipStyle,
+                    ...(active ? modeChipActiveStyle : {}),
+                  }}
+                  title={option.description}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+          {pendingApproval && (
+            <button
+              onClick={() => setCrossDeviceOpen(true)}
+              style={pendingApprovalButtonStyle}
+              title="Review all pending approvals in the Cross-Device Hub"
+            >
+              Approval pending
+            </button>
+          )}
+          {activePlan && chatMode === "plan" && (
+            <span style={{
+              fontSize: 10, fontWeight: 600, padding: "4px 8px", borderRadius: 999,
+              border: "1px solid rgba(134,239,172,0.3)", background: "rgba(134,239,172,0.08)", color: "#86efac",
+            }}>
+              📋 Plan {activePlan.status === "pending" ? "ready" : activePlan.status}
+            </span>
+          )}
+        </div>
         {!!pendingAttachments.length && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }} title={pendingAttachmentSummary}>
             {pendingAttachments.map((attachment) => (
@@ -1629,6 +2238,14 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         </button>
         </div>
       </div>
+
+      <ApprovalSheet
+        request={approvalSheetRequest}
+        rememberForSession={rememberApprovalForSession}
+        onRememberChange={setRememberApprovalForSession}
+        onApprove={() => void handleDesktopApprovalDecision("approved")}
+        onReject={() => void handleDesktopApprovalDecision("rejected")}
+      />
     </div>
   );
 }
@@ -1662,4 +2279,55 @@ const chipCloseBtnStyle: CSSProperties = {
   cursor: "pointer",
   fontSize: 12,
   padding: 0,
+};
+
+const CHAT_MODE_OPTIONS: Array<{ id: ChatMode; label: string; description: string }> = [
+  { id: "ask", label: "Ask", description: "Fast reply mode without tool execution" },
+  { id: "agent", label: "Agent", description: "Tool-enabled desktop agent mode" },
+  { id: "plan", label: "Plan", description: "Plan-first mode for longer multi-step tasks" },
+];
+
+const inputToolbarStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const modeRailStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: 4,
+  borderRadius: 999,
+  border: "1px solid var(--border)",
+  background: "rgba(255,255,255,0.04)",
+};
+
+const modeChipStyle: CSSProperties = {
+  border: "none",
+  borderRadius: 999,
+  background: "transparent",
+  color: "var(--text-dim)",
+  cursor: "pointer",
+  fontSize: 11,
+  fontWeight: 600,
+  padding: "6px 10px",
+};
+
+const modeChipActiveStyle: CSSProperties = {
+  background: "var(--accent)",
+  color: "white",
+};
+
+const pendingApprovalButtonStyle: CSSProperties = {
+  border: "1px solid rgba(251,191,36,0.35)",
+  borderRadius: 999,
+  background: "rgba(251,191,36,0.08)",
+  color: "#fbbf24",
+  cursor: "pointer",
+  fontSize: 11,
+  fontWeight: 600,
+  padding: "6px 10px",
 };

@@ -16,6 +16,8 @@ import { PaymentModule } from '../../payment/payment.module';
 import { ModelRouterModule } from '../model-router/model-router.module';
 import { BedrockIntegrationModule } from '../bedrock/bedrock-integration.module';
 import { AiProviderModule } from '../../ai-provider/ai-provider.module';
+import { OpenClawProxyModule } from '../../openclaw-proxy/openclaw-proxy.module';
+import { AgentContextModule } from '../../agent-context/agent-context.module';
 
 @Module({
   imports: [
@@ -34,9 +36,11 @@ import { AiProviderModule } from '../../ai-provider/ai-provider.module';
     forwardRef(() => CartModule),
     forwardRef(() => LogisticsModule),
     forwardRef(() => PaymentModule),
+    forwardRef(() => OpenClawProxyModule),
     ModelRouterModule,
     BedrockIntegrationModule,
     AiProviderModule,
+    AgentContextModule,
   ],
   controllers: [ClaudeIntegrationController],
   providers: [ClaudeIntegrationService],

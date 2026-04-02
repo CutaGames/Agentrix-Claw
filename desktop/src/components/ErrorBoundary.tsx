@@ -1,4 +1,5 @@
 import { Component, type ReactNode, type ErrorInfo } from "react";
+import { API_BASE } from "../services/store";
 
 interface Props {
   children: ReactNode;
@@ -89,7 +90,7 @@ async function reportCrash(error: Error, errorInfo: ErrorInfo) {
   // Send to backend crash reporting endpoint (fire-and-forget)
   try {
     const token = localStorage.getItem("agentrix_auth_token");
-    await fetch("https://api.agentrix.top/api/telemetry/crash", {
+    await fetch(`${API_BASE}/telemetry/crash`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

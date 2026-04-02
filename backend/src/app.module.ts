@@ -115,6 +115,10 @@ import { AgentIntelligenceModule } from './modules/agent-intelligence/agent-inte
 import { HookModule } from './modules/hooks/hook.module';
 import { SlashCommandModule } from './modules/slash-commands/slash-command.module';
 import { McpRegistryModule } from './modules/mcp-registry/mcp-registry.module';
+// Phase 1-2: Tool Registry, Query Engine, Cost Tracker (Claude Code architecture reference)
+import { ToolRegistryModule } from './modules/tool-registry/tool-registry.module';
+import { QueryEngineModule } from './modules/query-engine/query-engine.module';
+import { CostTrackerModule } from './modules/cost-tracker/cost-tracker.module';
 
 @Module({
   imports: [
@@ -236,6 +240,10 @@ import { McpRegistryModule } from './modules/mcp-registry/mcp-registry.module';
     HookModule,
     SlashCommandModule,
     McpRegistryModule,
+    // Phase 1-2: Claude Code reference architecture
+    ToolRegistryModule,
+    QueryEngineModule,
+    CostTrackerModule,
   ],
   controllers: [AppController],
   providers: [

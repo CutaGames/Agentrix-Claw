@@ -47,6 +47,16 @@ async fn desktop_bridge_snap_ball_to_edge(app: AppHandle) -> Result<(), String> 
 }
 
 #[tauri::command]
+async fn desktop_bridge_resize_ball_window(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }));
+        Ok(())
+    } else {
+        Err("main window not found".into())
+    }
+}
+
+#[tauri::command]
 async fn desktop_bridge_get_monitors(app: AppHandle) -> Result<Vec<commands::MonitorInfo>, String> {
     commands::get_monitors(app)
 }
@@ -96,8 +106,13 @@ fn desktop_bridge_run_command(command: String, working_directory: Option<String>
 }
 
 #[tauri::command]
-fn desktop_bridge_read_file(path: String) -> Result<commands::DesktopReadFileResult, String> {
-    commands::read_file(path)
+fn desktop_bridge_list_directory(path: String) -> Result<commands::DesktopListDirectoryResult, String> {
+    commands::list_directory(path)
+}
+
+#[tauri::command]
+fn desktop_bridge_read_file(path: String, start_line: Option<usize>, end_line: Option<usize>) -> Result<commands::DesktopReadFileResult, String> {
+    commands::read_file(path, start_line, end_line)
 }
 
 #[tauri::command]
@@ -418,6 +433,7 @@ pub fn run() {
             desktop_bridge_get_ball_position,
             desktop_bridge_set_panel_position_near_ball,
             desktop_bridge_snap_ball_to_edge,
+            desktop_bridge_resize_ball_window,
             desktop_bridge_get_monitors,
             desktop_bridge_move_ball_to_monitor,
             // Workspace (coding agent)
@@ -429,6 +445,7 @@ pub fn run() {
             desktop_bridge_write_workspace_file,
             // Desktop bridge: commands / files / context
             desktop_bridge_run_command,
+            desktop_bridge_list_directory,
             desktop_bridge_read_file,
             desktop_bridge_write_file,
             desktop_bridge_open_browser,

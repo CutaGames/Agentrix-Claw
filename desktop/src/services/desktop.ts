@@ -9,6 +9,7 @@ export type DesktopActionKind =
   | "context"
   | "active-window"
   | "list-windows"
+  | "list-directory"
   | "run-command"
   | "read-file"
   | "write-file"
@@ -28,6 +29,18 @@ export interface DesktopReadFileResult {
   path: string;
   content: string;
   size: number;
+  totalLines: number;
+  startLine: number;
+  endLine: number;
+}
+
+export interface DesktopListDirectoryResult {
+  path: string;
+  entries: Array<{
+    name: string;
+    is_dir: boolean;
+    size: number;
+  }>;
 }
 
 export interface DesktopWriteFileResult {
@@ -50,6 +63,7 @@ export interface DesktopContextResult {
 }
 
 const DEVICE_ID_KEY = "agentrix_desktop_device_id";
+const READ_ONLY_COMMAND_PATTERN = /^(dir|ls|get-childitem|pwd|rg|find|type|cat|get-content)(\s|$)/i;
 
 function isTauriAvailable() {
   return Boolean((window as any).__TAURI_INTERNALS__?.invoke);
@@ -136,8 +150,12 @@ export async function logDesktopDebugEvent(message: string): Promise<void> {
   }
 }
 
+function normalizeShellCommand(command?: string) {
+  return `${command || ""}`.trim().replace(/\s+/g, " ");
+}
+
 export function classifyDesktopRisk(kind: DesktopActionKind, payload?: Record<string, string>): ApprovalRiskLevel {
-  if (kind === "clipboard" || kind === "context" || kind === "active-window" || kind === "list-windows" || kind === "read-file") {
+  if (kind === "clipboard" || kind === "context" || kind === "active-window" || kind === "list-windows" || kind === "list-directory" || kind === "read-file") {
     return "L0";
   }
 
@@ -149,13 +167,46 @@ export function classifyDesktopRisk(kind: DesktopActionKind, payload?: Record<st
     return "L1";
   }
 
-  const command = `${payload?.command || ""}`.toLowerCase();
-  const dangerousPattern = /(rm\s+-rf|del\s+\/f|git\s+push|npm\s+publish|cargo\s+publish|shutdown|format\s+)/;
+  const command = normalizeShellCommand(payload?.command).toLowerCase();
+  if (READ_ONLY_COMMAND_PATTERN.test(command)) {
+    return "L0";
+  }
+
+  const dangerousPattern = /(rm\s+-rf|del\s+\/f|remove-item|git\s+push|npm\s+publish|cargo\s+publish|shutdown|format\s+|mkfs|diskpart|sudo)/;
   if (dangerousPattern.test(command)) {
     return "L3";
   }
 
   return "L2";
+}
+
+export function buildDesktopApprovalSessionKey(kind: DesktopActionKind, payload?: Record<string, string>) {
+  if (kind === "write-file") {
+    const path = `${payload?.path || ""}`.trim().toLowerCase();
+    return path ? `write-file:${path}` : undefined;
+  }
+
+  if (kind === "open-browser") {
+    try {
+      const host = new URL(`${payload?.url || ""}`).host.toLowerCase();
+      return host ? `open-browser:${host}` : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (kind === "run-command") {
+    const command = normalizeShellCommand(payload?.command).toLowerCase();
+    if (!command) {
+      return undefined;
+    }
+    const sessionCommand = READ_ONLY_COMMAND_PATTERN.test(command)
+      ? command.split(" ")[0]
+      : command;
+    return `run-command:${sessionCommand}`;
+  }
+
+  return undefined;
 }
 
 export function shouldRequireApproval(riskLevel: ApprovalRiskLevel, sessionApproved: boolean) {
@@ -173,8 +224,16 @@ export async function runDesktopCommand(command: string, workingDirectory?: stri
   });
 }
 
-export async function readDesktopFile(path: string) {
-  return invokeDesktop<DesktopReadFileResult>("desktop_bridge_read_file", { path });
+export async function listDesktopDirectory(path: string) {
+  return invokeDesktop<DesktopListDirectoryResult>("desktop_bridge_list_directory", { path });
+}
+
+export async function readDesktopFile(path: string, startLine?: number, endLine?: number) {
+  return invokeDesktop<DesktopReadFileResult>("desktop_bridge_read_file", {
+    path,
+    startLine: typeof startLine === "number" ? startLine : null,
+    endLine: typeof endLine === "number" ? endLine : null,
+  });
 }
 
 export async function writeDesktopFile(path: string, content: string) {
