@@ -32,11 +32,15 @@ interface PlatformStatus {
   telegram: { connected: boolean; botUsername: string; webhookUrl: string };
   discord:  { connected: boolean; clientId: string; interactionsUrl: string };
   twitter:  { connected: boolean; webhookUrl: string };
+  feishu?:   { connected: boolean; appId?: string; webhookUrl?: string };
+  wecom?:    { connected: boolean; corpId?: string; webhookUrl?: string };
+  slack?:    { connected: boolean; botToken?: string; webhookUrl?: string };
+  whatsapp?: { connected: boolean; phoneNumberId?: string; webhookUrl?: string };
 }
 
 interface SocialEvent {
   id: string;
-  platform: 'telegram' | 'discord' | 'twitter';
+  platform: 'telegram' | 'discord' | 'twitter' | 'feishu' | 'wecom' | 'slack' | 'whatsapp';
   eventType: 'mention' | 'dm' | 'message' | 'command';
   senderId: string;
   senderName?: string;
@@ -66,7 +70,16 @@ const PLATFORM_META: Record<string, { icon: string; color: string; label: string
   telegram: { icon: '✈️', color: '#229ED9', label: 'Telegram' },
   discord:  { icon: '🎮', color: '#5865F2', label: 'Discord' },
   twitter:  { icon: '𝕏', color: '#1a1a2e', label: 'Twitter / X' },
+  feishu:   { icon: '🪶', color: '#3370FF', label: '飞书 / Feishu' },
+  wecom:    { icon: '💼', color: '#2BAD13', label: '企业微信 / WeCom' },
+  slack:    { icon: '💬', color: '#4A154B', label: 'Slack' },
+  whatsapp: { icon: '📱', color: '#25D366', label: 'WhatsApp' },
 };
+
+const COMING_SOON_PLATFORMS = [
+  { icon: '🐧', label: 'QQ', color: '#12B7F5' },
+  { icon: '📌', label: '钉钉 / DingTalk', color: '#0089FF' },
+];
 
 function copyToClipboard(text: string, label: string) {
   Clipboard.setStringAsync(text).catch(() => {});
@@ -185,7 +198,7 @@ function PlatformCard({
   onToggleExpand,
   t,
 }: {
-  platform: 'telegram' | 'discord' | 'twitter';
+  platform: string;
   status: PlatformStatus;
   onSetupTelegram: () => void;
   settingUp: boolean;
@@ -193,22 +206,24 @@ function PlatformCard({
   onToggleExpand: () => void;
   t: any;
 }) {
-  const meta = PLATFORM_META[platform];
-  const connected =
-    platform === 'telegram' ? status.telegram.connected
-    : platform === 'discord' ? status.discord.connected
-    : status.twitter.connected;
-
-  const webhookUrl =
-    platform === 'telegram' ? status.telegram.webhookUrl
-    : platform === 'discord' ? status.discord.interactionsUrl
-    : status.twitter.webhookUrl;
+  const meta = PLATFORM_META[platform] || { icon: '🔗', color: '#888', label: platform };
+  const platData = (status as any)?.[platform];
+  const connected = platData?.connected ?? false;
+  const webhookUrl = platData?.webhookUrl || platData?.interactionsUrl || '';
 
   const subtitle =
     platform === 'telegram'
-      ? `@${status.telegram.botUsername}`
+      ? `@${status.telegram?.botUsername || '—'}`
       : platform === 'discord'
-      ? `Client: ${status.discord.clientId}`
+      ? `Client: ${status.discord?.clientId || '—'}`
+      : platform === 'feishu'
+      ? `App: ${(status as any).feishu?.appId || '—'}`
+      : platform === 'wecom'
+      ? `Corp: ${(status as any).wecom?.corpId || '—'}`
+      : platform === 'slack'
+      ? 'Events API'
+      : platform === 'whatsapp'
+      ? `Phone: ${(status as any).whatsapp?.phoneNumberId || '—'}`
       : 'Account Activity API';
 
   return (
@@ -281,6 +296,73 @@ function PlatformCard({
                   <Text style={styles.stepTitle}>{t({ en: 'Register Webhook URL', zh: '注册 Webhook URL' })}</Text>
                   <Text style={styles.stepDesc}>
                     {t({ en: 'Copy the webhook URL above and paste it in the Account Activity API → Webhook URL field.', zh: '复制上方的 Webhook URL，粘贴到 Account Activity API → Webhook URL 字段。' })}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Enterprise platform guides */}
+          {platform === 'feishu' && (
+            <View style={styles.guideContainer}>
+              <Text style={styles.guideTitle}>{t({ en: '📖 Feishu / Lark Setup', zh: '📖 飞书设置指南' })}</Text>
+              <View style={styles.guideStep}>
+                <View style={styles.stepNumber}><Text style={styles.stepNumberText}>1</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stepTitle}>{t({ en: 'Create Feishu App', zh: '创建飞书应用' })}</Text>
+                  <Text style={styles.stepDesc}>
+                    {t({ en: 'Go to open.feishu.cn → Create App → Enable Bot capability → Set Event Subscription URL.', zh: '前往 open.feishu.cn → 创建应用 → 开启机器人能力 → 设置事件订阅 URL。' })}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.guideBtnOutline}
+                    onPress={() => Linking.openURL('https://open.feishu.cn')}
+                  >
+                    <Text style={styles.guideBtnOutlineText}>🔗 {t({ en: 'Open Feishu Developer', zh: '打开飞书开放平台' })}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={styles.guideStep}>
+                <View style={styles.stepNumber}><Text style={styles.stepNumberText}>2</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stepTitle}>{t({ en: 'Configure App ID & Secret', zh: '配置 App ID 和 App Secret' })}</Text>
+                  <Text style={styles.stepDesc}>
+                    {t({ en: 'Set FEISHU_APP_ID and FEISHU_APP_SECRET in server environment variables.', zh: '在服务器环境变量中设置 FEISHU_APP_ID 和 FEISHU_APP_SECRET。' })}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.guideStep}>
+                <View style={styles.stepNumber}><Text style={styles.stepNumberText}>3</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stepTitle}>{t({ en: 'Add Bot to Group', zh: '将机器人添加到群组' })}</Text>
+                  <Text style={styles.stepDesc}>
+                    {t({ en: 'Add the bot to a Feishu group. Users can @mention the bot to trigger AI conversations.', zh: '将机器人添加到飞书群组。用户可以 @提及 机器人来触发 AI 对话。' })}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {(platform === 'wecom' || platform === 'slack' || platform === 'whatsapp') && (
+            <View style={styles.guideContainer}>
+              <Text style={styles.guideTitle}>📖 {meta.label} Setup</Text>
+              <View style={styles.guideStep}>
+                <View style={styles.stepNumber}><Text style={styles.stepNumberText}>1</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stepTitle}>{t({ en: 'Configure credentials on server', zh: '在服务器配置凭证' })}</Text>
+                  <Text style={styles.stepDesc}>
+                    {t({
+                      en: `Set the required environment variables for ${meta.label}. See the deployment docs for details.`,
+                      zh: `为 ${meta.label} 设置所需的环境变量，详见部署文档。`,
+                    })}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.guideStep}>
+                <View style={styles.stepNumber}><Text style={styles.stepNumberText}>2</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stepTitle}>{t({ en: 'Set webhook URL', zh: '设置 Webhook URL' })}</Text>
+                  <Text style={styles.stepDesc}>
+                    {t({ en: 'Copy the webhook URL above and paste it in the platform\'s developer settings.', zh: '复制上方的 Webhook URL，粘贴到平台开发者设置中。' })}
                   </Text>
                 </View>
               </View>
@@ -526,7 +608,7 @@ export function SocialListenerScreen() {
       <View style={styles.headerBox}>
         <Text style={styles.headerTitle}>🌐 {t({ en: 'Agent Social Bridge', zh: 'Agent 社交桥接' })}</Text>
         <Text style={styles.headerSub}>
-          {t({ en: 'Your Agent listens on Telegram, Discord & Twitter — draft replies, approve or auto-send.', zh: '你的 Agent 在 Telegram、Discord 和 Twitter 上监听消息——草拟回复、审核或自动发送。' })}
+          {t({ en: 'Your Agent listens on Telegram, Discord, Twitter, Feishu & more — draft replies, approve or auto-send.', zh: '你的 Agent 在 Telegram、Discord、Twitter、飞书等平台上监听消息——草拟回复、审核或自动发送。' })}
         </Text>
       </View>
 
@@ -579,6 +661,34 @@ export function SocialListenerScreen() {
                 onToggleExpand={() => setExpandedPlatform(expandedPlatform === 'twitter' ? null : 'twitter')}
                 t={t}
               />
+
+              {/* Enterprise platforms */}
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>🏢 {t({ en: 'Enterprise Platforms', zh: '企业平台' })}</Text>
+              </View>
+              {(['feishu', 'wecom', 'slack', 'whatsapp'] as const).map((p) => (
+                <PlatformCard
+                  key={p}
+                  platform={p} status={status}
+                  onSetupTelegram={() => {}} settingUp={false}
+                  expanded={expandedPlatform === p}
+                  onToggleExpand={() => setExpandedPlatform(expandedPlatform === p ? null : p)}
+                  t={t}
+                />
+              ))}
+
+              {/* Coming soon */}
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>🔮 {t({ en: 'Coming Soon', zh: '即将上线' })}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                {COMING_SOON_PLATFORMS.map((p) => (
+                  <View key={p.label} style={[styles.comingSoonChip, { borderColor: p.color + '44' }]}>
+                    <Text style={{ fontSize: 16 }}>{p.icon}</Text>
+                    <Text style={[styles.comingSoonText, { color: p.color }]}>{p.label}</Text>
+                  </View>
+                ))}
+              </View>
             </>
           ) : (
             <View style={styles.errorBox}>
@@ -593,7 +703,7 @@ export function SocialListenerScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>⚙️ {t({ en: 'Reply Strategy', zh: '回复策略' })}</Text>
           </View>
-          {(['telegram', 'discord', 'twitter'] as const).map((p) => (
+          {(['telegram', 'discord', 'twitter', 'feishu', 'wecom', 'slack', 'whatsapp'] as const).map((p) => (
             <StrategyPicker key={p} platform={p} configs={configs} t={t} />
           ))}
         </>
@@ -906,4 +1016,12 @@ const styles = StyleSheet.create({
   },
   replyPreviewLabel: { fontSize: 10, color: colors.accent },
   replyPreviewText: { fontSize: 10, color: colors.textMuted, flex: 1 },
+
+  // Coming soon
+  comingSoonChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
+    borderWidth: 1, backgroundColor: colors.bgCard,
+  },
+  comingSoonText: { fontSize: 13, fontWeight: '600' },
 });

@@ -21,6 +21,7 @@ export function ProfileScreen() {
   const { t } = useI18n();
 
   const menuItems = [
+    { id: 'social', icon: '🌐', label: t({ en: 'Social Bridge', zh: '社交桥接' }), route: 'SocialListener' },
     { id: 'referral', icon: '🎁', label: t({ en: 'Referrals & Earnings', zh: '推广与收益' }), route: 'ReferralDashboard' },
     { id: 'account', icon: '🔐', label: t({ en: 'Wallet & Account', zh: '钱包与账户' }), route: 'Account' },
     { id: 'wallet-backup', icon: '🧩', label: t({ en: 'Wallet Backup', zh: '钱包备份' }), route: 'WalletBackup' },
