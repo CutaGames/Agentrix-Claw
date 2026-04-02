@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   RefreshControl, ActivityIndicator, Alert, Modal,
   TextInput, ScrollView, Platform, StatusBar,
+  KeyboardAvoidingView,
 } from 'react-native';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
@@ -19,7 +20,7 @@ interface MerchantTask {
   title: string;
   description: string;
   type: string;
-  status: string; // open, in_progress, completed, cancelled
+  status: string;
   budget: number;
   currency: string;
   progress?: number;
@@ -33,11 +34,28 @@ interface MerchantTask {
   updatedAt: string;
 }
 
-interface TaskSearchResult {
-  items: MerchantTask[];
-  total: number;
-  page: number;
+interface TeamAgent {
+  id: string;
+  codename: string;
+  name: string;
+  agentUniqueId: string;
+  status: string;
 }
+
+interface MyTeam {
+  templateSlug: string;
+  templateName: string;
+  agents: TeamAgent[];
+}
+
+// ──────────────────────────────────────────────
+// Agent icons
+// ──────────────────────────────────────────────
+const AGENT_ICONS: Record<string, string> = {
+  ceo: '👑', dev: '💻', 'qa-ops': '🔧', growth: '📈',
+  ops: '📊', media: '📱', ecosystem: '🌐', community: '👥',
+  brand: '🎨', hunter: '🔍', treasury: '💰',
+};
 
 // ──────────────────────────────────────────────
 // API
@@ -47,11 +65,11 @@ async function fetchMyTasks(): Promise<MerchantTask[]> {
   return Array.isArray(res) ? res : (res as any).data || [];
 }
 
-async function searchMarketplaceTasks(query?: string, page = 1): Promise<TaskSearchResult> {
-  const params = new URLSearchParams({ page: String(page), limit: '20', sortBy: 'createdAt', sortOrder: 'DESC' });
-  if (query) params.set('query', query);
-  const res = await apiFetch<TaskSearchResult>(`/merchant-tasks/marketplace/search?${params}`);
-  return res;
+async function fetchMyTeams(): Promise<MyTeam[]> {
+  try {
+    const res = await apiFetch<any>('/agent-teams/my-teams');
+    return Array.isArray(res) ? res : (res?.data ?? []);
+  } catch { return []; }
 }
 
 async function createTask(dto: {
@@ -59,19 +77,13 @@ async function createTask(dto: {
   description: string;
   type: string;
   budget: number;
+  agentId?: string;
 }): Promise<MerchantTask> {
   const res = await apiFetch<MerchantTask | { data: MerchantTask }>('/merchant-tasks', {
     method: 'POST',
     body: JSON.stringify(dto),
   });
   return (res as any).data || res;
-}
-
-async function updateTaskProgress(taskId: string, progress: number): Promise<void> {
-  await apiFetch(`/merchant-tasks/${taskId}/progress`, {
-    method: 'PUT',
-    body: JSON.stringify({ progress }),
-  });
 }
 
 async function completeTask(taskId: string): Promise<void> {
@@ -82,168 +94,199 @@ async function completeTask(taskId: string): Promise<void> {
 // Status metadata
 // ──────────────────────────────────────────────
 const STATUS_META: Record<string, { label: { en: string; zh: string }; color: string; icon: string }> = {
-  open: { label: { en: 'Open', zh: '待接取' }, color: '#6366f1', icon: '📋' },
+  open: { label: { en: 'Open', zh: '待开始' }, color: '#3b82f6', icon: '📋' },
   in_progress: { label: { en: 'In Progress', zh: '进行中' }, color: '#f59e0b', icon: '⚙️' },
   completed: { label: { en: 'Completed', zh: '已完成' }, color: '#22c55e', icon: '✅' },
   cancelled: { label: { en: 'Cancelled', zh: '已取消' }, color: '#ef4444', icon: '❌' },
-  pending: { label: { en: 'Pending', zh: '待处理' }, color: '#f59e0b', icon: '⏳' },
 };
 
 const TASK_TYPES = [
-  { key: 'development', en: 'Development', zh: '开发' },
-  { key: 'research', en: 'Research', zh: '研究' },
+  { key: 'custom_service', en: 'Custom', zh: '定制' },
+  { key: 'research', en: 'Research', zh: '调研' },
   { key: 'content', en: 'Content', zh: '内容' },
-  { key: 'data_analysis', en: 'Data Analysis', zh: '数据分析' },
-  { key: 'automation', en: 'Automation', zh: '自动化' },
-  { key: 'other', en: 'Other', zh: '其他' },
+  { key: 'development', en: 'Dev', zh: '开发' },
+  { key: 'data_analysis', en: 'Analysis', zh: '分析' },
+  { key: 'consultation', en: 'Consult', zh: '咨询' },
 ];
 
 // ──────────────────────────────────────────────
-// Create Task Modal
+// Assign Task Modal
 // ──────────────────────────────────────────────
-function CreateTaskModal({
-  visible,
-  onClose,
+function AssignTaskModal({
+  visible, agents, t, onClose, onCreated,
 }: {
   visible: boolean;
+  agents: TeamAgent[];
+  t: (p: { en: string; zh: string }) => string;
   onClose: () => void;
+  onCreated: () => void;
 }) {
-  const { t } = useI18n();
-  const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [taskType, setTaskType] = useState('development');
-  const [budget, setBudget] = useState('100');
-  const [loading, setLoading] = useState(false);
+  const [desc, setDesc] = useState('');
+  const [taskType, setTaskType] = useState('custom_service');
+  const [selectedAgent, setSelectedAgent] = useState<string | undefined>(undefined);
+  const [saving, setSaving] = useState(false);
 
   const handleCreate = async () => {
     if (!title.trim()) {
-      Alert.alert(t({ en: 'Required', zh: '必填' }), t({ en: 'Title is required.', zh: '请填写任务标题。' }));
+      Alert.alert(t({ en: 'Required', zh: '必填' }), t({ en: 'Title is required', zh: '标题不能为空' }));
       return;
     }
-    setLoading(true);
+    setSaving(true);
     try {
       await createTask({
         title: title.trim(),
-        description: description.trim(),
+        description: desc.trim(),
         type: taskType,
-        budget: parseFloat(budget) || 100,
+        budget: 0,
+        agentId: selectedAgent,
       });
-      queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-      Alert.alert('✅', t({ en: 'Task created!', zh: '任务已创建！' }));
+      setTitle(''); setDesc(''); setSelectedAgent(undefined);
+      onCreated();
       onClose();
-      setTitle('');
-      setDescription('');
-      setBudget('100');
-    } catch (err: any) {
-      Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || t({ en: 'Failed to create task.', zh: '创建任务失败。' }));
+      Alert.alert('✅', t({ en: 'Task assigned!', zh: '任务已分配！' }));
+    } catch (e: any) {
+      Alert.alert(t({ en: 'Error', zh: '失败' }), e?.message ?? 'Failed');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={mStyles.root}>
-        <View style={mStyles.header}>
-          <TouchableOpacity onPress={onClose}>
-            <Text style={mStyles.cancel}>{t({ en: 'Cancel', zh: '取消' })}</Text>
-          </TouchableOpacity>
-          <Text style={mStyles.title}>{t({ en: 'New Task', zh: '新任务' })}</Text>
-          <TouchableOpacity onPress={handleCreate} disabled={loading}>
-            {loading ? <ActivityIndicator color={colors.accent} size="small" /> : (
-              <Text style={mStyles.createBtn}>{t({ en: 'Create', zh: '创建' })}</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-        <ScrollView style={mStyles.body} keyboardShouldPersistTaps="handled">
-          <Text style={mStyles.label}>{t({ en: 'Task Title *', zh: '任务标题 *' })}</Text>
-          <TextInput style={mStyles.input} value={title} onChangeText={setTitle} placeholder={t({ en: 'e.g. Build landing page', zh: '例如：构建着陆页' })} placeholderTextColor={colors.textMuted} autoFocus />
+    <Modal visible={visible} transparent animationType="slide">
+      <KeyboardAvoidingView style={modalS.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={modalS.container}>
+          <View style={modalS.header}>
+            <Text style={modalS.title}>{t({ en: 'Assign Task', zh: '分配任务' })}</Text>
+            <TouchableOpacity onPress={onClose}><Text style={modalS.close}>✕</Text></TouchableOpacity>
+          </View>
 
-          <Text style={mStyles.label}>{t({ en: 'Description', zh: '描述' })}</Text>
-          <TextInput style={[mStyles.input, { minHeight: 80, textAlignVertical: 'top' }]} value={description} onChangeText={setDescription} multiline placeholder={t({ en: 'What needs to be done?', zh: '需要完成什么？' })} placeholderTextColor={colors.textMuted} />
+          {/* Agent Picker */}
+          <Text style={modalS.label}>{t({ en: 'Assign to', zh: '分配给' })}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+            <View style={modalS.agentRow}>
+              <TouchableOpacity
+                style={[modalS.agentPill, !selectedAgent && modalS.agentPillActive]}
+                onPress={() => setSelectedAgent(undefined)}
+              >
+                <Text style={[modalS.agentPillText, !selectedAgent && modalS.agentPillTextActive]}>
+                  {t({ en: 'Unassigned', zh: '未指派' })}
+                </Text>
+              </TouchableOpacity>
+              {agents.map(a => {
+                const icon = AGENT_ICONS[a.codename] ?? '🤖';
+                const active = selectedAgent === a.id;
+                return (
+                  <TouchableOpacity
+                    key={a.id}
+                    style={[modalS.agentPill, active && modalS.agentPillActive]}
+                    onPress={() => setSelectedAgent(a.id)}
+                  >
+                    <Text style={[modalS.agentPillText, active && modalS.agentPillTextActive]}>
+                      {icon} @{a.codename}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
 
-          <Text style={mStyles.label}>{t({ en: 'Task Type', zh: '任务类型' })}</Text>
-          <View style={mStyles.typeRow}>
-            {TASK_TYPES.map((tt) => (
-              <TouchableOpacity key={tt.key} style={[mStyles.typeChip, taskType === tt.key && mStyles.typeChipActive]} onPress={() => setTaskType(tt.key)}>
-                <Text style={[mStyles.typeText, taskType === tt.key && mStyles.typeTextActive]}>{t({ en: tt.en, zh: tt.zh })}</Text>
+          <TextInput
+            style={modalS.input}
+            placeholder={t({ en: 'Task title', zh: '任务标题' })}
+            placeholderTextColor={colors.textMuted}
+            value={title} onChangeText={setTitle}
+          />
+          <TextInput
+            style={[modalS.input, { minHeight: 70, textAlignVertical: 'top' }]}
+            placeholder={t({ en: 'Description / instructions', zh: '描述 / 详细指令' })}
+            placeholderTextColor={colors.textMuted}
+            value={desc} onChangeText={setDesc} multiline
+          />
+
+          <View style={modalS.typeRow}>
+            {TASK_TYPES.map(tt => (
+              <TouchableOpacity
+                key={tt.key}
+                style={[modalS.typePill, taskType === tt.key && modalS.typePillActive]}
+                onPress={() => setTaskType(tt.key)}
+              >
+                <Text style={[modalS.typeText, taskType === tt.key && modalS.typeTextActive]}>
+                  {t({ en: tt.en, zh: tt.zh })}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text style={mStyles.label}>{t({ en: 'Budget (USD)', zh: '预算 (USD)' })}</Text>
-          <TextInput style={mStyles.input} value={budget} onChangeText={setBudget} keyboardType="decimal-pad" placeholderTextColor={colors.textMuted} />
-        </ScrollView>
-      </View>
+          <TouchableOpacity style={modalS.createBtn} onPress={handleCreate} disabled={saving}>
+            {saving ? <ActivityIndicator color="#fff" /> : (
+              <Text style={modalS.createBtnText}>{t({ en: 'Assign Task', zh: '分配任务' })}</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
-const mStyles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bgPrimary },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingBottom: 16,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 12 : 16,
-    borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.bgSecondary,
-  },
-  cancel: { fontSize: 15, color: colors.textMuted },
-  title: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-  createBtn: { fontSize: 15, color: colors.accent, fontWeight: '700' },
-  body: { flex: 1, padding: 16 },
-  label: { fontSize: 11, color: colors.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 16, marginBottom: 6 },
-  input: { backgroundColor: colors.bgCard, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, fontSize: 14, color: colors.textPrimary },
-  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  typeChip: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7, backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border },
-  typeChipActive: { backgroundColor: colors.accent + '22', borderColor: colors.accent },
-  typeText: { fontSize: 13, color: colors.textMuted },
-  typeTextActive: { color: colors.accent, fontWeight: '600' },
-});
 
 // ──────────────────────────────────────────────
-// View tabs: My Tasks / Marketplace
+// View tabs
 // ──────────────────────────────────────────────
-type BoardTab = 'my' | 'marketplace';
+type BoardTab = 'by-agent' | 'all';
 
 export function TaskBoardScreen() {
   const { t } = useI18n();
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<BoardTab>('my');
+  const [tab, setTab] = useState<BoardTab>('by-agent');
   const [showCreate, setShowCreate] = useState(false);
-  const [search, setSearch] = useState('');
 
-  // My tasks
-  const { data: myTasks = [], isLoading: myLoading, refetch: refetchMy } = useQuery({
+  const { data: myTasks = [], isLoading: tasksLoading, refetch: refetchTasks } = useQuery({
     queryKey: ['my-tasks'],
     queryFn: fetchMyTasks,
     retry: false,
   });
 
-  // Marketplace tasks
-  const { data: marketResult, isLoading: mktLoading, refetch: refetchMkt } = useQuery({
-    queryKey: ['marketplace-tasks', search],
-    queryFn: () => searchMarketplaceTasks(search || undefined),
+  const { data: myTeams = [], isLoading: teamsLoading } = useQuery({
+    queryKey: ['my-teams'],
+    queryFn: fetchMyTeams,
     retry: false,
-    enabled: tab === 'marketplace',
   });
-  const marketTasks = marketResult?.items || [];
 
-  const tasks = tab === 'my' ? myTasks : marketTasks;
-  const loading = tab === 'my' ? myLoading : mktLoading;
-  const refetchCurrent = tab === 'my' ? refetchMy : refetchMkt;
+  const allAgents = useMemo(() => myTeams.flatMap(t => t.agents), [myTeams]);
 
-  // Group my tasks by status for kanban-like display
-  const grouped = {
-    open: myTasks.filter((t) => t.status === 'open' || t.status === 'pending'),
-    in_progress: myTasks.filter((t) => t.status === 'in_progress'),
-    completed: myTasks.filter((t) => t.status === 'completed'),
-  };
+  // Group tasks by agent
+  const tasksByAgent = useMemo(() => {
+    const map: Record<string, { agent: TeamAgent; tasks: MerchantTask[] }> = {};
+    // Initialize all agents (even with no tasks)
+    for (const a of allAgents) {
+      map[a.id] = { agent: a, tasks: [] };
+    }
+    // Assign tasks to agents
+    for (const task of myTasks) {
+      if (task.agentId && map[task.agentId]) {
+        map[task.agentId].tasks.push(task);
+      }
+    }
+    return Object.values(map);
+  }, [allAgents, myTasks]);
+
+  const unassignedTasks = useMemo(() =>
+    myTasks.filter(t => !t.agentId || !allAgents.some(a => a.id === t.agentId)),
+    [myTasks, allAgents],
+  );
+
+  // Stats
+  const totalActive = myTasks.filter(t => t.status === 'in_progress').length;
+  const totalOpen = myTasks.filter(t => t.status === 'open').length;
+  const totalDone = myTasks.filter(t => t.status === 'completed').length;
+
+  const loading = tasksLoading || teamsLoading;
 
   const handleComplete = (task: MerchantTask) => {
     Alert.alert(
       t({ en: 'Complete Task', zh: '完成任务' }),
-      t({ en: `Mark "${task.title}" as completed?`, zh: `将"${task.title}"标记为已完成？` }),
+      t({ en: `Complete "${task.title}"?`, zh: `完成"${task.title}"？` }),
       [
         { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
@@ -252,9 +295,8 @@ export function TaskBoardScreen() {
             try {
               await completeTask(task.id);
               queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-              Alert.alert('✅', t({ en: 'Task completed!', zh: '任务已完成！' }));
-            } catch (err: any) {
-              Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || t({ en: 'Failed.', zh: '操作失败。' }));
+            } catch (e: any) {
+              Alert.alert('Error', e?.message ?? 'Failed');
             }
           },
         },
@@ -262,146 +304,197 @@ export function TaskBoardScreen() {
     );
   };
 
-  const renderTask = ({ item: task }: { item: MerchantTask }) => {
-    const meta = STATUS_META[task.status] || STATUS_META.open;
+  const renderTaskCard = (task: MerchantTask) => {
+    const meta = STATUS_META[task.status] ?? STATUS_META.open;
     return (
       <TouchableOpacity
+        key={task.id}
         style={s.taskCard}
-        onPress={() => navigation.navigate('TaskDetail' as any, { taskId: task.id })}
+        onPress={() => navigation.navigate('TaskDetail', { taskId: task.id })}
         activeOpacity={0.7}
       >
-        <View style={s.taskHeader}>
+        <View style={s.taskRow}>
           <Text style={s.taskIcon}>{meta.icon}</Text>
           <View style={{ flex: 1 }}>
-            <Text style={s.taskTitle} numberOfLines={2}>{task.title}</Text>
-            <Text style={s.taskType}>{task.type?.replace(/_/g, ' ')}</Text>
+            <Text style={s.taskTitle} numberOfLines={1}>{task.title}</Text>
+            {task.description ? <Text style={s.taskDesc} numberOfLines={1}>{task.description}</Text> : null}
           </View>
-          <View style={[s.taskStatusBadge, { backgroundColor: meta.color + '22' }]}>
-            <Text style={[s.taskStatusText, { color: meta.color }]}>{t(meta.label)}</Text>
+          <View style={[s.taskBadge, { backgroundColor: meta.color + '18' }]}>
+            <Text style={[s.taskBadgeText, { color: meta.color }]}>{t(meta.label)}</Text>
           </View>
         </View>
-
-        {task.description ? (
-          <Text style={s.taskDesc} numberOfLines={2}>{task.description}</Text>
-        ) : null}
-
-        <View style={s.taskFooter}>
-          <Text style={s.taskBudget}>💰 ${task.budget} {task.currency || 'USD'}</Text>
-          {task.progress != null && task.progress > 0 && (
-            <View style={s.progressRow}>
-              <View style={s.progressBar}>
-                <View style={[s.progressFill, { width: `${Math.min(task.progress, 100)}%` }]} />
-              </View>
-              <Text style={s.progressText}>{task.progress}%</Text>
-            </View>
-          )}
-          {task.agentName ? (
-            <Text style={s.taskAgent}>🤖 {task.agentName}</Text>
-          ) : null}
-        </View>
-
-        {/* Quick actions */}
-        {tab === 'my' && task.status === 'in_progress' && (
+        {task.status === 'in_progress' && task.progress != null && (
+          <View style={s.progressBar}>
+            <View style={[s.progressFill, { width: `${Math.min(task.progress, 100)}%` }]} />
+          </View>
+        )}
+        {task.status === 'in_progress' && (
           <TouchableOpacity style={s.completeBtn} onPress={() => handleComplete(task)}>
-            <Text style={s.completeBtnText}>✅ {t({ en: 'Mark Complete', zh: '标记完成' })}</Text>
+            <Text style={s.completeBtnText}>✅ {t({ en: 'Complete', zh: '完成' })}</Text>
           </TouchableOpacity>
         )}
-
-        <Text style={s.taskDate}>{new Date(task.createdAt).toLocaleDateString()}</Text>
       </TouchableOpacity>
     );
   };
 
-  // Kanban section header for "my" tab
-  const renderKanbanSection = (title: string, icon: string, items: MerchantTask[], color: string) => {
-    if (items.length === 0) return null;
+  const renderAgentSection = (item: { agent: TeamAgent; tasks: MerchantTask[] }) => {
+    const { agent, tasks } = item;
+    const icon = AGENT_ICONS[agent.codename] ?? '🤖';
+    const activeCount = tasks.filter(t => t.status === 'in_progress').length;
+    const statusColor = agent.status === 'active' ? '#22c55e' : '#f59e0b';
+
     return (
-      <View style={s.kanbanSection}>
-        <View style={[s.kanbanHeader, { borderLeftColor: color }]}>
-          <Text style={s.kanbanIcon}>{icon}</Text>
-          <Text style={s.kanbanTitle}>{title}</Text>
-          <View style={[s.kanbanCount, { backgroundColor: color + '22' }]}>
-            <Text style={[s.kanbanCountText, { color }]}>{items.length}</Text>
+      <View key={agent.id} style={s.agentSection}>
+        <TouchableOpacity
+          style={s.agentHeader}
+          onPress={() => navigation.navigate('AgentProfile', {
+            agentId: agent.id, codename: agent.codename,
+            name: agent.name, status: agent.status, modelTier: '',
+          })}
+          activeOpacity={0.7}
+        >
+          <Text style={s.agentIcon}>{icon}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={s.agentName}>{agent.name}</Text>
+            <Text style={s.agentCode}>@{agent.codename}</Text>
           </View>
-        </View>
-        {items.map((task) => (
-          <View key={task.id}>{renderTask({ item: task })}</View>
-        ))}
+          <View style={[s.agentDot, { backgroundColor: statusColor }]} />
+          {activeCount > 0 ? (
+            <View style={s.activeBadge}>
+              <Text style={s.activeText}>{activeCount} {t({ en: 'active', zh: '进行中' })}</Text>
+            </View>
+          ) : (
+            <Text style={s.idleText}>{t({ en: 'Idle', zh: '空闲' })}</Text>
+          )}
+          <Text style={s.chevron}>›</Text>
+        </TouchableOpacity>
+        {tasks.length > 0 ? (
+          tasks.map(renderTaskCard)
+        ) : (
+          <Text style={s.noTasks}>{t({ en: 'No tasks assigned', zh: '暂无任务' })}</Text>
+        )}
       </View>
     );
   };
 
   return (
     <View style={s.container}>
-      {/* Tab switcher */}
+      {/* Summary */}
+      <View style={s.summary}>
+        <View style={s.summaryItem}>
+          <Text style={[s.summaryNum, { color: '#f59e0b' }]}>{totalActive}</Text>
+          <Text style={s.summaryLabel}>{t({ en: 'Active', zh: '进行中' })}</Text>
+        </View>
+        <View style={s.summaryDivider} />
+        <View style={s.summaryItem}>
+          <Text style={[s.summaryNum, { color: '#3b82f6' }]}>{totalOpen}</Text>
+          <Text style={s.summaryLabel}>{t({ en: 'Open', zh: '待分配' })}</Text>
+        </View>
+        <View style={s.summaryDivider} />
+        <View style={s.summaryItem}>
+          <Text style={[s.summaryNum, { color: '#22c55e' }]}>{totalDone}</Text>
+          <Text style={s.summaryLabel}>{t({ en: 'Done', zh: '已完成' })}</Text>
+        </View>
+        <View style={s.summaryDivider} />
+        <View style={s.summaryItem}>
+          <Text style={[s.summaryNum, { color: colors.accent }]}>{allAgents.length}</Text>
+          <Text style={s.summaryLabel}>{t({ en: 'Agents', zh: 'Agent' })}</Text>
+        </View>
+      </View>
+
+      {/* Tabs */}
       <View style={s.tabRow}>
-        <TouchableOpacity style={[s.tabBtn, tab === 'my' && s.tabBtnActive]} onPress={() => setTab('my')}>
-          <Text style={[s.tabText, tab === 'my' && s.tabTextActive]}>📋 {t({ en: 'My Tasks', zh: '我的任务' })}</Text>
+        <TouchableOpacity
+          style={[s.tabBtn, tab === 'by-agent' && s.tabActive]}
+          onPress={() => setTab('by-agent')}
+        >
+          <Text style={[s.tabText, tab === 'by-agent' && s.tabTextActive]}>
+            👥 {t({ en: 'By Agent', zh: '按Agent' })}
+          </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[s.tabBtn, tab === 'marketplace' && s.tabBtnActive]} onPress={() => setTab('marketplace')}>
-          <Text style={[s.tabText, tab === 'marketplace' && s.tabTextActive]}>🏪 {t({ en: 'Marketplace', zh: '任务市场' })}</Text>
+        <TouchableOpacity
+          style={[s.tabBtn, tab === 'all' && s.tabActive]}
+          onPress={() => setTab('all')}
+        >
+          <Text style={[s.tabText, tab === 'all' && s.tabTextActive]}>
+            📋 {t({ en: 'All Tasks', zh: '全部任务' })}
+          </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Search (marketplace only) */}
-      {tab === 'marketplace' && (
-        <View style={s.searchRow}>
-          <TextInput
-            style={s.searchInput}
-            value={search}
-            onChangeText={setSearch}
-            placeholder={t({ en: 'Search tasks...', zh: '搜索任务...' })}
-            placeholderTextColor={colors.textMuted}
-            returnKeyType="search"
-          />
-        </View>
-      )}
-
       {loading ? (
         <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />
-      ) : tab === 'my' ? (
+      ) : (
         <ScrollView
-          refreshControl={<RefreshControl refreshing={myLoading} onRefresh={refetchMy} tintColor={colors.accent} />}
-          contentContainerStyle={s.listContent}
+          style={s.scroll}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={refetchTasks}
+              tintColor={colors.accent}
+            />
+          }
         >
-          {myTasks.length === 0 ? (
-            <View style={s.empty}>
-              <Text style={s.emptyIcon}>📋</Text>
-              <Text style={s.emptyTitle}>{t({ en: 'No tasks yet', zh: '暂无任务' })}</Text>
-              <Text style={s.emptySub}>{t({ en: 'Create a task or browse the marketplace.', zh: '创建任务或浏览任务市场。' })}</Text>
-            </View>
+          {tab === 'by-agent' ? (
+            <>
+              {tasksByAgent.length === 0 && allAgents.length === 0 ? (
+                <View style={s.empty}>
+                  <Text style={{ fontSize: 40 }}>🏗️</Text>
+                  <Text style={s.emptyTitle}>{t({ en: 'No team yet', zh: '还没有团队' })}</Text>
+                  <Text style={s.emptySub}>
+                    {t({ en: 'Create an agent team first from the Team tab', zh: '请先在团队页创建Agent团队' })}
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  {tasksByAgent.map(renderAgentSection)}
+                  {unassignedTasks.length > 0 && (
+                    <View style={s.agentSection}>
+                      <View style={s.agentHeader}>
+                        <Text style={s.agentIcon}>📦</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.agentName}>{t({ en: 'Unassigned', zh: '未指派' })}</Text>
+                          <Text style={s.agentCode}>{unassignedTasks.length} {t({ en: 'tasks', zh: '个任务' })}</Text>
+                        </View>
+                      </View>
+                      {unassignedTasks.map(renderTaskCard)}
+                    </View>
+                  )}
+                </>
+              )}
+            </>
           ) : (
             <>
-              {renderKanbanSection(t({ en: 'In Progress', zh: '进行中' }), '⚙️', grouped.in_progress, '#f59e0b')}
-              {renderKanbanSection(t({ en: 'Open', zh: '待接取' }), '📋', grouped.open, '#6366f1')}
-              {renderKanbanSection(t({ en: 'Completed', zh: '已完成' }), '✅', grouped.completed, '#22c55e')}
+              {myTasks.length === 0 ? (
+                <View style={s.empty}>
+                  <Text style={{ fontSize: 40 }}>📋</Text>
+                  <Text style={s.emptyTitle}>{t({ en: 'No tasks', zh: '暂无任务' })}</Text>
+                  <Text style={s.emptySub}>
+                    {t({ en: 'Assign tasks to your agents to get started', zh: '给Agent分配任务开始工作' })}
+                  </Text>
+                </View>
+              ) : (
+                myTasks.map(renderTaskCard)
+              )}
             </>
           )}
+          <View style={{ height: 100 }} />
         </ScrollView>
-      ) : (
-        <FlatList
-          data={marketTasks}
-          keyExtractor={(t) => t.id}
-          renderItem={renderTask}
-          refreshControl={<RefreshControl refreshing={mktLoading} onRefresh={refetchMkt} tintColor={colors.accent} />}
-          contentContainerStyle={s.listContent}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={s.empty}>
-              <Text style={s.emptyIcon}>🏪</Text>
-              <Text style={s.emptyTitle}>{t({ en: 'No marketplace tasks', zh: '暂无市场任务' })}</Text>
-            </View>
-          }
-        />
       )}
 
-      {/* FAB: Create task */}
+      {/* FAB */}
       <TouchableOpacity style={s.fab} onPress={() => setShowCreate(true)}>
-        <Text style={s.fabText}>＋ {t({ en: 'New Task', zh: '新任务' })}</Text>
+        <Text style={s.fabText}>＋ {t({ en: 'Assign Task', zh: '分配任务' })}</Text>
       </TouchableOpacity>
 
-      <CreateTaskModal visible={showCreate} onClose={() => setShowCreate(false)} />
+      <AssignTaskModal
+        visible={showCreate}
+        agents={allAgents}
+        t={t}
+        onClose={() => setShowCreate(false)}
+        onCreated={() => queryClient.invalidateQueries({ queryKey: ['my-tasks'] })}
+      />
     </View>
   );
 }
@@ -411,61 +504,70 @@ export function TaskBoardScreen() {
 // ──────────────────────────────────────────────
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
+  scroll: { flex: 1 },
+  // Summary
+  summary: {
+    flexDirection: 'row', margin: 16, marginBottom: 8,
+    backgroundColor: colors.bgCard, borderRadius: 14, padding: 12,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  summaryItem: { flex: 1, alignItems: 'center', gap: 2 },
+  summaryNum: { fontSize: 20, fontWeight: '800' },
+  summaryLabel: { fontSize: 10, color: colors.textMuted, fontWeight: '600' },
+  summaryDivider: { width: 1, height: 30, backgroundColor: colors.border, alignSelf: 'center' },
   // Tabs
-  tabRow: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 12, gap: 8 },
+  tabRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 8 },
   tabBtn: {
-    flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 12,
+    flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10,
     backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border,
   },
-  tabBtnActive: { backgroundColor: colors.accent + '22', borderColor: colors.accent },
+  tabActive: { backgroundColor: colors.accent + '1A', borderColor: colors.accent },
   tabText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
   tabTextActive: { color: colors.accent },
-  // Search
-  searchRow: { paddingHorizontal: 16, paddingTop: 10 },
-  searchInput: {
-    backgroundColor: colors.bgCard, borderRadius: 10, borderWidth: 1,
-    borderColor: colors.border, padding: 10, fontSize: 14, color: colors.textPrimary,
+  // Agent section
+  agentSection: {
+    marginHorizontal: 16, marginBottom: 12,
+    backgroundColor: colors.bgCard, borderRadius: 14,
+    padding: 12, borderWidth: 1, borderColor: colors.border,
   },
-  // List
-  listContent: { padding: 16, gap: 10, paddingBottom: 100 },
-  // Kanban sections
-  kanbanSection: { gap: 8, marginBottom: 12 },
-  kanbanHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, borderLeftWidth: 3, paddingLeft: 8 },
-  kanbanIcon: { fontSize: 16 },
-  kanbanTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary, flex: 1 },
-  kanbanCount: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
-  kanbanCountText: { fontSize: 12, fontWeight: '700' },
+  agentHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8,
+    paddingBottom: 8, borderBottomWidth: 0.5, borderBottomColor: colors.border,
+  },
+  agentIcon: { fontSize: 20 },
+  agentName: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+  agentCode: { fontSize: 11, color: colors.accent, fontWeight: '600' },
+  agentDot: { width: 8, height: 8, borderRadius: 4 },
+  activeBadge: {
+    backgroundColor: '#f59e0b22', borderRadius: 6,
+    paddingHorizontal: 8, paddingVertical: 2,
+  },
+  activeText: { fontSize: 10, fontWeight: '700', color: '#f59e0b' },
+  idleText: { fontSize: 11, color: colors.textMuted },
+  chevron: { fontSize: 18, color: colors.textMuted, fontWeight: '300' },
+  noTasks: { fontSize: 12, color: colors.textMuted, textAlign: 'center', paddingVertical: 8 },
   // Task card
   taskCard: {
-    backgroundColor: colors.bgCard, borderRadius: 14, padding: 14,
-    gap: 8, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.bgSecondary, borderRadius: 10,
+    padding: 10, marginBottom: 6, borderWidth: 1, borderColor: colors.border,
+    gap: 6,
   },
-  taskHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  taskIcon: { fontSize: 18 },
-  taskTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
-  taskType: { fontSize: 11, color: colors.textMuted, marginTop: 1, textTransform: 'capitalize' },
-  taskStatusBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 3 },
-  taskStatusText: { fontSize: 11, fontWeight: '600' },
-  taskDesc: { fontSize: 12, color: colors.textSecondary, lineHeight: 17 },
-  taskFooter: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-  taskBudget: { fontSize: 12, fontWeight: '700', color: colors.accent },
-  taskAgent: { fontSize: 11, color: colors.textMuted },
-  taskDate: { fontSize: 10, color: colors.textMuted },
-  // Progress
-  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
-  progressBar: { flex: 1, height: 4, borderRadius: 2, backgroundColor: colors.bgSecondary },
-  progressFill: { height: 4, borderRadius: 2, backgroundColor: '#22c55e' },
-  progressText: { fontSize: 10, color: colors.textMuted, fontWeight: '700' },
-  // Complete button
+  taskRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  taskIcon: { fontSize: 14 },
+  taskTitle: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+  taskDesc: { fontSize: 11, color: colors.textMuted, marginTop: 1 },
+  taskBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
+  taskBadgeText: { fontSize: 10, fontWeight: '700' },
+  progressBar: { height: 3, backgroundColor: colors.bgPrimary, borderRadius: 2, overflow: 'hidden' },
+  progressFill: { height: 3, backgroundColor: '#f59e0b', borderRadius: 2 },
   completeBtn: {
-    alignItems: 'center', paddingVertical: 8, borderRadius: 10,
-    backgroundColor: '#22c55e18', borderWidth: 1, borderColor: '#22c55e33',
+    alignItems: 'center', paddingVertical: 6, borderRadius: 8,
+    backgroundColor: '#22c55e14', borderWidth: 1, borderColor: '#22c55e33',
   },
-  completeBtnText: { fontSize: 12, fontWeight: '600', color: '#22c55e' },
+  completeBtnText: { fontSize: 11, fontWeight: '600', color: '#22c55e' },
   // Empty
-  empty: { alignItems: 'center', padding: 40, gap: 8, marginTop: 30 },
-  emptyIcon: { fontSize: 48 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
+  empty: { alignItems: 'center', padding: 40, gap: 8, marginTop: 20 },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
   emptySub: { fontSize: 13, color: colors.textMuted, textAlign: 'center' },
   // FAB
   fab: {
@@ -476,4 +578,42 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 }, elevation: 8,
   },
   fabText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+});
+
+const modalS = StyleSheet.create({
+  overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000066' },
+  container: {
+    backgroundColor: colors.bgCard, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 20, gap: 10,
+  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  title: { fontSize: 16, fontWeight: '800', color: colors.textPrimary },
+  close: { fontSize: 18, color: colors.textMuted, padding: 4 },
+  label: { fontSize: 11, fontWeight: '600', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  agentRow: { flexDirection: 'row', gap: 6, paddingVertical: 4 },
+  agentPill: {
+    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7,
+    backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.border,
+  },
+  agentPillActive: { backgroundColor: colors.accent + '22', borderColor: colors.accent },
+  agentPillText: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
+  agentPillTextActive: { color: colors.accent },
+  input: {
+    backgroundColor: colors.bgSecondary, borderRadius: 12, paddingHorizontal: 14,
+    paddingVertical: 10, fontSize: 14, color: colors.textPrimary,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  typePill: {
+    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
+    backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.border,
+  },
+  typePillActive: { backgroundColor: colors.accent + '22', borderColor: colors.accent },
+  typeText: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
+  typeTextActive: { color: colors.accent },
+  createBtn: {
+    backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14,
+    alignItems: 'center', marginTop: 4,
+  },
+  createBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

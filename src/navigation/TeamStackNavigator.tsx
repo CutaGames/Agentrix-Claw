@@ -9,6 +9,7 @@ import { TeamInviteScreen } from '../screens/agent/TeamInviteScreen';
 import { AgentAccountScreen } from '../screens/agent/AgentAccountScreen';
 import { TaskBoardScreen } from '../screens/team/TaskBoardScreen';
 import { TaskDetailScreen } from '../screens/team/TaskDetailScreen';
+import { AgentProfileScreen } from '../screens/team/AgentProfileScreen';
 import { useI18n } from '../stores/i18nStore';
 
 const Stack = createNativeStackNavigator<TeamStackParamList>();
@@ -60,6 +61,11 @@ export function TeamStackNavigator() {
         name="TaskDetail"
         component={TaskDetailScreen}
         options={{ title: t({ en: 'Task Detail', zh: '任务详情' }) }}
+      />
+      <Stack.Screen
+        name="AgentProfile"
+        component={AgentProfileScreen}
+        options={{ title: t({ en: 'Agent Profile', zh: 'Agent 详情' }) }}
       />
     </Stack.Navigator>
   );

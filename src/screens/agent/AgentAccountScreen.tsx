@@ -397,7 +397,7 @@ export function AgentAccountScreen() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [apiKeyLoading, setApiKeyLoading] = useState<string | null>(null);
   // { [agentId]: { key?: string (full, shown once); prefix?: string } }
-  const [apiKeys, setApiKeys] = useState<Record<string, { key?: string; prefix?: string }>({});
+  const [apiKeys, setApiKeys] = useState<Record<string, { key?: string; prefix?: string }>>({}); 
 
   const { data: agents = [], isLoading, refetch } = useQuery({
     queryKey: ['agent-accounts'],

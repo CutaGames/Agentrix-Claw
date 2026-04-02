@@ -140,6 +140,13 @@ export type TeamStackParamList = {
   TeamAgentAccounts: undefined;
   TaskBoard: undefined;
   TaskDetail: { taskId: string };
+  AgentProfile: {
+    agentId: string;
+    codename: string;
+    name: string;
+    status: string;
+    modelTier: string;
+  };
 };
 
 export type MainTabParamList = {

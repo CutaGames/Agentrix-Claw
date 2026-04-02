@@ -346,13 +346,20 @@ const MODEL_TIER_BADGE: Record<string, { label: string; color: string }> = {
   'gpt-4o-mini': { label: '🆓 Mini', color: '#22c55e' },
 };
 
-function TeamAgentRow({ agent, t }: { agent: TeamAgent; t: (p: { en: string; zh: string }) => string }) {
+function TeamAgentRow({ agent, t, onPress }: { agent: TeamAgent; t: (p: { en: string; zh: string }) => string; onPress?: () => void }) {
   const tier = MODEL_TIER_BADGE[agent.modelTier ?? ''] ?? { label: agent.modelTier ?? '—', color: '#6b7280' };
   const scoreColor = agent.creditScore >= 800 ? '#22c55e' : agent.creditScore >= 500 ? '#3b82f6' : '#f59e0b';
   const statusColor = agent.status === 'active' ? '#22c55e' : agent.status === 'suspended' ? '#f59e0b' : '#ef4444';
+  const ICONS: Record<string, string> = {
+    ceo: '👑', dev: '💻', 'qa-ops': '🔧', growth: '📈',
+    ops: '📊', media: '📱', ecosystem: '🌐', community: '👥',
+    brand: '🎨', hunter: '🔍', treasury: '💰',
+  };
+  const icon = ICONS[agent.codename] ?? '🤖';
 
   return (
-    <View style={teamRow.container}>
+    <TouchableOpacity style={teamRow.container} onPress={onPress} activeOpacity={0.7} disabled={!onPress}>
+      <Text style={{ fontSize: 16, marginRight: 6 }}>{icon}</Text>
       <View style={teamRow.left}>
         <Text style={teamRow.codename}>@{agent.codename}</Text>
         <Text style={teamRow.name} numberOfLines={1}>{agent.name}</Text>
@@ -363,8 +370,9 @@ function TeamAgentRow({ agent, t }: { agent: TeamAgent; t: (p: { en: string; zh:
         </View>
         <Text style={[teamRow.score, { color: scoreColor }]}>{agent.creditScore}</Text>
         <View style={[teamRow.statusDot, { backgroundColor: statusColor }]} />
+        <Text style={{ fontSize: 14, color: colors.textMuted }}>›</Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -385,11 +393,12 @@ const teamRow = StyleSheet.create({
 // ──────────────────────────────────────────────
 
 function MyTeamGroupCard({ 
-  team, t, onDisband 
+  team, t, onDisband, onAgentPress,
 }: { 
   team: MyTeam; 
   t: (p: { en: string; zh: string }) => string;
   onDisband: () => void;
+  onAgentPress: (agent: TeamAgent) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const activeCount = team.agents.filter(a => a.status === 'active').length;
@@ -409,7 +418,7 @@ function MyTeamGroupCard({
       {expanded && (
         <>
           {team.agents.map(agent => (
-            <TeamAgentRow key={agent.id} agent={agent} t={t} />
+            <TeamAgentRow key={agent.id} agent={agent} t={t} onPress={() => onAgentPress(agent)} />
           ))}
           <View style={teamGroup.actions}>
             <TouchableOpacity style={teamGroup.actionBtn} onPress={onDisband}>
@@ -727,7 +736,7 @@ export function TeamDashboardScreen({ navigation }: Props) {
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
               <Text style={[styles.summaryCount, { color: '#22c55e' }]}>{totalTeamAgents}</Text>
-              <Text style={styles.summaryLabel}>{t({ en: 'Team Agents', zh: '团队 Agent' })}</Text>
+              <Text style={styles.summaryLabel}>{t({ en: 'Agents', zh: 'Agent' })}</Text>
             </View>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
@@ -736,6 +745,42 @@ export function TeamDashboardScreen({ navigation }: Props) {
             </View>
           </View>
         </View>
+
+        {/* ═══ CEO Directive — give a command to CEO ═══ */}
+        {hasTeams && (
+          <TouchableOpacity
+            style={styles.ceoBanner}
+            onPress={() => {
+              const ceoAgent = myTeams.flatMap(t => t.agents).find(a => a.codename === 'ceo');
+              if (ceoAgent) {
+                navigation.navigate('AgentProfile', {
+                  agentId: ceoAgent.id,
+                  codename: ceoAgent.codename,
+                  name: ceoAgent.name,
+                  status: ceoAgent.status,
+                  modelTier: ceoAgent.modelTier ?? '',
+                });
+              } else {
+                navigation.navigate('TaskBoard');
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 28 }}>👑</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.ceoBannerTitle}>
+                {t({ en: 'Give CEO a Directive', zh: '给CEO下达指令' })}
+              </Text>
+              <Text style={styles.ceoBannerSub}>
+                {t({
+                  en: 'Chat with CEO to plan strategy, assign team tasks, review progress',
+                  zh: '与CEO对话制定战略、分配团队任务、审查进度',
+                })}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 18, color: colors.accent }}>→</Text>
+          </TouchableOpacity>
+        )}
 
         {/* ═══ My Teams section ═══ */}
         <View style={styles.sectionHeader}>
@@ -751,6 +796,13 @@ export function TeamDashboardScreen({ navigation }: Props) {
               team={team}
               t={t}
               onDisband={() => handleDisband(team.templateSlug, team.templateName)}
+              onAgentPress={(agent) => navigation.navigate('AgentProfile', {
+                agentId: agent.id,
+                codename: agent.codename,
+                name: agent.name,
+                status: agent.status,
+                modelTier: agent.modelTier ?? '',
+              })}
             />
           ))
         ) : (
@@ -787,9 +839,9 @@ export function TeamDashboardScreen({ navigation }: Props) {
           activeOpacity={0.7}
         >
           <View style={{ flex: 1 }}>
-            <Text style={styles.taskBoardTitle}>📋 {t({ en: 'Task Board', zh: '任务看板' })}</Text>
+            <Text style={styles.taskBoardTitle}>📋 {t({ en: 'Team Task Board', zh: '团队任务看板' })}</Text>
             <Text style={styles.taskBoardSub}>
-              {t({ en: 'Create tasks, browse marketplace, track progress', zh: '创建任务、浏览市场、跟踪进度' })}
+              {t({ en: 'View all agent tasks, assign new tasks, track deliverables', zh: '查看所有Agent任务、分配新任务、跟踪交付物' })}
             </Text>
           </View>
           <Text style={styles.taskBoardArrow}>→</Text>
@@ -1063,6 +1115,21 @@ const styles = StyleSheet.create({
   taskBoardTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
   taskBoardSub: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
   taskBoardArrow: { fontSize: 20, color: colors.accent, fontWeight: '700' },
+  // CEO directive banner
+  ceoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: '#a855f711',
+    borderWidth: 1,
+    borderColor: '#a855f733',
+    gap: 12,
+  },
+  ceoBannerTitle: { fontSize: 15, fontWeight: '800', color: colors.textPrimary },
+  ceoBannerSub: { fontSize: 11, color: colors.textMuted, marginTop: 2, lineHeight: 16 },
 });
 
 const cards = StyleSheet.create({
