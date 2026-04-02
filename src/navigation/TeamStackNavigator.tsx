@@ -1,4 +1,5 @@
 import React from 'react';
+import { View, Text } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { TeamStackParamList } from './types';
 import { colors } from '../theme/colors';
@@ -11,6 +12,37 @@ import { TaskBoardScreen } from '../screens/team/TaskBoardScreen';
 import { TaskDetailScreen } from '../screens/team/TaskDetailScreen';
 import { AgentProfileScreen } from '../screens/team/AgentProfileScreen';
 import { useI18n } from '../stores/i18nStore';
+
+// ErrorBoundary for screens that may crash
+class ScreenErrorBoundary extends React.Component<{ children: React.ReactNode; screenName: string }, { hasError: boolean; error?: Error }> {
+  constructor(props: any) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error(`[ScreenErrorBoundary:${this.props.screenName}]`, error.message, info.componentStack);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <Text style={{ fontSize: 40, marginBottom: 16 }}>⚠️</Text>
+          <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Screen Error</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 13, textAlign: 'center' }}>{this.state.error?.message || 'Unknown error'}</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 12 }} onPress={() => this.setState({ hasError: false, error: undefined })}>
+            Tap here to retry
+          </Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function SafeAgentAccountScreen(props: any) {
+  return <ScreenErrorBoundary screenName="AgentAccountScreen"><AgentAccountScreen {...props} /></ScreenErrorBoundary>;
+}
+function SafeTaskDetailScreen(props: any) {
+  return <ScreenErrorBoundary screenName="TaskDetailScreen"><TaskDetailScreen {...props} /></ScreenErrorBoundary>;
+}
 
 const Stack = createNativeStackNavigator<TeamStackParamList>();
 
@@ -49,7 +81,7 @@ export function TeamStackNavigator() {
       />
       <Stack.Screen
         name="TeamAgentAccounts"
-        component={AgentAccountScreen}
+        component={SafeAgentAccountScreen}
         options={{ title: t({ en: 'Agent Accounts', zh: '智能体账户' }) }}
       />
       <Stack.Screen
@@ -59,7 +91,7 @@ export function TeamStackNavigator() {
       />
       <Stack.Screen
         name="TaskDetail"
-        component={TaskDetailScreen}
+        component={SafeTaskDetailScreen}
         options={{ title: t({ en: 'Task Detail', zh: '任务详情' }) }}
       />
       <Stack.Screen

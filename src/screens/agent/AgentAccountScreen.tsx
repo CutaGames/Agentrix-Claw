@@ -256,8 +256,8 @@ function BalanceBadge({ agentAccountId, t: _t }: { agentAccountId?: string; t: R
     staleTime: 30_000,
   });
   if (!balance) return null;
-  const amt = parseFloat(balance.platformBalance.amount || '0');
-  const chainAmt = balance.onchainBalance ? parseFloat(balance.onchainBalance.amount || '0') : 0;
+  const amt = parseFloat(balance?.platformBalance?.amount || '0');
+  const chainAmt = balance?.onchainBalance ? parseFloat(balance.onchainBalance.amount || '0') : 0;
   return (
     <View style={balBadge.row}>
       <View style={balBadge.chip}>
@@ -541,8 +541,18 @@ export function AgentAccountScreen() {
     );
   };
 
+  const handleNavigateBalance = (agent: AgentAccount) => {
+    try {
+      navigation.navigate('AgentBalance' as any, { agentAccountId: agent.agentAccountId, agentName: agent.name });
+    } catch {
+      Alert.alert(t({ en: 'Navigate', zh: '导航' }), t({ en: 'Please access Balance from the Agent tab.', zh: '请从 Agent 标签页访问余额。' }));
+    }
+  };
+
   const renderAgent = ({ item: agent }: { item: AgentAccount }) => {
+    if (!agent?.id) return null;
     const agentApiKey = apiKeys[agent.id];
+    try {
     return (
     <View style={styles.card}>
       {/* Card header */}
@@ -654,7 +664,7 @@ export function AgentAccountScreen() {
         )}
         <TouchableOpacity
           style={styles.actionBtn}
-          onPress={() => navigation.navigate('AgentBalance' as any, { agentAccountId: agent.agentAccountId, agentName: agent.name })}
+          onPress={() => handleNavigateBalance(agent)}
         >
           <Text style={styles.actionBtnText}>📋 {t({ en: 'Txs', zh: '交易' })}</Text>
         </TouchableOpacity>
@@ -709,6 +719,14 @@ export function AgentAccountScreen() {
       )}
     </View>
     );
+    } catch (e: any) {
+      console.error('[AgentAccountScreen] renderAgent error:', e?.message);
+      return (
+        <View style={styles.card}>
+          <Text style={{ color: colors.textMuted, textAlign: 'center' }}>⚠️ {t({ en: 'Failed to render agent card', zh: '渲染 Agent 卡片失败' })}</Text>
+        </View>
+      );
+    }
   };
 
   return (
