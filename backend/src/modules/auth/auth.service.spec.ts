@@ -21,6 +21,7 @@ import { AuthService } from './auth.service';
 import { User, UserRole } from '../../entities/user.entity';
 import { WalletConnection, ChainType } from '../../entities/wallet-connection.entity';
 import { AccountService } from '../account/account.service';
+import { UserAgent } from '../../entities/user-agent.entity';
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 
@@ -68,16 +69,19 @@ describe('AuthService', () => {
   let service: AuthService;
   let userRepo: ReturnType<typeof mockRepo>;
   let walletRepo: ReturnType<typeof mockRepo>;
+  let userAgentRepo: ReturnType<typeof mockRepo>;
 
   beforeEach(async () => {
     userRepo = mockRepo();
     walletRepo = mockRepo();
+    userAgentRepo = mockRepo();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(WalletConnection), useValue: walletRepo },
+        { provide: getRepositoryToken(UserAgent), useValue: userAgentRepo },
         { provide: JwtService, useValue: mockJwtService },
         { provide: AccountService, useValue: mockAccountService },
         { provide: ConfigService, useValue: mockConfigService },
@@ -304,10 +308,25 @@ describe('AuthService', () => {
       expect(poll.token).toBe('mock-jwt-token');
     });
 
+    it('should resolve after direct OAuth pair completion', () => {
+      service.createDesktopPairSession('pair-oauth');
+
+      const result = service.resolveDesktopPairSession('pair-oauth', 'oauth-jwt-token');
+
+      expect(result.success).toBe(true);
+      const poll = service.pollDesktopPairSession('pair-oauth');
+      expect(poll.resolved).toBe(true);
+      expect(poll.token).toBe('oauth-jwt-token');
+    });
+
     it('should throw if session not found on confirm', async () => {
       await expect(
         service.confirmDesktopPair('nope', { id: 'u1' } as any),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw if session not found on direct OAuth completion', () => {
+      expect(() => service.resolveDesktopPairSession('missing', 'token')).toThrow(BadRequestException);
     });
   });
 

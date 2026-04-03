@@ -79,6 +79,7 @@ import {
 } from "../services/chatSessionStore";
 import TabBar, { type ChatTab } from "./TabBar";
 import type { NetworkStatus } from "../services/network";
+import type { StreamEvent } from "../../../shared/stream-parser.ts";
 
 // Send desktop notification when app is in background
 async function notifyIfBackground(title: string, body: string) {
@@ -99,6 +100,8 @@ async function notifyIfBackground(title: string, body: string) {
 interface Props {
   onClose: () => void;
   networkStatus?: NetworkStatus;
+  proMode?: boolean;
+  onEnterProMode?: () => void;
 }
 
 type BallState = "idle" | "recording" | "thinking" | "speaking";
@@ -139,7 +142,27 @@ type IncomingHandoffEvent = {
   contextSnapshot?: IncomingHandoffSnapshot;
 };
 
-export default function ChatPanel({ onClose, networkStatus = "online" }: Props) {
+type StreamFeedbackTone = "info" | "warning" | "error" | "success";
+
+type StreamFeedback = {
+  tone: StreamFeedbackTone;
+  label: string;
+  detail?: string;
+};
+
+type ActiveToolRun = {
+  toolCallId: string;
+  toolName: string;
+  status: string;
+  startedAt: number;
+};
+
+export default function ChatPanel({
+  onClose,
+  networkStatus = "online",
+  proMode = false,
+  onEnterProMode,
+}: Props) {
   const { token, activeAgentId, agents, setActiveAgent, instances, activeInstanceId, setActiveInstance } =
     useAuthStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -219,6 +242,56 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   const [compactionInfo, setCompactionInfo] = useState<{
     isCompacted: boolean; turnIndex: number; contextTokens: number;
   } | null>(null);
+  const [streamFeedback, setStreamFeedback] = useState<StreamFeedback | null>(null);
+  const [activeToolRun, setActiveToolRun] = useState<ActiveToolRun | null>(null);
+  const [sendStartedAt, setSendStartedAt] = useState<number | null>(null);
+  const [continuePrompt, setContinuePrompt] = useState<string | null>(null);
+  const [windowBounds, setWindowBounds] = useState(() => ({
+    width: typeof window !== "undefined" ? window.innerWidth : 480,
+    height: typeof window !== "undefined" ? window.innerHeight : 640,
+  }));
+  const [windowChromeState, setWindowChromeState] = useState({
+    maximized: false,
+    fullscreen: false,
+  });
+  const [feedbackNow, setFeedbackNow] = useState(Date.now());
+
+  const effectiveProMode =
+    proMode ||
+    windowBounds.width > 520 ||
+    windowBounds.height > 700 ||
+    windowChromeState.maximized ||
+    windowChromeState.fullscreen;
+
+  const feedbackElapsedSeconds = useMemo(() => {
+    const start = activeToolRun?.startedAt || sendStartedAt;
+    if (!start) return 0;
+    return Math.max(1, Math.round((feedbackNow - start) / 1000));
+  }, [activeToolRun?.startedAt, feedbackNow, sendStartedAt]);
+
+  const visibleStreamFeedback = useMemo(() => {
+    if (!streamFeedback) return null;
+
+    if (activeToolRun) {
+      return {
+        ...streamFeedback,
+        detail: streamFeedback.detail
+          ? `${streamFeedback.detail} · ${feedbackElapsedSeconds}s`
+          : `${activeToolRun.status || "running"} · ${feedbackElapsedSeconds}s`,
+      };
+    }
+
+    if (sendStartedAt && (streamFeedback.tone === "info" || streamFeedback.tone === "warning")) {
+      return {
+        ...streamFeedback,
+        detail: streamFeedback.detail
+          ? `${streamFeedback.detail} · ${feedbackElapsedSeconds}s`
+          : `${feedbackElapsedSeconds}s`,
+      };
+    }
+
+    return streamFeedback;
+  }, [activeToolRun, feedbackElapsedSeconds, sendStartedAt, streamFeedback]);
   const fetchTokenUsage = useCallback(async () => {
     if (!token || !sessionIdRef.current) return;
     const stamp = ++tokenFetchRef.current;
@@ -240,6 +313,79 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
   useEffect(() => {
     if (!sending) fetchTokenUsage();
   }, [sending, fetchTokenUsage]);
+
+  const refreshWindowChromeState = useCallback(async () => {
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const win = getCurrentWindow();
+      const [maximized, fullscreen] = await Promise.all([
+        win.isMaximized(),
+        win.isFullscreen(),
+      ]);
+      setWindowChromeState({ maximized, fullscreen });
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const syncWindowBounds = () => {
+      setWindowBounds({ width: window.innerWidth, height: window.innerHeight });
+    };
+
+    syncWindowBounds();
+    void refreshWindowChromeState();
+    window.addEventListener("resize", syncWindowBounds);
+    return () => window.removeEventListener("resize", syncWindowBounds);
+  }, [refreshWindowChromeState]);
+
+  useEffect(() => {
+    if (!sendStartedAt && !activeToolRun) return;
+    setFeedbackNow(Date.now());
+    const timer = window.setInterval(() => setFeedbackNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [activeToolRun, sendStartedAt]);
+
+  const enterWindowProMode = useCallback(async () => {
+    if (onEnterProMode) {
+      onEnterProMode();
+      return;
+    }
+
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const { LogicalSize } = await import("@tauri-apps/api/dpi");
+      const win = getCurrentWindow();
+      await win.setSize(new LogicalSize(1100, 820));
+      await win.setMinSize(new LogicalSize(720, 560));
+      await win.setAlwaysOnTop(false);
+      await win.setFocus();
+      setWindowBounds({ width: window.innerWidth, height: window.innerHeight });
+      await refreshWindowChromeState();
+    } catch {}
+  }, [onEnterProMode, refreshWindowChromeState]);
+
+  const toggleWindowMaximize = useCallback(async () => {
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const win = getCurrentWindow();
+      const maximized = await win.isMaximized();
+      if (maximized) {
+        await win.unmaximize();
+      } else {
+        await win.maximize();
+      }
+      await refreshWindowChromeState();
+    } catch {}
+  }, [refreshWindowChromeState]);
+
+  const toggleWindowFullscreen = useCallback(async () => {
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const win = getCurrentWindow();
+      const fullscreen = await win.isFullscreen();
+      await win.setFullscreen(!fullscreen);
+      await refreshWindowChromeState();
+    } catch {}
+  }, [refreshWindowChromeState]);
 
   const refreshHistory = useCallback(async () => {
     setHistoryEntries(await listSessionEntries());
@@ -1167,6 +1313,14 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
 
       updateSessionMessages(targetSessionId, (prev) => [...prev, userMsg, assistantMsg], { persist: true });
       setPendingAttachments([]);
+      setSendStartedAt(Date.now());
+      setActiveToolRun(null);
+      setContinuePrompt(null);
+      setStreamFeedback({
+        tone: "info",
+        label: chatMode === "agent" ? "Agent 正在处理任务" : "正在生成回复",
+        detail: "等待首个响应分片",
+      });
       patchSessionRuntime(targetSessionId, { sending: true });
       if (targetSessionId === sessionIdRef.current) {
         setBallState("thinking");
@@ -1217,6 +1371,15 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
           if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
             setBallState("speaking");
           }
+          setStreamFeedback((current) => {
+            if (current?.tone === "error") return current;
+            if (current?.label === "正在输出回复") return current;
+            return {
+              tone: "info",
+              label: "正在输出回复",
+              detail: "内容持续生成中",
+            };
+          });
           appendChunk(targetSessionId, assistantId, chunk);
           sentenceAcc?.push(chunk);
         };
@@ -1231,7 +1394,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         };
 
         // P0: Real-time SSE event handler — captures usage, turn_info, approval events
-        const eventHandler = (event: import("../../../shared/stream-parser").StreamEvent) => {
+        const eventHandler = (event: StreamEvent) => {
           if (event.type === "usage") {
             setStreamCost({
               inputTokens: event.inputTokens,
@@ -1256,6 +1419,67 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
                 contextTokens: event.contextTokens,
               });
             }
+          } else if (event.type === "thinking") {
+            setStreamFeedback({
+              tone: "info",
+              label: "正在思考",
+              detail: event.text || "分析上下文和任务中",
+            });
+          } else if (event.type === "tool_start") {
+            setActiveToolRun({
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              status: "starting",
+              startedAt: Date.now(),
+            });
+            setStreamFeedback({
+              tone: "info",
+              label: `正在执行 ${event.toolName}`,
+              detail: summarizeToolInput(event.input),
+            });
+          } else if (event.type === "tool_progress") {
+            setActiveToolRun((current) => current
+              ? {
+                  ...current,
+                  status: event.status || current.status,
+                }
+              : {
+                  toolCallId: event.toolCallId,
+                  toolName: "tool",
+                  status: event.status || "running",
+                  startedAt: Date.now(),
+                });
+            setStreamFeedback((current) => ({
+              tone: "info",
+              label: current?.label || "工具执行中",
+              detail: event.partialResult || event.status || current?.detail || "处理中",
+            }));
+          } else if (event.type === "tool_result") {
+            setActiveToolRun(null);
+            setStreamFeedback({
+              tone: event.success ? "success" : "error",
+              label: event.success ? `${event.toolName} 已完成` : `${event.toolName} 执行失败`,
+              detail: event.success
+                ? `${Math.max(1, Math.round(event.durationMs / 1000))}s`
+                : event.error,
+            });
+          } else if (event.type === "tool_error") {
+            const timedOut = /timeout|timed out|ETIMEDOUT/i.test(event.error);
+            setActiveToolRun(null);
+            if (timedOut) {
+              setContinuePrompt(buildContinuePrompt());
+              setStreamFeedback({
+                tone: "warning",
+                label: `${event.toolName} 超时`,
+                detail: "点击 Continue 从当前进度续写",
+              });
+            } else {
+              setStreamFeedback({
+                tone: "error",
+                label: `${event.toolName} 执行失败`,
+                detail: event.error,
+              });
+            }
           } else if (event.type === "approval_required") {
             // Dispatch event for FloatingBall approval badge
             window.dispatchEvent(new CustomEvent("agentrix:approval-needed", {
@@ -1266,6 +1490,46 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
                 reason: event.reason,
               },
             }));
+            setStreamFeedback({
+              tone: "warning",
+              label: "等待审批",
+              detail: `${event.toolName} 需要确认后才能继续`,
+            });
+          } else if (event.type === "done") {
+            setActiveToolRun(null);
+            if (event.reason === "max_tokens") {
+              setContinuePrompt(buildContinuePrompt());
+              setStreamFeedback({
+                tone: "warning",
+                label: "输出达到长度上限",
+                detail: "点击 Continue 从中断位置续写",
+              });
+            } else if (event.reason === "abort") {
+              setStreamFeedback({
+                tone: "warning",
+                label: "回复已中止",
+                detail: "可以继续或重新发送",
+              });
+            } else if (event.reason !== "error") {
+              setStreamFeedback(null);
+            }
+          } else if (event.type === "error") {
+            const timedOut = /timeout|timed out|ETIMEDOUT/i.test(event.error);
+            setActiveToolRun(null);
+            if (timedOut) {
+              setContinuePrompt(buildContinuePrompt());
+              setStreamFeedback({
+                tone: "warning",
+                label: "请求超时",
+                detail: "点击 Continue 从已生成内容后继续",
+              });
+            } else {
+              setStreamFeedback({
+                tone: "error",
+                label: "请求失败",
+                detail: event.error,
+              });
+            }
           }
         };
 
@@ -1277,6 +1541,8 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
             abortRef.current = null;
           }
           patchSessionRuntime(targetSessionId, { sending: false });
+          setSendStartedAt(null);
+          setActiveToolRun(null);
           // Clear stream cost after completion, refresh token bar
           setStreamCost(null);
           fetchTokenUsage();
@@ -1305,6 +1571,22 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
             abortRef.current = null;
           }
           patchSessionRuntime(targetSessionId, { sending: false });
+          setSendStartedAt(null);
+          setActiveToolRun(null);
+          if (/timeout|timed out|ETIMEDOUT/i.test(err)) {
+            setContinuePrompt(buildContinuePrompt());
+            setStreamFeedback({
+              tone: "warning",
+              label: "请求超时",
+              detail: "点击 Continue 从已生成内容后继续",
+            });
+          } else {
+            setStreamFeedback({
+              tone: "error",
+              label: "请求失败",
+              detail: err,
+            });
+          }
           resolve();
         };
 
@@ -1345,6 +1627,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       }
 
       patchSessionRuntime(targetSessionId, { sending: false });
+      setSendStartedAt(null);
       voiceInitiatedRef.current = false;
       if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
         setBallState("idle");
@@ -1371,6 +1654,11 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       updateSessionMessages,
     ],
   );
+
+  const handleContinue = useCallback(() => {
+    if (!continuePrompt || sending) return;
+    void handleSend(continuePrompt);
+  }, [continuePrompt, handleSend, sending]);
 
   const pendingAttachmentSummary = useMemo(
     () => pendingAttachments.map((attachment) => attachment.originalName).join(", "),
@@ -1621,7 +1909,7 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         const win = getCurrentWindow();
         if (win.label === "chat-panel") {
           unlisten = await win.onFocusChanged(({ payload: focused }) => {
-            if (!focused) {
+            if (!focused && !effectiveProMode) {
               onClose();
             }
           });
@@ -1631,22 +1919,22 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
       }
     })();
     return () => unlisten?.();
-  }, [onClose]);
+  }, [effectiveProMode, onClose]);
 
   const panel: CSSProperties = {
     position: "relative",
     width: "100%",
-    maxWidth: 480,
+    maxWidth: effectiveProMode ? "none" : 480,
     height: "100%",
-    maxHeight: 640,
+    maxHeight: effectiveProMode ? "none" : 640,
     background: "var(--bg-panel)",
-    borderRadius: "var(--radius)",
+    borderRadius: windowChromeState.fullscreen ? 0 : "var(--radius)",
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
     boxShadow: "0 8px 40px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255,255,255,0.06)",
     border: "1px solid rgba(255, 255, 255, 0.06)",
-    animation: "slideIn 0.2s ease-out",
+    animation: effectiveProMode ? "none" : "slideIn 0.2s ease-out",
   };
 
   return (
@@ -1783,6 +2071,25 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
         </button>
         <button onClick={() => setSettingsOpen(true)} style={iconBtnStyle} title="Settings">
           ⚙
+        </button>
+        {!effectiveProMode && (
+          <button onClick={() => void enterWindowProMode()} style={windowActionBtnStyle} title="Enter Pro mode">
+            Pro
+          </button>
+        )}
+        <button
+          onClick={() => void toggleWindowMaximize()}
+          style={windowActionBtnStyle}
+          title={windowChromeState.maximized ? "Restore window" : "Maximize window"}
+        >
+          {windowChromeState.maximized ? "Restore" : "Max"}
+        </button>
+        <button
+          onClick={() => void toggleWindowFullscreen()}
+          style={windowActionBtnStyle}
+          title={windowChromeState.fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+        >
+          {windowChromeState.fullscreen ? "Window" : "Full"}
         </button>
         {/* Sync status indicator */}
         <div
@@ -2092,6 +2399,41 @@ export default function ChatPanel({ onClose, networkStatus = "online" }: Props) 
             </span>
           </div>
         )}
+        {(visibleStreamFeedback || continuePrompt) && (
+          <div
+            style={{
+              ...getStreamFeedbackStyle(visibleStreamFeedback?.tone || "warning"),
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>
+                {visibleStreamFeedback?.label || "回复可继续"}
+              </div>
+              {(visibleStreamFeedback?.detail || continuePrompt) && (
+                <div style={{ fontSize: 11, opacity: 0.9, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {visibleStreamFeedback?.detail || "从当前上下文继续输出，避免重复前文。"}
+                </div>
+              )}
+            </div>
+            {continuePrompt && (
+              <button
+                onClick={handleContinue}
+                disabled={sending}
+                style={{
+                  ...continueActionBtnStyle,
+                  opacity: sending ? 0.6 : 1,
+                  cursor: sending ? "default" : "pointer",
+                }}
+              >
+                Continue
+              </button>
+            )}
+          </div>
+        )}
         <div style={inputToolbarStyle}>
           <div style={modeRailStyle}>
             {CHAT_MODE_OPTIONS.map((option) => {
@@ -2257,6 +2599,65 @@ function formatBytes(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function buildContinuePrompt() {
+  return "Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting.";
+}
+
+function summarizeToolInput(input: unknown) {
+  if (input == null) return "准备执行工具";
+  if (typeof input === "string") return truncateMiddle(input, 120);
+  try {
+    return truncateMiddle(JSON.stringify(input), 120);
+  } catch {
+    return "工具参数已准备";
+  }
+}
+
+function truncateMiddle(value: string, maxLength: number) {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 1)}…`;
+}
+
+function getStreamFeedbackStyle(tone: StreamFeedbackTone): CSSProperties {
+  if (tone === "success") {
+    return {
+      padding: "10px 12px",
+      borderRadius: 10,
+      background: "rgba(74, 222, 128, 0.12)",
+      border: "1px solid rgba(74, 222, 128, 0.28)",
+      color: "#86efac",
+    };
+  }
+
+  if (tone === "error") {
+    return {
+      padding: "10px 12px",
+      borderRadius: 10,
+      background: "rgba(248, 113, 113, 0.12)",
+      border: "1px solid rgba(248, 113, 113, 0.3)",
+      color: "#fca5a5",
+    };
+  }
+
+  if (tone === "warning") {
+    return {
+      padding: "10px 12px",
+      borderRadius: 10,
+      background: "rgba(251, 191, 36, 0.12)",
+      border: "1px solid rgba(251, 191, 36, 0.3)",
+      color: "#fcd34d",
+    };
+  }
+
+  return {
+    padding: "10px 12px",
+    borderRadius: 10,
+    background: "rgba(96, 165, 250, 0.12)",
+    border: "1px solid rgba(96, 165, 250, 0.28)",
+    color: "#93c5fd",
+  };
+}
+
 const iconBtnStyle: CSSProperties = {
   width: 28,
   height: 28,
@@ -2270,6 +2671,34 @@ const iconBtnStyle: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   WebkitAppRegion: "no-drag",
+};
+
+const windowActionBtnStyle: CSSProperties = {
+  minWidth: 44,
+  height: 28,
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.04)",
+  color: "var(--text-dim)",
+  border: "1px solid var(--border)",
+  cursor: "pointer",
+  fontSize: 11,
+  fontWeight: 700,
+  padding: "0 10px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  WebkitAppRegion: "no-drag",
+};
+
+const continueActionBtnStyle: CSSProperties = {
+  border: "none",
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.12)",
+  color: "inherit",
+  fontSize: 11,
+  fontWeight: 700,
+  padding: "8px 12px",
+  flexShrink: 0,
 };
 
 const chipCloseBtnStyle: CSSProperties = {

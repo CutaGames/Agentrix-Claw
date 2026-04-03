@@ -179,7 +179,30 @@ fn store_workspace_dir(path: PathBuf) -> Result<String, String> {
     Ok(display)
 }
 
-pub fn open_chat_panel(app: AppHandle) -> Result<(), String> {
+fn apply_chat_panel_mode(win: &tauri::WebviewWindow, pro_mode: bool) -> Result<(), String> {
+    let (width, height, min_width, min_height) = if pro_mode {
+        (1100.0, 820.0, 720.0, 560.0)
+    } else {
+        (480.0, 640.0, 360.0, 480.0)
+    };
+
+    win
+        .set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }))
+        .map_err(|e| e.to_string())?;
+    win
+        .set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize {
+            width: min_width,
+            height: min_height,
+        })))
+        .map_err(|e| e.to_string())?;
+    let _ = win.set_always_on_top(!pro_mode);
+
+    Ok(())
+}
+
+pub fn open_chat_panel(app: AppHandle, pro_mode: Option<bool>) -> Result<(), String> {
+    let pro_mode = pro_mode.unwrap_or(false);
+
     // Cancel any pending suspend timer
     if let Ok(mut guard) = SUSPEND_CANCEL.lock() {
         if let Some(flag) = guard.take() {
@@ -189,6 +212,7 @@ pub fn open_chat_panel(app: AppHandle) -> Result<(), String> {
 
     if let Some(win) = app.get_webview_window("chat-panel") {
         win.show().map_err(|e| e.to_string())?;
+        apply_chat_panel_mode(&win, pro_mode)?;
         win.set_focus().map_err(|e| e.to_string())?;
         // Resume frontend state if it was suspended
         let _ = win.eval("window.__agentrix_resume?.()");
@@ -200,16 +224,25 @@ pub fn open_chat_panel(app: AppHandle) -> Result<(), String> {
     // event loop, which may be blocked by the IPC call).
     let app_clone = app.clone();
     std::thread::spawn(move || {
+        let (width, height, min_width, min_height) = if pro_mode {
+            (1100.0, 820.0, 720.0, 560.0)
+        } else {
+            (480.0, 640.0, 360.0, 480.0)
+        };
+
         if let Ok(win) = WebviewWindowBuilder::new(&app_clone, "chat-panel", WebviewUrl::App("index.html".into()))
             .title("Agentrix")
-            .inner_size(480.0, 640.0)
-            .min_inner_size(360.0, 480.0)
+            .inner_size(width, height)
+            .min_inner_size(min_width, min_height)
             .decorations(false)
-            .always_on_top(true)
+            .always_on_top(!pro_mode)
+            .resizable(true)
             .visible(true)
             .drag_and_drop(false)
             .build()
         {
+            let _ = apply_chat_panel_mode(&win, pro_mode);
+            let _ = win.set_focus();
             // Grant WebView2 permissions (microphone, etc.) to the new chat-panel
             #[cfg(target_os = "windows")]
             crate::grant_webview2_permissions(&win);

@@ -15,8 +15,8 @@ pub struct BallPosition {
 // ── Chat Panel ────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-async fn desktop_bridge_open_chat_panel(app: AppHandle) -> Result<(), String> {
-    commands::open_chat_panel(app)
+async fn desktop_bridge_open_chat_panel(app: AppHandle, pro_mode: Option<bool>) -> Result<(), String> {
+    commands::open_chat_panel(app, pro_mode)
 }
 
 #[tauri::command]
@@ -519,7 +519,7 @@ pub fn run() {
                                 }
                             }
                             // Also toggle chat-panel
-                            let _ = commands::open_chat_panel(app_handle.clone());
+                            let _ = commands::open_chat_panel(app_handle.clone(), None);
                         }
                         "new_chat" => {
                             if let Some(win) = app_handle.get_webview_window("chat-panel") {
@@ -527,12 +527,12 @@ pub fn run() {
                                 let _ = win.set_focus();
                                 let _ = win.eval("window.dispatchEvent(new CustomEvent('agentrix:new-chat'))");
                             } else {
-                                let _ = commands::open_chat_panel(app_handle.clone());
+                                let _ = commands::open_chat_panel(app_handle.clone(), None);
                             }
                         }
                         "voice_chat" => {
                             // Open chat panel and trigger voice mode
-                            let _ = commands::open_chat_panel(app_handle.clone());
+                            let _ = commands::open_chat_panel(app_handle.clone(), None);
                             if let Some(win) = app_handle.get_webview_window("chat-panel") {
                                 let _ = win.show();
                                 let _ = win.set_focus();
@@ -560,7 +560,7 @@ pub fn run() {
                 let app_handle = app.handle().clone();
                 let _ = app.global_shortcut().on_shortcut("ctrl+shift+v", move |_app, _shortcut, event| {
                     if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        let _ = commands::open_chat_panel(app_handle.clone());
+                        let _ = commands::open_chat_panel(app_handle.clone(), None);
                         if let Some(win) = app_handle.get_webview_window("chat-panel") {
                             let _ = win.show();
                             let _ = win.set_focus();

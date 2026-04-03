@@ -438,7 +438,14 @@ export class AuthService {
     }
 
     // 4. 生成 JWT
-    return this.login(user);
+    const loginResult = await this.login(user);
+    return {
+      ...loginResult,
+      social: {
+        provider,
+        socialId: verifiedProfile.socialId,
+      },
+    };
   }
 
   /**
@@ -1075,6 +1082,22 @@ export class AuthService {
     const loginResult = await this.login(user);
     session.token = loginResult.access_token;
     this.logger.log(`Desktop pair confirmed for user ${user.id}, session ${sessionId}`);
+    return { success: true };
+  }
+
+  /**
+   * OAuth 浏览器回调直接完成桌面端配对（无需移动端再次确认）
+   */
+  resolveDesktopPairSession(sessionId: string, token: string): { success: boolean } {
+    const session = this.desktopPairSessions.get(sessionId);
+    if (!session) throw new BadRequestException('Session not found or expired');
+    if (session.expiresAt < Date.now()) {
+      this.desktopPairSessions.delete(sessionId);
+      throw new BadRequestException('Session expired');
+    }
+
+    session.token = token;
+    this.logger.log(`Desktop pair resolved via OAuth callback, session ${sessionId}`);
     return { success: true };
   }
 }

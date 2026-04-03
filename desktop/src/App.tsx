@@ -31,6 +31,17 @@ function getWindowView(): string {
 export default function App() {
   const windowLabel = getWindowView();
   const [panelOpen, setPanelOpen] = useState(false);
+  const [panelMode, setPanelMode] = useState<"compact" | "pro">("compact");
+
+  const openCompactPanel = useCallback(() => {
+    setPanelMode("compact");
+    setPanelOpen(true);
+  }, []);
+
+  const openProPanel = useCallback(() => {
+    setPanelMode("pro");
+    setPanelOpen(true);
+  }, []);
 
   // ── Window resize helper for single-window mode ──
   const resizeMainWindow = useCallback(async (width: number, height: number) => {
@@ -44,11 +55,15 @@ export default function App() {
   useEffect(() => {
     if (windowLabel !== "main" && windowLabel !== "dev") return;
     if (panelOpen) {
-      resizeMainWindow(480, 640);
+      if (panelMode === "pro") {
+        resizeMainWindow(1100, 820);
+      } else {
+        resizeMainWindow(480, 640);
+      }
     } else {
       resizeMainWindow(80, 80);
     }
-  }, [panelOpen, windowLabel, resizeMainWindow]);
+  }, [panelMode, panelOpen, windowLabel, resizeMainWindow]);
   const [onboarded, setOnboarded] = useState(() => localStorage.getItem("agentrix_onboarded") === "1");
   const { token, isGuest, loadToken, enterGuest } = useAuthStore();
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>(getNetworkStatus());
@@ -148,7 +163,11 @@ export default function App() {
       // Ctrl+Shift+S → toggle panel
       if (e.ctrlKey && e.shiftKey && e.key === "S") {
         e.preventDefault();
-        setPanelOpen((prev) => !prev);
+        if (panelOpen && panelMode === "pro") {
+          setPanelOpen(false);
+        } else {
+          openProPanel();
+        }
       }
       // Escape → close panel
       if (e.key === "Escape" && panelOpen) {
@@ -163,7 +182,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [panelOpen]);
+  }, [openProPanel, panelMode, panelOpen]);
 
   useEffect(() => {
     const handler = () => setPanelOpen(true);
@@ -181,7 +200,7 @@ export default function App() {
         // Register Ctrl+Shift+A for voice
         await register("CmdOrCtrl+Shift+A", (event) => {
           if (event.state === "Pressed") {
-            setPanelOpen(true);
+            openCompactPanel();
             window.dispatchEvent(new CustomEvent("agentrix:voice-start"));
           } else if (event.state === "Released") {
             window.dispatchEvent(new CustomEvent("agentrix:voice-stop"));
@@ -190,7 +209,11 @@ export default function App() {
         // Register Ctrl+Shift+S for panel toggle
         await register("CmdOrCtrl+Shift+S", (event) => {
           if (event.state === "Pressed") {
-            setPanelOpen((prev) => !prev);
+            if (panelOpen && panelMode === "pro") {
+              setPanelOpen(false);
+            } else {
+              openProPanel();
+            }
           }
         });
         // Register Ctrl/Cmd+K for Spotlight mode
@@ -214,7 +237,7 @@ export default function App() {
       }
     })();
     return () => cleanup?.();
-  }, []);
+  }, [openCompactPanel, openProPanel, panelMode, panelOpen]);
 
   useEffect(() => {
     if (
@@ -238,7 +261,7 @@ export default function App() {
         return;
       }
 
-      setPanelOpen(true);
+      openCompactPanel();
       setTimeout(() => {
         if (!disposed) {
           window.dispatchEvent(new CustomEvent("agentrix:voice-start"));
@@ -267,6 +290,7 @@ export default function App() {
     desktopWakeWordConfig.enabled,
     desktopWakeWordConfig.sensitivity,
     loggedIn,
+    openCompactPanel,
     wakeWordRevision,
     windowLabel,
   ]);
@@ -284,6 +308,15 @@ export default function App() {
         await invoke("desktop_bridge_set_panel_position_near_ball");
       } catch (err) {
         console.error("open_chat_panel failed:", err);
+      }
+    };
+
+    const handleOpenPro = async () => {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("desktop_bridge_open_chat_panel", { proMode: true });
+      } catch (err) {
+        console.error("open_chat_panel(pro) failed:", err);
       }
     };
 
@@ -341,7 +374,7 @@ export default function App() {
       >
         <FloatingBall
           onTap={handleBallClick}
-          onOpenPro={handleBallClick}
+          onOpenPro={handleOpenPro}
         />
       </div>
     );
@@ -404,7 +437,12 @@ export default function App() {
         style={{ width: "100%", height: "100%", background: panelOpen ? "var(--bg-dark)" : "transparent" }}
       >
         {panelOpen ? (
-          <ChatPanel onClose={() => setPanelOpen(false)} networkStatus={networkStatus} />
+          <ChatPanel
+            onClose={() => setPanelOpen(false)}
+            networkStatus={networkStatus}
+            proMode={panelMode === "pro"}
+            onEnterProMode={openProPanel}
+          />
         ) : (
           <div
             style={{
@@ -416,7 +454,7 @@ export default function App() {
               background: "transparent",
             }}
           >
-            <FloatingBall onTap={() => setPanelOpen(true)} onOpenPro={() => setPanelOpen(true)} />
+            <FloatingBall onTap={openCompactPanel} onOpenPro={openProPanel} />
           </div>
         )}
       </div>

@@ -1,7 +1,30 @@
 import { create } from "zustand";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { getDesktopDeviceId } from "./desktop";
+import { AgentrixStreamParser, type StreamEvent } from "../../../shared/stream-parser.ts";
 
-export const API_BASE = "https://api.agentrix.top/api";
+const DEFAULT_API_BASE = "https://api.agentrix.top/api";
+
+function normalizeApiBase(base: string) {
+  const trimmed = base.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return DEFAULT_API_BASE;
+  }
+  return /\/api$/i.test(trimmed) ? trimmed : `${trimmed}/api`;
+}
+
+function resolveApiBase() {
+  const envBase = typeof import.meta !== "undefined" ? String(import.meta.env.VITE_API_BASE || "").trim() : "";
+  let localOverride = "";
+  try {
+    localOverride = String(localStorage.getItem("agentrix_api_base") || "").trim();
+  } catch {
+    localOverride = "";
+  }
+  return normalizeApiBase(localOverride || envBase || DEFAULT_API_BASE);
+}
+
+export const API_BASE = resolveApiBase();
 
 // ─── Secure Token Storage ──────────────────────────────
 // Use Tauri Store plugin (encrypted on-disk) when available, else localStorage fallback
@@ -286,6 +309,76 @@ export interface ChatMessage {
   meta?: { resolvedModel?: string; resolvedModelLabel?: string };
 }
 
+async function consumeAgentrixSse(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  callbacks: {
+    onChunk: (chunk: string) => void;
+    onMeta?: (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => void;
+    onDone: () => void;
+    onError: (err: string) => void;
+    onEvent?: (event: StreamEvent) => void;
+  },
+) {
+  const decoder = new TextDecoder();
+  let settled = false;
+
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    callbacks.onDone();
+  };
+
+  const fail = (message: string) => {
+    if (settled) return;
+    settled = true;
+    callbacks.onError(message);
+  };
+
+  const emit = (event: StreamEvent) => {
+    callbacks.onEvent?.(event);
+  };
+
+  const parser = new AgentrixStreamParser({
+    onTextDelta: (event) => {
+      emit(event);
+      callbacks.onChunk(event.text);
+    },
+    onThinking: emit,
+    onToolStart: emit,
+    onToolProgress: emit,
+    onToolResult: emit,
+    onToolError: (event) => {
+      emit(event);
+      fail(event.error);
+    },
+    onApprovalRequired: emit,
+    onUsage: emit,
+    onTurnInfo: emit,
+    onDone: (event) => {
+      emit(event);
+      finish();
+    },
+    onError: (event) => {
+      emit(event);
+      fail(event.error);
+    },
+    onMeta: (meta) => callbacks.onMeta?.(meta as { resolvedModel?: string; resolvedModelLabel?: string }),
+  });
+
+  while (!settled) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parser.feed(decoder.decode(value, { stream: true }));
+  }
+
+  const tail = decoder.decode();
+  if (tail) {
+    parser.feed(tail);
+  }
+  parser.end();
+  finish();
+}
+
 /** SSE streaming chat via OpenClaw proxy */
 export function streamChat(opts: {
   instanceId: string;
@@ -293,8 +386,10 @@ export function streamChat(opts: {
   sessionId: string;
   token: string;
   model?: string;
+  mode?: "ask" | "agent" | "plan";
   onChunk: (chunk: string) => void;
   onMeta?: (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => void;
+  onEvent?: (event: StreamEvent) => void;
   onDone: () => void;
   onError: (err: string) => void;
 }): AbortController {
@@ -312,6 +407,9 @@ export function streamChat(opts: {
       message: opts.message,
       sessionId: opts.sessionId,
       model: opts.model,
+      mode: opts.mode || "agent",
+      platform: "desktop",
+      deviceId: getDesktopDeviceId(),
     }),
     signal: ac.signal,
   };
@@ -332,52 +430,13 @@ export function streamChat(opts: {
         return;
       }
       const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") {
-              opts.onDone();
-              return;
-            }
-            // Parse JSON SSE chunks: {"chunk":"text"} or {"error":"msg"}
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed && typeof parsed === "object") {
-                if (parsed.error) {
-                  opts.onError(parsed.error);
-                  return;
-                }
-                // Handle meta events (model info)
-                if (parsed.meta && opts.onMeta) {
-                  opts.onMeta(parsed.meta);
-                  continue;
-                }
-                // Extract text from known fields
-                const text = parsed.chunk ?? parsed.text ?? parsed.content;
-                if (text !== undefined) {
-                  opts.onChunk(String(text));
-                  continue;
-                }
-              }
-            } catch {
-              // Not JSON — pass through as-is
-            }
-            opts.onChunk(data);
-          }
-        }
-      }
-      opts.onDone();
+      await consumeAgentrixSse(reader, {
+        onChunk: opts.onChunk,
+        onMeta: opts.onMeta,
+        onEvent: opts.onEvent,
+        onDone: opts.onDone,
+        onError: opts.onError,
+      });
     })
     .catch((err) => {
       if (err.name !== "AbortError") {
@@ -394,6 +453,7 @@ export function streamDirectChat(opts: {
   sessionId: string;
   agentId?: string | null;
   token: string;
+  mode?: "ask" | "agent" | "plan";
   onChunk: (chunk: string) => void;
   onDone: () => void;
   onError: (err: string) => void;
@@ -409,6 +469,12 @@ export function streamDirectChat(opts: {
     body: JSON.stringify({
       messages: opts.messages,
       sessionId: opts.sessionId,
+      context: {
+        sessionId: opts.sessionId,
+      },
+      mode: opts.mode || "agent",
+      platform: "desktop",
+      deviceId: getDesktopDeviceId(),
       ...(opts.agentId ? { agentId: opts.agentId } : {}),
     }),
     signal: ac.signal,
@@ -452,7 +518,7 @@ export function streamDirectChat(opts: {
 
 /** Fetch available AI models */
 export async function fetchModels(token: string) {
-  const res = await apiFetch(`${API_BASE}/openclaw/models`, {
+  const res = await apiFetch(`${API_BASE}/ai-providers/available-models`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return [];
