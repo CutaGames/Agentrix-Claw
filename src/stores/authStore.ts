@@ -17,6 +17,7 @@ export interface OpenClawInstance {
   relayToken?: string;   // set for relay-mode connections (ClawLink Agent)
   wsRelayUrl?: string;  // wss:// relay endpoint
   lastSyncAt?: string;
+  agentAccountId?: string;
   metadata?: {
     agentAccountId?: string;
     [key: string]: any;
@@ -85,8 +86,12 @@ export const useAuthStore = create<AuthState>()(
         // Set active instance if user has instances; preserve existing if user object has none
         const previousUserId = get().user?.id;
         const currentActive = get().activeInstance;
+        const previousActiveId = currentActive?.id ?? user.activeInstanceId;
+        const refreshedActive = previousActiveId
+          ? user.openClawInstances?.find((instance) => instance.id === previousActiveId) ?? null
+          : null;
         const firstInstance = user.openClawInstances?.[0] ?? null;
-        const activeInstance = firstInstance ?? currentActive;
+        const activeInstance = refreshedActive ?? firstInstance ?? currentActive;
         set({
           user,
           token,
@@ -145,9 +150,27 @@ export const useAuthStore = create<AuthState>()(
         const user = get().user;
         if (!user) return;
         const existing = user.openClawInstances ?? [];
-        const updated = [...existing, instance];
+        const previous = existing.find((candidate) => candidate.id === instance.id);
+        const metadata = instance.metadata ?? previous?.metadata;
+        const agentAccountId = instance.agentAccountId
+          ?? previous?.agentAccountId
+          ?? metadata?.agentAccountId;
+        const nextInstance: OpenClawInstance = previous
+          ? {
+            ...previous,
+            ...instance,
+            metadata,
+            agentAccountId,
+          }
+          : {
+            ...instance,
+            metadata,
+            agentAccountId,
+          };
+        const updated = existing.filter((candidate) => candidate.id !== instance.id);
+        updated.push(nextInstance);
         const updatedUser = { ...user, openClawInstances: updated };
-        set({ user: updatedUser, activeInstance: instance });
+        set({ user: updatedUser, activeInstance: nextInstance });
       },
 
       setActiveInstance: (instanceId) => {
@@ -161,7 +184,17 @@ export const useAuthStore = create<AuthState>()(
         const user = get().user;
         if (!user) return;
         const instances = (user.openClawInstances ?? []).map(i =>
-          i.id === instanceId ? { ...i, ...update } : i
+          i.id === instanceId
+            ? {
+              ...i,
+              ...update,
+              metadata: update.metadata ?? i.metadata,
+              agentAccountId: update.agentAccountId
+                ?? update.metadata?.agentAccountId
+                ?? i.agentAccountId
+                ?? i.metadata?.agentAccountId,
+            }
+            : i
         );
         const updatedUser = { ...user, openClawInstances: instances };
         const activeInstance = instances.find(i => i.id === instanceId) ??

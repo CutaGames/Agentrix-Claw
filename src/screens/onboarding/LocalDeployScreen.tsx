@@ -8,8 +8,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
-import { bindOpenClaw } from '../../services/auth';
-import { confirmDesktopPair } from '../../services/auth';
+import { bindOpenClaw, confirmDesktopPair, mapRawInstance } from '../../services/auth';
 import { registerLocalRelayAgent } from '../../services/openclaw.service';
 
 // Wizard steps:
@@ -140,17 +139,16 @@ export function LocalDeployScreen() {
           name: parsedData.name || 'My PC Agent',
           wsRelayUrl: parsedData.wsRelayUrl,
         });
-        addInstance?.({
-          id: registered.id,
+        const instance = mapRawInstance(registered, {
           name: registered.name || 'My PC (Agentrix Relay)',
           instanceUrl: parsedData.wsRelayUrl || 'wss://api.agentrix.top/relay',
-          status: 'active',
           deployType: 'local',
           relayToken: parsedData.relayToken,
           wsRelayUrl: parsedData.wsRelayUrl,
         });
-        setActiveInstance?.(registered.id);
-        navigation.navigate('SocialBind', { instanceId: registered.id, platform: 'telegram' });
+        addInstance?.(instance);
+        setActiveInstance?.(instance.id);
+        navigation.navigate('SocialBind', { instanceId: instance.id, platform: 'telegram' });
       } else {
         if (!parsedData.url) throw new Error('QR code missing URL field.');
         const result = await bindOpenClaw({
@@ -158,15 +156,14 @@ export function LocalDeployScreen() {
           apiToken: parsedData.token || '',
           instanceName: parsedData.name || 'My PC Agent',
         });
-        addInstance?.({
-          id: result.id,
+        const instance = mapRawInstance(result, {
           name: result.name || 'My Local Agent',
           instanceUrl: parsedData.url,
-          status: (result.status || 'active') as 'active' | 'disconnected' | 'error',
           deployType: 'existing',
         });
-        setActiveInstance?.(result.id);
-        navigation.navigate('SocialBind', { instanceId: result.id, platform: 'telegram' });
+        addInstance?.(instance);
+        setActiveInstance?.(instance.id);
+        navigation.navigate('SocialBind', { instanceId: instance.id, platform: 'telegram' });
       }
     } catch (error: any) {
       Alert.alert(t({ en: 'Scan Error', zh: '扫描错误' }), error.message || t({ en: 'Failed to parse QR code.', zh: '二维码解析失败。' }));

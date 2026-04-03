@@ -26,6 +26,7 @@ import DesktopDiscoveryBanner from '../../components/DesktopDiscoveryBanner';
 import { VoiceOnboardingTooltip } from '../../components/VoiceOnboardingTooltip';
 import { ChatSessionTabs, loadSessions, saveSessions, MAX_SESSIONS, type ChatSession } from '../../components/ChatSessionTabs';
 import { uploadChatAttachment, apiFetch, type UploadedChatAttachment } from '../../services/api';
+import { mapRawInstance } from '../../services/auth';
 import { fetchLatestDesktopClipboard, type MobileDesktopClipboardSnapshot } from '../../services/desktopSync';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
@@ -1665,13 +1666,11 @@ export function AgentChatScreen() {
     try {
       const result = await apiFetch<{ instance: any }>('/openclaw/auto-provision', { method: 'POST' });
       if (result?.instance) {
-        const newInstance = {
-          id: result.instance.id,
+        const newInstance = mapRawInstance(result.instance, {
           name: result.instance.name || 'My Agent',
           instanceUrl: result.instance.instanceUrl || '',
-          status: 'active' as const,
           deployType: (result.instance.deployType || 'cloud') as 'cloud' | 'local' | 'server' | 'existing',
-        };
+        });
         useAuthStore.getState().addInstance(newInstance);
         useAuthStore.getState().setActiveInstance(newInstance.id);
         useAuthStore.getState().setOnboardingComplete();

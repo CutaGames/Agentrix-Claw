@@ -1004,9 +1004,11 @@ export class AuthController {
     });
 
     // Batch-fetch agentAccounts for all instances that have one bound
-    const accountIds = instances
-      .map(i => (i.metadata as any)?.agentAccountId)
-      .filter(Boolean) as string[];
+    const accountIds = Array.from(new Set(
+      instances
+        .map(i => i.agentAccountId || (i.metadata as any)?.agentAccountId)
+        .filter(Boolean) as string[],
+    ));
     const accountMap = new Map<string, AgentAccount>();
     if (accountIds.length) {
       const accounts = await this.agentAccountRepo.findByIds(accountIds);
@@ -1035,7 +1037,7 @@ export class AuthController {
       roles: user.roles,
       walletAddress: (user as any).walletAddress || null,
       openClawInstances: instances.map(i => {
-        const acctId = (i.metadata as any)?.agentAccountId;
+        const acctId = i.agentAccountId || (i.metadata as any)?.agentAccountId;
         const acct = acctId ? accountMap.get(acctId) : undefined;
         // Priority: agentAccount.preferredModel → user's defaultProviderConfig → instance capabilities
         const resolvedModel = acct?.preferredModel
@@ -1057,6 +1059,8 @@ export class AuthController {
           relayToken: i.relayToken || undefined,
           relayConnected: i.relayConnected || false,
           capabilities: i.capabilities || undefined,
+          metadata: i.metadata || undefined,
+          agentAccountId: acctId || undefined,
           resolvedModel,
           resolvedModelLabel,
           resolvedProvider,

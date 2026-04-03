@@ -7,8 +7,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
-import { bindOpenClaw, createBindSession, pollBindSession } from '../../services/openclaw.service';
-import { startQrBindSession, waitForQrBind } from '../../services/auth';
+import { bindOpenClaw } from '../../services/openclaw.service';
+import { startQrBindSession, waitForQrBind, mapRawInstance } from '../../services/auth';
 import { QrCode } from '../../components/common/QrCode';
 import type { AgentStackParamList } from '../../navigation/types';
 
@@ -67,13 +67,11 @@ export function OpenClawBindScreen() {
     setLoading(true);
     try {
       const result = await bindOpenClaw({ instanceUrl: url, apiToken: apiToken.trim() || '' });
-      const instance = {
-        id: result.id,
+      const instance = mapRawInstance(result, {
         name: instanceName.trim() || result.name || `Instance ${Date.now()}`,
         instanceUrl: url,
-        status: 'active' as const,
-        deployType: 'existing' as const,
-      };
+        deployType: 'existing',
+      });
       addInstance(instance);
       setActiveInstance(instance.id);
       navigation.goBack();

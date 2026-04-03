@@ -6,6 +6,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
+import { mapRawInstance } from '../../services/auth';
 import { provisionCloudAgent, getInstanceById } from '../../services/openclaw.service';
 
 type WizardStep = 'setup' | 'deploying' | 'done';
@@ -58,13 +59,11 @@ export function CloudDeployScreen() {
       clearInterval(interval);
       setProgress(100);
 
-      const instance = {
-        id: result.id,
+      const instance = mapRawInstance(result, {
         name,
         instanceUrl: finalUrl || `cloud-${result.id}.openclaw.app`,
-        status: 'active' as const,
-        deployType: 'cloud' as const,
-      };
+        deployType: 'cloud',
+      });
       addInstance(instance);
       setActiveInstance(instance.id);
       setInstanceUrl(instance.instanceUrl);

@@ -15,10 +15,15 @@ export interface OpenClawInstanceInfo {
   instanceUrl: string;
   status: 'active' | 'disconnected' | 'error';
   version?: string;
-  deployType: string;
+  deployType?: string;
+  instanceType?: string;
   models?: string[];
   agentCount?: number;
   lastSyncAt?: string;
+  updatedAt?: string;
+  relayToken?: string;
+  relayConnected?: boolean;
+  agentAccountId?: string;
   metadata?: {
     agentAccountId?: string;
     [key: string]: any;
@@ -261,12 +266,7 @@ export interface ProvisionLocalResult {
   downloadUrls: { win: string; mac: string };
 }
 
-export interface RegisterLocalRelayResult {
-  id: string;
-  name: string;
-  relayToken?: string;
-  status: string;
-}
+export interface RegisterLocalRelayResult extends OpenClawInstanceInfo {}
 
 /** Create a new LOCAL-type instance and get relay token + download links */
 export async function provisionLocalAgent(opts: {
@@ -283,8 +283,8 @@ export async function registerLocalRelayAgent(opts: {
   relayToken: string;
   name?: string;
   wsRelayUrl?: string;
-}): Promise<RegisterLocalRelayResult> {
-  return apiFetch<RegisterLocalRelayResult>('/openclaw/local/register', {
+}): Promise<OpenClawInstanceInfo> {
+  return apiFetch<OpenClawInstanceInfo>('/openclaw/local/register', {
     method: 'POST',
     body: JSON.stringify(opts),
   });

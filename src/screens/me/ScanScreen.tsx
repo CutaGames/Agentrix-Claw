@@ -7,8 +7,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
-import { confirmDesktopPair } from '../../services/auth';
-import { bindOpenClaw } from '../../services/auth';
+import { confirmDesktopPair, bindOpenClaw, mapRawInstance } from '../../services/auth';
 import { registerLocalRelayAgent } from '../../services/openclaw.service';
 
 /**
@@ -119,16 +118,15 @@ export function ScanScreen() {
           name: parsedData.name || 'My PC Agent',
           wsRelayUrl: parsedData.wsRelayUrl,
         });
-        addInstance?.({
-          id: registered.id,
+        const instance = mapRawInstance(registered, {
           name: registered.name || 'My PC (Agentrix Relay)',
           instanceUrl: parsedData.wsRelayUrl || 'wss://api.agentrix.top/relay',
-          status: 'active',
           deployType: 'local',
           relayToken: parsedData.relayToken,
           wsRelayUrl: parsedData.wsRelayUrl,
         });
-        setActiveInstance?.(registered.id);
+        addInstance?.(instance);
+        setActiveInstance?.(instance.id);
         Alert.alert(t({ en: 'Connected!', zh: '连接成功！' }), t({ en: 'Agent connected via relay.', zh: '智能体已通过中继连接。' }),
           [{ text: 'OK', onPress: () => navigation.goBack() }]);
       } else {
@@ -138,14 +136,13 @@ export function ScanScreen() {
           apiToken: parsedData.token || '',
           instanceName: parsedData.name || 'My Agent',
         });
-        addInstance?.({
-          id: result.id,
+        const instance = mapRawInstance(result, {
           name: result.name || 'My Agent',
           instanceUrl: parsedData.url,
-          status: (result.status || 'active') as 'active' | 'disconnected' | 'error',
           deployType: 'existing',
         });
-        setActiveInstance?.(result.id);
+        addInstance?.(instance);
+        setActiveInstance?.(instance.id);
         Alert.alert(t({ en: 'Connected!', zh: '连接成功！' }), t({ en: 'Agent connected.', zh: '智能体已连接。' }),
           [{ text: 'OK', onPress: () => navigation.goBack() }]);
       }

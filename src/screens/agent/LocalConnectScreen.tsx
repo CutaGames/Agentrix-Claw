@@ -28,6 +28,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
+import { mapRawInstance } from '../../services/auth';
 import { bindOpenClaw } from '../../services/openclaw.service';
 import type { AgentStackParamList } from '../../navigation/types';
 
@@ -101,15 +102,11 @@ export function LocalConnectScreen() {
         deployType: 'local',
       });
 
-      const instance = {
-        id: result.id,
+      const instance = mapRawInstance(result, {
         name: result.name || 'Local Agent',
         instanceUrl: url,
-        status: 'active' as const,
-        deployType: 'local' as const,
-        version: result.version,
-        lastSyncAt: result.lastSyncAt,
-      };
+        deployType: 'local',
+      });
       addInstance(instance);
       setActiveInstance(instance.id);
       setStatus('success');
