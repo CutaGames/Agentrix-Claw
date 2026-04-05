@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import { useI18n } from '../../stores/i18nStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { LocalAiStatus } from '../../stores/settingsStore';
 import { MobileLocalInferenceService } from '../../services/mobileLocalInference.service';
+import { OtaModelDownloadService, type DownloadProgress } from '../../services/otaModelDownload.service';
 
 interface LocalModelInfo {
   id: string;
@@ -71,33 +72,104 @@ export function LocalAiModelScreen() {
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
   const [bridgeAvailable, setBridgeAvailable] = useState<boolean | null>(null);
+  const [downloadSpeed, setDownloadSpeed] = useState('');
+  const [downloadEta, setDownloadEta] = useState('');
+  const pauseStateRef = useRef<string | null>(null);
 
   useEffect(() => {
     void MobileLocalInferenceService.isAvailable().then(setBridgeAvailable);
-  }, []);
+    // Check if model already downloaded on mount
+    const downloaded = OtaModelDownloadService.isModelDownloaded(localAiModelId);
+    if (downloaded && localAiStatus !== 'ready') {
+      setLocalAiStatus('ready');
+      setLocalAiEnabled(true);
+      setLocalAiProgress(100);
+    }
+  }, [localAiModelId, localAiStatus, setLocalAiEnabled, setLocalAiProgress, setLocalAiStatus]);
+
+  const formatSpeed = (bps: number): string => {
+    if (bps > 1_000_000) return `${(bps / 1_000_000).toFixed(1)} MB/s`;
+    if (bps > 1_000) return `${(bps / 1_000).toFixed(0)} KB/s`;
+    return `${bps.toFixed(0)} B/s`;
+  };
+
+  const formatEta = (seconds: number): string => {
+    if (seconds > 3600) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+    if (seconds > 60) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+    return `${seconds}s`;
+  };
 
   const handleDownload = useCallback((modelId: string) => {
     setLocalAiStatus('downloading');
     setLocalAiProgress(0);
+    setDownloadSpeed('');
+    setDownloadEta('');
 
-    // Simulate download progress — in production this would use a native download manager
-    let progress = 0;
-    const timer = setInterval(() => {
-      progress += Math.random() * 15 + 5;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(timer);
+    void OtaModelDownloadService.startDownload(modelId, {
+      onProgress: (progress: DownloadProgress) => {
+        setLocalAiProgress(progress.percent);
+        if (progress.speedBps > 0) {
+          setDownloadSpeed(formatSpeed(progress.speedBps));
+        }
+        if (progress.etaSeconds > 0) {
+          setDownloadEta(formatEta(progress.etaSeconds));
+        }
+        if (progress.state === 'verifying') {
+          setLocalAiProgress(99);
+        }
+      },
+      onComplete: () => {
         setLocalAiProgress(100);
         setLocalAiStatus('ready');
         setLocalAiEnabled(true);
+        setDownloadSpeed('');
+        setDownloadEta('');
         Alert.alert(
           t({ en: 'Download Complete', zh: '下载完成' }),
           t({ en: 'Local AI model is ready. Simple queries will now be processed on-device.', zh: '本地 AI 模型已就绪。简单查询将在设备端处理。' }),
         );
-      } else {
-        setLocalAiProgress(Math.round(progress));
-      }
-    }, 500);
+      },
+      onError: (error: string) => {
+        setLocalAiStatus('error');
+        setLocalAiProgress(0);
+        setDownloadSpeed('');
+        setDownloadEta('');
+        Alert.alert(
+          t({ en: 'Download Failed', zh: '下载失败' }),
+          error,
+        );
+      },
+    });
+  }, [setLocalAiEnabled, setLocalAiProgress, setLocalAiStatus, t]);
+
+  const handlePause = useCallback(async () => {
+    const state = await OtaModelDownloadService.pauseDownload();
+    if (state) {
+      pauseStateRef.current = state;
+      setLocalAiStatus('not_downloaded');
+    }
+  }, [setLocalAiStatus]);
+
+  const handleResume = useCallback(() => {
+    if (!pauseStateRef.current) return;
+    setLocalAiStatus('downloading');
+    void OtaModelDownloadService.resumeDownload(pauseStateRef.current, {
+      onProgress: (progress: DownloadProgress) => {
+        setLocalAiProgress(progress.percent);
+        if (progress.speedBps > 0) setDownloadSpeed(formatSpeed(progress.speedBps));
+        if (progress.etaSeconds > 0) setDownloadEta(formatEta(progress.etaSeconds));
+      },
+      onComplete: () => {
+        setLocalAiProgress(100);
+        setLocalAiStatus('ready');
+        setLocalAiEnabled(true);
+        pauseStateRef.current = null;
+      },
+      onError: (error: string) => {
+        setLocalAiStatus('error');
+        Alert.alert(t({ en: 'Resume Failed', zh: '恢复失败' }), error);
+      },
+    });
   }, [setLocalAiEnabled, setLocalAiProgress, setLocalAiStatus, t]);
 
   const handleDelete = useCallback(() => {
@@ -110,6 +182,7 @@ export function LocalAiModelScreen() {
           text: t({ en: 'Delete', zh: '删除' }),
           style: 'destructive',
           onPress: () => {
+            OtaModelDownloadService.deleteModel(localAiModelId);
             setLocalAiStatus('not_downloaded');
             setLocalAiProgress(0);
             setLocalAiEnabled(false);
@@ -117,7 +190,7 @@ export function LocalAiModelScreen() {
         },
       ],
     );
-  }, [setLocalAiEnabled, setLocalAiProgress, setLocalAiStatus, t]);
+  }, [localAiModelId, setLocalAiEnabled, setLocalAiProgress, setLocalAiStatus, t]);
 
   const currentModel = AVAILABLE_MODELS.find((m) => m.id === localAiModelId) ?? AVAILABLE_MODELS[0];
 
@@ -167,6 +240,22 @@ export function LocalAiModelScreen() {
           <View style={styles.progressBar}>
             <View style={[styles.progressFill, { width: `${localAiProgress}%` }]} />
           </View>
+        )}
+
+        {localAiStatus === 'downloading' && (downloadSpeed || downloadEta) && (
+          <View style={styles.downloadMeta}>
+            {downloadSpeed ? <Text style={styles.downloadMetaText}>⚡ {downloadSpeed}</Text> : null}
+            {downloadEta ? <Text style={styles.downloadMetaText}>⏱️ {downloadEta}</Text> : null}
+            <TouchableOpacity onPress={handlePause} style={styles.pauseBtn}>
+              <Text style={styles.pauseBtnText}>{t({ en: 'Pause', zh: '暂停' })}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {pauseStateRef.current && localAiStatus === 'not_downloaded' && (
+          <TouchableOpacity onPress={handleResume} style={styles.resumeBtn}>
+            <Text style={styles.resumeBtnText}>▶️ {t({ en: 'Resume Download', zh: '继续下载' })}</Text>
+          </TouchableOpacity>
         )}
 
         {localAiStatus === 'ready' && (
@@ -342,6 +431,23 @@ const styles = StyleSheet.create({
   },
   downloadBtnText: { fontSize: 14, fontWeight: '700', color: '#3B82F6' },
   downloadingText: { fontSize: 13, color: '#3B82F6' },
+  downloadMeta: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  downloadMetaText: { fontSize: 11, color: colors.textMuted },
+  pauseBtn: {
+    marginLeft: 'auto',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  pauseBtnText: { fontSize: 11, fontWeight: '600', color: colors.textMuted },
+  resumeBtn: {
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(59,130,246,0.12)',
+    alignItems: 'center',
+  },
+  resumeBtnText: { fontSize: 13, fontWeight: '700', color: '#3B82F6' },
   routeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
