@@ -13,7 +13,14 @@
  * stays on the phone. The glass never sees shard A or signing secrets.
  */
 
-import { EventEmitter } from 'events';
+// React Native compatible EventEmitter (no 'events' polyfill needed)
+class EventEmitter {
+  private _listeners: Record<string, Array<(...args: any[]) => void>> = {};
+  on(event: string, fn: (...args: any[]) => void) { (this._listeners[event] ??= []).push(fn); return this; }
+  off(event: string, fn: (...args: any[]) => void) { this._listeners[event] = (this._listeners[event] || []).filter(l => l !== fn); return this; }
+  emit(event: string, ...args: any[]) { for (const fn of this._listeners[event] || []) fn(...args); return true; }
+  removeAllListeners(event?: string) { if (event) delete this._listeners[event]; else this._listeners = {}; return this; }
+}
 import type { Socket } from 'socket.io-client';
 
 // ── Types ──────────────────────────────────────────────
