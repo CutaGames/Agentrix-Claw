@@ -119,6 +119,8 @@ import { McpRegistryModule } from './modules/mcp-registry/mcp-registry.module';
 import { ToolRegistryModule } from './modules/tool-registry/tool-registry.module';
 import { QueryEngineModule } from './modules/query-engine/query-engine.module';
 import { CostTrackerModule } from './modules/cost-tracker/cost-tracker.module';
+// LLM Router: tri-tier model routing
+import { LlmRouterModule } from './modules/llm-router/llm-router.module';
 
 @Module({
   imports: [
@@ -244,6 +246,8 @@ import { CostTrackerModule } from './modules/cost-tracker/cost-tracker.module';
     ToolRegistryModule,
     QueryEngineModule,
     CostTrackerModule,
+    // LLM Router: tri-tier model routing
+    LlmRouterModule,
   ],
   controllers: [AppController],
   providers: [
