@@ -14,7 +14,7 @@ import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integra
   imports: [
     TypeOrmModule.forFeature([OpenClawInstance, AgentAccount, UserAgent]),
     forwardRef(() => VoiceModule),
-    ClaudeIntegrationModule,
+    forwardRef(() => ClaudeIntegrationModule),
   ],
   providers: [OpenClawConnectionService, TelegramBotService, LocalRelayGateway],
   controllers: [OpenClawConnectionController],
