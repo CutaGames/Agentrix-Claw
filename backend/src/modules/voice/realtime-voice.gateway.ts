@@ -495,6 +495,74 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     });
   }
 
+  // ── Heartbeat / Health ─────────────────────────────────
+
+  @SubscribeMessage('voice:ping')
+  async handlePing(
+    @ConnectedSocket() client: AuthenticatedVoiceSocket,
+    @MessageBody() data: { sessionId?: string },
+  ) {
+    // Touch fabric heartbeat if session is active
+    if (data?.sessionId) {
+      const session = this.sessions.get(data.sessionId);
+      if (session && session.fabricDeviceId && session.userId) {
+        this.sessionFabric.heartbeat(session.userId, session.fabricDeviceId).catch(() => {});
+        // Refresh createdAt so stale cleanup doesn't kill active sessions
+        session.createdAt = Date.now();
+      }
+    }
+
+    client.emit('voice:pong', {
+      sessionId: data?.sessionId,
+      ts: Date.now(),
+      activeSessions: this.sessions.size,
+    });
+  }
+
+  @SubscribeMessage('voice:reconnect')
+  async handleReconnect(
+    @ConnectedSocket() client: AuthenticatedVoiceSocket,
+    @MessageBody() data: { sessionId: string; instanceId?: string; deviceType?: string },
+  ) {
+    if (!client.userId) {
+      client.emit('voice:error', { error: 'Not authenticated' });
+      return;
+    }
+
+    const existingSession = this.sessions.get(data.sessionId);
+    if (existingSession) {
+      // Re-bind socket ID (client reconnected with new socket)
+      const oldSocketId = existingSession.socketId;
+      existingSession.socketId = client.id;
+      existingSession.createdAt = Date.now(); // reset idle timer
+
+      // Update fabric device socket
+      if (existingSession.fabricDeviceId) {
+        this.sessionFabric.updateSocketId(
+          existingSession.userId,
+          existingSession.fabricDeviceId,
+          client.id,
+        ).catch(() => {});
+      }
+
+      client.join(`voice:${data.sessionId}`);
+      client.emit('voice:reconnect:ok', {
+        sessionId: data.sessionId,
+        strategy: existingSession.v2Strategy,
+        resumed: true,
+      });
+
+      this.logger.log(`Voice session ${data.sessionId} reconnected: ${oldSocketId} → ${client.id}`);
+      return;
+    }
+
+    // Session expired — tell client to start fresh
+    client.emit('voice:reconnect:expired', {
+      sessionId: data.sessionId,
+      reason: 'Session no longer exists. Please start a new voice:session:start.',
+    });
+  }
+
   @SubscribeMessage('voice:tool_hold')
   handleToolHold(
     @ConnectedSocket() client: AuthenticatedVoiceSocket,
