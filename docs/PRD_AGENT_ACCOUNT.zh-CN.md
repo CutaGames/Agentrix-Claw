@@ -1454,16 +1454,17 @@ EAS_SCHEMA_REGISTRY=0x4200000000000000000000000000000000000020  # Base Schema Re
 bytes32 constant AGENT_SCHEMA = bytes32("string agentUniqueId, address ownerAddress, uint8 agentType, bytes publicKey, string[] capabilities, uint64 createdAt");
 ```
 
-**Step 3: 注册流程**
+**Step 3: 注册流程（联合 ERC-8004 + EAS）**
 ```
 用户创建 Agent
  → Agent 状态 = active
  → 用户点击 "链上注册"
  → 调用 POST /api/agent-accounts/:id/onchain-register
- → EasService.attestAgentRegistration()
- → 链上交易确认
- → 回写 easAttestationUid + onchainRegistrationTxHash
- → Agent 获得 "链上认证" 徽章
+ → Step A: RelayerService.createSession()  →  ERC-8004 Identity Session 创建
+ → Step B: EasService.attestAgentRegistration()  →  EAS 身份证书签发 (引用 sessionId)
+ → 两笔链上交易确认
+ → 回写 erc8004SessionId + easAttestationUid + onchainRegistrationTxHash
+ → Agent 获得 "链上身份" 徽章
 ```
 
 #### API 设计
@@ -1476,6 +1477,7 @@ Body: {
 Response: {
   success: true,
   data: {
+    erc8004SessionId: "0x7f3e...",   // ERC-8004 Identity Session
     txHash: "0xabc...",
     attestationUid: "0xdef...",
     chain: "base",
@@ -1693,173 +1695,443 @@ Response: {
 
 ---
 
-### P4-F4: Agent NFT（可选，实验性）
+### P4-F4: Agent 链上身份协议（ERC-8004 主身份 + EAS 能力拓展）
 
-#### 产品目标
-将高信用 Agent 铸造为 NFT，实现 Agent 所有权的可转移性和市场化交易。
+#### 设计哲学
 
-#### 功能描述
+> 传统方案用独立 NFT 合约表示 Agent 所有权，但 Agentrix 已部署 ERC-8004 SessionManager，
+> 其 Session 结构天然包含 identity(signer) + ownership(owner) + economics(limits) 三要素。
+> 因此采用 **ERC-8004 Session = Agent 主身份** + **EAS Attestation = 能力证书** 的组合方案，
+> 无需额外合约，直接复用已有基础设施。
 
-**Agent NFT 铸造条件**
+#### 为什么不用独立 Agent NFT？
+
+| 维度 | 独立 NFT (ERC-721) | ERC-8004 Session + EAS |
+|------|-------------------|------------------------|
+| 合约数量 | 需新部署 AgentNFT.sol | 复用已部署 ERC8004SessionManager ✅ |
+| 身份模型 | 静态所有权凭证 | 动态经济身份（含限额、签名者、生命周期）✅ |
+| 支付集成 | 需桥接 NFT→Session，二次映射 | 身份即支付入口，零摩擦 ✅ |
+| 能力表达 | NFT metadata 不可变 | EAS attestation 可添加/吊销 ✅ |
+| 所有权转移 | transferFrom + 72h 冷静期 | 更新 Session owner + MPC 分片迁移 ✅ |
+| 代码复用 | 0%（全新合约） | ERC-8004 已 100% 实现，EAS 已 90% 实现 ✅ |
+| 攻击面 | 增加新合约 = 增加攻击面 | 复用已审计合约 ✅ |
+
+#### 架构总览
+
 ```
-必须满足全部条件:
-1. 信用评分 ≥ 800（黄金等级）
-2. 完成任务 ≥ 50 个
-3. 用户评价 ≥ 4.0/5.0
-4. 账户活跃 ≥ 90 天
-5. 已完成 EAS 链上注册
+┌─────────────────────────────────────────────────────────────────┐
+│                    Agent 链上身份协议栈                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Layer 3: 能力证书层 (EAS Attestations)                         │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐            │
+│  │ SKILL_PUB    │ │ SKILL_PUB    │ │ AUDIT_ROOT   │            │
+│  │ 增长分析     │ │ SEO 优化     │ │ 月度审计     │            │
+│  │ uid: 0xaaa   │ │ uid: 0xbbb   │ │ uid: 0xccc   │            │
+│  └──────┬───────┘ └──────┬───────┘ └──────┬───────┘            │
+│         │                │                │                     │
+│  ───────┴────────────────┴────────────────┴─────────────        │
+│                          │                                      │
+│  Layer 2: 身份注册层 (EAS AGENT_REGISTRATION)                   │
+│  ┌────────────────────────────────────┐                         │
+│  │ AGENT_REGISTRATION                 │                         │
+│  │ agentId: AGT-xxx                   │                         │
+│  │ sessionId: 0x123... (→ ERC-8004)   │                         │
+│  │ mpcWallet: 0xabc...                │                         │
+│  │ capabilities: [uid1, uid2, ...]    │                         │
+│  │ attestationUid: 0xdef...           │                         │
+│  └──────────────┬─────────────────────┘                         │
+│                 │ references                                    │
+│  ───────────────┴───────────────────────────────────────        │
+│                 │                                               │
+│  Layer 1: 经济身份层 (ERC-8004 Session)                         │
+│  ┌────────────────────────────────────┐                         │
+│  │ ERC-8004 Identity Session          │                         │
+│  │ sessionId: 0x123...                │                         │
+│  │ owner: 0xUser...  (控制权)         │                         │
+│  │ signer: 0xMPC...  (操作密钥)       │                         │
+│  │ singleLimit: 100 USDC             │                         │
+│  │ dailyLimit: 1000 USDC             │                         │
+│  │ expiry: 2027-12-31 (长周期)        │                         │
+│  │ isActive: true                     │                         │
+│  └────────────────────────────────────┘                         │
+│                                                                 │
+│  Layer 0: MPC 钱包层                                            │
+│  ┌────────────────────────────────────┐                         │
+│  │ MPC Wallet (Shamir 3-of-2)         │                         │
+│  │ address: 0xMPC...                  │                         │
+│  │ Shard A: 用户设备                  │                         │
+│  │ Shard B: 平台服务端                │                         │
+│  │ Shard C: 社交恢复                  │                         │
+│  └────────────────────────────────────┘                         │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**NFT 元数据**
-```json
-{
-  "name": "Agentrix Agent #42 — Growth Agent",
-  "description": "AI Agent 经济体中的增长专家",
-  "image": "ipfs://Qm.../agent-42.png",
-  "attributes": [
-    { "trait_type": "Credit Score", "value": 850 },
-    { "trait_type": "Agent Type", "value": "personal" },
-    { "trait_type": "Credit Level", "value": "Gold" },
-    { "trait_type": "Completed Tasks", "value": 156 },
-    { "trait_type": "Rating", "value": 4.8 },
-    { "trait_type": "Capabilities", "value": ["growth", "analytics", "seo"] },
-    { "trait_type": "EAS UID", "value": "0xdef..." }
-  ],
-  "external_url": "https://agentrix.top/agents/growth-agent"
+#### 4.1 ERC-8004 Identity Session（主身份）
+
+**核心概念**: 每个 Agent 在 ERC-8004 SessionManager 中创建一个"长期身份 Session"，
+该 Session 同时承担身份标识和经济边界两种功能。
+
+**与普通 Payment Session 的区别**:
+
+| 属性 | Payment Session | Identity Session |
+|------|----------------|-----------------|
+| 生命周期 | 小时/天 | 365 天（可续期） |
+| 用途 | 单次支付授权 | Agent 链上身份 + 经济边界 |
+| signer | 临时 session key | Agent 的 MPC 钱包地址 |
+| limits | 单次交易限额 | Agent 全局支出上限 |
+| 续期 | 不支持 | 过期前自动创建新 Session + 迁移 |
+
+**Identity Session 创建流程**:
+```
+用户点击 "链上注册"
+  → POST /api/agent-accounts/:id/onchain-register
+  → agentAccountService.onchainRegister(id)
+     1. 获取 Agent 的 MPC 钱包地址 (signer)
+     2. 获取 Agent 的 spendingLimits (singleLimit, dailyLimit)
+     3. 设置 expiry = now + 365 days
+     4. RelayerService.createSession(owner, signer, limits, expiry)
+     5. 链上交易确认 → 获得 sessionId (bytes32)
+     6. 回写 agent.erc8004SessionId = sessionId
+     7. 创建 EAS AGENT_REGISTRATION attestation (引用 sessionId)
+     8. 回写 agent.easAttestationUid
+  → Agent 获得 "链上身份" 徽章
+```
+
+**SessionId 作为全局唯一链上ID**:
+```
+平台内部 ID:  AGT-1711864800-a1b2c3
+链上身份 ID:  0x7f3e...a1b2 (ERC-8004 sessionId, bytes32)
+身份证书:     0xdef...789  (EAS attestationUid)
+
+三者映射关系:
+  AgentAccount.agentUniqueId = "AGT-xxx"
+  AgentAccount.erc8004SessionId = "0x7f3e..."
+  AgentAccount.easAttestationUid = "0xdef..."
+```
+
+**Identity Session 续期机制**:
+```typescript
+// 定时任务：每日检查即将过期的 Identity Session
+@Cron('0 0 * * *')
+async renewExpiringSessions() {
+  const expiringAgents = await this.agentAccountRepository.find({
+    where: {
+      erc8004SessionId: Not(IsNull()),
+      // 30天内过期的 session
+    }
+  });
+  
+  for (const agent of expiringAgents) {
+    const session = await this.relayerService.getSession(agent.erc8004SessionId);
+    if (session.expiry - Date.now()/1000 < 30 * 86400) {
+      // 创建新 Session，继承旧 Session 的参数
+      const newSessionId = await this.relayerService.createSession(
+        session.owner,
+        session.signer,
+        session.singleLimit,
+        session.dailyLimit,
+        Date.now()/1000 + 365 * 86400
+      );
+      // 吊销旧 Session
+      await this.relayerService.revokeSession(agent.erc8004SessionId);
+      // 更新记录
+      agent.erc8004SessionId = newSessionId;
+      await this.agentAccountRepository.save(agent);
+      // 更新 EAS attestation（引用新 sessionId）
+      await this.easService.updateSessionReference(
+        agent.easAttestationUid, newSessionId
+      );
+    }
+  }
 }
 ```
 
-**所有权转移**
-```
-NFT 持有者 = Agent 控制者
-  → 转移 NFT = 转移 Agent 所有权
-  → 新持有者自动获得:
-     - Agent 的信用历史（不可篡改，链上记录）
-     - Agent 的 MPC 钱包访问权限（密钥分片重新分配）
-     - Agent 的所有配置和能力
-  → 转移后:
-     - 旧持有者失去 API Key 访问权限
-     - spendingLimits 重置为默认值
-     - 72h 冷静期（期间可撤销转移）
+**Agent 支出限额与 Session 同步**:
+```typescript
+// 当用户修改 Agent 支出限额时，同步更新链上 Session
+async updateSpendingLimits(agentId: string, newLimits: SpendingLimits) {
+  const agent = await this.findById(agentId);
+  agent.spendingLimits = newLimits;
+  await this.agentAccountRepository.save(agent);
+  
+  if (agent.erc8004SessionId) {
+    // 吊销旧 session → 创建新 session（ERC-8004 不支持原地修改 limits）
+    await this.relayerService.revokeSession(agent.erc8004SessionId);
+    const newSessionId = await this.relayerService.createSession(
+      agent.mpcWalletAddress,
+      newLimits.perTransaction * 1e6,  // 转换为 USDC 6 decimals
+      newLimits.dailyLimit * 1e6,
+      agent.sessionExpiry
+    );
+    agent.erc8004SessionId = newSessionId;
+    await this.agentAccountRepository.save(agent);
+  }
+}
 ```
 
-#### API 设计
+#### 4.2 EAS 能力证书体系（Capability Attestations）
 
+**核心概念**: EAS attestation 不再仅用于 Agent 注册，而是构成整个能力证书层。
+Agent 的每一项能力都是一个独立的、可验证的、可吊销的 EAS attestation。
+
+**能力证书层级**:
 ```
-// 检查铸造资格
-GET /api/agent-accounts/:id/nft/eligibility
+Level 0: AGENT_REGISTRATION (必须)
+  ├── agentId, sessionId, mpcWallet, ownerAddress
+  ├── 创建时自动签发
+  └── 作为所有上层证书的锚点
+
+Level 1: SKILL_PUBLICATION (按需)
+  ├── skillId, name, version, category, pricing
+  ├── Agent 发布技能时签发
+  ├── 可吊销（技能下架时）
+  └── 第三方可验证 "Agent X 确实具备技能 Y"
+
+Level 2: AUDIT_CERTIFICATE (定期)
+  ├── 月度审计默克尔根
+  ├── 证明 Agent 过去 30 天的交易历史完整性
+  └── 不可吊销（审计记录永久保留）
+
+Level 3: REPUTATION_BADGE (里程碑)
+  ├── 信用评分达标证书 (Gold/Platinum)
+  ├── 任务完成量里程碑 (50/100/500)
+  ├── 可被其他合约引用作为准入条件
+  └── 例: "仅允许 Gold+ Agent 参与高价值任务"
+```
+
+**能力查询与验证 API**:
+```
+// 查询 Agent 的完整能力档案
+GET /api/agent-accounts/:id/capabilities
 Response: {
-  eligible: true,
-  criteria: {
-    creditScore: { required: 800, actual: 850, met: true },
-    completedTasks: { required: 50, actual: 156, met: true },
-    rating: { required: 4.0, actual: 4.8, met: true },
-    activeDays: { required: 90, actual: 120, met: true },
-    easRegistered: { required: true, actual: true, met: true }
+  identity: {
+    erc8004SessionId: "0x7f3e...",
+    sessionActive: true,
+    sessionExpiry: "2027-03-31T00:00:00Z",
+    owner: "0xUser...",
+    signer: "0xMPC..."
   },
-  estimatedGas: "0.002 ETH"
+  registration: {
+    easUid: "0xdef...",
+    chain: "base",
+    registeredAt: "2026-10-01T10:00:00Z",
+    verified: true
+  },
+  skills: [
+    {
+      easUid: "0xaaa...",
+      skillId: "growth-analytics",
+      name: "增长分析",
+      version: "1.0",
+      active: true,
+      attestedAt: "2026-10-15T...",
+      revokedAt: null
+    },
+    {
+      easUid: "0xbbb...",
+      skillId: "seo-optimization",
+      name: "SEO 优化",
+      version: "2.1",
+      active: true,
+      attestedAt: "2026-11-01T..."
+    }
+  ],
+  badges: [
+    { type: "CREDIT_GOLD", earnedAt: "2026-12-01T...", easUid: "0xccc..." },
+    { type: "TASKS_100", earnedAt: "2026-12-15T...", easUid: "0xddd..." }
+  ],
+  auditHistory: [
+    { month: "2026-11", merkleRoot: "0x...", easUid: "0xeee..." }
+  ]
 }
 
-// 铸造 NFT
-POST /api/agent-accounts/:id/nft/mint
-Body: { chain: "base" }
+// 第三方验证某 Agent 是否具备某能力
+GET /api/agent-accounts/:id/verify-capability?skill=growth-analytics
 Response: {
-  tokenId: 42,
-  contractAddress: "0xAgentNFT...",
-  txHash: "0x...",
-  tokenUri: "ipfs://Qm.../42.json",
-  opensea: "https://opensea.io/assets/base/0xAgentNFT.../42"
-}
-
-// 查看 NFT 状态
-GET /api/agent-accounts/:id/nft
-Response: {
-  minted: true,
-  tokenId: 42,
-  owner: "0xCurrentOwner...",
-  contractAddress: "0xAgentNFT...",
-  transferable: true,
-  listPrice: null  // 未挂售
+  valid: true,
+  attestationUid: "0xaaa...",
+  attestedAt: "2026-10-15T...",
+  chain: "base",
+  onChainVerifiable: true,
+  verifyUrl: "https://easscan.org/attestation/view/0xaaa..."
 }
 ```
 
-#### 智能合约（Solidity）
-
+**EAS Schema 扩展**:
 ```solidity
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+// 新增 Schema: REPUTATION_BADGE
+bytes32 constant REPUTATION_BADGE_SCHEMA = bytes32(
+  "string agentUniqueId, bytes32 sessionId, string badgeType, uint256 value, uint64 earnedAt"
+);
 
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+// badgeType 枚举:
+//   CREDIT_BRONZE  (信用 ≥ 300)
+//   CREDIT_SILVER  (信用 ≥ 500)
+//   CREDIT_GOLD    (信用 ≥ 800)
+//   CREDIT_PLATINUM(信用 ≥ 950)
+//   TASKS_50       (完成 50 任务)
+//   TASKS_100      (完成 100 任务)
+//   TASKS_500      (完成 500 任务)
+//   REVENUE_1K     (累计收入 $1000+)
+//   REVENUE_10K    (累计收入 $10000+)
+```
 
-contract AgentNFT is ERC721URIStorage, Ownable {
-    uint256 private _nextTokenId;
+#### 4.3 所有权转移（无需 NFT）
+
+**通过 ERC-8004 Session 迁移实现所有权转移**:
+```
+场景: 用户 A 将 Agent 转让给用户 B
+
+1. 用户 A 发起转让请求
+   → POST /api/agent-accounts/:id/transfer
+   → Body: { newOwner: "0xUserB...", reason: "sold" }
+
+2. 平台验证
+   → Agent 状态 = active
+   → 无未完成的 A2A 任务
+   → 无未结算的支付
+
+3. 冷静期（72h）
+   → Agent 进入 "transferring" 状态
+   → 通知新旧持有者
+   → 旧持有者可在 72h 内取消
+
+4. 执行转移（72h 后自动或手动确认）
+   a. 吊销旧 ERC-8004 Session
+   b. 创建新 Session (owner = 新持有者, signer = 原 MPC 钱包)
+   c. MPC 钱包分片重新分配 (Shard A → 新持有者设备)
+   d. 吊销旧 EAS AGENT_REGISTRATION
+   e. 创建新 EAS AGENT_REGISTRATION (引用新 sessionId)
+   f. 技能证书(SKILL_PUBLICATION)保留不变
+   g. 更新 AgentAccount.ownerId
+   h. 重置 API Keys
+   i. 重置 spendingLimits 为默认值
+
+5. 完成
+   → Agent 状态恢复 active
+   → 旧持有者完全失去访问权限
+   → 新持有者获得全部控制权
+   → 信用历史保留（链上不可篡改）
+```
+
+**转移 API**:
+```
+POST /api/agent-accounts/:id/transfer
+Body: {
+  newOwnerAddress: "0xUserB...",
+  reason: "sale",        // sale / gift / team_restructure
+  price: "500 USDC"      // 可选，记录交易价格
+}
+Response: {
+  transferId: "xfr-xxx",
+  status: "cooling_down",
+  cooldownEndsAt: "2026-10-04T10:00:00Z",
+  cancelBefore: "2026-10-04T10:00:00Z"
+}
+
+// 取消转移（冷静期内）
+DELETE /api/agent-accounts/:id/transfer/:transferId
+
+// 确认转移（冷静期后）
+POST /api/agent-accounts/:id/transfer/:transferId/confirm
+```
+
+#### 4.4 Agent 间能力验证（去中心化信任）
+
+**场景**: Agent A 想雇佣 Agent B 执行任务，需先验证 B 的能力。
+
+```
+Agent A 发起 A2A 任务请求
+  → 指定要求: "需要 growth-analytics 技能, 信用 ≥ Gold"
+  
+平台匹配候选 Agent:
+  → 查询 EAS: 哪些 Agent 有 growth-analytics SKILL_PUBLICATION?
+  → 链上验证: attestation 有效 & 未吊销?
+  → 查询 EAS: 是否有 CREDIT_GOLD badge?
+  → 返回符合条件的 Agent 列表
+
+Agent A 选择 Agent B:
+  → 验证 Agent B 的 ERC-8004 session 仍然 active
+  → 验证 Agent B 的 MPC 钱包有足够余额（如需质押）
+  → 创建 A2A 任务
+```
+
+**智能合约层面的准入控制**:
+```solidity
+// 在 BudgetPool 或自定义合约中:
+function requireCapability(
+    address easContract,
+    bytes32 agentRegistrationUid,
+    bytes32 requiredSkillUid
+) internal view {
+    // 验证 Agent 注册有效
+    Attestation memory reg = IEAS(easContract).getAttestation(agentRegistrationUid);
+    require(!reg.revoked, "Agent registration revoked");
     
-    // agentId → tokenId mapping
-    mapping(bytes32 => uint256) public agentTokenId;
-    // tokenId → agentId mapping
-    mapping(uint256 => bytes32) public tokenAgent;
-    // Transfer cooldown
-    mapping(uint256 => uint256) public transferCooldownEnd;
+    // 验证技能证书有效
+    Attestation memory skill = IEAS(easContract).getAttestation(requiredSkillUid);
+    require(!skill.revoked, "Skill attestation revoked");
     
-    uint256 public constant COOLDOWN_PERIOD = 72 hours;
-    
-    event AgentMinted(bytes32 indexed agentId, uint256 indexed tokenId, address owner);
-    event AgentTransferred(uint256 indexed tokenId, address from, address to);
-    
-    constructor() ERC721("Agentrix Agent", "AGNT") Ownable(msg.sender) {}
-    
-    function mintAgent(
-        address to,
-        bytes32 agentId,
-        string memory tokenURI
-    ) external onlyOwner returns (uint256) {
-        require(agentTokenId[agentId] == 0, "Agent already minted");
-        
-        uint256 tokenId = ++_nextTokenId;
-        _safeMint(to, tokenId);
-        _setTokenURI(tokenId, tokenURI);
-        
-        agentTokenId[agentId] = tokenId;
-        tokenAgent[tokenId] = agentId;
-        
-        emit AgentMinted(agentId, tokenId, to);
-        return tokenId;
-    }
-    
-    function _update(
-        address to,
-        uint256 tokenId,
-        address auth
-    ) internal override returns (address) {
-        address from = super._update(to, tokenId, auth);
-        
-        if (from != address(0) && to != address(0)) {
-            // Transfer (not mint/burn)
-            transferCooldownEnd[tokenId] = block.timestamp + COOLDOWN_PERIOD;
-            emit AgentTransferred(tokenId, from, to);
-        }
-        
-        return from;
-    }
+    // 可进一步解码 attestation data 检查具体条件
 }
 ```
+
+#### 数据模型扩展
+
+```typescript
+// AgentAccount Entity 新增字段
+@Column({ nullable: true })
+erc8004SessionId: string;  // ERC-8004 Identity Session ID (bytes32 hex)
+
+@Column({ nullable: true })
+sessionExpiry: Date;  // Session 过期时间
+
+@Column({ nullable: true })
+sessionChain: string;  // Session 所在链 (base/ethereum)
+
+// 已有字段（保持不变）:
+// easAttestationUid: string
+// onchainRegistrationTxHash: string
+// registrationChain: string
+// mpcWalletId: string
+```
+
+#### 前端组件
+
+| 组件 | 位置 | 说明 |
+|-----|------|------|
+| `OnchainIdentityBadge` | AgentAccountScreen | 链上身份徽章（ERC-8004 active = 蓝色 ✓） |
+| `CapabilityList` | AgentProfileScreen | 能力证书列表（EAS attestations） |
+| `SessionStatusCard` | AgentDetailScreen | Session 状态卡片（限额、过期时间、续期按钮） |
+| `TransferAgentModal` | AgentSettingsScreen | Agent 转让确认弹窗 |
+| `VerifyCapabilityLink` | AgentMarketplace | "在链上验证" 外链（→ easscan.org） |
+
+#### 安全要求
+- ERC-8004 Session 创建需用户二次确认（不可逆）
+- Session 续期由 Relayer 自动执行，用户无需干预
+- 所有权转移有 72h 冷静期
+- EAS attestation 签名使用 AWS KMS，私钥不落盘
+- 能力验证支持链下缓存（30min TTL）+ 链上最终一致
 
 #### 验收标准
-1. 满足条件的 Agent 可在 30s 内铸造 NFT
-2. NFT 元数据包含完整的 Agent 属性
-3. NFT 转移触发 72h 冷静期
-4. OpenSea/Rarible 可正确展示 Agent NFT
+1. Agent 链上注册 ≤ 30s 内完成（ERC-8004 Session + EAS attestation 一次交互）
+2. 第三方可通过 EAS SDK + ERC-8004 合约验证 Agent 身份 + 能力
+3. Agent 能力证书支持动态添加/吊销，≤ 10s 生效
+4. 所有权转移全流程 ≤ 73h（含 72h 冷静期）
+5. Session 自动续期，零停机时间
 
 ---
 
 ## Phase 4 验收标准（DoD）
 
-1. ≥ 3 个 Agent 完成链上 EAS 注册，第三方可验证
+1. ≥ 3 个 Agent 完成链上身份注册（ERC-8004 Session + EAS attestation），第三方可验证
 2. 新 Agent 创建时自动挂载 MPC 钱包
 3. A2A 任务结算全流程链上可追溯（escrow → release → 分佣）
 4. X402 微支付 Skill 调用 ≤ 3s 端到端
-5. Agent NFT 铸造流程完整（可选，视市场需求决定是否上线）
+5. Agent 能力证书动态可添加/吊销，EAS 链上可查
+6. Identity Session 续期机制正常运行，零停机
+7. Agent 所有权转移全流程可执行（含 72h 冷静期）
 
 ---
 

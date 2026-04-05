@@ -1,12 +1,17 @@
 import { CSSProperties, useState, useCallback, useRef, useEffect } from "react";
+import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import agentrixLogo from "../assets/agentrix-logo.png";
 import { type ClipboardCapture, type ClipboardAction, buildClipboardPrompt } from "../services/clipboard";
 import VoiceResultCard from "./VoiceResultCard";
-import { useAuthStore, streamChat, streamDirectChat } from "../services/store";
+import { useAuthStore, streamChat, streamDirectChat, type ChatMessage } from "../services/store";
 import { startRecording, stopRecording, speechToText, stopTTS } from "../services/voice";
-import { AudioQueuePlayer } from "../services/AudioQueuePlayer";
+import { AudioQueuePlayer, SentenceAccumulator, detectLang } from "../services/AudioQueuePlayer";
+import { loadSessionMessages, persistSession } from "../services/chatSessionStore";
+import type { StreamEvent } from "../../../shared/stream-parser.ts";
 
 type BallState = "idle" | "recording" | "thinking" | "speaking";
+type ConversationMessage = ChatMessage & { role: "user" | "assistant" };
+type DirectChatMessage = { role: ChatMessage["role"]; content: string };
 
 interface Props {
   onTap: () => void;
@@ -33,6 +38,76 @@ const STATE_COLORS: Record<BallState, { from: string; to: string; glow: string }
 
 const BALL_SIZE = 64;
 const CAPSULE_WIDTH = 230;
+const VOICE_SESSION_KEY_PREFIX = "agentrix_voice_session";
+const VOICE_HISTORY_PREVIEW_LIMIT = 6;
+const VOICE_REQUEST_HISTORY_LIMIT = 12;
+const VOICE_AUTO_CONTINUE_LIMIT = 3;
+const VOICE_CONTINUE_PROMPT = "Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting.";
+
+function buildVoiceSessionStorageKey(instanceId: string | null, agentId: string | null) {
+  return `${VOICE_SESSION_KEY_PREFIX}:${instanceId || "direct"}:${agentId || "default"}`;
+}
+
+function getOrCreateVoiceSessionId(storageKey: string) {
+  const existing = localStorage.getItem(storageKey);
+  if (existing && existing.trim()) {
+    return existing;
+  }
+  const created = `voice-session-${Date.now()}`;
+  localStorage.setItem(storageKey, created);
+  return created;
+}
+
+function toConversationMessages(messages: ChatMessage[]) {
+  return messages.filter((message): message is ConversationMessage => (
+    message.role === "user" || message.role === "assistant"
+  ));
+}
+
+function getSessionTitle(messages: ChatMessage[]) {
+  const firstUser = messages.find((message) => message.role === "user");
+  if (!firstUser) {
+    return "Voice Session";
+  }
+  return firstUser.content.slice(0, 50) + (firstUser.content.length > 50 ? "..." : "");
+}
+
+function isMicrophonePermissionError(error: unknown) {
+  const errorName = typeof error === "object" && error && "name" in error ? String((error as { name?: unknown }).name || "") : "";
+  const errorMessage = typeof error === "object" && error && "message" in error ? String((error as { message?: unknown }).message || "") : "";
+  const normalized = `${errorName} ${errorMessage}`.toLowerCase();
+
+  return normalized.includes("permission")
+    || normalized.includes("denied")
+    || normalized.includes("notallowed")
+    || normalized.includes("securityerror");
+}
+
+function getMicrophonePermissionGuidance() {
+  const platform = navigator.platform.toLowerCase();
+
+  if (platform.includes("win")) {
+    return {
+      settingsUrl: "ms-settings:privacy-microphone",
+      fallbackUrl: "https://support.microsoft.com/windows/turn-on-app-permissions-for-your-microphone-in-windows-94991183-f69d-b4cf-4679-c98ca45f577a",
+      message: "Microphone access is blocked. Open Windows Settings > Privacy & security > Microphone, allow Agentrix, then try again.",
+    };
+  }
+
+  if (platform.includes("mac")) {
+    return {
+      settingsUrl: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+      fallbackUrl: "https://support.apple.com/guide/mac-help/control-access-to-your-microphone-on-mac-mchla1b1e1fe/mac",
+      message: "Microphone access is blocked. Open System Settings > Privacy & Security > Microphone, allow Agentrix, then try again.",
+    };
+  }
+
+  return {
+    settingsUrl: "https://support.google.com/chrome/answer/2693767",
+    fallbackUrl: "https://support.google.com/chrome/answer/2693767",
+    message: "Microphone access is blocked. Allow microphone access for Agentrix in your system settings, then try again.",
+  };
+}
 
 export default function FloatingBall({
   onTap,
@@ -62,9 +137,15 @@ export default function FloatingBall({
   const [voiceResult, setVoiceResult] = useState("");
   const [voiceResultStreaming, setVoiceResultStreaming] = useState(false);
   const [voiceResultVisible, setVoiceResultVisible] = useState(false);
+  const [voicePermissionError, setVoicePermissionError] = useState(false);
+  const [voiceTtsIssue, setVoiceTtsIssue] = useState<string | null>(null);
+  const [voiceHistoryPreview, setVoiceHistoryPreview] = useState<ConversationMessage[]>([]);
   const [isTTSSpeaking, setIsTTSSpeaking] = useState(false);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
   const voiceAbortRef = useRef<AbortController | null>(null);
+  const voiceHistoryRef = useRef<ConversationMessage[]>([]);
+  const voiceSessionIdRef = useRef<string | null>(null);
+  const voiceAgentIdRef = useRef<string | null>(null);
   const continuationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clickCount = useRef(0);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -101,17 +182,108 @@ export default function FloatingBall({
   const isCapsule = effectiveState === "recording" || effectiveState === "speaking";
   const effectiveTranscript = voiceBallState !== "idle" ? voiceTranscript : transcript;
 
+  const handoffVoiceSessionToPanel = useCallback((dispatchImmediately = true) => {
+    const sessionId = voiceSessionIdRef.current;
+    const messages = toConversationMessages(voiceHistoryRef.current);
+    if (!sessionId || messages.length === 0) {
+      return;
+    }
+
+    const payload = {
+      sessionId,
+      sourceDeviceId: "floating-ball",
+      agentId: voiceAgentIdRef.current || undefined,
+      contextSnapshot: {
+        title: getSessionTitle(messages),
+        messages: messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+          createdAt: message.createdAt,
+        })),
+      },
+    };
+
+    localStorage.setItem("agentrix_pending_handoff", JSON.stringify(payload));
+    if (dispatchImmediately) {
+      window.dispatchEvent(new CustomEvent("agentrix:handoff-incoming", { detail: payload }));
+    }
+  }, []);
+
+  const openMicrophoneSettings = useCallback(async () => {
+    const guidance = getMicrophonePermissionGuidance();
+
+    try {
+      await shellOpen(guidance.settingsUrl);
+      return;
+    } catch {}
+
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("desktop_bridge_open_browser", { url: guidance.fallbackUrl });
+      return;
+    } catch {}
+
+    window.open(guidance.fallbackUrl, "_blank", "noopener,noreferrer");
+  }, []);
+
+  const showVoiceError = useCallback(async (
+    message: string,
+    options?: { permission?: boolean; preserveTranscript?: boolean },
+  ) => {
+    if (continuationTimer.current) clearTimeout(continuationTimer.current);
+    voiceAbortRef.current?.abort();
+    audioPlayerRef.current?.stopAll();
+    stopTTS();
+    setVoiceBallState("idle");
+    if (!options?.preserveTranscript) {
+      setVoiceTranscript("");
+    }
+    setVoicePermissionError(Boolean(options?.permission));
+    setVoiceTtsIssue(null);
+    setVoiceResult(message);
+    setVoiceResultVisible(true);
+    setVoiceResultStreaming(false);
+    setIsTTSSpeaking(false);
+
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("desktop_bridge_resize_ball_window", { width: 460, height: 260 });
+    } catch {}
+  }, []);
+
   // ── Standalone voice flow (in-ball, no ChatPanel) ───────
   const handleVoiceInBall = useCallback(async () => {
     if (compact) return;
-    const { token, instances, activeInstanceId } = useAuthStore.getState();
+    const { token, instances, activeInstanceId, agents, activeAgentId } = useAuthStore.getState();
     if (!token) { onTap(); return; }
 
+    const activeAgent = agents.find((agent) => agent.id === activeAgentId) || null;
+    const voiceSessionKey = buildVoiceSessionStorageKey(activeInstanceId || null, activeAgentId || null);
+    const voiceSessionId = getOrCreateVoiceSessionId(voiceSessionKey);
+    let existingHistory = toConversationMessages(await loadSessionMessages(voiceSessionId));
+
+    voiceSessionIdRef.current = voiceSessionId;
+    voiceAgentIdRef.current = activeAgentId || null;
+    voiceHistoryRef.current = existingHistory;
+    setVoiceHistoryPreview(existingHistory.slice(-VOICE_HISTORY_PREVIEW_LIMIT));
+
+    const syncVoiceHistory = (messages: ConversationMessage[], persist = false) => {
+      existingHistory = messages;
+      voiceHistoryRef.current = messages;
+      setVoiceHistoryPreview(messages.slice(-VOICE_HISTORY_PREVIEW_LIMIT));
+      if (persist) {
+        void persistSession(voiceSessionId, messages);
+      }
+    };
+
     // Start recording
+    if (continuationTimer.current) clearTimeout(continuationTimer.current);
     setVoiceBallState("recording");
     setVoiceTranscript("");
     setVoiceResult("");
     setVoiceResultVisible(false);
+    setVoicePermissionError(false);
+    setVoiceTtsIssue(null);
 
     // Resize window for capsule
     try {
@@ -121,12 +293,15 @@ export default function FloatingBall({
 
     try {
       await startRecording();
-    } catch {
-      setVoiceBallState("idle");
-      try {
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("desktop_bridge_resize_ball_window", { width: 80, height: 80 });
-      } catch {}
+    } catch (err) {
+      if (isMicrophonePermissionError(err)) {
+        await showVoiceError(
+          `${getMicrophonePermissionGuidance().message}\n\nUse Open Settings, then Retry.`,
+          { permission: true },
+        );
+      } else {
+        await showVoiceError("Unable to start microphone recording. Check your input device, then try again.");
+      }
       return;
     }
 
@@ -143,14 +318,31 @@ export default function FloatingBall({
       const blob = await stopRecording();
       const transcript = await speechToText(blob, token);
       if (!transcript.trim()) {
-        setVoiceBallState("idle");
-        try {
-          const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("desktop_bridge_resize_ball_window", { width: 80, height: 80 });
-        } catch {}
+        await showVoiceError("No speech detected. Try again and speak a little closer to the microphone.");
         return;
       }
       setVoiceTranscript(transcript);
+
+      const userMsg: ConversationMessage = {
+        id: `vu-${Date.now()}`,
+        role: "user",
+        content: transcript.trim(),
+        createdAt: Date.now(),
+      };
+      const assistantId = `va-${Date.now()}`;
+      const assistantMsg: ConversationMessage = {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        streaming: true,
+        createdAt: Date.now(),
+      };
+      const requestHistory: DirectChatMessage[] = existingHistory.slice(-VOICE_REQUEST_HISTORY_LIMIT).map((message) => ({
+        role: message.role,
+        content: message.content,
+      }));
+
+      syncVoiceHistory([...existingHistory, userMsg, assistantMsg], true);
 
       // Resize for result card
       try {
@@ -174,81 +366,164 @@ export default function FloatingBall({
       const fullMessage = contextPrefix ? `${contextPrefix}\n${transcript}` : transcript;
 
       // Stream response directly (not via ChatPanel)
+      setVoicePermissionError(false);
       setVoiceResultStreaming(true);
       setVoiceResultVisible(true);
       let resultAccum = "";
+      let autoContinueCount = 0;
 
       // Setup TTS queue
       const player = new AudioQueuePlayer(
         token,
         () => { setIsTTSSpeaking(false); setVoiceBallState("idle"); },
-        (playing) => setIsTTSSpeaking(playing),
+        (playing) => {
+          setIsTTSSpeaking(playing);
+          if (playing) {
+            setVoiceBallState("speaking");
+          }
+        },
+        (message) => setVoiceTtsIssue(message),
       );
       audioPlayerRef.current = player;
-      let sentenceBuffer = "";
+      const sentenceAcc = new SentenceAccumulator((sentence) => {
+        const trimmed = sentence.trim();
+        if (trimmed.length > 2) {
+          player.enqueue(trimmed, detectLang(trimmed));
+          setIsTTSSpeaking(true);
+        }
+      });
 
       const instance = instances.find(i => i.id === activeInstanceId);
-      const onChunk = (chunk: string) => {
-        resultAccum += chunk;
-        setVoiceResult(resultAccum);
-        setVoiceBallState("speaking");
+      const startResponseStream = (messageToSend: string) => {
+        let continueReason: "max_tokens" | "timeout" | null = null;
 
-        // Sentence-based TTS: accumulate until sentence boundary
-        sentenceBuffer += chunk;
-        const sentenceEnd = sentenceBuffer.search(/[。！？.!?]\s*/);
-        if (sentenceEnd !== -1) {
-          const sentence = sentenceBuffer.slice(0, sentenceEnd + 1).trim();
-          sentenceBuffer = sentenceBuffer.slice(sentenceEnd + 1);
-          if (sentence.length > 2) {
-            player.enqueue(sentence);
-            setIsTTSSpeaking(true);
+        const onChunk = (chunk: string) => {
+          resultAccum += chunk;
+          setVoiceResult(resultAccum);
+          setVoiceBallState("speaking");
+          voiceHistoryRef.current = voiceHistoryRef.current.map((message) => (
+            message.id === assistantId
+              ? { ...message, content: resultAccum, streaming: true }
+              : message
+          ));
+          sentenceAcc.push(chunk);
+        };
+
+        const scheduleAutoContinue = () => {
+          if (autoContinueCount >= VOICE_AUTO_CONTINUE_LIMIT) {
+            return false;
           }
+          autoContinueCount += 1;
+          setVoiceBallState("thinking");
+          setVoiceResultStreaming(true);
+          startResponseStream(VOICE_CONTINUE_PROMPT);
+          return true;
+        };
+
+        const finalizeHistory = (content: string, options?: { error?: boolean; streaming?: boolean }) => {
+          syncVoiceHistory(
+            voiceHistoryRef.current.map((message) => (
+              message.id === assistantId
+                ? {
+                    ...message,
+                    content,
+                    error: Boolean(options?.error),
+                    streaming: Boolean(options?.streaming),
+                  }
+                : message
+            )),
+            true,
+          );
+        };
+
+        const onEvent = (event: StreamEvent) => {
+          if (event.type === "tool_error" && /timeout|timed out|ETIMEDOUT/i.test(event.error)) {
+            continueReason = "timeout";
+          } else if (event.type === "done" && event.reason === "max_tokens") {
+            continueReason = "max_tokens";
+          } else if (event.type === "error" && /timeout|timed out|ETIMEDOUT/i.test(event.error)) {
+            continueReason = "timeout";
+          }
+        };
+
+        const onDone = () => {
+          setVoiceResultStreaming(false);
+          if (continueReason && scheduleAutoContinue()) {
+            finalizeHistory(resultAccum, { streaming: true });
+            return;
+          }
+
+          finalizeHistory(resultAccum, { streaming: false });
+          sentenceAcc.flush();
+          handoffVoiceSessionToPanel(false);
+          continuationTimer.current = setTimeout(() => {
+            dismissVoiceResult();
+          }, 8000);
+        };
+
+        const onError = (err: string) => {
+          const timedOut = /timeout|timed out|ETIMEDOUT/i.test(err);
+          if (timedOut && scheduleAutoContinue()) {
+            finalizeHistory(resultAccum, { streaming: true });
+            return;
+          }
+
+          setVoiceResultStreaming(false);
+          const nextContent = resultAccum || `Error: ${err}`;
+          setVoiceResult(nextContent);
+          finalizeHistory(nextContent, { error: true, streaming: false });
+          handoffVoiceSessionToPanel(false);
+        };
+
+        if (instance) {
+          voiceAbortRef.current = streamChat({
+            instanceId: instance.id,
+            message: messageToSend,
+            sessionId: voiceSessionId,
+            token,
+            mode: "agent",
+            onChunk,
+            onEvent,
+            onDone,
+            onError,
+          });
+          return;
         }
-      };
 
-      const onDone = () => {
-        setVoiceResultStreaming(false);
-        // Flush remaining sentence buffer
-        if (sentenceBuffer.trim().length > 2) {
-          player.enqueue(sentenceBuffer.trim());
+        const directMessages: DirectChatMessage[] = [...requestHistory];
+        if (activeAgent) {
+          directMessages.unshift({
+            role: "system",
+            content: `You are responding as the desktop agent \"${activeAgent.name}\". Keep replies aligned with this agent identity while preserving the user's intent.`,
+          });
         }
-        // Start continuation timer (5s window for follow-up)
-        continuationTimer.current = setTimeout(() => {
-          dismissVoiceResult();
-        }, 8000);
-      };
-
-      const onError = (err: string) => {
-        setVoiceResultStreaming(false);
-        setVoiceResult(resultAccum || `Error: ${err}`);
-      };
-
-      if (instance) {
-        voiceAbortRef.current = streamChat({
-          instanceId: instance.id,
-          message: fullMessage,
-          sessionId: `voice-${Date.now()}`,
-          token,
-          mode: "ask",
-          onChunk, onDone, onError,
-        });
-      } else {
+        directMessages.push({ role: "user", content: messageToSend });
         voiceAbortRef.current = streamDirectChat({
-          messages: [{ role: "user", content: fullMessage }],
-          sessionId: `voice-${Date.now()}`,
+          messages: directMessages,
+          sessionId: voiceSessionId,
+          agentId: activeAgentId,
           token,
-          mode: "ask",
-          onChunk, onDone, onError,
+          mode: "agent",
+          onChunk,
+          onDone: () => {
+            setVoiceResultStreaming(false);
+            finalizeHistory(resultAccum, { streaming: false });
+            sentenceAcc.flush();
+            handoffVoiceSessionToPanel(false);
+            continuationTimer.current = setTimeout(() => {
+              dismissVoiceResult();
+            }, 8000);
+          },
+          onError,
         });
-      }
+      };
+
+      startResponseStream(fullMessage);
     } catch (err) {
-      setVoiceBallState("idle");
-      try {
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("desktop_bridge_resize_ball_window", { width: 80, height: 80 });
-      } catch {}
+      const message = err instanceof Error && err.message ? err.message : "Voice reply failed. Please try again.";
+      await showVoiceError(message, { preserveTranscript: true });
     }
-  }, [compact, onTap]);
+  }, [compact, handoffVoiceSessionToPanel, onTap, showVoiceError]);
 
   const dismissVoiceResult = useCallback(async () => {
     if (continuationTimer.current) clearTimeout(continuationTimer.current);
@@ -259,12 +534,29 @@ export default function FloatingBall({
     setVoiceResult("");
     setVoiceResultVisible(false);
     setVoiceResultStreaming(false);
+    setVoicePermissionError(false);
+    setVoiceTtsIssue(null);
     setIsTTSSpeaking(false);
     // Resize back to ball
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("desktop_bridge_resize_ball_window", { width: 80, height: 80 });
     } catch {}
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      if (clipboardFadeTimer.current) clearTimeout(clipboardFadeTimer.current);
+      if (resultTimer.current) clearTimeout(resultTimer.current);
+      if (continuationTimer.current) clearTimeout(continuationTimer.current);
+      if (clickTimer.current) clearTimeout(clickTimer.current);
+      if (approvalBadgeTimer.current) clearTimeout(approvalBadgeTimer.current);
+      voiceAbortRef.current?.abort();
+      audioPlayerRef.current?.stopAll();
+      stopTTS();
+    };
   }, []);
 
   // Show result card briefly when resultText changes
@@ -549,11 +841,27 @@ export default function FloatingBall({
       <div style={{ position: "absolute", bottom: BALL_SIZE + 10, left: "50%", transform: "translateX(-50%)", zIndex: 10 }}>
         <VoiceResultCard
           text={voiceResult}
+          notice={voiceTtsIssue || undefined}
+          transcript={voiceTranscript}
+          history={voicePermissionError ? undefined : voiceHistoryPreview.map((message) => ({ role: message.role as "user" | "assistant", content: message.content }))}
           isSpeaking={isTTSSpeaking}
           streaming={voiceResultStreaming}
-          autoHideMs={voiceResultStreaming ? 0 : 8000}
+          autoHideMs={voicePermissionError || voiceResultStreaming ? 0 : 8000}
+          actions={voicePermissionError ? [
+            {
+              label: "Open microphone settings",
+              icon: "Open",
+              onClick: () => { void openMicrophoneSettings(); },
+            },
+            {
+              label: "Retry microphone",
+              icon: "Retry",
+              onClick: () => { void handleVoiceInBall(); },
+            },
+          ] : undefined}
           onDismiss={dismissVoiceResult}
-          onExpandToPro={() => {
+          onExpandToPro={voicePermissionError ? undefined : () => {
+            handoffVoiceSessionToPanel();
             dismissVoiceResult();
             if (onOpenPro) onOpenPro();
             else onTap();

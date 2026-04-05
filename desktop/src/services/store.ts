@@ -349,7 +349,6 @@ async function consumeAgentrixSse(
     onToolResult: emit,
     onToolError: (event) => {
       emit(event);
-      fail(event.error);
     },
     onApprovalRequired: emit,
     onUsage: emit,
@@ -500,7 +499,17 @@ export function streamDirectChat(opts: {
         opts.onError(data.error);
         return;
       }
-      const reply = data.reply || data.content || data.message || "";
+      const reply =
+        (typeof data?.text === "string" && data.text) ||
+        (typeof data?.content === "string" && data.content) ||
+        (typeof data?.message === "string" && data.message) ||
+        (typeof data?.reply === "string" && data.reply) ||
+        (typeof data?.reply?.content === "string" && data.reply.content) ||
+        "";
+      if (!reply) {
+        opts.onError("Empty response from AI service");
+        return;
+      }
       // Simulate streaming for consistency
       const words = reply.split(" ");
       for (let i = 0; i < words.length; i++) {

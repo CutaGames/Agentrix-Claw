@@ -1269,8 +1269,17 @@ export class AuthController {
       return configs.find(c => c.metadata?.isDefault === true) || configs[0] || null;
     });
 
-    // Build model label lookup from AI provider catalog
-    const allCatalogModels = this.aiProviderService.getCatalog().flatMap((p: any) => p.models || []);
+    // Build model label/provider lookup from AI provider catalog
+    const providerCatalog = this.aiProviderService.getCatalog();
+    const allCatalogModels = providerCatalog.flatMap((p: any) => p.models || []);
+    const modelProviderMap = new Map<string, string>();
+    for (const provider of providerCatalog) {
+      for (const model of provider.models || []) {
+        if (model?.id) {
+          modelProviderMap.set(model.id, provider.id);
+        }
+      }
+    }
 
     return {
       id: user.id,
@@ -1283,13 +1292,18 @@ export class AuthController {
       openClawInstances: instances.map(i => {
         const acctId = i.agentAccountId || (i.metadata as any)?.agentAccountId;
         const acct = acctId ? accountMap.get(acctId) : undefined;
-        // Priority: agentAccount.preferredModel → user's defaultProviderConfig → instance capabilities
+        const instanceActiveModel = (i.capabilities as any)?.activeModel;
+        const instanceModelPinned = (i.capabilities as any)?.modelPinned === true;
+        // Priority: agentAccount.preferredModel → explicitly pinned instance model → user's defaultProviderConfig → instance baseline
         const resolvedModel = acct?.preferredModel
+          || (instanceModelPinned ? instanceActiveModel : undefined)
           || defaultProviderConfig?.selectedModel
-          || (i.capabilities as any)?.activeModel
+          || instanceActiveModel
           || undefined;
         const resolvedProvider = acct?.preferredProvider
+          || (instanceModelPinned ? modelProviderMap.get(instanceActiveModel) : undefined)
           || defaultProviderConfig?.providerId
+          || modelProviderMap.get(instanceActiveModel)
           || undefined;
         const resolvedModelLabel = allCatalogModels.find((m: any) => m.id === resolvedModel)?.label
           || resolvedModel;

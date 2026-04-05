@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
-import { Volume2, VolumeX, Pause, Play } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Loader2, Pause, Play } from 'lucide-react';
+import { API_BASE_URL } from '../../../lib/api/client';
 
 interface VoiceOutputProps {
   text: string;
@@ -10,7 +11,7 @@ interface VoiceOutputProps {
 
 /**
  * 语音输出组件（P0功能）
- * 使用Web Speech API实现文字转语音
+ * 统一走后端 /voice/tts，避免 Web 端继续分叉到浏览器原生 TTS。
  */
 export function VoiceOutput({
   text,
@@ -19,65 +20,109 @@ export function VoiceOutput({
   onComplete,
 }: VoiceOutputProps) {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setIsSupported('speechSynthesis' in window);
+    setIsSupported(typeof window !== 'undefined' && typeof Audio !== 'undefined');
+  }, []);
+
+  const releaseAudio = useCallback(() => {
+    const currentAudio = audioRef.current;
+    if (currentAudio) {
+      currentAudio.onended = null;
+      currentAudio.onerror = null;
+      currentAudio.pause();
+      currentAudio.src = '';
+      audioRef.current = null;
+    }
+
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
     if (autoPlay && text && isSupported) {
-      speak();
+      void speak();
     }
 
     return () => {
-      if (utteranceRef.current) {
-        window.speechSynthesis.cancel();
-      }
+      releaseAudio();
     };
-  }, [autoPlay, text, isSupported]);
+  }, [autoPlay, isSupported, releaseAudio, text]);
 
-  const speak = () => {
+  const speak = useCallback(async () => {
     if (!isSupported || !text) return;
 
-    // 停止之前的语音
-    window.speechSynthesis.cancel();
+    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+    if (!token) {
+      throw new Error('请先登录后再使用语音播放');
+    }
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = language;
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
+    releaseAudio();
+    setIsLoading(true);
 
-    utterance.onstart = () => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/voice/tts?text=${encodeURIComponent(text.slice(0, 2000))}&lang=${encodeURIComponent(language)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`语音合成失败 (${response.status})`);
+      }
+
+      const audioBlob = await response.blob();
+      const objectUrl = URL.createObjectURL(audioBlob);
+      objectUrlRef.current = objectUrl;
+
+      const audio = new Audio(objectUrl);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        releaseAudio();
+        setIsPlaying(false);
+        setIsLoading(false);
+        onComplete?.();
+      };
+
+      audio.onerror = () => {
+        releaseAudio();
+        setIsPlaying(false);
+        setIsLoading(false);
+      };
+
       setIsPlaying(true);
-    };
-
-    utterance.onend = () => {
+      await audio.play();
+    } catch (error) {
+      releaseAudio();
       setIsPlaying(false);
-      onComplete?.();
-    };
-
-    utterance.onerror = (event) => {
-      console.error('Speech synthesis error:', event);
-      setIsPlaying(false);
-    };
-
-    utteranceRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
-  };
+      setIsLoading(false);
+      throw error;
+    }
+  }, [isSupported, language, onComplete, releaseAudio, text]);
 
   const stop = () => {
-    window.speechSynthesis.cancel();
+    releaseAudio();
     setIsPlaying(false);
+    setIsLoading(false);
   };
 
   const toggle = () => {
     if (isPlaying) {
       stop();
     } else {
-      speak();
+      void speak().catch((error) => {
+        console.error('Voice playback error:', error);
+      });
     }
   };
 
@@ -101,7 +146,9 @@ export function VoiceOutput({
       `}
       title={isPlaying ? '停止播放' : '播放语音'}
     >
-      {isPlaying ? (
+      {isLoading ? (
+        <Loader2 size={16} className="animate-spin" />
+      ) : isPlaying ? (
         <Pause size={16} />
       ) : (
         <Play size={16} />

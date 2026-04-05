@@ -2,6 +2,19 @@ import { test, expect } from '@playwright/test';
 
 const API = 'https://api.agentrix.top/api';
 
+async function gotoDesktopOrSkip(page: Parameters<Parameters<typeof test.beforeEach>[0]>[0]['page']) {
+  try {
+    await page.goto('http://127.0.0.1:1420', { timeout: 45000, waitUntil: 'domcontentloaded' });
+  } catch (error) {
+    const message = String(error);
+    if (/ERR_CONNECTION_REFUSED|ECONNREFUSED|ERR_ABORTED/i.test(message)) {
+      test.skip(true, 'Vite dev server not running');
+      return;
+    }
+    throw error;
+  }
+}
+
 test.describe('Desktop App API Smoke Tests', () => {
   test('backend health check', async ({ request }) => {
     const res = await request.get(`${API}/health`);
@@ -55,10 +68,7 @@ test.describe('Desktop Frontend Smoke Tests', () => {
   test.setTimeout(60000);
 
   test.beforeEach(async ({ page }) => {
-    // Use the Vite dev server URL — first load may be slow (HMR compile)
-    await page.goto('http://localhost:1420', { timeout: 30000 }).catch(() => {
-      test.skip(true, 'Vite dev server not running — skip UI tests');
-    });
+    await gotoDesktopOrSkip(page);
   });
 
   test('login page renders with tabs', async ({ page }) => {
@@ -94,7 +104,7 @@ test.describe('Desktop Frontend Smoke Tests', () => {
 
   test('guest mode accessible', async ({ page }) => {
     await expect(page.locator('text=Agentrix Desktop')).toBeVisible({ timeout: 20000 });
-    await expect(page.locator('text=/Skip as Guest/')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Skip as Guest/i })).toBeVisible();
   });
 
   test('guest mode enters onboarding then chat', async ({ page }) => {
@@ -103,31 +113,32 @@ test.describe('Desktop Frontend Smoke Tests', () => {
     // Clear onboarding flag
     await page.evaluate(() => localStorage.removeItem('agentrix_onboarded'));
     
-    await page.click('text=/Skip as Guest/');
+    await page.getByRole('button', { name: /Skip as Guest/i }).dispatchEvent('click');
     
     // Should see onboarding
     await expect(page.locator('text=Welcome to Agentrix')).toBeVisible({ timeout: 5000 });
     
     // Complete onboarding — buttons have arrow suffixes
-    await page.click('text=/Get Started/');
+    await page.getByRole('button', { name: /Get Started/i }).dispatchEvent('click');
     // Step 2: connect → skip
     const skipBtn = page.locator('text=/Skip for now/');
     if (await skipBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await skipBtn.click();
+      await skipBtn.dispatchEvent('click');
     }
     // Step 3: hotkey → done
     const doneBtn = page.locator('text=/Start Using Agentrix/');
     if (await doneBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await doneBtn.click();
+      await doneBtn.dispatchEvent('click');
     }
     
-    // After onboarding, default view shows FloatingBall — click it to open ChatPanel
-    const ball = page.locator('[title*="Click to chat"]');
+    // After onboarding, default view shows FloatingBall — double-click to open Pro Mode
+    // Ball has bounce animation, so force:true bypasses Playwright stability check
+    const ball = page.locator('[title*="Agentrix"]').first();
     await expect(ball).toBeVisible({ timeout: 5000 });
-    await ball.click();
+    await ball.dblclick({ force: true });
     
     // Now chat panel should be visible
-    await expect(page.locator('textarea')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 10000 });
   });
 
   test('slash commands help', async ({ page }) => {
@@ -138,12 +149,12 @@ test.describe('Desktop Frontend Smoke Tests', () => {
     await page.goto('http://localhost:1420', { timeout: 30000 });
     await expect(page.locator('text=Agentrix Desktop')).toBeVisible({ timeout: 20000 });
     
-    await page.click('text=/Skip as Guest/');
+    await page.getByRole('button', { name: /Skip as Guest/i }).dispatchEvent('click');
     
-    // After guest login + onboarded, shows FloatingBall — click to open ChatPanel
-    const ball = page.locator('[title*="Click to chat"]');
+    // After guest login + onboarded, shows FloatingBall — double-click to open Pro Mode
+    const ball = page.locator('[title*="Agentrix"]').first();
     await expect(ball).toBeVisible({ timeout: 5000 });
-    await ball.click();
+    await ball.dblclick({ force: true });
     
     // Wait for chat panel with textarea
     await expect(page.locator('textarea')).toBeVisible({ timeout: 10000 });

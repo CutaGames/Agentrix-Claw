@@ -1,4 +1,4 @@
-export type WearableKind = 'ring' | 'band' | 'clip' | 'sensor' | 'unknown';
+export type WearableKind = 'ring' | 'band' | 'clip' | 'sensor' | 'glass' | 'watch' | 'unknown';
 
 export type WearableSupportTier = 'ready' | 'known' | 'beta';
 

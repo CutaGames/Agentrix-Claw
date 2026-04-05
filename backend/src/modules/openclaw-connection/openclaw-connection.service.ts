@@ -196,6 +196,7 @@ export class OpenClawConnectionService implements OnModuleInit {
             llmProvider: restoredProvider,
             platformHosted: true,
             activeModel: this.resolvePlatformHostedDefaultModel(restoredProvider),
+            modelPinned: false,
           } as any,
         });
       }
@@ -325,6 +326,7 @@ export class OpenClawConnectionService implements OnModuleInit {
           llmProvider: resolvedProvider,
           platformHosted: true,
           activeModel: this.resolvePlatformHostedDefaultModel(resolvedProvider),
+          modelPinned: false,
         } as any,
       });
 
@@ -669,7 +671,7 @@ export class OpenClawConnectionService implements OnModuleInit {
     const instance = await this.getInstanceById(userId, instanceId);
 
     // Update capabilities with the active model
-    const caps = { ...(instance.capabilities || {}), activeModel: modelId };
+    const caps = { ...(instance.capabilities || {}), activeModel: modelId, modelPinned: true };
     await this.instanceRepo.update(instance.id, { capabilities: caps as any });
 
     // Try pushing the model change to the running OpenClaw instance

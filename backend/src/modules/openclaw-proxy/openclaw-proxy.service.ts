@@ -1442,7 +1442,10 @@ export class OpenClawProxyService {
     userId: string,
     instance: OpenClawInstance,
     dto: ChatMessageDto,
-    streamingCallbacks?: { onChunk: (text: string) => void },
+    streamingCallbacks?: {
+      onChunk: (text: string) => void;
+      onEvent?: (event: import('../query-engine/interfaces/stream-event.interface').StreamEvent) => void;
+    },
   ) {
     const _t0 = Date.now();
     const _lap = (label: string) => this.logger.log(`⏱ ${label}: ${Date.now() - _t0}ms`);
@@ -1512,7 +1515,15 @@ export class OpenClawProxyService {
     const agentAccount = permissionProfile?.agentAccountId
       ? await this.agentAccountRepo.findOne({ where: { id: permissionProfile.agentAccountId } })
       : null;
-    let resolvedModel = agentAccount?.preferredModel || dto.model || defaultConfig?.selectedModel || (instance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5';
+    const instanceActiveModel = (instance.capabilities as any)?.activeModel;
+    const instanceModelPinned = (instance.capabilities as any)?.modelPinned === true;
+    let resolvedModel = agentAccount?.preferredModel
+      || dto.model
+      || (instanceModelPinned ? instanceActiveModel : undefined)
+      || defaultConfig?.selectedModel
+      || instanceActiveModel
+      || process.env.DEFAULT_MODEL
+      || 'claude-haiku-4-5';
     let resolvedProvider = agentAccount?.preferredProvider || undefined;
     const requestedProvider = this.inferProviderFromModelId(dto.model);
     const modelBoundProvider = this.inferProviderFromModelId(resolvedModel);
@@ -1522,7 +1533,7 @@ export class OpenClawProxyService {
       resolvedProvider = requestedProvider === 'platform' ? undefined : requestedProvider;
     } else if (modelBoundProvider) {
       resolvedProvider = modelBoundProvider === 'platform' ? undefined : modelBoundProvider;
-    } else if (!resolvedProvider && defaultConfig) {
+    } else if (!resolvedProvider && defaultConfig && !instanceModelPinned) {
       resolvedProvider = defaultConfig.providerId;
       if (!agentAccount?.preferredModel && !dto.model) {
         resolvedModel = defaultConfig.selectedModel;
@@ -1799,6 +1810,7 @@ export class OpenClawProxyService {
         createdAt: new Date().toISOString(),
       },
       toolCalls: result?.toolCalls || null,
+      stopReason: result?.stopReason || 'end_turn',
       plan: parsedPlan || this.intelligenceService.getActivePlan(sessionId) || null,
       platformHosted: true,
     };
@@ -1893,9 +1905,18 @@ export class OpenClawProxyService {
       }
 
       // Emit structured done event
+      const doneReason =
+        resultAny?.stopReason === 'max_tokens'
+        || resultAny?.stopReason === 'stop_sequence'
+        || resultAny?.stopReason === 'abort'
+        || resultAny?.stopReason === 'error'
+        || resultAny?.stopReason === 'end_turn'
+          ? resultAny.stopReason
+          : 'end_turn';
+
       emitStructured({
         type: 'done',
-        reason: 'end_turn',
+        reason: doneReason,
         totalDurationMs: Date.now() - startMs,
         totalInputTokens: 0,
         totalOutputTokens: 0,
@@ -1927,6 +1948,10 @@ export class OpenClawProxyService {
         if (callbacks.signal?.aborted) return;
         this.logger.debug(`streamPlatformHostedChatToCallbacks chunk: instance=${instance.id} chunk=${chunk.slice(0, 80)}`);
         callbacks.onChunk(chunk);
+      },
+      onEvent: (event) => {
+        if (callbacks.signal?.aborted) return;
+        callbacks.onEvent?.(event);
       },
     });
     const resultAny = result as any;
@@ -1960,6 +1985,19 @@ export class OpenClawProxyService {
 
     try {
       const parsed = JSON.parse(trimmed);
+      if (parsed?.type && callbacks.onEvent) {
+        await callbacks.onEvent(parsed as import('../query-engine/interfaces/stream-event.interface').StreamEvent);
+      }
+      if (parsed?.type === 'text_delta' && typeof parsed.text === 'string' && parsed.text.length > 0) {
+        await callbacks.onChunk(parsed.text);
+      }
+      if (parsed?.type === 'done') {
+        await callbacks.onDone?.();
+        return true;
+      }
+      if (parsed?.type === 'error') {
+        throw new BadGatewayException(parsed.error || 'Upstream stream error');
+      }
       if (parsed?.meta && callbacks.onMeta) {
         await callbacks.onMeta(parsed.meta);
       }

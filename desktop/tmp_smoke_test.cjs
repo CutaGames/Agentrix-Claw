@@ -1,9 +1,10 @@
 /**
  * Agentrix Desktop – Comprehensive IPC smoke test via CDP
- * Tests all 20 desktop_bridge_* commands + plugin commands
+ * Covers desktop bridge commands, workspace flows, and plugin commands.
  */
 const WS = require('ws');
 const http = require('http');
+const path = require('path');
 
 const results = [];
 let ws;
@@ -90,38 +91,70 @@ http.get('http://127.0.0.1:9222/json/list', (r) => {
       // ---- Group 6: File I/O ----
       console.log('--- File I/O ---');
       const testFile = process.env.TEMP ? process.env.TEMP.replace(/\\/g, '/') + '/agentrix_smoke_test.txt' : '/tmp/agentrix_smoke_test.txt';
+      const repoRoot = path.resolve(process.cwd(), '..').replace(/\\/g, '/');
+      const servicesDir = `${repoRoot}/desktop/src/services`;
+      const workspaceFile = `${repoRoot}/desktop/src/services/workspace.ts`;
+      const workspaceSmokeRelativePath = 'desktop/tmp_workspace_smoke.txt';
       await invokeCmd('write_file', 'desktop_bridge_write_file', { path: testFile, content: 'Hello from smoke test!' }, true);
       await invokeCmd('read_file', 'desktop_bridge_read_file', { path: testFile }, true);
 
-      // ---- Group 7: Shell command ----
-      console.log('--- Shell Command ---');
-      await invokeCmd('run_command', 'desktop_bridge_run_command', { command: 'echo hello_from_agentrix', working_directory: null, timeout_ms: 5000 }, true);
+      // ---- Group 7: Workspace / directory / ranged read ----
+      console.log('--- Workspace / Directory / Range ---');
+      await invokeCmd('set_workspace_dir', 'desktop_bridge_set_workspace_dir', { path: repoRoot }, true);
+      await invokeCmd('list_directory', 'desktop_bridge_list_directory', { path: servicesDir }, true);
+      await evalExpr('read_file_range', `new Promise(function(resolve) {
+        window.__TAURI_INTERNALS__.invoke("desktop_bridge_read_file", {
+          path: ${JSON.stringify(workspaceFile)},
+          startLine: 1,
+          endLine: 3,
+        }).then(
+          function(v) {
+            var ok = v && v.startLine === 1 && v.endLine === 3 && typeof v.content === "string" && v.content.indexOf('import { invoke }') === 0;
+            resolve((ok ? "OK:" : "ERR:") + JSON.stringify(v));
+          },
+          function(e) { resolve("ERR:" + String(e)); }
+        );
+      })`);
+      await invokeCmd('list_workspace_dir', 'desktop_bridge_list_workspace_dir', { relativePath: 'desktop/src/services' }, true);
+      await invokeCmd('write_workspace_file', 'desktop_bridge_write_workspace_file', { relativePath: workspaceSmokeRelativePath, content: 'workspace smoke ok' }, true);
+      await evalExpr('read_workspace_file', `new Promise(function(resolve) {
+        window.__TAURI_INTERNALS__.invoke("desktop_bridge_read_workspace_file", {
+          relativePath: ${JSON.stringify(workspaceSmokeRelativePath)},
+        }).then(
+          function(v) { resolve((v === "workspace smoke ok" ? "OK:" : "ERR:") + String(v)); },
+          function(e) { resolve("ERR:" + String(e)); }
+        );
+      })`);
 
-      // ---- Group 8: Browser open (skip actual open to avoid side effects) ----
+      // ---- Group 8: Shell command ----
+      console.log('--- Shell Command ---');
+      await invokeCmd('run_command', 'desktop_bridge_run_command', { command: 'echo hello_from_agentrix', workingDirectory: null, timeoutMs: 5000 }, true);
+
+      // ---- Group 9: Browser open (skip actual open to avoid side effects) ----
       // We test that the command is registered but use a benign URL
       // Skipping to avoid opening a browser tab during test
 
-      // ---- Group 9: Panel operations ----
+      // ---- Group 10: Panel operations ----
       console.log('--- Panel Operations ---');
       await invokeCmd('open_chat_panel', 'desktop_bridge_open_chat_panel', {}, true);
       await new Promise((r) => setTimeout(r, 1500));
       await invokeCmd('close_chat_panel', 'desktop_bridge_close_chat_panel', {}, true);
 
-      // ---- Group 10: Panel position ----
+      // ---- Group 11: Panel position ----
       console.log('--- Panel Position ---');
       await invokeCmd('set_panel_position', 'desktop_bridge_set_panel_position_near_ball', {}, true);
 
-      // ---- Group 11: Plugin commands ----
+      // ---- Group 12: Plugin commands ----
       console.log('--- Plugin Commands ---');
       await invokeCmd('app_version', 'plugin:app|version', {}, true);
       await invokeCmd('app_name', 'plugin:app|name', {}, true);
       await invokeCmd('app_tauri_version', 'plugin:app|tauri_version', {}, true);
 
-      // ---- Group 12: Pair session (will fail without server but should not hang) ----
+      // ---- Group 13: Pair session (will fail without server but should not hang) ----
       console.log('--- Pair Session (expect network error) ---');
       await invokeCmd('create_pair_session', 'desktop_bridge_create_pair_session', { sessionId: 'smoke-test-session' }, false);
 
-      // ---- Group 13: Password login (will fail without server but should not hang) ----
+      // ---- Group 14: Password login (will fail without server but should not hang) ----
       console.log('--- Password Login (expect network error) ---');
       await invokeCmd('password_login', 'desktop_bridge_password_login', { email: 'test@example.com', password: 'not_real' }, false);
 

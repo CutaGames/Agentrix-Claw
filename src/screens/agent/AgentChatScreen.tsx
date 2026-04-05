@@ -31,6 +31,7 @@ import { fetchLatestDesktopClipboard, type MobileDesktopClipboardSnapshot } from
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
 import { getVoiceDiagnosticsText, clearVoiceDiagnostics } from '../../services/voiceDiagnostics';
+import { MobileLocalInferenceService } from '../../services/mobileLocalInference.service';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -559,6 +560,7 @@ export function AgentChatScreen() {
   const navigation = useNavigation<any>();
   const { t, language } = useI18n();
   const activeInstance = useAuthStore((s) => s.activeInstance);
+  const updateInstance = useAuthStore((s) => s.updateInstance);
   const token = useAuthStore((s) => s.token) || '';
   const instanceId = route.params?.instanceId || activeInstance?.id || '';
   const instanceName = route.params?.instanceName || activeInstance?.name || 'Agent';
@@ -581,7 +583,7 @@ export function AgentChatScreen() {
   const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
   const [agentVoiceId, setAgentVoiceId] = useState<string | null>(null);
   // The effective model ID to display and send
-  const effectiveModelId = agentPreferredModel || selectedModelId;
+  const effectiveModelId = agentPreferredModel || activeInstance?.resolvedModel || selectedModelId;
 
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
   const storageKey = `chat_hist_${instanceId}`;
@@ -765,6 +767,9 @@ export function AgentChatScreen() {
 
   // Fetch dynamic model list from backend and per-agent model
   useEffect(() => {
+    setAgentPreferredModel(null);
+    setAgentVoiceId(null);
+    setResolvedModelLabel(activeInstance?.resolvedModelLabel || null);
     (async () => {
       try {
         const models = await apiFetch<Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }>>('/ai-providers/available-models');
@@ -794,7 +799,7 @@ export function AgentChatScreen() {
         }
       } catch {}
     })();
-  }, [instanceId, activeInstance?.metadata?.agentAccountId]);
+  }, [instanceId, activeInstance?.id, activeInstance?.metadata?.agentAccountId, activeInstance?.resolvedModelLabel]);
 
   // All messages (persisted) and visible slice for lazy rendering
   const allMessagesRef = useRef<Message[]>([]);
@@ -1270,8 +1275,53 @@ export function AgentChatScreen() {
       let streamSucceeded = false;
       let proxyFailureMessage: string | null = null;
 
+      const shouldTryLocalNano = (
+        effectiveModelId === MobileLocalInferenceService.modelId
+        && attachments.length === 0
+      );
+
+      if (shouldTryLocalNano && await MobileLocalInferenceService.isAvailable()) {
+        const localAbort = new AbortController();
+        streamAbortRef.current = localAbort;
+        setResolvedModelLabel(MobileLocalInferenceService.modelLabel);
+
+        const localHistory = currentMsgs
+          .filter((message) => (message.role === 'user' || message.role === 'assistant') && message.content.trim())
+          .slice(-12)
+          .map((message) => ({
+            role: message.role as 'user' | 'assistant',
+            content: message.content,
+          }));
+
+        streamSucceeded = true;
+        resetVoicePhaseAfterResponse();
+
+        try {
+          for await (const chunk of MobileLocalInferenceService.generateTextStream([
+            { role: 'system', content: `You are ${instanceName}. Keep responses concise, practical, and conversational.` },
+            ...localHistory,
+            { role: 'user', content: text },
+          ])) {
+            if (localAbort.signal.aborted || responseInterruptedRef.current) {
+              break;
+            }
+
+            if (!chunk) {
+              continue;
+            }
+
+            appendToStreamingMessage(assistantMsgId, chunk);
+            enqueueStreamedSpeech(chunk);
+          }
+          enqueueStreamedSpeech('', true);
+        } catch (error: any) {
+          streamSucceeded = false;
+          proxyFailureMessage = error?.message || t({ en: 'Local model inference failed.', zh: '本地模型推理失败。' });
+        }
+      }
+
       // Try OpenClaw proxy first (requires active instance)
-      if (instanceId) {
+      if (!streamSucceeded && instanceId) {
         await new Promise<void>((resolve) => {
           const ac = streamProxyChatSSE({
             instanceId,
@@ -2336,7 +2386,7 @@ export function AgentChatScreen() {
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowModelPicker(false)} activeOpacity={1}>
           <View style={styles.modelSheet}>
             <Text style={styles.modelSheetTitle}>{t({ en: 'Switch Model', zh: '切换模型' })}</Text>
-            <Text style={styles.modelSheetSubtitle}>{t({ en: 'Applies to this agent only', zh: '仅应用到当前智能体' })}</Text>
+            <Text style={styles.modelSheetSubtitle}>{t({ en: 'Syncs this agent engine. Permissions override this selection.', zh: '会同步当前智能体引擎；若权限里设置了专属模型，则专属模型优先。' })}</Text>
             <ScrollView>
               {availableModels.map((m) => {
                 const isActive = m.id === effectiveModelId;
@@ -2348,16 +2398,19 @@ export function AgentChatScreen() {
                       isActive && styles.modelOptionActive,
                     ]}
                     onPress={async () => {
-                      setAgentPreferredModel(m.id);
+                      setSelectedModel(m.id);
                       setResolvedModelLabel(m.label);
                       setShowModelPicker(false);
-                      const agentAccountId = activeInstance?.metadata?.agentAccountId || activeInstance?.agentAccountId;
-                      if (agentAccountId) {
-                        try {
-                          // Model switch is handled by switchInstanceModel below
-                        } catch {}
-                      }
                       if (instanceId) {
+                        updateInstance(instanceId, {
+                          capabilities: {
+                            ...(activeInstance?.capabilities || {}),
+                            activeModel: m.id,
+                            modelPinned: true,
+                          },
+                          resolvedModel: m.id,
+                          resolvedModelLabel: m.label,
+                        });
                         try { await switchInstanceModel(instanceId, m.id); } catch {}
                       }
                     }}

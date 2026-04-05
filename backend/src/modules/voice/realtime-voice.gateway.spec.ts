@@ -12,17 +12,42 @@ describe('RealtimeVoiceGateway', () => {
       transcribe: jest.fn().mockResolvedValue({ transcript: 'test transcript' }),
     };
 
+    const sessionFabric = {
+      joinSession: jest.fn().mockResolvedValue({ deviceId: 'web-socket-1', isPrimary: true }),
+      leaveSession: jest.fn().mockResolvedValue(undefined),
+      getSessionDevices: jest.fn().mockResolvedValue([]),
+      getPrimaryDevice: jest.fn().mockResolvedValue(null),
+      switchPrimary: jest.fn().mockResolvedValue(true),
+    };
+
+    const outputDispatcher = {
+      setServer: jest.fn(),
+      dispatch: jest.fn().mockResolvedValue(undefined),
+      broadcast: jest.fn().mockResolvedValue(undefined),
+      emitToPrimary: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const deepThinkOrchestrator = {
+      getSootheMessage: jest.fn().mockReturnValue('Working on it...'),
+      notifyStart: jest.fn().mockResolvedValue(undefined),
+      notifyProgress: jest.fn().mockResolvedValue(undefined),
+      notifyDone: jest.fn().mockResolvedValue(undefined),
+    };
+
     const gateway = new RealtimeVoiceGateway(
       {} as JwtService,
       {} as ConfigService,
       voiceService as any,
       {} as any,
       { count: jest.fn().mockResolvedValue(0) } as any,
+      sessionFabric as any,
+      outputDispatcher as any,
+      deepThinkOrchestrator as any,
     );
 
     (gateway as any).streamingAdapter = { isAvailable: false };
 
-    return { gateway, voiceService };
+    return { gateway, voiceService, sessionFabric, outputDispatcher, deepThinkOrchestrator };
   }
 
   function createSession(overrides: Partial<Record<string, unknown>> = {}) {
@@ -47,6 +72,14 @@ describe('RealtimeVoiceGateway', () => {
       activeStreamingToken: null,
       ignoredStreamingTokens: new Set<symbol>(),
       pendingStreamingEnd: null,
+      streamingFinalText: '',
+      streamingFinalToken: null,
+      geminiSession: null,
+      useGeminiLive: false,
+      v2Strategy: null,
+      pendingAgentEndTimer: null,
+      pendingToolCalls: new Map(),
+      fabricDeviceId: undefined,
       ...overrides,
     };
   }
@@ -126,7 +159,7 @@ describe('RealtimeVoiceGateway', () => {
     }));
 
     const handleAudioEndPromise = gateway.handleAudioEnd(client, { sessionId: 'session-1' });
-    await jest.advanceTimersByTimeAsync(1500);
+    await jest.advanceTimersByTimeAsync(2100);
     await handleAudioEndPromise;
 
     expect(streamingSession.end).toHaveBeenCalledTimes(1);
@@ -142,5 +175,158 @@ describe('RealtimeVoiceGateway', () => {
       'test transcript',
     );
     expect(initializeStreamingSessionSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks wearable approval holds on pending tool calls', () => {
+    const { gateway } = createGateway();
+    const client = { userId: 'user-1', emit: jest.fn() } as any;
+    const session = createSession({
+      pendingToolCalls: new Map([
+        ['tool-1', {
+          toolName: 'create_payment_intent',
+          input: { amount: '10', token: 'USDC' },
+          requiresApproval: true,
+          held: false,
+          updatedAt: Date.now(),
+        }],
+      ]),
+    });
+
+    (gateway as any).sessions.set('session-1', session);
+
+    gateway.handleToolHold(client, {
+      sessionId: 'session-1',
+      toolCallId: 'tool-1',
+      reason: 'awaiting_user_payment_confirmation',
+    });
+
+    expect(session.pendingToolCalls.get('tool-1')?.held).toBe(true);
+    expect(client.emit).toHaveBeenCalledWith(
+      'voice:tool:held',
+      expect.objectContaining({
+        sessionId: 'session-1',
+        toolCallId: 'tool-1',
+        toolName: 'create_payment_intent',
+      }),
+    );
+  });
+
+  it('continues the voice session after paired-device tool results arrive', async () => {
+    const { gateway } = createGateway();
+    const client = { userId: 'user-1', emit: jest.fn() } as any;
+    const strategy = {
+      processText: jest.fn().mockResolvedValue(undefined),
+    };
+
+    (gateway as any).cascadeStrategy = strategy;
+
+    const session = createSession({
+      v2Strategy: 'cascade',
+      pendingToolCalls: new Map([
+        ['tool-1', {
+          toolName: 'create_payment_intent',
+          input: { amount: '10', token: 'USDC' },
+          requiresApproval: true,
+          held: true,
+          updatedAt: Date.now(),
+        }],
+      ]),
+    });
+
+    (gateway as any).sessions.set('session-1', session);
+
+    await gateway.handleToolResult(client, {
+      sessionId: 'session-1',
+      toolCallId: 'tool-1',
+      result: { success: true, txHash: '0xabc' },
+    });
+
+    expect(session.pendingToolCalls.size).toBe(0);
+    expect(client.emit).toHaveBeenCalledWith(
+      'voice:agent:tool_result',
+      expect.objectContaining({
+        sessionId: 'session-1',
+        toolCallId: 'tool-1',
+        toolName: 'create_payment_intent',
+        success: true,
+        source: 'paired-device',
+      }),
+    );
+    expect(strategy.processText).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('0xabc'),
+    );
+    expect(strategy.processText).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringContaining('create_payment_intent'),
+    );
+  });
+
+  it('returns fabric device list when queried', async () => {
+    const { gateway, sessionFabric } = createGateway();
+    const client = { userId: 'user-1', emit: jest.fn() } as any;
+
+    sessionFabric.getSessionDevices.mockResolvedValue([
+      {
+        deviceId: 'phone-1',
+        deviceType: 'phone',
+        isPrimary: true,
+        capabilities: { hasMic: true, hasSpeaker: true, hasScreen: true, screenSize: 'medium', hasCamera: true, hasLocalModel: false },
+        lastActiveAt: new Date(),
+      },
+      {
+        deviceId: 'desktop-1',
+        deviceType: 'desktop',
+        isPrimary: false,
+        capabilities: { hasMic: true, hasSpeaker: true, hasScreen: true, screenSize: 'large', hasCamera: false, hasLocalModel: true },
+        lastActiveAt: new Date(),
+      },
+    ]);
+
+    await gateway.handleFabricDevices(client, { sessionId: 'session-1' });
+
+    expect(sessionFabric.getSessionDevices).toHaveBeenCalledWith('session-1');
+    expect(client.emit).toHaveBeenCalledWith(
+      'voice:fabric:devices:res',
+      expect.objectContaining({
+        sessionId: 'session-1',
+        devices: expect.arrayContaining([
+          expect.objectContaining({ deviceId: 'phone-1', isPrimary: true }),
+          expect.objectContaining({ deviceId: 'desktop-1', isPrimary: false }),
+        ]),
+      }),
+    );
+  });
+
+  it('switches fabric primary and broadcasts change', async () => {
+    const { gateway, sessionFabric, outputDispatcher } = createGateway();
+    const client = { userId: 'user-1', emit: jest.fn() } as any;
+
+    await gateway.handleFabricSwitchPrimary(client, {
+      sessionId: 'session-1',
+      targetDeviceId: 'desktop-1',
+    });
+
+    expect(sessionFabric.switchPrimary).toHaveBeenCalledWith('session-1', 'desktop-1');
+    expect(outputDispatcher.broadcast).toHaveBeenCalledWith(
+      'session-1',
+      'voice:fabric:primary-changed',
+      expect.objectContaining({
+        sessionId: 'session-1',
+        newPrimaryDeviceId: 'desktop-1',
+        success: true,
+      }),
+    );
+  });
+
+  it('initializes output dispatcher with server reference on module init', () => {
+    const { gateway, outputDispatcher } = createGateway();
+    (gateway as any).server = { to: jest.fn() } as any;
+
+    (gateway as any).cascadeStrategy = { name: 'cascade' };
+    (gateway as any).gemmaStrategy = { isAvailable: () => false };
+    gateway.onModuleInit();
+
+    expect(outputDispatcher.setServer).toHaveBeenCalled();
   });
 });

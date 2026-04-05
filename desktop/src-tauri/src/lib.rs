@@ -212,6 +212,29 @@ fn desktop_bridge_delete_auth_token() -> Result<(), String> {
     Ok(())
 }
 
+// ── Local LLM Sidecar ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn desktop_bridge_start_llm_sidecar(
+    model_path: String,
+    port: u16,
+    n_gpu_layers: u32,
+    context_size: u32,
+    threads: Option<u32>,
+) -> Result<(), String> {
+    commands::start_llm_sidecar(model_path, port, n_gpu_layers, context_size, threads)
+}
+
+#[tauri::command]
+fn desktop_bridge_stop_llm_sidecar() -> Result<(), String> {
+    commands::stop_llm_sidecar()
+}
+
+#[tauri::command]
+fn desktop_bridge_list_local_models(models_dir: String) -> Result<Vec<commands::LocalModelInfo>, String> {
+    commands::list_local_models(models_dir)
+}
+
 #[tauri::command]
 fn desktop_bridge_log_debug_event(message: String) -> Result<(), String> {
     eprintln!("[agentrix-debug] {}", message);
@@ -470,6 +493,10 @@ pub fn run() {
             desktop_bridge_keychain_set,
             desktop_bridge_keychain_get,
             desktop_bridge_keychain_delete,
+            // Local LLM sidecar (llama.cpp)
+            desktop_bridge_start_llm_sidecar,
+            desktop_bridge_stop_llm_sidecar,
+            desktop_bridge_list_local_models,
         ])
         .setup(|app| {
             // Grant WebView2 permissions (microphone, camera, etc.) on the main window

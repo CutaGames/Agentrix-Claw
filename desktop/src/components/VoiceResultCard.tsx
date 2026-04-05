@@ -12,6 +12,9 @@ export interface VoiceResultAction {
 
 interface Props {
   text: string;
+  notice?: string;
+  transcript?: string;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
   /** Whether TTS is currently playing */
   isSpeaking?: boolean;
   /** Auto-hide after this many ms (0 = no auto-hide) */
@@ -27,6 +30,9 @@ interface Props {
 
 export default function VoiceResultCard({
   text,
+  notice,
+  transcript,
+  history,
   isSpeaking = false,
   autoHideMs = 8000,
   actions,
@@ -37,6 +43,7 @@ export default function VoiceResultCard({
   const [visible, setVisible] = useState(true);
   const [hovered, setHovered] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historyPreview = (history || []).filter((entry) => entry.content.trim()).slice(-4);
 
   // Auto-hide timer (paused while hovered or speaking or streaming)
   useEffect(() => {
@@ -77,6 +84,33 @@ export default function VoiceResultCard({
         <div style={speakingIndicator}>
           <span style={speakingDot} />
           <span style={{ fontSize: 10, color: "var(--accent-light, #A29BFE)" }}>Speaking...</span>
+        </div>
+      )}
+
+      {notice && (
+        <div style={noticeStyle}>{notice}</div>
+      )}
+
+      {transcript && (
+        <div style={contextSection}>
+          <div style={sectionLabel}>You said</div>
+          <div style={transcriptStyle}>{transcript}</div>
+        </div>
+      )}
+
+      {historyPreview.length > 0 && (
+        <div style={contextSection}>
+          <div style={sectionLabel}>Recent history</div>
+          <div style={historyListStyle}>
+            {historyPreview.map((entry, index) => (
+              <div key={`${entry.role}-${index}`} style={historyRowStyle}>
+                <span style={historyRoleStyle}>{entry.role === "user" ? "You" : "Agent"}</span>
+                <span style={historyTextStyle}>
+                  {entry.content.length > 90 ? entry.content.slice(0, 90) + "…" : entry.content}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -148,11 +182,73 @@ const speakingDot: CSSProperties = {
   animation: "dotPulse 1.2s infinite",
 };
 
+const noticeStyle: CSSProperties = {
+  marginBottom: 10,
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid rgba(251,191,36,0.28)",
+  background: "rgba(245,158,11,0.12)",
+  color: "rgba(255,244,214,0.92)",
+  fontSize: 12,
+  lineHeight: 1.45,
+};
+
 const textStyle: CSSProperties = {
   whiteSpace: "pre-wrap",
   wordBreak: "break-word",
   maxHeight: 180,
   overflow: "auto",
+};
+
+const contextSection: CSSProperties = {
+  marginBottom: 10,
+  paddingBottom: 10,
+  borderBottom: "1px solid rgba(255,255,255,0.06)",
+};
+
+const sectionLabel: CSSProperties = {
+  marginBottom: 6,
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  color: "var(--text-dim, #9CA3AF)",
+};
+
+const transcriptStyle: CSSProperties = {
+  fontSize: 12,
+  lineHeight: 1.5,
+  color: "rgba(255,255,255,0.92)",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+};
+
+const historyListStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  maxHeight: 110,
+  overflowY: "auto",
+};
+
+const historyRowStyle: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  alignItems: "flex-start",
+  fontSize: 11,
+  lineHeight: 1.45,
+};
+
+const historyRoleStyle: CSSProperties = {
+  minWidth: 38,
+  color: "var(--accent-light, #A29BFE)",
+  fontWeight: 600,
+};
+
+const historyTextStyle: CSSProperties = {
+  flex: 1,
+  color: "rgba(255,255,255,0.82)",
+  wordBreak: "break-word",
 };
 
 const actionBar: CSSProperties = {
@@ -165,8 +261,9 @@ const actionBar: CSSProperties = {
 };
 
 const actionBtn: CSSProperties = {
-  width: 28,
+  minWidth: 28,
   height: 28,
+  padding: "0 8px",
   borderRadius: 6,
   background: "rgba(255,255,255,0.06)",
   border: "none",

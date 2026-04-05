@@ -4,8 +4,7 @@
  */
 
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-
-const API_BASE = "https://api.agentrix.top/api";
+import { API_BASE } from "./store";
 
 let mediaRecorder: MediaRecorder | null = null;
 let audioChunks: Blob[] = [];

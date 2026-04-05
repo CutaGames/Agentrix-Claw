@@ -44,6 +44,7 @@ export type DesktopCommandKind =
   | "context"
   | "active-window"
   | "list-windows"
+  | "list-directory"
   | "run-command"
   | "read-file"
   | "write-file"

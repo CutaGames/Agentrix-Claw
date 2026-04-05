@@ -6,6 +6,7 @@ import { ClaudeIntegrationService } from './claude-integration.service';
 import { AiProviderService } from '../../ai-provider/ai-provider.service';
 import { OpenClawProxyService } from '../../openclaw-proxy/openclaw-proxy.service';
 import { AgentContextService } from '../../agent-context/agent-context.service';
+import { AgentIntelligenceService } from '../../agent-intelligence/agent-intelligence.service';
 
 @Controller('claude')
 export class ClaudeIntegrationController {
@@ -19,6 +20,7 @@ export class ClaudeIntegrationController {
     @Inject(forwardRef(() => OpenClawProxyService))
     private openClawProxyService: OpenClawProxyService,
     private agentContextService: AgentContextService,
+    private agentIntelligenceService: AgentIntelligenceService,
   ) {}
 
   /** Best-effort userId extraction from Bearer token (no guard — stays public). */
@@ -130,6 +132,7 @@ export class ClaudeIntegrationController {
       messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string | any[] }>;
       anthropicApiKey?: string; // 用户提供的 API Key（可选）
       sessionId?: string;
+      agentId?: string;
       mode?: 'ask' | 'agent' | 'plan';
       platform?: 'desktop' | 'mobile' | 'web';
       deviceId?: string;
@@ -145,7 +148,7 @@ export class ClaudeIntegrationController {
       };
     },
   ) {
-    const { messages, anthropicApiKey, context = {}, options, sessionId, mode, platform, deviceId } = body;
+    const { messages, anthropicApiKey, context = {}, options, sessionId, agentId, mode, platform, deviceId } = body;
 
     if (!context.sessionId && sessionId) {
       context.sessionId = sessionId;
@@ -180,6 +183,7 @@ export class ClaudeIntegrationController {
       // Phase 3: Use shared context builder for consistent system prompts across both chat paths
       const builtContext = await this.agentContextService.buildContext({
         userId: context.userId || '',
+        agentId,
         sessionId: context.sessionId,
         needsTools: mode !== 'ask',
         modelLabel: options?.model || 'AI',
@@ -261,6 +265,18 @@ export class ClaudeIntegrationController {
     }
 
     const result = await this.claudeService.chatWithFunctions(allMessages, chatOptions);
+
+    if (context.sessionId && context.userId && lastUserText && typeof result?.text === 'string' && result.text.trim()) {
+      this.agentIntelligenceService.extractAndSaveMemories(
+        context.sessionId,
+        context.userId,
+        agentId,
+        lastUserText,
+        result.text,
+      ).catch((err: Error) => {
+        this.logger.warn(`Claude chat memory extraction failed: ${err.message}`);
+      });
+    }
 
     return result;
   }

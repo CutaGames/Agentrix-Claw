@@ -8,7 +8,7 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { forwardRef, Inject, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Logger, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -19,7 +19,14 @@ import { DeepgramSTTAdapter } from './adapters/deepgram-stt.adapter';
 import { GeminiLiveAdapter, type GeminiTier } from './adapters/gemini-live.adapter';
 import type { StreamingSTTSession, RealtimeVoiceSession as GeminiSession } from './adapters/voice-provider.interface';
 import { OpenClawProxyService } from '../openclaw-proxy/openclaw-proxy.service';
+import type { StreamEvent } from '../query-engine/interfaces/stream-event.interface';
 import { UserProviderConfig } from '../../entities/user-provider-config.entity';
+import { CascadeVoiceStrategy, GemmaMultimodalVoiceStrategy } from './strategies';
+import type { IVoiceStreamStrategy, VoiceStrategyCallbacks, VoiceStrategyName } from './strategies';
+import { SessionFabricService } from './session-fabric.service';
+import { OutputDispatcherService } from './output-dispatcher.service';
+import { DeepThinkOrchestratorService } from './deep-think-orchestrator.service';
+import type { FabricDeviceType } from '../../entities/device-session.entity';
 
 /**
  * RealtimeVoiceGateway — WebSocket gateway for bidirectional voice streaming.
@@ -41,10 +48,28 @@ import { UserProviderConfig } from '../../entities/user-provider-config.entity';
  *   voice:tts:end        { sessionId }
  *   voice:error          { sessionId, error, code? }
  *   voice:session:ended  { sessionId }
+ *
+ * v2 additions (tri-tier hybrid):
+ * Client → Server:
+ *   voice:image:frame    { sessionId, frame: Base64, mimeType }
+ *
+ * Server → Client:
+ *   voice:strategy:info  { sessionId, strategy }
+ *   voice:deepthink:start { sessionId, targetModel }
+ *   voice:deepthink:done  { sessionId }
+ *   voice:model:used      { sessionId, model, tier }
  */
 
 interface AuthenticatedVoiceSocket extends Socket {
   userId?: string;
+}
+
+interface PendingVoiceToolCall {
+  toolName: string;
+  input?: Record<string, any>;
+  requiresApproval: boolean;
+  held: boolean;
+  updatedAt: number;
 }
 
 interface VoiceSession {
@@ -79,6 +104,14 @@ interface VoiceSession {
   /** Gemini Live end-to-end session (when enabled) */
   geminiSession: GeminiSession | null;
   useGeminiLive: boolean;
+  /** v2: which strategy is active for this session */
+  v2Strategy: VoiceStrategyName | null;
+  pendingAgentEndTimer: NodeJS.Timeout | null;
+  pendingToolCalls: Map<string, PendingVoiceToolCall>;
+  /** v2: device type declared by client */
+  deviceType?: 'phone' | 'desktop' | 'web' | 'glass' | 'watch';
+  /** Fabric device ID for cleanup on disconnect */
+  fabricDeviceId?: string;
 }
 
 const PCM_SAMPLE_RATE = 16000;
@@ -94,7 +127,7 @@ const STREAMING_FINALIZATION_TIMEOUT_MS = 2000;
   namespace: '/voice',
   maxHttpBufferSize: 1e7, // 10MB for audio data
 })
-export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit {
   @WebSocketServer()
   server: Server;
 
@@ -102,6 +135,8 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
   private sessions = new Map<string, VoiceSession>();
   private readonly streamingAdapter = new DeepgramSTTAdapter();
   private readonly geminiAdapter = new GeminiLiveAdapter();
+  private cascadeStrategy: CascadeVoiceStrategy;
+  private gemmaStrategy: GemmaMultimodalVoiceStrategy;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -111,7 +146,38 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     private readonly openClawProxyService: OpenClawProxyService,
     @InjectRepository(UserProviderConfig)
     private readonly providerConfigRepo: Repository<UserProviderConfig>,
+    private readonly sessionFabric: SessionFabricService,
+    private readonly outputDispatcher: OutputDispatcherService,
+    private readonly deepThinkOrchestrator: DeepThinkOrchestratorService,
   ) {}
+
+  onModuleInit() {
+    this.cascadeStrategy = new CascadeVoiceStrategy(
+      this.voiceService,
+      this.openClawProxyService,
+    );
+    this.gemmaStrategy = new GemmaMultimodalVoiceStrategy();
+    this.outputDispatcher.setServer(this.server);
+    this.logger.log(
+      `Voice strategies initialized: cascade=available, gemma-multimodal=${this.gemmaStrategy.isAvailable() ? 'available' : 'unavailable'}`,
+    );
+  }
+
+  /**
+   * Select the best voice strategy for a session.
+   *   - glass/watch devices → prefer gemma-multimodal (vision)
+   *   - gemma-multimodal healthy → use it for premium users
+   *   - fallback → cascade (always available)
+   */
+  private selectStrategy(session: VoiceSession): IVoiceStreamStrategy {
+    // Devices with camera always prefer multimodal
+    if (session.deviceType === 'glass' || session.deviceType === 'watch') {
+      if (this.gemmaStrategy.isAvailable()) return this.gemmaStrategy;
+    }
+
+    // Default: cascade pipeline (proven, always available)
+    return this.cascadeStrategy;
+  }
 
   // ── Connection Lifecycle ─────────────────────────────────
 
@@ -148,7 +214,15 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
         session.geminiSession?.close?.();
         session.streamingSession?.abort();
         session.currentResponseAbort?.abort();
+        this.clearPendingAgentEnd(session);
+        this.getStrategyForSession(session)?.endSession(sessionId);
         this.sessions.delete(sessionId);
+
+        // Leave fabric (async, best-effort)
+        if (session.fabricDeviceId && session.userId) {
+          this.sessionFabric.leaveSession(session.userId, session.fabricDeviceId).catch(() => {});
+        }
+
         this.logger.debug(`Cleaned up voice session ${sessionId} on disconnect`);
       }
     }
@@ -160,7 +234,7 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
   @SubscribeMessage('voice:session:start')
   async handleSessionStart(
     @ConnectedSocket() client: AuthenticatedVoiceSocket,
-    @MessageBody() data: { sessionId?: string; instanceId?: string; lang?: string; voiceId?: string; duplexMode?: boolean; model?: string },
+    @MessageBody() data: { sessionId?: string; instanceId?: string; lang?: string; voiceId?: string; duplexMode?: boolean; model?: string; deviceType?: 'phone' | 'desktop' | 'web' | 'glass' | 'watch' },
   ) {
     if (!client.userId) {
       client.emit('voice:error', { error: 'Not authenticated' });
@@ -199,16 +273,35 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       streamingFinalToken: null,
       geminiSession: null,
       useGeminiLive: false,
+      v2Strategy: null,
+      pendingAgentEndTimer: null,
+      pendingToolCalls: new Map<string, PendingVoiceToolCall>(),
+      deviceType: data.deviceType,
     };
 
     this.sessions.set(sessionId, session);
     client.join(`voice:${sessionId}`);
+
+    // Register device in Session Fabric
+    const deviceId = (data as Record<string, any>).deviceId || `${data.deviceType || 'web'}-${client.id}`;
+    session.fabricDeviceId = deviceId;
+    this.sessionFabric.joinSession({
+      userId: client.userId,
+      sessionId,
+      deviceId,
+      deviceType: (data.deviceType || 'web') as FabricDeviceType,
+      socketId: client.id,
+    }).catch((err: Error) => {
+      this.logger.warn(`Fabric join failed for ${sessionId}: ${err.message}`);
+    });
 
     // Try Gemini Live for end-to-end voice — only for platform users without custom API
     const hasCustomProvider = await this.providerConfigRepo.count({ where: { userId: client.userId, isActive: true } }) > 0;
     if (!hasCustomProvider && this.geminiAdapter.isAvailable && data.duplexMode !== false) {
       try {
         await this.initializeGeminiLiveSession(session, client);
+        session.v2Strategy = 'gemini-live';
+        client.emit('voice:strategy:info', { sessionId, strategy: session.v2Strategy });
       } catch (err: any) {
         this.logger.warn(`Gemini Live init failed, falling back to Deepgram+OpenClaw: ${err.message}`);
         session.useGeminiLive = false;
@@ -216,9 +309,29 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       }
     }
 
-    // Fall back to traditional Deepgram STT pipeline
     if (!session.useGeminiLive) {
-      await this.initializeStreamingSession(session, client);
+      const strategy = this.selectStrategy(session);
+      try {
+        await strategy.initSession(
+          {
+            sessionId,
+            userId: session.userId,
+            instanceId: session.instanceId,
+            lang: session.lang,
+            voiceId: session.voiceId,
+            model: session.model,
+            duplexMode: session.duplexMode,
+            deviceType: session.deviceType,
+          },
+          this.buildStrategyCallbacks(client, session),
+        );
+        session.v2Strategy = strategy.name;
+        client.emit('voice:strategy:info', { sessionId, strategy: strategy.name });
+      } catch (error: any) {
+        this.logger.warn(`Voice strategy init failed for ${sessionId}, falling back to legacy pipeline: ${error.message}`);
+        session.v2Strategy = null;
+        await this.initializeStreamingSession(session, client);
+      }
     }
 
     this.logger.debug(`Voice session started: ${sessionId} (user: ${client.userId}, lang: ${session.lang}, duplex: ${session.duplexMode})`);
@@ -237,6 +350,8 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     session.geminiSession?.close?.();
     session.streamingSession?.abort();
     session.currentResponseAbort?.abort();
+    this.clearPendingAgentEnd(session);
+    this.getStrategyForSession(session)?.endSession(data.sessionId);
     this.sessions.delete(data.sessionId);
     client.leave(`voice:${data.sessionId}`);
     client.emit('voice:session:ended', { sessionId: data.sessionId });
@@ -269,6 +384,12 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       return;
     }
 
+    const strategy = this.getStrategyForSession(session);
+    if (strategy) {
+      await strategy.processText(data.sessionId, text);
+      return;
+    }
+
     await this.startAgentResponse(client, session, text);
   }
 
@@ -282,7 +403,191 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       return;
     }
 
+    const strategy = this.getStrategyForSession(session);
+    if (strategy) {
+      this.clearPendingAgentEnd(session);
+      strategy.interrupt(data.sessionId);
+      return;
+    }
+
     this.interruptSessionResponse(client, session);
+  }
+
+  // ── Session Fabric ───────────────────────────────────────
+
+  @SubscribeMessage('voice:fabric:devices')
+  async handleFabricDevices(
+    @ConnectedSocket() client: AuthenticatedVoiceSocket,
+    @MessageBody() data: { sessionId: string },
+  ) {
+    if (!client.userId || !data.sessionId) {
+      client.emit('voice:error', { error: 'Missing sessionId' });
+      return;
+    }
+
+    const devices = await this.sessionFabric.getSessionDevices(data.sessionId);
+    client.emit('voice:fabric:devices:res', {
+      sessionId: data.sessionId,
+      devices: devices.map((d) => ({
+        deviceId: d.deviceId,
+        deviceType: d.deviceType,
+        isPrimary: d.isPrimary,
+        capabilities: d.capabilities,
+        lastActiveAt: d.lastActiveAt,
+      })),
+    });
+  }
+
+  @SubscribeMessage('voice:fabric:switch-primary')
+  async handleFabricSwitchPrimary(
+    @ConnectedSocket() client: AuthenticatedVoiceSocket,
+    @MessageBody() data: { sessionId: string; targetDeviceId: string },
+  ) {
+    if (!client.userId || !data.sessionId || !data.targetDeviceId) {
+      client.emit('voice:error', { error: 'Missing sessionId or targetDeviceId' });
+      return;
+    }
+
+    const success = await this.sessionFabric.switchPrimary(data.sessionId, data.targetDeviceId);
+
+    // Notify all devices in the session about the primary change
+    await this.outputDispatcher.broadcast(data.sessionId, 'voice:fabric:primary-changed', {
+      sessionId: data.sessionId,
+      newPrimaryDeviceId: data.targetDeviceId,
+      success,
+    });
+  }
+
+  @SubscribeMessage('voice:tool_hold')
+  handleToolHold(
+    @ConnectedSocket() client: AuthenticatedVoiceSocket,
+    @MessageBody() data: { sessionId: string; toolCallId: string; reason?: string },
+  ) {
+    const session = this.getSession(data.sessionId, client);
+    if (!session) {
+      return;
+    }
+
+    if (!data.toolCallId) {
+      client.emit('voice:error', {
+        sessionId: data.sessionId,
+        error: 'Missing toolCallId for tool hold',
+        code: 'INVALID_TOOL_HOLD',
+      });
+      return;
+    }
+
+    const pending = session.pendingToolCalls.get(data.toolCallId);
+    if (pending) {
+      pending.held = true;
+      pending.updatedAt = Date.now();
+    }
+
+    client.emit('voice:tool:held', {
+      sessionId: data.sessionId,
+      toolCallId: data.toolCallId,
+      toolName: pending?.toolName,
+      reason: data.reason || 'awaiting_user_confirmation',
+    });
+  }
+
+  @SubscribeMessage('voice:tool_result')
+  async handleToolResult(
+    @ConnectedSocket() client: AuthenticatedVoiceSocket,
+    @MessageBody() data: { sessionId: string; toolCallId: string; result?: Record<string, any> },
+  ) {
+    const session = this.getSession(data.sessionId, client);
+    if (!session) {
+      return;
+    }
+
+    if (!data.toolCallId) {
+      client.emit('voice:error', {
+        sessionId: data.sessionId,
+        error: 'Missing toolCallId for tool result',
+        code: 'INVALID_TOOL_RESULT',
+      });
+      return;
+    }
+
+    const toolResult = data.result || {};
+    const pending = session.pendingToolCalls.get(data.toolCallId);
+    session.pendingToolCalls.delete(data.toolCallId);
+
+    client.emit('voice:tool:end', {
+      sessionId: data.sessionId,
+      tool: pending?.toolName || 'paired-device-tool',
+      toolCallId: data.toolCallId,
+      success: toolResult.success !== false,
+      error: toolResult.error,
+    });
+    client.emit('voice:agent:tool_result', {
+      sessionId: data.sessionId,
+      toolName: pending?.toolName || 'paired-device-tool',
+      toolCallId: data.toolCallId,
+      success: toolResult.success !== false,
+      result: toolResult,
+      error: toolResult.error,
+      source: 'paired-device',
+    });
+
+    const followUp = this.buildToolDecisionFollowUpPrompt(data.toolCallId, pending, toolResult);
+    if (!followUp) {
+      return;
+    }
+
+    try {
+      const strategy = this.getStrategyForSession(session);
+      if (strategy) {
+        await strategy.processText(data.sessionId, followUp);
+        return;
+      }
+
+      if (session.useGeminiLive && session.geminiSession) {
+        session.geminiSession.sendText(followUp);
+        return;
+      }
+
+      await this.startAgentResponse(client, session, followUp);
+    } catch (error: any) {
+      this.logger.warn(`Failed to continue tool result follow-up for ${data.sessionId}: ${error.message}`);
+      client.emit('voice:error', {
+        sessionId: data.sessionId,
+        error: 'Paired device result was received, but follow-up generation failed',
+        code: 'VOICE_TOOL_RESULT_FOLLOWUP_ERROR',
+      });
+    }
+  }
+
+  // ── Image Frame (v2 — multimodal strategies) ─────────────
+
+  @SubscribeMessage('voice:image:frame')
+  async handleImageFrame(
+    @ConnectedSocket() client: AuthenticatedVoiceSocket,
+    @MessageBody() data: { sessionId: string; frame: string; mimeType?: string },
+  ) {
+    const session = this.getSession(data.sessionId, client);
+    if (!session) return;
+
+    if (!data.frame) {
+      client.emit('voice:error', { sessionId: data.sessionId, error: 'Missing frame data', code: 'INVALID_IMAGE_FRAME' });
+      return;
+    }
+
+    const strategy = this.getStrategyForSession(session);
+    if (!strategy?.processImageFrame || session.v2Strategy !== 'gemma-multimodal') {
+      // Silently ignore for cascade sessions (camera not relevant)
+      return;
+    }
+
+    const frameBuffer = Buffer.from(data.frame, 'base64');
+    const mimeType = data.mimeType || 'image/jpeg';
+
+    try {
+      await strategy.processImageFrame(data.sessionId, frameBuffer, mimeType);
+    } catch (error: any) {
+      this.logger.warn(`Image frame processing failed for ${data.sessionId}: ${error.message}`);
+    }
   }
 
   // ── Audio Streaming (Client → Server) ────────────────────
@@ -311,6 +616,12 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       return;
     }
 
+    const strategy = this.getStrategyForSession(session);
+    if (strategy) {
+      strategy.processAudioChunk(data.sessionId, chunk);
+      return;
+    }
+
     if (session.streamingSession) {
       session.streamingSession.write(chunk);
       session.audioChunks.push(chunk);
@@ -332,6 +643,12 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
 
     // Gemini Live manages turn detection itself — audio:end is a no-op
     if (session.useGeminiLive && session.geminiSession) {
+      return;
+    }
+
+    const strategy = this.getStrategyForSession(session);
+    if (strategy) {
+      await strategy.processAudioEnd(data.sessionId);
       return;
     }
 
@@ -766,6 +1083,10 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       return Buffer.from(audio);
     }
 
+    if (typeof audio === 'string') {
+      return Buffer.from(audio, 'base64');
+    }
+
     if (
       typeof audio === 'object'
       && audio !== null
@@ -801,6 +1122,7 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
   }
 
   private interruptSessionResponse(client: AuthenticatedVoiceSocket, session: VoiceSession) {
+    this.clearPendingAgentEnd(session);
     // Interrupt Gemini Live audio output if active
     session.geminiSession?.interrupt?.();
 
@@ -815,6 +1137,249 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
         interrupted: true,
       });
     }
+  }
+
+  private getStrategyForSession(session: VoiceSession): IVoiceStreamStrategy | null {
+    if (!session.v2Strategy || session.v2Strategy === 'gemini-live') {
+      return null;
+    }
+
+    if (session.v2Strategy === 'gemma-multimodal') {
+      return this.gemmaStrategy;
+    }
+
+    return this.cascadeStrategy;
+  }
+
+  private clearPendingAgentEnd(session: VoiceSession) {
+    if (!session.pendingAgentEndTimer) {
+      return;
+    }
+
+    clearTimeout(session.pendingAgentEndTimer);
+    session.pendingAgentEndTimer = null;
+  }
+
+  private scheduleStrategyAgentEnd(client: AuthenticatedVoiceSocket, session: VoiceSession) {
+    this.clearPendingAgentEnd(session);
+    session.pendingAgentEndTimer = setTimeout(() => {
+      session.pendingAgentEndTimer = null;
+      client.emit('voice:agent:end', { sessionId: session.sessionId });
+    }, 0);
+  }
+
+  private emitStrategyStreamEvent(
+    client: AuthenticatedVoiceSocket,
+    session: VoiceSession,
+    event: StreamEvent,
+  ) {
+    client.emit('voice:stream:event', {
+      sessionId: session.sessionId,
+      event,
+    });
+
+    switch (event.type) {
+      case 'tool_start':
+        this.rememberPendingToolCall(session, event.toolCallId, event.toolName, event.input, false);
+        client.emit('voice:tool:start', {
+          sessionId: session.sessionId,
+          tool: event.toolName,
+          toolCallId: event.toolCallId,
+        });
+        client.emit('voice:agent:tool_call', {
+          sessionId: session.sessionId,
+          toolName: event.toolName,
+          toolCallId: event.toolCallId,
+          arguments: event.input,
+        });
+        break;
+      case 'tool_result':
+        session.pendingToolCalls.delete(event.toolCallId);
+        client.emit('voice:tool:end', {
+          sessionId: session.sessionId,
+          tool: event.toolName,
+          toolCallId: event.toolCallId,
+          success: event.success,
+          error: event.error,
+        });
+        client.emit('voice:agent:tool_result', {
+          sessionId: session.sessionId,
+          toolName: event.toolName,
+          toolCallId: event.toolCallId,
+          success: event.success,
+          result: event.result,
+          error: event.error,
+        });
+        break;
+      case 'tool_error':
+        session.pendingToolCalls.delete(event.toolCallId);
+        client.emit('voice:tool:end', {
+          sessionId: session.sessionId,
+          tool: event.toolName,
+          toolCallId: event.toolCallId,
+          success: false,
+          error: event.error,
+        });
+        break;
+      case 'approval_required':
+        this.rememberPendingToolCall(session, event.toolCallId, event.toolName, event.input, true);
+        client.emit('voice:tool:approval_required', {
+          sessionId: session.sessionId,
+          tool: event.toolName,
+          toolCallId: event.toolCallId,
+          reason: event.reason,
+          riskLevel: event.riskLevel,
+        });
+        client.emit('voice:agent:tool_call', {
+          sessionId: session.sessionId,
+          toolName: event.toolName,
+          toolCallId: event.toolCallId,
+          arguments: event.input,
+          requiresApproval: true,
+          reason: event.reason,
+          riskLevel: event.riskLevel,
+        });
+        break;
+      case 'usage':
+        client.emit('voice:meta', {
+          sessionId: session.sessionId,
+          usage: event,
+        });
+        if (event.model) {
+          client.emit('voice:model:used', {
+            sessionId: session.sessionId,
+            model: event.model,
+            tier: 'usage',
+          });
+        }
+        break;
+      case 'thinking':
+        client.emit('voice:meta', {
+          sessionId: session.sessionId,
+          thinking: event.text,
+        });
+        break;
+      case 'error':
+        client.emit('voice:error', {
+          sessionId: session.sessionId,
+          error: event.error,
+          code: event.code,
+        });
+        break;
+      default:
+        break;
+    }
+  }
+
+  private rememberPendingToolCall(
+    session: VoiceSession,
+    toolCallId: string,
+    toolName: string,
+    input: Record<string, any> | undefined,
+    requiresApproval: boolean,
+  ) {
+    session.pendingToolCalls.set(toolCallId, {
+      toolName,
+      input,
+      requiresApproval,
+      held: false,
+      updatedAt: Date.now(),
+    });
+  }
+
+  private buildToolDecisionFollowUpPrompt(
+    toolCallId: string,
+    pending: PendingVoiceToolCall | undefined,
+    result: Record<string, any>,
+  ): string {
+    const toolName = pending?.toolName || 'paired-device-tool';
+    const inputText = pending?.input ? JSON.stringify(pending.input) : '{}';
+    const resultText = JSON.stringify(result || {});
+
+    if (result.success !== false) {
+      return `System update from the user's paired device: the pending tool call "${toolName}" (id: ${toolCallId}) was approved and completed outside the LLM tool runner. Original input: ${inputText}. Result: ${resultText}. Briefly confirm the completed outcome to the user and continue the conversation without asking to rerun the same tool.`;
+    }
+
+    return `System update from the user's paired device: the pending tool call "${toolName}" (id: ${toolCallId}) was rejected or failed outside the LLM tool runner. Original input: ${inputText}. Result: ${resultText}. Briefly explain that the action did not complete and ask the user for the next step without retrying automatically.`;
+  }
+
+  private buildStrategyCallbacks(
+    client: AuthenticatedVoiceSocket,
+    session: VoiceSession,
+  ): VoiceStrategyCallbacks {
+    return {
+      onTranscriptInterim: (sessionId, text) => {
+        client.emit('voice:stt:interim', { sessionId, transcript: text, lang: session.lang });
+        client.emit('voice:transcript:interim', { sessionId, text, lang: session.lang });
+      },
+      onTranscriptFinal: (sessionId, text, lang, provider) => {
+        client.emit('voice:stt:final', {
+          sessionId,
+          transcript: text,
+          lang: lang || session.lang,
+          provider,
+        });
+        client.emit('voice:transcript:final', {
+          sessionId,
+          text,
+          lang: lang || session.lang,
+          provider,
+        });
+      },
+      onAgentText: (sessionId, chunk) => {
+        client.emit('voice:agent:text', { sessionId, chunk });
+      },
+      onAgentTextEnd: () => {
+        this.scheduleStrategyAgentEnd(client, session);
+      },
+      onAgentAudio: (sessionId, audio, format, text) => {
+        client.emit('voice:agent:speech:start', {
+          sessionId,
+          text: text || '',
+        });
+        client.emit('voice:agent:audio', {
+          sessionId,
+          audio: audio.toString('base64'),
+          format,
+          text: text || '',
+        });
+      },
+      onAgentAudioEnd: () => {
+        this.clearPendingAgentEnd(session);
+        client.emit('voice:agent:end', { sessionId: session.sessionId });
+      },
+      onDeepThinkStart: (sessionId, targetModel) => {
+        client.emit('voice:deepthink:start', { sessionId, targetModel });
+        // Also broadcast to all fabric devices
+        this.deepThinkOrchestrator.notifyStart(sessionId, targetModel).catch(() => {});
+        // Send soothing voice message
+        const soothe = this.deepThinkOrchestrator.getSootheMessage(session.lang);
+        client.emit('voice:agent:text', { sessionId, chunk: soothe });
+        this.queueSentenceTts(client, session, soothe, true, session.responseGeneration);
+      },
+      onDeepThinkDone: (sessionId, result) => {
+        client.emit('voice:deepthink:done', { sessionId, result });
+        this.deepThinkOrchestrator.notifyDone(sessionId, {
+          success: true,
+          summary: typeof result === 'string' ? result.slice(0, 300) : '',
+          fullContent: typeof result === 'string' ? result : '',
+          model: 'ultra',
+          durationMs: 0,
+        }).catch(() => {});
+      },
+      onModelUsed: (sessionId, model, tier) => {
+        client.emit('voice:model:used', { sessionId, model, tier });
+      },
+      onStreamEvent: (sessionId, event) => {
+        if (sessionId !== session.sessionId) {
+          return;
+        }
+        this.emitStrategyStreamEvent(client, session, event);
+      },
+      onError: (sessionId, error, code) => {
+        client.emit('voice:error', { sessionId, error, code });
+      },
+    };
   }
 
   private async startAgentResponse(

@@ -34,6 +34,7 @@ const CACHE_PREFIX = "agentrix_cache_";
 const MAX_QUEUE_SIZE = 50;
 const MAX_RETRIES = 3;
 const FLUSH_INTERVAL_MS = 5_000;
+export const OFFLINE_QUEUE_FULL_EVENT = "agentrix:offline-queue-full";
 
 // ── Store abstraction (Tauri + localStorage) ─────────────
 
@@ -72,6 +73,14 @@ async function writeJson(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+async function deleteJson(key: string) {
+  const store = await getStore();
+  if (store) {
+    await store.delete(key);
+  }
+  localStorage.removeItem(key);
+}
+
 // ── Message Queue (outbound) ─────────────────────────────
 
 let _flushTimer: ReturnType<typeof setInterval> | null = null;
@@ -85,7 +94,12 @@ export async function enqueueMessage(
 ): Promise<void> {
   const queue = await readJson<QueuedMessage[]>(QUEUE_KEY, []);
   if (queue.length >= MAX_QUEUE_SIZE) {
-    queue.shift(); // drop oldest
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(OFFLINE_QUEUE_FULL_EVENT, {
+        detail: { endpoint, queueLength: queue.length, maxQueueSize: MAX_QUEUE_SIZE },
+      }));
+    }
+    throw new Error(`Offline queue is full (${MAX_QUEUE_SIZE} messages)`);
   }
   queue.push({
     id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -165,7 +179,7 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
 }
 
 export async function cacheDelete(key: string): Promise<void> {
-  await writeJson(`${CACHE_PREFIX}${key}`, null);
+  await deleteJson(`${CACHE_PREFIX}${key}`);
 }
 
 // ── Lifecycle ────────────────────────────────────────────
@@ -173,6 +187,10 @@ export async function cacheDelete(key: string): Promise<void> {
 let _unsubNetwork: (() => void) | null = null;
 
 export function startOfflineCache() {
+  if (_unsubNetwork || _flushTimer) {
+    return;
+  }
+
   // Auto-flush when coming back online
   _unsubNetwork = onNetworkStatusChange(async (status) => {
     if (status === "online") {

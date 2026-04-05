@@ -11,6 +11,9 @@ export default defineConfig({
     strictPort: true,
     host: host || false,
     hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
+    fs: {
+      allow: [".."],
+    },
   },
   envPrefix: ["VITE_", "TAURI_"],
   build: {

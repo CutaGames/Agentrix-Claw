@@ -5,6 +5,11 @@
 
 set -e  # 遇到错误立即退出
 
+BUILD_TSCONFIG="tsconfig.build.json"
+if [ ! -f "$BUILD_TSCONFIG" ]; then
+    BUILD_TSCONFIG="tsconfig.json"
+fi
+
 echo "🔨 开始构建 Agentrix Backend..."
 echo ""
 
@@ -40,8 +45,8 @@ else
     echo "⚠️  nest build 失败，尝试使用 tsc 直接编译..."
     
     # 使用 tsc 直接编译
-    echo "📦 使用 TypeScript 编译器直接编译..."
-    npx tsc -p tsconfig.json
+    echo "📦 使用 TypeScript 编译器直接编译 ($BUILD_TSCONFIG)..."
+    npx tsc -p "$BUILD_TSCONFIG"
     
     if [ $? -ne 0 ]; then
         echo "❌ TypeScript 编译失败"
@@ -60,7 +65,7 @@ if [ ! -f "dist/main.js" ]; then
     ls -la dist/ || echo "dist 目录不存在"
     echo ""
     echo "🔍 检查可能的编译错误..."
-    npx tsc -p tsconfig.json --noEmit 2>&1 | head -50
+    npx tsc -p "$BUILD_TSCONFIG" --noEmit 2>&1 | head -50
     exit 1
 fi
 

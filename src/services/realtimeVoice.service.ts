@@ -22,6 +22,7 @@ export type RealtimeVoiceState =
 
 export interface RealtimeVoiceCallbacks {
   onStateChange: (state: RealtimeVoiceState) => void;
+  onSessionReady?: (sessionId: string) => void;
   onInterimTranscript: (text: string) => void;
   onFinalTranscript: (text: string) => void;
   onAgentTextChunk: (chunk: string) => void;
@@ -40,6 +41,7 @@ export interface RealtimeVoiceConfig {
   language: string;
   modelId?: string;
   agentVoiceId?: string;
+  deviceType?: 'phone' | 'desktop' | 'web' | 'glass' | 'watch';
 }
 
 type SocketBufferLike = {
@@ -79,6 +81,14 @@ export class RealtimeVoiceService {
 
   get isConnected(): boolean {
     return !!this.socket?.connected && !!this.sessionId && this._state !== 'error';
+  }
+
+  get currentSessionId(): string | null {
+    return this.sessionId;
+  }
+
+  getSocketClient(): Socket | null {
+    return this.socket;
   }
 
   connect(config: RealtimeVoiceConfig): void {
@@ -149,6 +159,9 @@ export class RealtimeVoiceService {
       this.sessionId = payload?.sessionId || null;
       addVoiceDiagnostic('realtime-voice', 'session-ready', { sessionId: this.sessionId });
       this.setState('connected');
+      if (this.sessionId) {
+        this.callbacks.onSessionReady?.(this.sessionId);
+      }
       this.flushPendingTexts();
     });
 
@@ -250,6 +263,7 @@ export class RealtimeVoiceService {
 
     addVoiceDiagnostic('realtime-voice', 'session-ready', { sessionId: this.sessionId, mode: 'e2e' });
     this.setState('connected');
+    this.callbacks.onSessionReady?.(this.sessionId);
     this.flushPendingTexts();
   }
 
@@ -265,6 +279,7 @@ export class RealtimeVoiceService {
       voiceId: this.config.agentVoiceId,
       duplexMode: true,
       model: this.config.modelId,
+      deviceType: this.config.deviceType || 'phone',
     });
   }
 
@@ -303,6 +318,18 @@ export class RealtimeVoiceService {
     this.socket.emit('voice:audio:chunk', {
       sessionId: this.sessionId,
       audio: toSocketBufferLike(audio),
+    });
+  }
+
+  sendImageFrame(frameBase64: string, mimeType = 'image/jpeg'): void {
+    if (!this.socket || !this.sessionId || !frameBase64) {
+      return;
+    }
+
+    this.socket.emit('voice:image:frame', {
+      sessionId: this.sessionId,
+      frame: frameBase64,
+      mimeType,
     });
   }
 

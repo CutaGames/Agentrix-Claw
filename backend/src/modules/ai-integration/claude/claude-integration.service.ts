@@ -920,6 +920,7 @@ export class ClaudeIntegrationService {
     let currentMessages = [...messages];
     let allToolCalls: any[] = [];
     let lastText = '';
+    let lastStopReason = 'end_turn';
 
     for (let round = 0; round <= maxToolRounds; round++) {
       const llmResult = await this.bedrockService.chatWithFunctions(currentMessages, {
@@ -932,16 +933,25 @@ export class ClaudeIntegrationService {
       _lap(`LLM call #${round + 1} (toolCalls=${llmResult.functionCalls?.length || 0})`);
 
       lastText = llmResult.text || '';
+      lastStopReason = llmResult.stopReason || (llmResult.functionCalls?.length > 0 ? 'tool_use' : 'end_turn');
 
       // No tool calls → done
       if (!llmResult.functionCalls || llmResult.functionCalls.length === 0) {
-        return { text: this.stripToolUseXml(lastText), toolCalls: allToolCalls.length > 0 ? allToolCalls : null };
+        return {
+          text: this.stripToolUseXml(lastText),
+          toolCalls: allToolCalls.length > 0 ? allToolCalls : null,
+          stopReason: lastStopReason,
+        };
       }
 
       // Max rounds reached → return what we have
       if (round === maxToolRounds) {
         this.logger.warn(`Bedrock agent loop: max ${maxToolRounds} tool rounds reached, returning partial result`);
-        return { text: this.stripToolUseXml(lastText), toolCalls: allToolCalls };
+        return {
+          text: this.stripToolUseXml(lastText),
+          toolCalls: allToolCalls,
+          stopReason: lastStopReason,
+        };
       }
 
       // Execute tool calls
@@ -1014,7 +1024,11 @@ export class ClaudeIntegrationService {
     }
 
     // Shouldn't reach here, but safety return
-    return { text: this.stripToolUseXml(lastText), toolCalls: allToolCalls.length > 0 ? allToolCalls : null };
+    return {
+      text: this.stripToolUseXml(lastText),
+      toolCalls: allToolCalls.length > 0 ? allToolCalls : null,
+      stopReason: lastStopReason,
+    };
   }
 
   /**
@@ -1343,22 +1357,24 @@ export class ClaudeIntegrationService {
       const maxToolRounds = 5;
       let allToolCalls: any[] = [];
       let currentConversationMessages = [...conversationMessages];
+      let lastStopReason = response?.stop_reason || 'end_turn';
 
       for (let round = 0; round <= maxToolRounds; round++) {
         const textContent = response.content.find((item: any) => item.type === 'text');
         const text = textContent?.text || '';
 
         const toolUses = response.content.filter((item: any) => item.type === 'tool_use');
+        lastStopReason = response?.stop_reason || (toolUses.length > 0 ? 'tool_use' : 'end_turn');
 
         // No tool calls → done
         if (!toolUses || toolUses.length === 0) {
-          return { text, toolCalls: allToolCalls.length > 0 ? allToolCalls : null };
+          return { text, toolCalls: allToolCalls.length > 0 ? allToolCalls : null, stopReason: lastStopReason };
         }
 
         // Max rounds reached
         if (round === maxToolRounds) {
           this.logger.warn(`Anthropic agent loop: max ${maxToolRounds} tool rounds reached`);
-          return { text, toolCalls: allToolCalls };
+          return { text, toolCalls: allToolCalls, stopReason: lastStopReason };
         }
 
         this.logger.log(`Anthropic round ${round + 1}: ${toolUses.length} tool call(s): ${toolUses.map((t: any) => t.name).join(', ')}`);
@@ -1425,7 +1441,7 @@ export class ClaudeIntegrationService {
 
       // Safety fallback
       const finalText = response.content?.find((item: any) => item.type === 'text')?.text || '';
-      return { text: finalText, toolCalls: allToolCalls.length > 0 ? allToolCalls : null };
+      return { text: finalText, toolCalls: allToolCalls.length > 0 ? allToolCalls : null, stopReason: lastStopReason };
     } catch (error: any) {
       this.logger.error(`Claude API调用失败: ${error.message}`, error.stack);
       if (canUsePlatformFallback && !userDirectKey) {

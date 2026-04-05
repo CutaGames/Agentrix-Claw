@@ -4,14 +4,16 @@ import { usePayment } from '../../contexts/PaymentContext';
 import { useWorkbench } from '../../contexts/WorkbenchContext';
 import { useSessionManager } from '../../hooks/useSessionManager';
 import { executeDirectQuickPay } from '../../lib/direct-pay-service';
-import { agentApi } from '../../lib/api/agent.api';
+import { agentApi, ClaudeChatMessage } from '../../lib/api/agent.api';
 import { skillApi } from '../../lib/api/skill.api';
 import { GlassCard } from '../ui/GlassCard';
 import { AIButton } from '../ui/AIButton';
 import { StructuredResponseCard } from './StructuredResponseCard';
 import { QuickActionCards } from './QuickActionCards';
-import { VoiceInput } from './voice/VoiceInput';
+import { VoiceInput, type FabricDevice } from './voice/VoiceInput';
 import { VoiceOutput } from './voice/VoiceOutput';
+import { DeepThinkIndicator } from './voice/DeepThinkIndicator';
+import { FabricDeviceBar } from './voice/FabricDeviceBar';
 import { Plus, Send, Search, Eye, RotateCcw } from 'lucide-react';
 
 /* ── Session persistence helpers (SSR-safe) ── */
@@ -61,6 +63,62 @@ interface UnifiedAgentChatProps {
   compact?: boolean;
 }
 
+const CLAUDE_CONTINUE_PROMPT = 'Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting.';
+
+const LONG_TASK_HINT_PATTERN =
+  /(?:```|分析|详细|完整|逐步|一步一步|研究|调研|计划|规划|方案|总结|报告|实现|修复|排查|重构|迁移|长任务|继续执行|research|analy[sz]e|detailed|complete|step by step|full report|full plan|refactor|migrate|debug)/i;
+
+function shouldUseClaudeLongTaskPath(message: string): boolean {
+  const trimmed = message.trim();
+  if (!trimmed) return false;
+  if (trimmed.length >= 120) return true;
+  if (trimmed.split(/\n+/).filter(Boolean).length >= 4) return true;
+  return LONG_TASK_HINT_PATTERN.test(trimmed);
+}
+
+function buildClaudeChatMessages(params: {
+  history: ChatMessage[];
+  pendingMessage: string;
+  mode: AgentMode;
+  viewMode: string;
+  selection: any;
+  workspaceData: any;
+}): ClaudeChatMessage[] {
+  const safeWorkspaceData = params.workspaceData && typeof params.workspaceData === 'object'
+    ? (Object.keys(params.workspaceData).length > 10 ? { summary: 'Data too large' } : params.workspaceData)
+    : params.workspaceData ?? null;
+
+  const systemPrompt = [
+    '你是 Agentrix Web 工作台中的 AI 助手。',
+    `当前用户模式: ${params.mode}`,
+    `当前视图: ${params.viewMode}`,
+    `当前选中项: ${JSON.stringify(params.selection || {})}`,
+    `当前工作区数据: ${JSON.stringify(safeWorkspaceData)}`,
+    '这是长任务优先链路。请尽量直接完成复杂任务，必要时调用可用工具。',
+    '不要返回空白结果；如果任务很长，请先返回已经完成的实质内容。',
+  ].join('\n');
+
+  const normalizedHistory = params.history
+    .filter((entry) => entry.role !== 'system')
+    .filter((entry) => entry.content?.trim())
+    .filter((entry) => !(entry.id === '1' && entry.role === 'assistant'))
+    .filter((entry) => entry.metadata?.type !== 'skills_list')
+    .filter((entry) => entry.metadata?.type !== 'commerce_categories')
+    .filter((entry) => entry.metadata?.type !== 'view_cart')
+    .filter((entry) => entry.metadata?.type !== 'error')
+    .slice(-10)
+    .map<ClaudeChatMessage>((entry) => ({
+      role: entry.role === 'assistant' ? 'assistant' : 'user',
+      content: entry.content,
+    }));
+
+  return [
+    { role: 'system', content: systemPrompt },
+    ...normalizedHistory,
+    { role: 'user', content: params.pendingMessage },
+  ] as ClaudeChatMessage[];
+}
+
 /**
  * 统一Agent对话界面
  * 支持用户、商户、开发者三种模式
@@ -84,8 +142,14 @@ export function UnifiedAgentChat({
   const [payingProductId, setPayingProductId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [continuePrompt, setContinuePrompt] = useState<string | null>(null);
+  const [deepThinkTargetModel, setDeepThinkTargetModel] = useState<string | null>(null);
+  const [deepThinkSummary, setDeepThinkSummary] = useState<string | null>(null);
+  const [fabricDevices, setFabricDevices] = useState<FabricDevice[]>([]);
+  const [requestedPrimaryDeviceId, setRequestedPrimaryDeviceId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const restoredRef = useRef(false); // track if we already restored from storage
+  const voiceAssistantMessageIdRef = useRef<string | null>(null);
 
   // Commerce 上下文延续 - 记住当前会话创建的资源 ID
   const [commerceContext, setCommerceContext] = useState<{
@@ -293,11 +357,118 @@ export function UnifiedAgentChat({
     onModeChange?.(newMode);
   };
 
+  const finalizeVoiceAssistantMessage = useCallback(() => {
+    const assistantId = voiceAssistantMessageIdRef.current;
+    if (!assistantId) {
+      return;
+    }
+
+    setMessages((prev) => prev.map((message) => {
+      if (message.id !== assistantId) {
+        return message;
+      }
+
+      if (message.content.trim()) {
+        return message;
+      }
+
+      return {
+        ...message,
+        content: '本轮语音回复已完成。若需要补充细节，可以继续追问。',
+      };
+    }));
+
+    voiceAssistantMessageIdRef.current = null;
+  }, []);
+
+  const appendVoiceAssistantChunk = useCallback((chunk: string) => {
+    if (!chunk) {
+      return;
+    }
+
+    setMessages((prev) => {
+      const assistantId = voiceAssistantMessageIdRef.current;
+      if (!assistantId) {
+        const nextAssistantId = `${Date.now()}-voice-assistant`;
+        voiceAssistantMessageIdRef.current = nextAssistantId;
+        return [
+          ...prev,
+          {
+            id: nextAssistantId,
+            role: 'assistant',
+            content: chunk,
+            timestamp: new Date(),
+          },
+        ];
+      }
+
+      return prev.map((message) => (
+        message.id === assistantId
+          ? {
+              ...message,
+              content: `${message.content}${chunk}`,
+            }
+          : message
+      ));
+    });
+  }, []);
+
+  const handleVoiceTranscript = useCallback((text: string) => {
+    const transcript = text.trim();
+    if (!transcript) {
+      return;
+    }
+
+    const timestamp = Date.now();
+    const assistantId = `${timestamp + 1}-voice-assistant`;
+    voiceAssistantMessageIdRef.current = assistantId;
+    setContinuePrompt(null);
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `${timestamp}-voice-user`,
+        role: 'user',
+        content: transcript,
+        timestamp: new Date(timestamp),
+      },
+      {
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(timestamp + 1),
+      },
+    ]);
+  }, []);
+
+  const handleVoiceSessionReady = useCallback((nextSessionId: string) => {
+    setSessionId((current) => current === nextSessionId ? current : nextSessionId);
+  }, []);
+
+  const handleVoiceDeepThinkStart = useCallback((targetModel: string) => {
+    setDeepThinkTargetModel(targetModel);
+    setDeepThinkSummary(null);
+  }, []);
+
+  const handleVoiceDeepThinkDone = useCallback((summary: string) => {
+    setDeepThinkSummary(summary || '深度分析已完成。');
+  }, []);
+
+  const handleFabricDevicesChanged = useCallback((devices: FabricDevice[]) => {
+    setFabricDevices(devices);
+  }, []);
+
+  const handleFabricPrimarySwitch = useCallback((deviceId: string) => {
+    setRequestedPrimaryDeviceId(deviceId);
+  }, []);
+
   /** Clear persisted session and start fresh */
   const handleNewChat = useCallback(() => {
     setSessionId(undefined);
     setMessages([]);
     setCommerceContext({});
+    setContinuePrompt(null);
+    voiceAssistantMessageIdRef.current = null;
     if (typeof window !== 'undefined') {
       localStorage.removeItem(SESSION_KEY);
       localStorage.removeItem(MESSAGES_KEY);
@@ -381,22 +552,25 @@ export function UnifiedAgentChat({
     const messageToSend = messageOverride || input.trim();
     if (!messageToSend || isLoading) return;
 
+    const isContinueMessage = messageToSend === CLAUDE_CONTINUE_PROMPT;
     const messageText = messageToSend;
+    const displayMessageText = isContinueMessage ? 'Continue' : messageText;
     
     // 如果使用快捷指令，更新 input 状态
-    if (messageOverride) {
+    if (messageOverride && !isContinueMessage) {
       setInput(messageOverride);
     }
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content: messageText,
+      content: displayMessageText,
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
+    setContinuePrompt(null);
 
     const normalized = messageText.trim();
     const skillsCommandMatch = normalized.match(/^\/skills?(?:\s+(.+))?$/i);
@@ -513,6 +687,77 @@ export function UnifiedAgentChat({
     }
 
     try {
+      if (shouldUseClaudeLongTaskPath(messageText)) {
+        const claudeMessages = buildClaudeChatMessages({
+          history: messages,
+          pendingMessage: messageText,
+          mode,
+          viewMode,
+          selection,
+          workspaceData,
+        });
+
+        console.log('📤 长任务走 Claude 链路:', {
+          message: messageText,
+          mode,
+          sessionId: sessionId || 'new',
+          historyCount: claudeMessages.length,
+        });
+
+        const claudeResponse = await agentApi.claudeChat({
+          messages: claudeMessages,
+          sessionId,
+          mode: 'agent',
+          platform: 'web',
+          context: {
+            userId: user?.id,
+            sessionId,
+          },
+          options: {
+            maxTokens: 4096,
+            enableModelRouting: true,
+          },
+        });
+
+        if (!claudeResponse) {
+          throw new Error('Claude响应为空');
+        }
+
+        const responseText = (claudeResponse.text || '').trim();
+        const assistantMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: responseText || '任务已经执行，但本轮没有返回可展示的文本结果。点击 Continue 从当前进度继续。',
+          timestamp: new Date(),
+          metadata: {
+            type: 'claude_chat',
+          },
+        };
+
+        if (!responseText) {
+          setContinuePrompt(CLAUDE_CONTINUE_PROMPT);
+        }
+
+        setMessages((prev) => [...prev, assistantMessage]);
+
+        if (onCommand && responseText.includes('[COMMAND:')) {
+          const commandMatch = responseText.match(/\[COMMAND:([^:\]]+):?([^\]]*)\]/);
+          if (commandMatch) {
+            const cmdType = commandMatch[1];
+            const cmdValue = commandMatch[2];
+            console.log('🤖 Claude 长任务解析到文本指令:', { cmdType, cmdValue });
+
+            if (cmdType === 'SWITCH_VIEW') {
+              onCommand('switch_view', { view: cmdValue });
+            } else {
+              onCommand(cmdType.toLowerCase(), { value: cmdValue });
+            }
+          }
+        }
+
+        return;
+      }
+
       console.log('📤 发送消息:', {
         message: messageText,
         mode,
@@ -758,6 +1003,11 @@ export function UnifiedAgentChat({
       // sessionId已在上面更新，这里不需要重复更新
     } catch (error: any) {
       console.error('❌ 获取响应失败:', error);
+
+      const supportsContinue = /timeout|timed out|max[_\s-]?tokens?|context window|empty response/i.test(error.message || '');
+      if (supportsContinue) {
+        setContinuePrompt(CLAUDE_CONTINUE_PROMPT);
+      }
       
       // 构建友好的错误消息
       let errorContent = '抱歉，处理您的请求时出现错误。';
@@ -766,6 +1016,10 @@ export function UnifiedAgentChat({
         errorContent = `❌ **连接失败**\n\n无法连接到服务器。请检查：\n\n1. **后端服务是否运行**\n   - 确认后端服务已启动（http://localhost:3001）\n   - 检查终端是否有错误信息\n\n2. **网络连接**\n   - 检查网络连接是否正常\n   - 尝试刷新页面\n\n3. **查看详细错误**\n   - 打开浏览器开发者工具（F12）\n   - 查看Console和Network标签\n\n**错误详情**: ${error.message}`;
       } else if (error.message) {
         errorContent = `❌ **错误**: ${error.message}\n\n请稍后重试，或联系技术支持。`;
+      }
+
+      if (supportsContinue) {
+        errorContent += '\n\n可点击 Continue 从当前进度继续。';
       }
       
       const errorMessage: ChatMessage = {
@@ -1216,8 +1470,40 @@ export function UnifiedAgentChat({
         <div ref={messagesEndRef} />
       </div>
 
+      {continuePrompt && !isLoading && (
+        <div className="px-6 pb-0 max-w-3xl mx-auto w-full">
+          <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-amber-100">长任务已暂停</p>
+              <p className="text-xs text-amber-200/80">点击 Continue 从当前进度继续生成，不会重复已完成内容。</p>
+            </div>
+            <button
+              onClick={() => handleSend(continuePrompt)}
+              className="rounded-lg bg-amber-400 px-3 py-2 text-sm font-medium text-slate-950 transition-colors hover:bg-amber-300"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 底部输入框 - 悬浮式设计 */}
       <div className="p-6 max-w-3xl mx-auto w-full">
+        <div className="flex flex-col gap-3 mb-3">
+          <DeepThinkIndicator
+            isActive={Boolean(deepThinkTargetModel && !deepThinkSummary)}
+            targetModel={deepThinkTargetModel || undefined}
+            summary={deepThinkSummary || undefined}
+            onDismiss={() => {
+              setDeepThinkTargetModel(null);
+              setDeepThinkSummary(null);
+            }}
+          />
+          <FabricDeviceBar
+            devices={fabricDevices}
+            onSwitchPrimary={handleFabricPrimarySwitch}
+          />
+        </div>
         <div className="relative group">
           <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl opacity-20 group-hover:opacity-40 transition duration-500 blur"></div>
           <div className="relative flex items-end gap-2 bg-[#161b22] p-2 rounded-xl border border-slate-800 shadow-2xl">
@@ -1260,11 +1546,15 @@ export function UnifiedAgentChat({
               }}
             />
             <VoiceInput
-              onTranscript={(text) => {
-                setInput(text);
-                // 自动发送语音识别的文本
-                setTimeout(() => handleSend(text), 100);
-              }}
+              sessionId={sessionId}
+              onSessionReady={handleVoiceSessionReady}
+              onTranscript={handleVoiceTranscript}
+              onAssistantTextChunk={appendVoiceAssistantChunk}
+              onAssistantResponseEnd={finalizeVoiceAssistantMessage}
+              onDeepThinkStart={handleVoiceDeepThinkStart}
+              onDeepThinkDone={handleVoiceDeepThinkDone}
+              onFabricDevicesChanged={handleFabricDevicesChanged}
+              requestedPrimaryDeviceId={requestedPrimaryDeviceId}
               onError={(error) => {
                 console.error('语音识别错误:', error);
               }}

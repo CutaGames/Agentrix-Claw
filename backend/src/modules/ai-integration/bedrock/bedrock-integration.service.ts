@@ -206,7 +206,7 @@ export class BedrockIntegrationService {
     system?: string,
     tools?: any[],
     credentials?: BedrockUserCredentials,
-  ): Promise<{ text: string; toolCalls: any[] }> {
+  ): Promise<{ text: string; toolCalls: any[]; stopReason?: string }> {
     const region = this.normalizeRegion(credentials?.region || this.configService.get<string>('AWS_REGION'));
     const client = new BedrockRuntimeClient({
       region,
@@ -261,7 +261,8 @@ export class BedrockIntegrationService {
         });
       }
     }
-    return { text, toolCalls };
+    const stopReason = (response as any).stopReason || (toolCalls.length > 0 ? 'tool_use' : 'end_turn');
+    return { text, toolCalls, stopReason };
   }
 
   /**
@@ -512,6 +513,7 @@ export class BedrockIntegrationService {
           text: converseResult.text,
           functionCalls: converseResult.toolCalls.length > 0 ? converseResult.toolCalls : null,
           model: modelId,
+          stopReason: converseResult.stopReason || (converseResult.toolCalls.length > 0 ? 'tool_use' : 'end_turn'),
         };
       }
 
@@ -597,10 +599,13 @@ export class BedrockIntegrationService {
         }
       }
 
+      const stopReason = data.stop_reason || (toolCalls.length > 0 ? 'tool_use' : 'end_turn');
+
       return {
         text,
         functionCalls: toolCalls.length > 0 ? toolCalls : null,
-        model: modelId
+        model: modelId,
+        stopReason,
       };
     } catch (e: any) {
       this.logger.error(`Bedrock chatWithFunctions failed: ${e.message}`);

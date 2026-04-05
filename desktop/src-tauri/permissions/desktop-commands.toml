@@ -10,6 +10,7 @@ commands.allow = [
   "desktop_bridge_get_ball_position",
   "desktop_bridge_set_panel_position_near_ball",
   "desktop_bridge_snap_ball_to_edge",
+  "desktop_bridge_resize_ball_window",
   "desktop_bridge_get_monitors",
   "desktop_bridge_move_ball_to_monitor",
   # Workspace (coding agent)
@@ -20,6 +21,7 @@ commands.allow = [
   "desktop_bridge_read_workspace_file",
   "desktop_bridge_write_workspace_file",
   # Desktop bridge: commands / files / context
+  "desktop_bridge_list_directory",
   "desktop_bridge_run_command",
   "desktop_bridge_read_file",
   "desktop_bridge_write_file",

@@ -446,6 +446,11 @@ export function mapRawInstance(raw: any, overrides: Partial<OpenClawInstance> = 
     version: raw?.version || overrides.version,
     lastSyncAt: raw?.lastSyncAt || raw?.updatedAt || overrides.lastSyncAt,
     agentAccountId: agentAccountId || undefined,
+    capabilities: raw?.capabilities || overrides.capabilities,
+    resolvedModel: raw?.resolvedModel || raw?.resolved_model || overrides.resolvedModel,
+    resolvedModelLabel: raw?.resolvedModelLabel || raw?.resolved_model_label || overrides.resolvedModelLabel,
+    resolvedProvider: raw?.resolvedProvider || raw?.resolved_provider || overrides.resolvedProvider,
+    hasCustomProvider: raw?.hasCustomProvider ?? raw?.has_custom_provider ?? overrides.hasCustomProvider,
     metadata: Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined,
   };
 }

@@ -12,7 +12,31 @@ import {
   startLiveSpeechRecognition,
   type LiveSpeechController,
 } from "../services/liveSpeech";
-import { useAuthStore } from "../services/store";
+import { API_BASE, useAuthStore } from "../services/store";
+import {
+  RealtimeVoiceService,
+  type FabricDevice,
+  type RealtimeVoiceState,
+} from "../services/realtimeVoice";
+
+interface RealtimeVoiceConfig {
+  enabled?: boolean;
+  instanceId?: string;
+  model?: string;
+  lang?: string;
+  voiceId?: string;
+  onSessionReady?: (sessionId: string, instanceId?: string) => void;
+  onTranscriptFinal?: (text: string, lang?: string) => void;
+  onAgentText?: (chunk: string) => void;
+  onAgentEnd?: (interrupted?: boolean) => void;
+  onDeepThinkStart?: (targetModel: string) => void;
+  onDeepThinkProgress?: (progress: number, stage?: string) => void;
+  onDeepThinkDone?: (summary: string, model?: string) => void;
+  onDeepThinkDetail?: (content: string, model?: string) => void;
+  onFabricDevicesChanged?: (devices: FabricDevice[]) => void;
+  onFabricPrimaryChanged?: (deviceId: string) => void;
+  onError?: (message: string, code?: string) => void;
+}
 
 interface Props {
   onTranscript: (text: string) => void;
@@ -20,9 +44,29 @@ interface Props {
   onStateChange: (state: VoiceState) => void;
   /** When true, stop any current TTS playback (barge-in) */
   onBargeIn?: () => void;
+  realtime?: RealtimeVoiceConfig;
 }
 
-export default function VoiceButton({ onTranscript, voiceState, onStateChange, onBargeIn }: Props) {
+function mapRealtimeStateToVoiceState(state: RealtimeVoiceState): VoiceState {
+  switch (state) {
+    case "listening":
+      return "recording";
+    case "thinking":
+      return "processing";
+    case "speaking":
+      return "speaking";
+    default:
+      return "idle";
+  }
+}
+
+export default function VoiceButton({
+  onTranscript,
+  voiceState,
+  onStateChange,
+  onBargeIn,
+  realtime,
+}: Props) {
   const { token } = useAuthStore();
   const [error, setError] = useState("");
   const [duplexMode, setDuplexMode] = useState(false);
@@ -31,55 +75,245 @@ export default function VoiceButton({ onTranscript, voiceState, onStateChange, o
   const [interimTranscript, setInterimTranscript] = useState("");
   const liveSpeechRef = useRef<LiveSpeechController | null>(null);
   const manualStopRef = useRef(false);
+  const realtimeVoiceRef = useRef<RealtimeVoiceService | null>(null);
+  const realtimeStreamingRef = useRef(false);
+  const [realtimeStreaming, setRealtimeStreaming] = useState(false);
 
-  // Listen for global voice events (from FloatingBall long-press / hotkey)
+  const realtimeEnabled = Boolean(realtime?.enabled && token && realtime.instanceId);
+  const supportsDuplex = realtimeEnabled || liveAvailable;
+  const realtimeInstanceId = realtime?.instanceId;
+  const realtimeModel = realtime?.model;
+  const realtimeLang = realtime?.lang;
+  const realtimeVoiceId = realtime?.voiceId;
+
+  const realtimeHandlersRef = useRef({
+    onStateChange,
+    onBargeIn,
+    onSessionReady: realtime?.onSessionReady,
+    onTranscriptFinal: realtime?.onTranscriptFinal,
+    onAgentText: realtime?.onAgentText,
+    onAgentEnd: realtime?.onAgentEnd,
+    onDeepThinkStart: realtime?.onDeepThinkStart,
+    onDeepThinkProgress: realtime?.onDeepThinkProgress,
+    onDeepThinkDone: realtime?.onDeepThinkDone,
+    onDeepThinkDetail: realtime?.onDeepThinkDetail,
+    onFabricDevicesChanged: realtime?.onFabricDevicesChanged,
+    onFabricPrimaryChanged: realtime?.onFabricPrimaryChanged,
+    onError: realtime?.onError,
+  });
+
   useEffect(() => {
-    const handleStart = () => {
-      if (duplexMode) {
-        startLiveSpeechSession();
-      } else {
-        handleRecordStart();
-      }
+    realtimeHandlersRef.current = {
+      onStateChange,
+      onBargeIn,
+      onSessionReady: realtime?.onSessionReady,
+      onTranscriptFinal: realtime?.onTranscriptFinal,
+      onAgentText: realtime?.onAgentText,
+      onAgentEnd: realtime?.onAgentEnd,
+      onDeepThinkStart: realtime?.onDeepThinkStart,
+      onDeepThinkProgress: realtime?.onDeepThinkProgress,
+      onDeepThinkDone: realtime?.onDeepThinkDone,
+      onDeepThinkDetail: realtime?.onDeepThinkDetail,
+      onFabricDevicesChanged: realtime?.onFabricDevicesChanged,
+      onFabricPrimaryChanged: realtime?.onFabricPrimaryChanged,
+      onError: realtime?.onError,
     };
-    const handleStop = () => {
-      if (duplexMode) {
-        stopLiveSpeechSession(true);
-      } else {
-        handleRecordStop();
-      }
-    };
+  }, [
+    onBargeIn,
+    onStateChange,
+    realtime?.onAgentEnd,
+    realtime?.onAgentText,
+    realtime?.onDeepThinkDetail,
+    realtime?.onDeepThinkDone,
+    realtime?.onDeepThinkProgress,
+    realtime?.onDeepThinkStart,
+    realtime?.onError,
+    realtime?.onFabricDevicesChanged,
+    realtime?.onFabricPrimaryChanged,
+    realtime?.onSessionReady,
+    realtime?.onTranscriptFinal,
+  ]);
 
-    window.addEventListener("agentrix:voice-start", handleStart);
-    window.addEventListener("agentrix:voice-stop", handleStop);
-    return () => {
-      window.removeEventListener("agentrix:voice-start", handleStart);
-      window.removeEventListener("agentrix:voice-stop", handleStop);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, duplexMode]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopLiveSpeechSession(true);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const setRealtimeStreamingState = useCallback((next: boolean) => {
+    realtimeStreamingRef.current = next;
+    setRealtimeStreaming(next);
   }, []);
 
-  // ── Legacy hold-to-talk ──────────────────────────────────
+  const disconnectRealtime = useCallback((resetState = true) => {
+    const service = realtimeVoiceRef.current;
+    realtimeVoiceRef.current = null;
+    if (service) {
+      service.disconnect();
+    }
+    setRealtimeStreamingState(false);
+    setInterimTranscript("");
+    if (resetState) {
+      onStateChange("idle");
+    }
+  }, [onStateChange, setRealtimeStreamingState]);
+
+  const stopLiveSpeechSession = useCallback((manual = false) => {
+    manualStopRef.current = manual;
+    const ctrl = liveSpeechRef.current;
+    liveSpeechRef.current = null;
+    setLiveListening(false);
+    setInterimTranscript("");
+    if (ctrl) {
+      try { if (manual) ctrl.abort(); else ctrl.stop(); } catch {}
+    }
+  }, []);
+
+  const ensureRealtimeService = useCallback(async (sessionDuplexMode = duplexMode) => {
+    if (!token) {
+      throw new Error("Not logged in");
+    }
+    if (!realtimeInstanceId) {
+      throw new Error("Select an instance before using realtime voice");
+    }
+
+    let service = realtimeVoiceRef.current;
+    if (!service) {
+      service = new RealtimeVoiceService(
+        {
+          wsUrl: API_BASE,
+          token,
+          instanceId: realtimeInstanceId,
+          model: realtimeModel || undefined,
+          lang: realtimeLang || (navigator.language?.startsWith("zh") ? "zh" : "en"),
+          voiceId: realtimeVoiceId,
+          duplexMode: sessionDuplexMode,
+          deviceType: "desktop",
+        },
+        {
+          onStateChange: (state) => {
+            if (state === "disconnected") {
+              setRealtimeStreamingState(false);
+            }
+            if (state === "idle" && !realtimeStreamingRef.current) {
+              setInterimTranscript("");
+            }
+            realtimeHandlersRef.current.onStateChange(mapRealtimeStateToVoiceState(state));
+          },
+          onSessionReady: (sessionId, instanceId) => {
+            realtimeVoiceRef.current?.queryFabricDevices();
+            realtimeHandlersRef.current.onSessionReady?.(sessionId, instanceId);
+          },
+          onTranscriptInterim: (text) => {
+            setInterimTranscript(text);
+          },
+          onTranscriptFinal: (text, lang) => {
+            const normalized = text.trim();
+            setInterimTranscript("");
+            if (normalized) {
+              realtimeHandlersRef.current.onTranscriptFinal?.(normalized, lang);
+            }
+          },
+          onAgentText: (chunk) => {
+            realtimeHandlersRef.current.onAgentText?.(chunk);
+          },
+          onAgentEnd: (interrupted) => {
+            realtimeHandlersRef.current.onAgentEnd?.(interrupted);
+          },
+          onDeepThinkStart: (targetModel) => {
+            realtimeHandlersRef.current.onDeepThinkStart?.(targetModel);
+          },
+          onDeepThinkProgress: (progress, stage) => {
+            realtimeHandlersRef.current.onDeepThinkProgress?.(progress, stage);
+          },
+          onDeepThinkDone: (summary, model) => {
+            realtimeHandlersRef.current.onDeepThinkDone?.(summary, model);
+          },
+          onDeepThinkDetail: (content, model) => {
+            realtimeHandlersRef.current.onDeepThinkDetail?.(content, model);
+          },
+          onFabricDevicesChanged: (devices) => {
+            realtimeHandlersRef.current.onFabricDevicesChanged?.(devices);
+          },
+          onFabricPrimaryChanged: (deviceId) => {
+            realtimeHandlersRef.current.onFabricPrimaryChanged?.(deviceId);
+          },
+          onError: (message, code) => {
+            const normalized = message || "Realtime voice unavailable";
+            setError(normalized);
+            setRealtimeStreamingState(false);
+            setInterimTranscript("");
+            realtimeHandlersRef.current.onStateChange("idle");
+            realtimeHandlersRef.current.onError?.(normalized, code);
+          },
+        },
+      );
+      realtimeVoiceRef.current = service;
+    }
+
+    if (!service.isConnected) {
+      await service.connect();
+    }
+
+    return service;
+  }, [duplexMode, realtimeInstanceId, realtimeLang, realtimeModel, realtimeVoiceId, setRealtimeStreamingState, token]);
+
+  const startRealtimeListening = useCallback(async (sessionDuplexMode = duplexMode) => {
+    if (realtimeStreamingRef.current) {
+      return;
+    }
+
+    setError("");
+    try {
+      const service = await ensureRealtimeService(sessionDuplexMode);
+      if (service.currentState === "thinking" || service.currentState === "speaking") {
+        service.interrupt();
+      }
+      realtimeHandlersRef.current.onBargeIn?.();
+      await service.startListening();
+      setRealtimeStreamingState(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Realtime voice unavailable";
+      setError(message);
+      setRealtimeStreamingState(false);
+      onStateChange("idle");
+      realtimeHandlersRef.current.onError?.(message);
+    }
+  }, [duplexMode, ensureRealtimeService, onStateChange, setRealtimeStreamingState]);
+
+  const pauseRealtimeListening = useCallback(() => {
+    const service = realtimeVoiceRef.current;
+    if (!service || !realtimeStreamingRef.current) {
+      return;
+    }
+    service.stopListening();
+    setRealtimeStreamingState(false);
+    setInterimTranscript("");
+  }, [setRealtimeStreamingState]);
+
+  const cancelRealtimeSession = useCallback(() => {
+    realtimeVoiceRef.current?.interrupt();
+    disconnectRealtime(true);
+  }, [disconnectRealtime]);
+
+  // ── Legacy hold-to-talk / realtime hold-to-talk ─────────────────
 
   const handleRecordStart = useCallback(async () => {
+    if (realtimeEnabled) {
+      await startRealtimeListening(false);
+      return;
+    }
+
     if (voiceState !== "idle") return;
     setError("");
     try {
       await startRecording();
       onStateChange("recording");
-    } catch (err) {
+    } catch {
       setError("Microphone access denied");
     }
-  }, [voiceState, onStateChange]);
+  }, [onStateChange, realtimeEnabled, startRealtimeListening, voiceState]);
 
   const handleRecordStop = useCallback(async () => {
+    if (realtimeEnabled) {
+      pauseRealtimeListening();
+      return;
+    }
+
     if (voiceState !== "recording") return;
     onStateChange("processing");
     try {
@@ -93,13 +327,18 @@ export default function VoiceButton({ onTranscript, voiceState, onStateChange, o
       if (text.trim()) {
         onTranscript(text.trim());
       }
-    } catch (err) {
+    } catch {
       setError("Voice recognition failed");
     }
     onStateChange("idle");
-  }, [voiceState, token, onTranscript, onStateChange]);
+  }, [onStateChange, onTranscript, pauseRealtimeListening, realtimeEnabled, token, voiceState]);
 
   const handleCancel = useCallback(() => {
+    if (realtimeEnabled) {
+      cancelRealtimeSession();
+      return;
+    }
+
     if (duplexMode) {
       stopLiveSpeechSession(true);
     } else {
@@ -107,21 +346,9 @@ export default function VoiceButton({ onTranscript, voiceState, onStateChange, o
     }
     onStateChange("idle");
     setInterimTranscript("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onStateChange, duplexMode]);
+  }, [cancelRealtimeSession, duplexMode, onStateChange, realtimeEnabled, stopLiveSpeechSession]);
 
   // ── Duplex mode: real-time speech recognition ────────────
-
-  const stopLiveSpeechSession = useCallback((manual = false) => {
-    manualStopRef.current = manual;
-    const ctrl = liveSpeechRef.current;
-    liveSpeechRef.current = null;
-    setLiveListening(false);
-    setInterimTranscript("");
-    if (ctrl) {
-      try { if (manual) ctrl.abort(); else ctrl.stop(); } catch {}
-    }
-  }, []);
 
   const startLiveSpeechSession = useCallback(async () => {
     if (liveSpeechRef.current || !liveAvailable) return;
@@ -147,7 +374,6 @@ export default function VoiceButton({ onTranscript, voiceState, onStateChange, o
         liveSpeechRef.current = null;
         setLiveListening(false);
         if (!manualStopRef.current && duplexMode) {
-          // Auto-restart after a brief pause
           setTimeout(() => {
             if (duplexMode) startLiveSpeechSession();
           }, 300);
@@ -156,7 +382,6 @@ export default function VoiceButton({ onTranscript, voiceState, onStateChange, o
         }
       },
       onSpeechStart: () => {
-        // Barge-in: stop TTS when user starts speaking
         onBargeIn?.();
       },
       onInterimResult: (transcript) => {
@@ -170,7 +395,6 @@ export default function VoiceButton({ onTranscript, voiceState, onStateChange, o
         onBargeIn?.();
         onStateChange("processing");
         onTranscript(normalized);
-        // Will auto-restart via onEnd → setTimeout if duplexMode
       },
       onError: (err) => {
         if (err.error === "aborted" || err.error === "no-speech") return;
@@ -179,58 +403,128 @@ export default function VoiceButton({ onTranscript, voiceState, onStateChange, o
         onStateChange("idle");
       },
     });
-  }, [liveAvailable, duplexMode, onStateChange, onTranscript, onBargeIn, stopLiveSpeechSession]);
+  }, [duplexMode, liveAvailable, onBargeIn, onStateChange, onTranscript, stopLiveSpeechSession]);
 
-  // Toggle duplex mode
   const toggleDuplex = useCallback(() => {
+    if (realtimeEnabled) {
+      if (duplexMode) {
+        disconnectRealtime(true);
+        setDuplexMode(false);
+      } else {
+        disconnectRealtime(false);
+        setDuplexMode(true);
+        void startRealtimeListening(true);
+      }
+      return;
+    }
+
     if (duplexMode) {
       stopLiveSpeechSession(true);
       setDuplexMode(false);
       onStateChange("idle");
     } else {
       setDuplexMode(true);
-      startLiveSpeechSession();
+      void startLiveSpeechSession();
     }
-  }, [duplexMode, startLiveSpeechSession, stopLiveSpeechSession, onStateChange]);
-
-  // Start/stop duplex when mode changes
-  useEffect(() => {
-    if (duplexMode && !liveSpeechRef.current) {
-      startLiveSpeechSession();
-    }
-  }, [duplexMode, startLiveSpeechSession]);
+  }, [disconnectRealtime, duplexMode, onStateChange, realtimeEnabled, startLiveSpeechSession, startRealtimeListening, stopLiveSpeechSession]);
 
   // ── Interaction handlers ─────────────────────────────────
 
   const handlePointerDown = useCallback(() => {
-    if (duplexMode) return; // duplex uses tap toggle, not hold
-    handleRecordStart();
-  }, [handleRecordStart, duplexMode]);
+    if (duplexMode) return;
+    void handleRecordStart();
+  }, [duplexMode, handleRecordStart]);
 
   const handlePointerUp = useCallback(() => {
     if (duplexMode) return;
-    if (voiceState === "recording") {
-      handleRecordStop();
+    if (realtimeEnabled) {
+      pauseRealtimeListening();
+      return;
     }
-  }, [voiceState, handleRecordStop, duplexMode]);
+    if (voiceState === "recording") {
+      void handleRecordStop();
+    }
+  }, [duplexMode, handleRecordStop, pauseRealtimeListening, realtimeEnabled, voiceState]);
 
   const handleClick = useCallback(() => {
     if (!duplexMode) return;
+    if (realtimeEnabled) {
+      if (realtimeStreaming) {
+        pauseRealtimeListening();
+      } else {
+        void startRealtimeListening(true);
+      }
+      return;
+    }
     if (liveListening) {
       stopLiveSpeechSession(true);
       onStateChange("idle");
     } else {
-      startLiveSpeechSession();
+      void startLiveSpeechSession();
     }
-  }, [duplexMode, liveListening, startLiveSpeechSession, stopLiveSpeechSession, onStateChange]);
+  }, [duplexMode, liveListening, onStateChange, pauseRealtimeListening, realtimeEnabled, realtimeStreaming, startLiveSpeechSession, startRealtimeListening, stopLiveSpeechSession]);
 
-  const isActive = voiceState === "recording" || liveListening;
+  // Listen for global voice events (from FloatingBall long-press / hotkey)
+  useEffect(() => {
+    const handleStart = () => {
+      if (duplexMode) {
+        if (realtimeEnabled) {
+          void startRealtimeListening(true);
+        } else {
+          void startLiveSpeechSession();
+        }
+        return;
+      }
+      void handleRecordStart();
+    };
+
+    const handleStop = () => {
+      if (duplexMode) {
+        if (realtimeEnabled) {
+          pauseRealtimeListening();
+        } else {
+          stopLiveSpeechSession(true);
+        }
+        return;
+      }
+      void handleRecordStop();
+    };
+
+    window.addEventListener("agentrix:voice-start", handleStart);
+    window.addEventListener("agentrix:voice-stop", handleStop);
+    return () => {
+      window.removeEventListener("agentrix:voice-start", handleStart);
+      window.removeEventListener("agentrix:voice-stop", handleStop);
+    };
+  }, [duplexMode, handleRecordStart, handleRecordStop, pauseRealtimeListening, realtimeEnabled, startLiveSpeechSession, startRealtimeListening, stopLiveSpeechSession]);
+
+  useEffect(() => {
+    return () => {
+      stopLiveSpeechSession(true);
+      disconnectRealtime(false);
+    };
+  }, [disconnectRealtime, stopLiveSpeechSession]);
+
+  useEffect(() => {
+    if (!realtimeVoiceRef.current) {
+      return;
+    }
+    disconnectRealtime(true);
+  }, [disconnectRealtime, realtimeEnabled, realtimeInstanceId, realtimeLang, realtimeModel, realtimeVoiceId]);
+
+  useEffect(() => {
+    if (duplexMode && !realtimeEnabled && !liveSpeechRef.current) {
+      void startLiveSpeechSession();
+    }
+  }, [duplexMode, realtimeEnabled, startLiveSpeechSession]);
+
+  const isActive = realtimeEnabled ? realtimeStreaming : voiceState === "recording" || liveListening;
   const isProcessing = voiceState === "processing";
 
   return (
     <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
-      {/* Duplex toggle (only show if Web Speech API available) */}
-      {liveAvailable && (
+      {/* Duplex toggle */}
+      {supportsDuplex && (
         <button
           onClick={toggleDuplex}
           style={{
@@ -252,7 +546,7 @@ export default function VoiceButton({ onTranscript, voiceState, onStateChange, o
         onPointerLeave={handlePointerUp}
         onClick={duplexMode ? handleClick : undefined}
         onContextMenu={(e) => e.preventDefault()}
-        disabled={isProcessing}
+        disabled={!realtimeEnabled && isProcessing}
         style={{
           ...btnBase,
           background: isActive
@@ -271,11 +565,11 @@ export default function VoiceButton({ onTranscript, voiceState, onStateChange, o
         }}
         title={
           duplexMode
-            ? liveListening ? "Listening... click to pause" : "Click to start listening"
-            : isActive ? "Release to send" : "Hold to talk"
+            ? isActive ? "Listening... click to pause" : "Click to start listening"
+            : isActive ? "Release to send" : voiceState === "speaking" ? "Hold to interrupt and speak" : "Hold to talk"
         }
       >
-        {isProcessing ? "⏳" : isActive ? (duplexMode ? "�" : "�🔴") : "🎤"}
+        {isProcessing ? "⏳" : isActive ? (duplexMode ? "🔄" : "🔴") : voiceState === "speaking" ? "🔊" : "🎤"}
       </button>
 
       {/* Interim transcript preview */}

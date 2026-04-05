@@ -13,6 +13,8 @@ import {
   streamDirectChat,
   streamChat,
   fetchModels,
+  apiFetch,
+  API_BASE,
   type ChatMessage,
   type ChatAttachment,
   type DesktopAgent,
@@ -31,6 +33,7 @@ import { captureScreen } from "../services/screenshot";
 import NotificationCenter, { NotificationBadge } from "./NotificationCenter";
 import { subscribe as subscribeNotifications, getUnreadCount } from "../services/notifications";
 import { type VoiceState } from "../services/voice";
+import { type FabricDevice } from "../services/realtimeVoice";
 import {
   AudioQueuePlayer,
   SentenceAccumulator,
@@ -80,6 +83,12 @@ import {
 import TabBar, { type ChatTab } from "./TabBar";
 import type { NetworkStatus } from "../services/network";
 import type { StreamEvent } from "../../../shared/stream-parser.ts";
+import {
+  DESKTOP_LOCAL_MODEL_ID,
+  DESKTOP_LOCAL_MODEL_LABEL,
+  streamDesktopLocalChat,
+} from "../services/localChat";
+import { LocalLLMSidecar } from "../services/localLLM";
 
 // Send desktop notification when app is in background
 async function notifyIfBackground(title: string, body: string) {
@@ -163,7 +172,7 @@ export default function ChatPanel({
   proMode = false,
   onEnterProMode,
 }: Props) {
-  const { token, activeAgentId, agents, setActiveAgent, instances, activeInstanceId, setActiveInstance } =
+  const { token, activeAgentId, agents, setActiveAgent, instances, activeInstanceId, setActiveInstance, loadToken } =
     useAuthStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -176,7 +185,13 @@ export default function ChatPanel({
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [models, setModels] = useState<any[]>([]);
-  const [selectedModel, setSelectedModel] = useState("");
+  const [selectedModel, setSelectedModel] = useState(() => {
+    try {
+      return localStorage.getItem("agentrix_desktop_selected_model") || "";
+    } catch {
+      return "";
+    }
+  });
   const [workspaceDir, setWorkspaceDirState] = useState<string | null>(null);
   const [fileTreeOpen, setFileTreeOpen] = useState(false);
   const [syncConnected, setSyncConnected] = useState(isSessionSyncConnected());
@@ -202,6 +217,7 @@ export default function ChatPanel({
   const defaultSessionId = `session-${Date.now()}`;
   const [tabs, setTabs] = useState<ChatTab[]>([{ id: defaultTabId, sessionId: defaultSessionId, title: "New Chat", unread: false }]);
   const [activeTabId, setActiveTabId] = useState(defaultTabId);
+  const [tabsHydrated, setTabsHydrated] = useState(false);
   const tabMessagesCache = useRef<Record<string, ChatMessage[]>>({});
   const [sessionRuntime, setSessionRuntime] = useState<Record<string, SessionRuntimeState>>({});
   const sessionRuntimeRef = useRef<Record<string, SessionRuntimeState>>({});
@@ -214,8 +230,10 @@ export default function ChatPanel({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
   const sentenceAccRef = useRef<SentenceAccumulator | null>(null);
+  const localSidecarRef = useRef<LocalLLMSidecar | null>(null);
   // Track whether the current send was voice-initiated for auto-TTS
   const voiceInitiatedRef = useRef(false);
+  const activeRealtimeVoiceTurnRef = useRef<{ sessionId: string; assistantMessageId: string } | null>(null);
 
   const activeSessionRuntime = useMemo(
     () => sessionRuntime[sessionIdRef.current] || createEmptySessionRuntimeState(),
@@ -615,6 +633,9 @@ export default function ChatPanel({
           setModels(m);
           // Use user's resolved model from any source (subscription, custom provider, agent-account)
           const activeInst = instances.find((i) => i.id === activeInstanceId);
+          if (selectedModel === DESKTOP_LOCAL_MODEL_ID) {
+            return;
+          }
           if (activeInst?.resolvedModel) {
             setSelectedModel(activeInst.resolvedModel);
           } else {
@@ -623,7 +644,7 @@ export default function ChatPanel({
         }
       });
     }
-  }, [token]);
+  }, [token, instances, activeInstanceId, selectedModel]);
 
   useEffect(() => {
     localStorage.setItem("agentrix_chat_mode", chatMode);
@@ -641,10 +662,20 @@ export default function ChatPanel({
   // Sync selected model when instances refresh (e.g., model changed from mobile)
   useEffect(() => {
     const activeInst = instances.find((i) => i.id === activeInstanceId);
-    if (activeInst?.resolvedModel && activeInst.resolvedModel !== selectedModel) {
+    if (
+      selectedModel !== DESKTOP_LOCAL_MODEL_ID
+      && activeInst?.resolvedModel
+      && activeInst.resolvedModel !== selectedModel
+    ) {
       setSelectedModel(activeInst.resolvedModel);
     }
-  }, [instances, activeInstanceId]);
+  }, [instances, activeInstanceId, selectedModel]);
+
+  useEffect(() => {
+    return () => {
+      void localSidecarRef.current?.stop().catch(() => {});
+    };
+  }, []);
 
   useEffect(() => {
     listEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -652,24 +683,50 @@ export default function ChatPanel({
 
   // ── Tab initialization from persistence ──────────────
   useEffect(() => {
-    (async () => {
-      const savedTabs = await loadTabs();
-      const savedActiveId = await loadActiveTabId();
-      if (savedTabs.length > 0) {
-        const chatTabs: ChatTab[] = savedTabs.map(t => ({ ...t, unread: false }));
-        setTabs(chatTabs);
-        const activeId = savedActiveId && chatTabs.find(t => t.id === savedActiveId) ? savedActiveId : chatTabs[0].id;
-        setActiveTabId(activeId);
-        const activeTab = chatTabs.find(t => t.id === activeId)!;
-        sessionIdRef.current = activeTab.sessionId;
-        const msgs = await loadSessionMessages(activeTab.sessionId);
-        setMessages(msgs);
-        tabMessagesCache.current[activeTab.sessionId] = msgs;
-      } else {
-        const msgs = await loadSessionMessages(sessionIdRef.current);
-        setMessages(msgs);
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const savedTabs = await loadTabs();
+        const savedActiveId = await loadActiveTabId();
+
+        if (cancelled) {
+          return;
+        }
+
+        if (savedTabs.length > 0) {
+          const chatTabs: ChatTab[] = savedTabs.map((tab) => ({ ...tab, unread: false }));
+          setTabs(chatTabs);
+          const activeId = savedActiveId && chatTabs.find((tab) => tab.id === savedActiveId)
+            ? savedActiveId
+            : chatTabs[0].id;
+          setActiveTabId(activeId);
+          const activeTab = chatTabs.find((tab) => tab.id === activeId)!;
+          sessionIdRef.current = activeTab.sessionId;
+          const msgs = await loadSessionMessages(activeTab.sessionId);
+          if (cancelled) {
+            return;
+          }
+          setMessages(msgs);
+          tabMessagesCache.current[activeTab.sessionId] = msgs;
+        } else {
+          const msgs = await loadSessionMessages(sessionIdRef.current);
+          if (cancelled) {
+            return;
+          }
+          setMessages(msgs);
+          tabMessagesCache.current[sessionIdRef.current] = msgs;
+        }
+      } finally {
+        if (!cancelled) {
+          setTabsHydrated(true);
+        }
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ── Tab management helpers ────────────────────────────
@@ -762,13 +819,19 @@ export default function ChatPanel({
 
   // Persist tabs whenever they change
   useEffect(() => {
+    if (!tabsHydrated) {
+      return;
+    }
     const persisted: PersistedTab[] = tabs.map(t => ({ id: t.id, sessionId: t.sessionId, title: t.title }));
     void saveTabs(persisted);
     void saveActiveTabId(activeTabId);
-  }, [tabs, activeTabId]);
+  }, [tabs, activeTabId, tabsHydrated]);
 
   // Persist current session to localStorage + push to cross-device sync
   useEffect(() => {
+    if (!tabsHydrated) {
+      return;
+    }
     if (messages.length > 0) {
       void persistSession(sessionIdRef.current, messages).then(() => refreshHistory());
       // Update current tab title
@@ -780,7 +843,7 @@ export default function ChatPanel({
       // Push to cross-device sync
       pushSessionSync(sessionIdRef.current, messages, title);
     }
-  }, [messages, refreshHistory, activeTabId]);
+  }, [messages, refreshHistory, activeTabId, tabsHydrated]);
 
   useEffect(() => {
     if (historyOpen) {
@@ -889,9 +952,28 @@ export default function ChatPanel({
   const finalizeMessage = useCallback((sessionId: string, msgId: string) => {
     const updated = updateSessionMessages(
       sessionId,
-      (prev) => prev.map((m) => (
-        m.id === msgId ? { ...m, streaming: false } : m
-      )),
+      (prev) => prev.map((m) => {
+        if (m.id !== msgId) {
+          return m;
+        }
+
+        if (m.content.trim().length > 0) {
+          return { ...m, streaming: false };
+        }
+
+        const runtime = sessionRuntimeRef.current[sessionId] || createEmptySessionRuntimeState();
+        const fallbackContent = runtime.desktopTimelineEntries.length > 0
+          || runtime.desktopTaskStatus === "executing"
+          || runtime.desktopTaskStatus === "need-approve"
+          ? "任务已执行，但本轮没有返回可展示的正文。你可以继续追问，让它基于当前进度继续输出。"
+          : "本轮没有返回可展示的正文。你可以继续追问，让它从当前进度继续。";
+
+        return {
+          ...m,
+          content: fallbackContent,
+          streaming: false,
+        };
+      }),
       { persist: true, markUnread: true },
     );
     const msg = updated.find((m) => m.id === msgId);
@@ -899,6 +981,262 @@ export default function ChatPanel({
       notifyIfBackground("Agentrix", msg.content.slice(0, 100));
     }
   }, [updateSessionMessages]);
+
+  const addSystemMessage = useCallback((content: string) => {
+    setMessages(prev => [...prev, {
+      id: `sys-${Date.now()}`,
+      role: "assistant" as const,
+      content,
+      createdAt: Date.now(),
+    }]);
+  }, [abortSession]);
+
+  const settleRealtimeVoiceTurn = useCallback((options?: { interrupted?: boolean; errorMessage?: string }) => {
+    const activeTurn = activeRealtimeVoiceTurnRef.current;
+    if (!activeTurn) {
+      if (options?.errorMessage) {
+        addSystemMessage(`❌ ${options.errorMessage}`);
+      }
+      setSendStartedAt(null);
+      return;
+    }
+
+    activeRealtimeVoiceTurnRef.current = null;
+
+    if (options?.errorMessage) {
+      const updated = updateSessionMessages(
+        activeTurn.sessionId,
+        (prev) => prev.map((message) => (
+          message.id === activeTurn.assistantMessageId
+            ? {
+                ...message,
+                content: options.errorMessage!,
+                error: true,
+                streaming: false,
+              }
+            : message
+        )),
+        { persist: true, markUnread: true },
+      );
+      const failedMessage = updated.find((message) => message.id === activeTurn.assistantMessageId);
+      if (failedMessage?.content) {
+        void notifyIfBackground("Agentrix", failedMessage.content.slice(0, 100));
+      }
+      setStreamFeedback({
+        tone: "error",
+        label: "语音会话失败",
+        detail: options.errorMessage,
+      });
+    } else if (options?.interrupted) {
+      const updated = updateSessionMessages(
+        activeTurn.sessionId,
+        (prev) => prev.map((message) => (
+          message.id === activeTurn.assistantMessageId
+            ? {
+                ...message,
+                content: message.content.trim() ? message.content : "语音回复已中断。",
+                streaming: false,
+              }
+            : message
+        )),
+        { persist: true, markUnread: true },
+      );
+      const interruptedMessage = updated.find((message) => message.id === activeTurn.assistantMessageId);
+      if (interruptedMessage?.content) {
+        void notifyIfBackground("Agentrix", interruptedMessage.content.slice(0, 100));
+      }
+      setStreamFeedback({
+        tone: "warning",
+        label: "语音回复已中断",
+        detail: "已结束当前语音输出",
+      });
+    } else {
+      finalizeMessage(activeTurn.sessionId, activeTurn.assistantMessageId);
+      setStreamFeedback(null);
+    }
+
+    patchSessionRuntime(activeTurn.sessionId, { sending: false });
+    setSendStartedAt(null);
+
+    if (activeTurn.sessionId === sessionIdRef.current && voiceState === "idle") {
+      setBallState("idle");
+    }
+  }, [addSystemMessage, finalizeMessage, patchSessionRuntime, updateSessionMessages, voiceState]);
+
+  const beginRealtimeVoiceTurn = useCallback((text: string) => {
+    const normalized = text.trim();
+    if (!normalized) {
+      return;
+    }
+
+    if (activeRealtimeVoiceTurnRef.current) {
+      settleRealtimeVoiceTurn({ interrupted: true });
+    }
+
+    const targetSessionId = sessionIdRef.current;
+    const createdAt = Date.now();
+    const userMessage: ChatMessage = {
+      id: `u-${createdAt}`,
+      role: "user",
+      content: normalized,
+      createdAt,
+    };
+    const assistantMessageId = `a-${createdAt + 1}`;
+    const assistantMessage: ChatMessage = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      streaming: true,
+      createdAt: createdAt + 1,
+    };
+
+    activeRealtimeVoiceTurnRef.current = {
+      sessionId: targetSessionId,
+      assistantMessageId,
+    };
+
+    updateSessionMessages(targetSessionId, (prev) => [...prev, userMessage, assistantMessage], { persist: true });
+    setSendStartedAt(createdAt);
+    setActiveToolRun(null);
+    setContinuePrompt(null);
+    setStreamFeedback({
+      tone: "info",
+      label: "桌面实时语音已接管",
+      detail: "等待语音回复分片",
+    });
+    patchSessionRuntime(targetSessionId, { sending: true });
+
+    if (targetSessionId === sessionIdRef.current) {
+      setBallState("thinking");
+    }
+  }, [patchSessionRuntime, settleRealtimeVoiceTurn, updateSessionMessages]);
+
+  const handleRealtimeVoiceTranscript = useCallback((text: string) => {
+    beginRealtimeVoiceTurn(text);
+  }, [beginRealtimeVoiceTurn]);
+
+  const handleRealtimeVoiceAgentText = useCallback((chunk: string) => {
+    const activeTurn = activeRealtimeVoiceTurnRef.current;
+    if (!activeTurn || !chunk) {
+      return;
+    }
+
+    appendChunk(activeTurn.sessionId, activeTurn.assistantMessageId, chunk);
+    setStreamFeedback((current) => {
+      if (current?.tone === "error") {
+        return current;
+      }
+      return {
+        tone: "info",
+        label: "正在输出语音回复",
+        detail: "桌面 realtime voice 正在流式返回",
+      };
+    });
+
+    if (activeTurn.sessionId === sessionIdRef.current) {
+      setBallState("speaking");
+    }
+  }, [appendChunk]);
+
+  const handleRealtimeVoiceAgentEnd = useCallback((interrupted?: boolean) => {
+    settleRealtimeVoiceTurn(interrupted ? { interrupted: true } : undefined);
+  }, [settleRealtimeVoiceTurn]);
+
+  const handleRealtimeVoiceError = useCallback((message: string) => {
+    settleRealtimeVoiceTurn({ errorMessage: message });
+  }, [settleRealtimeVoiceTurn]);
+
+  const handleRealtimeDeepThinkStart = useCallback((targetModel: string) => {
+    setStreamFeedback({
+      tone: "info",
+      label: "深度分析已转入超脑",
+      detail: targetModel ? `目标模型: ${targetModel}` : "等待异步返回",
+    });
+  }, []);
+
+  const handleRealtimeDeepThinkDone = useCallback((summary: string, model?: string) => {
+    setStreamFeedback({
+      tone: "success",
+      label: "深度分析完成",
+      detail: model ? `返回模型: ${model}` : "已收到总结",
+    });
+
+    const normalized = summary.trim();
+    if (normalized) {
+      addSystemMessage(`🧠 Deep think${model ? ` (${model})` : ""}: ${normalized}`);
+    }
+  }, [addSystemMessage]);
+
+  const handleRealtimeFabricDevicesChanged = useCallback((devices: FabricDevice[]) => {
+    if (devices.length <= 1) {
+      return;
+    }
+
+    const primaryDevice = devices.find((device) => device.isPrimary);
+    setStreamFeedback({
+      tone: "info",
+      label: `语音 Session Fabric 已连接 ${devices.length} 台设备`,
+      detail: primaryDevice ? `当前主设备: ${primaryDevice.deviceType}` : "可从其他设备接管",
+    });
+  }, []);
+
+  const persistSelectedModel = useCallback(async (modelId: string, options?: { announce?: boolean }) => {
+    setSelectedModel(modelId);
+
+    try {
+      localStorage.setItem("agentrix_desktop_selected_model", modelId);
+    } catch {}
+
+    if (modelId === DESKTOP_LOCAL_MODEL_ID) {
+      if (options?.announce) {
+        addSystemMessage(`✅ Switched to model: ${DESKTOP_LOCAL_MODEL_LABEL}`);
+      }
+      return true;
+    }
+
+    if (!activeInstanceId || !token) {
+      if (options?.announce) {
+        const label = models.find((model) => model.id === modelId)?.label || modelId;
+        addSystemMessage(`✅ Switched to model: ${label}`);
+      }
+      return true;
+    }
+
+    try {
+      const response = await apiFetch(`${API_BASE}/openclaw/instances/${activeInstanceId}/model`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ modelId }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        throw new Error(errorText || `Model switch failed (${response.status})`);
+      }
+
+      await loadToken();
+
+      if (options?.announce) {
+        const label = models.find((model) => model.id === modelId)?.label || modelId;
+        addSystemMessage(`✅ Switched to model: ${label}`);
+      }
+
+      return true;
+    } catch (error: any) {
+      if (options?.announce) {
+        addSystemMessage(`❌ ${error?.message || error}`);
+      }
+      setStreamFeedback({
+        tone: "error",
+        label: "模型切换失败",
+        detail: error?.message || String(error),
+      });
+      return false;
+    }
+  }, [activeInstanceId, addSystemMessage, loadToken, models, token]);
 
   // Handle slash commands locally
   const handleSlashCommand = useCallback(async (text: string): Promise<boolean> => {
@@ -967,8 +1305,7 @@ export default function ChatPanel({
       const modelArg = trimmed.slice(7).trim();
       const match = models.find(m => m.id === modelArg || m.label?.toLowerCase().includes(modelArg.toLowerCase()));
       if (match) {
-        setSelectedModel(match.id);
-        addSystemMessage(`✅ Switched to model: ${match.label || match.id}`);
+        await persistSelectedModel(match.id, { announce: true });
       } else {
         addSystemMessage(`❌ Model not found. Available: ${models.map(m => m.id).join(", ")}`);
       }
@@ -1260,22 +1597,14 @@ export default function ChatPanel({
     }
 
     return false;
-  }, [models, messages, activeAgent, activeAgentId, token]);
-
-  const addSystemMessage = useCallback((content: string) => {
-    setMessages(prev => [...prev, {
-      id: `sys-${Date.now()}`,
-      role: "assistant" as const,
-      content,
-      createdAt: Date.now(),
-    }]);
-  }, [abortSession]);
+  }, [models, messages, activeAgent, activeAgentId, token, persistSelectedModel]);
 
   const handleSend = useCallback(
     async (overrideText?: string) => {
       const text = (overrideText || input).trim();
       const targetSessionId = sessionIdRef.current;
       const targetRuntime = sessionRuntimeRef.current[targetSessionId] || createEmptySessionRuntimeState();
+      const useDesktopLocalModel = selectedModel === DESKTOP_LOCAL_MODEL_ID;
 
       if ((!text && pendingAttachments.length === 0) || targetRuntime.sending || uploadingAttachments) {
         return;
@@ -1345,6 +1674,13 @@ export default function ChatPanel({
               setBallState("speaking");
             }
           },
+          (message) => {
+            setStreamFeedback({
+              tone: "warning",
+              label: "语音播报不可用",
+              detail: message,
+            });
+          },
         );
         audioPlayerRef.current = audioPlayer;
         sentenceAcc = new SentenceAccumulator((sentence) => {
@@ -1353,7 +1689,8 @@ export default function ChatPanel({
         sentenceAccRef.current = sentenceAcc;
       }
 
-      if (token) {
+      if (token || useDesktopLocalModel) {
+        const authToken = token;
         const history = currentMessagesForSession.slice(-25).map((message) => ({
           role: message.role,
           content: serializeMessageForModel(message.content, message.attachments || []),
@@ -1546,13 +1883,15 @@ export default function ChatPanel({
           // Clear stream cost after completion, refresh token bar
           setStreamCost(null);
           fetchTokenUsage();
-          getActivePlan(token, targetSessionId)
-            .then((plan) => {
-              if (plan) {
-                setPlanForSession(targetSessionId, plan);
-              }
-            })
-            .catch(() => {});
+          if (authToken) {
+            getActivePlan(authToken, targetSessionId)
+              .then((plan) => {
+                if (plan) {
+                  setPlanForSession(targetSessionId, plan);
+                }
+              })
+              .catch(() => {});
+          }
           resolve();
         };
 
@@ -1561,7 +1900,12 @@ export default function ChatPanel({
             targetSessionId,
             (prev) => prev.map((message) => (
               message.id === assistantId
-                ? { ...message, content: `Error: ${err}`, error: true, streaming: false }
+                ? {
+                    ...message,
+                    content: message.content.trim().length > 0 ? message.content : `Error: ${err}`,
+                    error: true,
+                    streaming: false,
+                  }
                 : message
             )),
             { persist: true, markUnread: true },
@@ -1590,6 +1934,112 @@ export default function ChatPanel({
           resolve();
         };
 
+        if (useDesktopLocalModel) {
+          const controller = new AbortController();
+          sessionAbortControllersRef.current[targetSessionId] = controller;
+          if (targetSessionId === sessionIdRef.current) {
+            abortRef.current = controller;
+          }
+
+          updateSessionMessages(
+            targetSessionId,
+            (prev) => prev.map((message) => (
+              message.id === assistantId
+                ? {
+                    ...message,
+                    meta: {
+                      resolvedModel: DESKTOP_LOCAL_MODEL_ID,
+                      resolvedModelLabel: DESKTOP_LOCAL_MODEL_LABEL,
+                    },
+                  }
+                : message
+            )),
+          );
+
+          try {
+            const localSidecar = localSidecarRef.current || new LocalLLMSidecar();
+            localSidecarRef.current = localSidecar;
+            setStreamFeedback({
+              tone: "info",
+              label: "正在启动本地模型",
+              detail: "Gemma Nano 2B 本地推理中",
+            });
+
+            for await (const chunk of streamDesktopLocalChat(localSidecar, history)) {
+              if (controller.signal.aborted) {
+                break;
+              }
+              chunkHandler(chunk);
+            }
+
+            if (!controller.signal.aborted) {
+              finalizeMessage(targetSessionId, assistantId);
+              sentenceAcc?.flush();
+              setStreamFeedback(null);
+            }
+          } catch (error: any) {
+            const message = error?.message || String(error);
+            updateSessionMessages(
+              targetSessionId,
+              (prev) => prev.map((existing) => (
+                existing.id === assistantId
+                  ? {
+                      ...existing,
+                      content: existing.content.trim().length > 0 ? existing.content : `Error: ${message}`,
+                      error: true,
+                      streaming: false,
+                    }
+                  : existing
+              )),
+              { persist: true, markUnread: true },
+            );
+            setStreamFeedback({
+              tone: "error",
+              label: "本地模型执行失败",
+              detail: message,
+            });
+          } finally {
+            sessionAbortControllersRef.current[targetSessionId] = null;
+            if (targetSessionId === sessionIdRef.current) {
+              abortRef.current = null;
+            }
+            patchSessionRuntime(targetSessionId, { sending: false });
+            setSendStartedAt(null);
+            setActiveToolRun(null);
+            voiceInitiatedRef.current = false;
+            if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
+              setBallState("idle");
+            }
+          }
+
+          return;
+        }
+
+        if (!authToken) {
+          updateSessionMessages(
+            targetSessionId,
+            (prev) => prev.map((message) => (
+              message.id === assistantId
+                ? {
+                    ...message,
+                    content: 'Error: Authentication token is required for cloud chat.',
+                    error: true,
+                    streaming: false,
+                  }
+                : message
+            )),
+            { persist: true, markUnread: true },
+          );
+          patchSessionRuntime(targetSessionId, { sending: false });
+          setSendStartedAt(null);
+          setActiveToolRun(null);
+          voiceInitiatedRef.current = false;
+          if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
+            setBallState('idle');
+          }
+          return;
+        }
+
         await new Promise<void>((resolve) => {
           let controller: AbortController;
           if (activeInstanceId) {
@@ -1597,7 +2047,7 @@ export default function ChatPanel({
               instanceId: activeInstanceId,
               message: outboundText,
               sessionId: targetSessionId,
-              token,
+              token: authToken,
               model: selectedModel || undefined,
               mode: chatMode,
               onChunk: chunkHandler,
@@ -1611,7 +2061,7 @@ export default function ChatPanel({
               messages: history,
               sessionId: targetSessionId,
               agentId: activeAgentId,
-              token,
+              token: authToken,
               mode: chatMode,
               onChunk: chunkHandler,
               onDone: doneHandler(resolve),
@@ -1727,7 +2177,9 @@ export default function ChatPanel({
   useEffect(() => {
     if (voiceState === "recording") setBallState("recording");
     else if (voiceState === "processing") setBallState("thinking");
-  }, [voiceState]);
+    else if (voiceState === "speaking") setBallState("speaking");
+    else if (!sending) setBallState("idle");
+  }, [sending, voiceState]);
 
   // Handle voice transcript — auto-send with TTS
   const handleVoiceTranscript = useCallback(
@@ -2018,37 +2470,36 @@ export default function ChatPanel({
             })}
           </select>
           {/* Model selector — always visible so user can switch between custom and platform models */}
-          {models.length > 0 && (
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              style={{
-                background: "transparent",
-                color: "var(--text-dim)",
-                border: "none",
-                fontSize: 11,
-                cursor: "pointer",
-                marginLeft: 8,
-                WebkitAppRegion: "no-drag",
-              }}
-            >
-              {/* If user has a custom provider model not in platform list, show it as first option */}
-              {(() => {
-                const activeInst = instances.find((i) => i.id === activeInstanceId);
-                const userModel = activeInst?.resolvedModel;
-                const userLabel = activeInst?.resolvedModelLabel;
-                if (userModel && !models.some((m: any) => m.id === userModel)) {
-                  return <option key={userModel} value={userModel}>{userLabel || userModel}</option>;
-                }
-                return null;
-              })()}
-              {models.map((m: any) => (
-                <option key={m.id} value={m.id}>
-                  {m.label || m.id}
-                </option>
-              ))}
-            </select>
-          )}
+          <select
+            value={selectedModel}
+            onChange={(e) => { void persistSelectedModel(e.target.value); }}
+            style={{
+              background: "transparent",
+              color: "var(--text-dim)",
+              border: "none",
+              fontSize: 11,
+              cursor: "pointer",
+              marginLeft: 8,
+              WebkitAppRegion: "no-drag",
+            }}
+          >
+            {/* If user has a custom provider model not in platform list, show it as first option */}
+            {(() => {
+              const activeInst = instances.find((i) => i.id === activeInstanceId);
+              const userModel = activeInst?.resolvedModel;
+              const userLabel = activeInst?.resolvedModelLabel;
+              if (userModel && !models.some((m: any) => m.id === userModel) && userModel !== DESKTOP_LOCAL_MODEL_ID) {
+                return <option key={userModel} value={userModel}>{userLabel || userModel}</option>;
+              }
+              return null;
+            })()}
+            <option value={DESKTOP_LOCAL_MODEL_ID}>{DESKTOP_LOCAL_MODEL_LABEL}</option>
+            {models.map((m: any) => (
+              <option key={m.id} value={m.id}>
+                {m.label || m.id}
+              </option>
+            ))}
+          </select>
         </div>
         <button onClick={handleNewChat} style={iconBtnStyle} title="New Chat">
           ＋
@@ -2139,7 +2590,7 @@ export default function ChatPanel({
           onClose={() => setSettingsOpen(false)}
           models={models}
           selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
+          onModelChange={(id) => { void persistSelectedModel(id); }}
         />
       )}
 
@@ -2555,6 +3006,22 @@ export default function ChatPanel({
           onTranscript={handleVoiceTranscript}
           voiceState={voiceState}
           onStateChange={setVoiceState}
+          onBargeIn={() => {
+            audioPlayerRef.current?.stopAll();
+            sentenceAccRef.current?.reset();
+          }}
+          realtime={{
+            enabled: Boolean(token && activeInstanceId),
+            instanceId: activeInstanceId || undefined,
+            model: selectedModel || undefined,
+            onTranscriptFinal: handleRealtimeVoiceTranscript,
+            onAgentText: handleRealtimeVoiceAgentText,
+            onAgentEnd: handleRealtimeVoiceAgentEnd,
+            onDeepThinkStart: handleRealtimeDeepThinkStart,
+            onDeepThinkDone: handleRealtimeDeepThinkDone,
+            onFabricDevicesChanged: handleRealtimeFabricDevicesChanged,
+            onError: handleRealtimeVoiceError,
+          }}
         />
         <button
           onClick={() => handleSend()}

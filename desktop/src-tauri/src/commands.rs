@@ -1428,3 +1428,152 @@ pub fn close_spotlight(app: AppHandle) -> Result<(), String> {
     }
     Ok(())
 }
+
+// ─── Local LLM Sidecar (llama.cpp) ───────────────────────
+
+static LLM_SIDECAR_PID: Mutex<Option<u32>> = Mutex::new(None);
+
+/// Start a llama.cpp server as a sidecar process.
+/// The binary must exist at the given path or be resolvable via PATH.
+pub fn start_llm_sidecar(
+    model_path: String,
+    port: u16,
+    n_gpu_layers: u32,
+    context_size: u32,
+    threads: Option<u32>,
+) -> Result<(), String> {
+    // Kill existing sidecar if running
+    stop_llm_sidecar().ok();
+
+    // Validate model file exists
+    if !Path::new(&model_path).is_file() {
+        return Err(format!("Model file not found: {}", model_path));
+    }
+
+    // Look for llama-server binary
+    let binary = find_llama_server_binary()
+        .ok_or_else(|| "llama-server binary not found. Please install llama.cpp or place llama-server in app directory.".to_string())?;
+
+    let mut cmd = Command::new(&binary);
+    cmd.arg("--model").arg(&model_path)
+       .arg("--port").arg(port.to_string())
+       .arg("--ctx-size").arg(context_size.to_string())
+       .arg("--n-gpu-layers").arg(n_gpu_layers.to_string());
+
+    if let Some(t) = threads {
+        cmd.arg("--threads").arg(t.to_string());
+    }
+
+    cmd.stdout(Stdio::null())
+       .stderr(Stdio::null());
+
+    // Detach process on Windows so it doesn't block
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+    let child = cmd.spawn().map_err(|e| format!("Failed to start llama-server: {}", e))?;
+    let pid = child.id();
+
+    let mut guard = LLM_SIDECAR_PID.lock().map_err(|e| e.to_string())?;
+    *guard = Some(pid);
+
+    Ok(())
+}
+
+/// Stop the llama.cpp sidecar process.
+pub fn stop_llm_sidecar() -> Result<(), String> {
+    let mut guard = LLM_SIDECAR_PID.lock().map_err(|e| e.to_string())?;
+    if let Some(pid) = guard.take() {
+        #[cfg(target_os = "windows")]
+        {
+            let _ = Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/F"])
+                .creation_flags(0x08000000)
+                .output();
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = Command::new("kill")
+                .args(["-9", &pid.to_string()])
+                .output();
+        }
+    }
+    Ok(())
+}
+
+/// List GGUF model files in a directory.
+pub fn list_local_models(models_dir: String) -> Result<Vec<LocalModelInfo>, String> {
+    let dir = Path::new(&models_dir);
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut models = Vec::new();
+    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.extension().map_or(false, |ext| ext == "gguf") {
+            let meta = entry.metadata().map_err(|e| e.to_string())?;
+            models.push(LocalModelInfo {
+                name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+                path: path.to_string_lossy().to_string(),
+                size_bytes: meta.len(),
+            });
+        }
+    }
+    models.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(models)
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LocalModelInfo {
+    pub name: String,
+    pub path: String,
+    pub size_bytes: u64,
+}
+
+fn find_llama_server_binary() -> Option<PathBuf> {
+    // Check common locations
+    let candidates = [
+        // Same directory as the app
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("llama-server"))),
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("llama-server.exe"))),
+        // App data directory
+        #[cfg(target_os = "windows")]
+        std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("Agentrix Desktop").join("bin").join("llama-server.exe")),
+        #[cfg(not(target_os = "windows"))]
+        std::env::var_os("HOME").map(|d| PathBuf::from(d).join(".local").join("bin").join("llama-server")),
+    ];
+
+    for candidate in candidates.into_iter().flatten() {
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+
+    // Try PATH
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(output) = Command::new("where").arg("llama-server").creation_flags(0x08000000).output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Some(PathBuf::from(path.lines().next().unwrap_or(&path)));
+                }
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(output) = Command::new("which").arg("llama-server").output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Some(PathBuf::from(path));
+                }
+            }
+        }
+    }
+
+    None
+}

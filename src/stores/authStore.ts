@@ -18,6 +18,13 @@ export interface OpenClawInstance {
   wsRelayUrl?: string;  // wss:// relay endpoint
   lastSyncAt?: string;
   agentAccountId?: string;
+  capabilities?: {
+    [key: string]: any;
+  };
+  resolvedModel?: string;
+  resolvedModelLabel?: string;
+  resolvedProvider?: string;
+  hasCustomProvider?: boolean;
   metadata?: {
     agentAccountId?: string;
     [key: string]: any;

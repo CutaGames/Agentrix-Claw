@@ -125,6 +125,7 @@ export class QueryEngineService {
     let turnCount = 0;
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
+    let finalStopReason: NormalizedLLMResponse['stopReason'] = 'end_turn';
 
     try {
       // Agentic loop
@@ -177,6 +178,7 @@ export class QueryEngineService {
             },
           },
         );
+        finalStopReason = llmResponse.stopReason || 'end_turn';
 
         // Track usage
         totalInputTokens += llmResponse.usage.inputTokens;
@@ -282,7 +284,11 @@ export class QueryEngineService {
 
       onEvent({
         type: 'done',
-        reason: abortSignal?.aborted ? 'abort' : 'end_turn',
+        reason: abortSignal?.aborted
+          ? 'abort'
+          : finalStopReason === 'max_tokens' || finalStopReason === 'stop_sequence'
+            ? finalStopReason
+            : 'end_turn',
         totalDurationMs,
         totalInputTokens,
         totalOutputTokens,

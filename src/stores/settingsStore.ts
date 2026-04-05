@@ -34,6 +34,7 @@ export interface ModelOption {
 
 /** Hardcoded fallback models — used only when backend is unreachable */
 export const SUPPORTED_MODELS: ModelOption[] = [
+  { id: 'gemma-nano-2b',    label: 'Gemma Nano 2B (端侧本地)',       provider: 'On-device',         icon: '📱', badge: 'Local', availability: 'available', costTier: 'free' },
   { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (平台默认 API)',    provider: 'Agentrix Platform', icon: '🤖', badge: 'Default', availability: 'available', costTier: 'free_trial' },
 ];
 

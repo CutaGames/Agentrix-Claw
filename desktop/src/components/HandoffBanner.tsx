@@ -8,6 +8,8 @@
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { acceptHandoffWs, rejectHandoffWs, type HandoffEvent } from "../services/agentPresence";
 
+const PENDING_HANDOFF_KEY = "agentrix_pending_handoff";
+
 interface Props {
   onAccept?: (handoffId: string, context: Record<string, unknown>) => void;
   onDismiss?: () => void;
@@ -25,29 +27,56 @@ export default function HandoffBanner({ onAccept, onDismiss }: Props) {
   const [handoff, setHandoff] = useState<HandoffEvent | null>(null);
   const [accepting, setAccepting] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
+    const setIncomingHandoff = (next: HandoffEvent | null) => {
+      setHandoff(next);
+      setDismissed(false);
+      if (next) {
+        localStorage.setItem(PENDING_HANDOFF_KEY, JSON.stringify(next));
+      }
+    };
+
+    try {
+      const raw = localStorage.getItem(PENDING_HANDOFF_KEY);
+      if (raw) {
+        setHandoff(JSON.parse(raw) as HandoffEvent);
+      }
+    } catch {}
+
     function handlePresenceEvent(e: Event) {
       const { event, data } = (e as CustomEvent).detail ?? {};
       if (event === "handoff:request" || event === "handoff:initiated") {
-        setHandoff(data as HandoffEvent);
-        setDismissed(false);
+        setIncomingHandoff(data as HandoffEvent);
       }
-      if (event === "handoff:accepted" || event === "handoff:accept_ok") {
-        // Another device accepted, clear the banner
+      if (event === "handoff:accepted" || event === "handoff:accept_ok" || event === "handoff:rejected") {
         setHandoff(null);
+        localStorage.removeItem(PENDING_HANDOFF_KEY);
       }
     }
+
+    function handleIncomingHandoff(e: Event) {
+      const detail = (e as CustomEvent).detail as HandoffEvent | undefined;
+      if (detail) {
+        setIncomingHandoff(detail);
+      }
+    }
+
     window.addEventListener("agentrix:presence-event", handlePresenceEvent);
-    return () => window.removeEventListener("agentrix:presence-event", handlePresenceEvent);
+    window.addEventListener("agentrix:handoff-incoming", handleIncomingHandoff as EventListener);
+    return () => {
+      window.removeEventListener("agentrix:presence-event", handlePresenceEvent);
+      window.removeEventListener("agentrix:handoff-incoming", handleIncomingHandoff as EventListener);
+    };
   }, []);
 
   // Auto-dismiss after 30s
   useEffect(() => {
-    if (!handoff) return;
+    if (!handoff || hovered) return;
     const timer = setTimeout(() => setDismissed(true), 30_000);
     return () => clearTimeout(timer);
-  }, [handoff]);
+  }, [handoff, hovered]);
 
   const handleAccept = useCallback(async () => {
     if (!handoff?.handoffId) return;
@@ -58,6 +87,7 @@ export default function HandoffBanner({ onAccept, onDismiss }: Props) {
     } finally {
       setAccepting(false);
       setHandoff(null);
+      localStorage.removeItem(PENDING_HANDOFF_KEY);
     }
   }, [handoff, onAccept]);
 
@@ -66,6 +96,7 @@ export default function HandoffBanner({ onAccept, onDismiss }: Props) {
       rejectHandoffWs(handoff.handoffId);
     }
     setDismissed(true);
+    localStorage.removeItem(PENDING_HANDOFF_KEY);
     onDismiss?.();
   }, [handoff, onDismiss]);
 
@@ -74,7 +105,11 @@ export default function HandoffBanner({ onAccept, onDismiss }: Props) {
   const sourceIcon = DEVICE_ICONS[handoff.contextSnapshot?.deviceType as string] ?? "📱";
 
   return (
-    <div style={styles.container}>
+    <div
+      style={styles.container}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <div style={styles.content}>
         <span style={styles.icon}>{sourceIcon}</span>
         <div style={styles.text}>

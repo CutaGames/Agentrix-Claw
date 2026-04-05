@@ -4,7 +4,7 @@
  * Uses Web Audio API for reliable autoplay in Tauri WebView2.
  */
 
-import { API_BASE } from "./store";
+import { API_BASE, apiFetch } from "./store";
 
 export class AudioQueuePlayer {
   private queue: string[] = [];
@@ -14,15 +14,19 @@ export class AudioQueuePlayer {
   private token: string;
   private onFinishedAll: (() => void) | null;
   private onPlayStateChange: ((playing: boolean) => void) | null;
+  private onError: ((message: string) => void) | null;
+  private hasReportedError = false;
 
   constructor(
     token: string,
     onFinishedAll?: () => void,
     onPlayStateChange?: (playing: boolean) => void,
+    onError?: (message: string) => void,
   ) {
     this.token = token;
     this.onFinishedAll = onFinishedAll || null;
     this.onPlayStateChange = onPlayStateChange || null;
+    this.onError = onError || null;
     // Create AudioContext immediately (should be within user gesture context)
     try {
       this.audioCtx = new AudioContext();
@@ -44,6 +48,14 @@ export class AudioQueuePlayer {
     }
   }
 
+  private reportError(message: string) {
+    if (this.hasReportedError) {
+      return;
+    }
+    this.hasReportedError = true;
+    this.onError?.(message);
+  }
+
   private async playNext() {
     if (this.queue.length === 0) {
       this.isPlaying = false;
@@ -57,11 +69,13 @@ export class AudioQueuePlayer {
     const url = this.queue.shift()!;
 
     try {
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         headers: { Authorization: `Bearer ${this.token}` },
       });
       if (!res.ok) {
+        const message = `Voice playback unavailable (TTS HTTP ${res.status}).`;
         console.warn("[AudioQueuePlayer] TTS fetch failed:", res.status);
+        this.reportError(message);
         this.playNext();
         return;
       }
@@ -107,12 +121,17 @@ export class AudioQueuePlayer {
       audio.onerror = () => {
         URL.revokeObjectURL(blobUrl);
         console.warn("[AudioQueuePlayer] HTMLAudio playback error");
+        this.reportError("Voice playback unavailable.");
         this.playNext();
       };
 
       await audio.play();
     } catch (e) {
       console.warn("[AudioQueuePlayer] playNext error:", e);
+      const message = e instanceof Error && e.message
+        ? `Voice playback unavailable (${e.message}).`
+        : "Voice playback unavailable.";
+      this.reportError(message);
       this.currentSource = null;
       this.playNext();
     }

@@ -13,6 +13,35 @@ export interface AgentChatResponse {
   sessionId?: string;
 }
 
+export interface ClaudeChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
+export interface ClaudeChatRequest {
+  messages: ClaudeChatMessage[];
+  sessionId?: string;
+  agentId?: string;
+  mode?: 'ask' | 'agent' | 'plan';
+  platform?: 'desktop' | 'mobile' | 'web';
+  deviceId?: string;
+  context?: {
+    userId?: string;
+    sessionId?: string;
+  };
+  options?: {
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+    enableModelRouting?: boolean;
+  };
+}
+
+export interface ClaudeChatResponse {
+  text: string;
+  toolCalls?: any[] | null;
+}
+
 export interface CodeGenerateRequest {
   prompt: string;
   language: 'typescript' | 'javascript' | 'python';
@@ -117,6 +146,13 @@ export const agentApi = {
       context: request.context,
       sessionId: request.sessionId,
     });
+  },
+
+  /**
+   * Claude / Bedrock 长任务对话
+   */
+  claudeChat: async (request: ClaudeChatRequest): Promise<ClaudeChatResponse | null> => {
+    return apiClient.post<ClaudeChatResponse>('/claude/chat', request);
   },
 
   /**

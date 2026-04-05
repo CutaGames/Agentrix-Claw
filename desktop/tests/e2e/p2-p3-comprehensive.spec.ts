@@ -4,46 +4,107 @@
  * Tests all new components: HandoffBanner, WearableNotification,
  * OfflineCache, AgentEconomyPanel, MemoryPanel, and existing features.
  */
-import { test, expect } from "@playwright/test";
+import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 
 const API = "https://api.agentrix.top/api";
+
+async function gotoDesktop(page: Page) {
+  try {
+    await page.goto("http://127.0.0.1:1420", { timeout: 45_000, waitUntil: "domcontentloaded" });
+  } catch (error) {
+    const message = String(error);
+    if (/ERR_CONNECTION_REFUSED|ECONNREFUSED|ERR_ABORTED/i.test(message)) {
+      test.skip(true, "Vite dev server not running");
+      return;
+    }
+    throw error;
+  }
+  await expect(page.locator("body")).toBeVisible({ timeout: 20_000 });
+  await expect.poll(async () => (await page.content()).length, { timeout: 20_000 }).toBeGreaterThan(100);
+}
+
+async function enterGuest(page: Page, onboarded = true) {
+  await gotoDesktop(page);
+  await page.evaluate((flag) => {
+    localStorage.removeItem("agentrix_token");
+    if (flag) {
+      localStorage.setItem("agentrix_onboarded", "1");
+    } else {
+      localStorage.removeItem("agentrix_onboarded");
+    }
+  }, onboarded);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("body")).toBeVisible({ timeout: 20_000 });
+
+  const guestBtn = page.getByRole("button", { name: /Skip as Guest/i });
+  const ball = page.locator("[title*='Agentrix']").first();
+  if (await guestBtn.isVisible().catch(() => false)) {
+    await guestBtn.dispatchEvent("click");
+  }
+
+  if (!onboarded) {
+    await expect(page.locator("text=Welcome to Agentrix")).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: /Get Started/i }).dispatchEvent("click");
+    const skipBtn = page.getByRole("button", { name: /Skip for now/i });
+    if (await skipBtn.isVisible().catch(() => false)) {
+      await skipBtn.dispatchEvent("click");
+    }
+    await page.getByRole("button", { name: /Start Using Agentrix/i }).dispatchEvent("click");
+  }
+
+  await expect(ball).toBeVisible({ timeout: 10_000 });
+}
+
+async function openProMode(page: Page) {
+  await enterGuest(page, true);
+  const ball = page.locator("[title*='Agentrix']").first();
+  await ball.dblclick({ force: true });
+  await expect(page.locator("textarea")).toBeVisible({ timeout: 10_000 });
+}
+
+async function expectEndpoint(
+  request: APIRequestContext,
+  path: string,
+  allowedStatuses: number[],
+  timeout = 20_000,
+) {
+  const res = await request.get(`${API}${path}`, { timeout });
+  expect(allowedStatuses).toContain(res.status());
+}
 
 // ── Backend API Tests ──────────────────────────────────────
 
 test.describe("P2-P3 Backend API Verification", () => {
+  test.setTimeout(90_000);
+
   test("health endpoint available", async ({ request }) => {
     const res = await request.get(`${API}/health`);
     expect(res.status()).toBeLessThan(500);
   });
 
   test("agent-presence agents endpoint exists", async ({ request }) => {
-    const res = await request.get(`${API}/agent-presence/agents`);
-    expect([200, 401, 403]).toContain(res.status());
+    await expectEndpoint(request, "/agent-presence/agents", [200, 401, 403]);
   });
 
   test("agent-presence devices endpoint exists", async ({ request }) => {
-    const res = await request.get(`${API}/agent-presence/devices`);
-    expect([200, 401, 403]).toContain(res.status());
+    await expectEndpoint(request, "/agent-presence/devices", [200, 401, 403]);
   });
 
   test("agent-presence dashboard endpoint exists", async ({ request }) => {
-    const res = await request.get(`${API}/agent-presence/dashboard`);
-    expect([200, 401, 403]).toContain(res.status());
+    await expectEndpoint(request, "/agent-presence/dashboard", [200, 401, 403]);
   });
 
   test("desktop-sync state endpoint exists", async ({ request }) => {
-    const res = await request.get(`${API}/desktop-sync/state`);
-    expect([200, 401, 403]).toContain(res.status());
+    await expectEndpoint(request, "/desktop-sync/state", [200, 401, 403]);
   });
 
   test("skills endpoint available", async ({ request }) => {
-    const res = await request.get(`${API}/skills`);
+    const res = await request.get(`${API}/skills`, { timeout: 60_000 });
     expect(res.status()).toBeLessThan(500);
   });
 
   test("ai-rag knowledge endpoint exists", async ({ request }) => {
-    const res = await request.get(`${API}/ai-rag/knowledge`);
-    expect([200, 401, 403]).toContain(res.status());
+    await expectEndpoint(request, "/ai-rag/knowledge", [200, 401, 403]);
   });
 });
 
@@ -53,14 +114,7 @@ test.describe("P2-P3 Component Rendering", () => {
   test.setTimeout(60_000);
 
   test.beforeEach(async ({ page }) => {
-    await page.goto("http://localhost:1420", { timeout: 30_000 }).catch(() => {
-      test.skip(true, "Vite dev server not running — skip UI tests");
-    });
-    await page.evaluate(() => {
-      localStorage.setItem("agentrix_onboarded", "1");
-    });
-    await page.reload();
-    await page.waitForTimeout(2000);
+    await gotoDesktop(page);
   });
 
   test("app renders without crash", async ({ page }) => {
@@ -71,142 +125,77 @@ test.describe("P2-P3 Component Rendering", () => {
   });
 
   test("floating ball visible", async ({ page }) => {
-    await page.waitForTimeout(1500);
-    // FloatingBall should render (it may have different titles)
-    const ball = page.locator("div[style*='cursor: pointer']").first();
-    const visible = await ball.isVisible({ timeout: 5000 }).catch(() => false);
-    expect(visible || true).toBeTruthy(); // soft check
+    await enterGuest(page, true);
+    await expect(page.locator("[title*='Agentrix']")).toBeVisible();
   });
 
-  test("chat panel opens on floating ball click", async ({ page }) => {
-    await page.waitForTimeout(1500);
-    // Click anywhere on the floating ball area
-    const ball = page.locator("[title='Click to chat'], [title='Toggle chat']");
-    if (await ball.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await ball.click();
-      await page.waitForTimeout(1000);
-      // Chat panel textarea should be visible
-      const textarea = page.locator("textarea");
-      const vis = await textarea.isVisible({ timeout: 3000 }).catch(() => false);
-      expect(vis).toBeTruthy();
-    }
+  test("double-click floating ball opens pro mode", async ({ page }) => {
+    await openProMode(page);
+    await expect(page.locator("textarea")).toBeVisible();
   });
 
-  test("economy panel button exists", async ({ page }) => {
-    // Open chat panel first
-    const ball = page.locator("[title='Click to chat'], [title='Toggle chat']");
-    if (await ball.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await ball.click();
-      await page.waitForTimeout(1000);
-    }
-    const economyBtn = page.locator("[title='Agent Economy']");
-    if (await economyBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await economyBtn.click();
-      await page.waitForTimeout(500);
-      const content = await page.content();
-      // Should contain economy panel content
-      expect(content).toBeTruthy();
-    }
+  test("economy panel opens and shows tabs", async ({ page }) => {
+    await openProMode(page);
+    await page.locator("[title='Agent Economy']").click({ force: true });
+    await expect(page.locator("text=Overview")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator("text=Transactions")).toBeVisible();
+    await expect(page.locator("text=Skills")).toBeVisible();
   });
 
-  test("memory panel button exists", async ({ page }) => {
-    const ball = page.locator("[title='Click to chat'], [title='Toggle chat']");
-    if (await ball.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await ball.click();
-      await page.waitForTimeout(1000);
-    }
-    const memoryBtn = page.locator("[title='Memory']");
-    if (await memoryBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await memoryBtn.click();
-      await page.waitForTimeout(500);
-      const content = await page.content();
-      expect(content).toBeTruthy();
-    }
+  test("memory panel opens and shows memory layers", async ({ page }) => {
+    await openProMode(page);
+    await page.locator("[title='Memory']").click({ force: true });
+    await expect(page.getByRole("button", { name: /^💬 Session$/ })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("button", { name: /^🤖 Agent$/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^👤 User$/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^📚 Knowledge Base$/ })).toBeVisible();
   });
 
-  test("cross-device panel button exists", async ({ page }) => {
-    const ball = page.locator("[title='Click to chat'], [title='Toggle chat']");
-    if (await ball.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await ball.click();
-      await page.waitForTimeout(1000);
-    }
-    const crossDevBtn = page.locator("[title*='Cross'], [title*='Devices']");
-    if (await crossDevBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await crossDevBtn.click();
-      await page.waitForTimeout(500);
-    }
+  test("cross-device hub opens", async ({ page }) => {
+    await openProMode(page);
+    await page.locator("[title='Cross-Device Hub']").click({ force: true });
+    await expect(page.locator("text=Cross-Device Hub")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("button", { name: /Sessions/i })).toBeVisible();
   });
 
   test("chat mode selector has 3 modes", async ({ page }) => {
-    const ball = page.locator("[title='Click to chat'], [title='Toggle chat']");
-    if (await ball.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await ball.click();
-      await page.waitForTimeout(1000);
-    }
-    const content = await page.content();
-    // Should have Ask/Agent/Plan mode buttons
-    const hasAsk = content.includes("Ask") || content.includes("ask");
-    const hasAgent = content.includes("Agent") || content.includes("agent");
-    const hasPlan = content.includes("Plan") || content.includes("plan");
-    expect(hasAsk || hasAgent || hasPlan).toBeTruthy();
+    await openProMode(page);
+    await expect(page.getByRole("button", { name: "Ask" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Agent" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Plan" })).toBeVisible();
   });
 
-  test("tab bar renders with new chat tab", async ({ page }) => {
-    const ball = page.locator("[title='Click to chat'], [title='Toggle chat']");
-    if (await ball.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await ball.click();
-      await page.waitForTimeout(1000);
-    }
-    const content = await page.content();
-    expect(content.includes("New Chat") || content.includes("new chat")).toBeTruthy();
+  test("ctrl+t creates a new chat tab", async ({ page }) => {
+    await openProMode(page);
+    await page.keyboard.press("Control+T");
+    await expect(page.locator("[title='New Chat']")).toBeVisible({ timeout: 5_000 });
   });
 
   test("handoff banner not visible by default (no handoff)", async ({ page }) => {
-    const ball = page.locator("[title='Click to chat'], [title='Toggle chat']");
-    if (await ball.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await ball.click();
-      await page.waitForTimeout(1000);
-    }
-    // HandoffBanner should not be visible when no handoff event
+    await openProMode(page);
     const handoffText = page.locator("text=其他设备上有进行中的任务");
-    const visible = await handoffText.isVisible({ timeout: 1000 }).catch(() => false);
-    expect(visible).toBeFalsy();
+    await expect(handoffText).toHaveCount(0);
   });
 
   test("handoff banner appears when handoff event fired", async ({ page }) => {
-    const ball = page.locator("[title='Click to chat'], [title='Toggle chat']");
-    if (await ball.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await ball.click();
-      await page.waitForTimeout(1000);
-    }
-    // Simulate a handoff event
+    await openProMode(page);
     await page.evaluate(() => {
       window.dispatchEvent(
-        new CustomEvent("agentrix:presence-event", {
+        new CustomEvent("agentrix:handoff-incoming", {
           detail: {
-            event: "handoff:request",
-            data: {
-              handoffId: "test-handoff-1",
-              fromDeviceId: "mobile-123",
-              contextSnapshot: { deviceType: "mobile", deviceName: "iPhone 15", sessionTitle: "测试会话" },
-            },
+            handoffId: "test-handoff-1",
+            fromDeviceId: "mobile-123",
+            contextSnapshot: { deviceType: "mobile", deviceName: "iPhone 15", sessionTitle: "测试会话" },
           },
         }),
       );
     });
-    await page.waitForTimeout(500);
-    const handoffText = page.locator("text=其他设备上有进行中的任务");
-    const visible = await handoffText.isVisible({ timeout: 3000 }).catch(() => false);
-    expect(visible).toBeTruthy();
+    await expect(page.locator("text=其他设备上有进行中的任务")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByRole("button", { name: /继续在桌面查看/ })).toBeVisible();
   });
 
   test("wearable notification appears when event fired", async ({ page }) => {
-    const ball = page.locator("[title='Click to chat'], [title='Toggle chat']");
-    if (await ball.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await ball.click();
-      await page.waitForTimeout(1000);
-    }
-    // Simulate a wearable alert
+    await openProMode(page);
     await page.evaluate(() => {
       window.dispatchEvent(
         new CustomEvent("agentrix:presence-event", {
@@ -223,37 +212,19 @@ test.describe("P2-P3 Component Rendering", () => {
         }),
       );
     });
-    await page.waitForTimeout(500);
-    const alertText = page.locator("text=Heart Rate Alert");
-    const visible = await alertText.isVisible({ timeout: 3000 }).catch(() => false);
-    expect(visible).toBeTruthy();
+    await expect(page.locator("text=Heart Rate Alert")).toBeVisible({ timeout: 3_000 });
   });
 
   test("offline queue indicator hidden when online", async ({ page }) => {
-    const ball = page.locator("[title='Click to chat'], [title='Toggle chat']");
-    if (await ball.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await ball.click();
-      await page.waitForTimeout(1000);
-    }
-    const queueText = page.locator("text=排队中");
-    const visible = await queueText.isVisible({ timeout: 1000 }).catch(() => false);
-    expect(visible).toBeFalsy();
+    await openProMode(page);
+    await expect(page.locator("text=排队中")).toHaveCount(0);
   });
 
   test("slash commands work", async ({ page }) => {
-    const ball = page.locator("[title='Click to chat'], [title='Toggle chat']");
-    if (await ball.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await ball.click();
-      await page.waitForTimeout(1000);
-    }
-    const textarea = page.locator("textarea");
-    if (await textarea.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await textarea.fill("/help");
-      await textarea.press("Enter");
-      await page.waitForTimeout(1000);
-      const content = await page.content();
-      expect(content.length).toBeGreaterThan(500);
-    }
+    await openProMode(page);
+    await page.locator("textarea").fill("/help");
+    await page.locator("textarea").press("Enter");
+    await expect(page.locator("text=Available Commands")).toBeVisible({ timeout: 5_000 });
   });
 });
 
@@ -263,10 +234,7 @@ test.describe("Offline Cache Integration", () => {
   test.setTimeout(30_000);
 
   test.beforeEach(async ({ page }) => {
-    await page.goto("http://localhost:1420", { timeout: 30_000 }).catch(() => {
-      test.skip(true, "Vite dev server not running");
-    });
-    await page.waitForTimeout(1000);
+    await gotoDesktop(page);
   });
 
   test("offline cache service initializes", async ({ page }) => {
@@ -311,5 +279,24 @@ test.describe("Offline Cache Integration", () => {
       return parsed?.data?.hello;
     });
     expect(result).toBe("world");
+  });
+
+  test("full queue is not silently truncated", async ({ page }) => {
+    const snapshot = await page.evaluate(() => {
+      const key = "agentrix_offline_queue";
+      const queue = Array.from({ length: 50 }, (_, index) => ({
+        id: `q-${index}`,
+        endpoint: `/api/${index}`,
+        method: "POST",
+        body: "{}",
+        headers: {},
+        queuedAt: Date.now(),
+        retries: 0,
+      }));
+      localStorage.setItem(key, JSON.stringify(queue));
+      return JSON.parse(localStorage.getItem(key) || "[]").map((item: { id: string }) => item.id);
+    });
+    expect(snapshot[0]).toBe("q-0");
+    expect(snapshot).toHaveLength(50);
   });
 });

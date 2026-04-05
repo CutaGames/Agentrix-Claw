@@ -8,6 +8,7 @@
  */
 import { API_BASE } from '../config/env';
 import { useNotificationStore } from '../stores/notificationStore';
+import { AgentrixStreamParser, type StreamEvent } from '../../shared/stream-parser';
 
 type ChunkCallback = (chunk: string) => void;
 type DoneCallback = () => void;
@@ -24,6 +25,76 @@ interface StreamChatOptions {
   onDone: DoneCallback;
   onError: ErrorCallback;
   onMeta?: (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => void;
+  onEvent?: (event: StreamEvent) => void;
+}
+
+async function consumeAgentrixSse(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  callbacks: {
+    onChunk: ChunkCallback;
+    onDone: DoneCallback;
+    onError: ErrorCallback;
+    onMeta?: (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => void;
+    onEvent?: (event: StreamEvent) => void;
+  },
+): Promise<void> {
+  const decoder = new TextDecoder();
+  let settled = false;
+
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    callbacks.onDone();
+  };
+
+  const fail = (message: string) => {
+    if (settled) return;
+    settled = true;
+    callbacks.onError(message);
+  };
+
+  const emit = (event: StreamEvent) => {
+    callbacks.onEvent?.(event);
+  };
+
+  const parser = new AgentrixStreamParser({
+    onTextDelta: (event) => {
+      emit(event);
+      callbacks.onChunk(event.text);
+    },
+    onThinking: emit,
+    onToolStart: emit,
+    onToolProgress: emit,
+    onToolResult: emit,
+    onToolError: (event) => {
+      emit(event);
+    },
+    onApprovalRequired: emit,
+    onUsage: emit,
+    onTurnInfo: emit,
+    onDone: (event) => {
+      emit(event);
+      finish();
+    },
+    onError: (event) => {
+      emit(event);
+      fail(event.error);
+    },
+    onMeta: (meta) => callbacks.onMeta?.(meta as { resolvedModel?: string; resolvedModelLabel?: string }),
+  });
+
+  while (!settled) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parser.feed(decoder.decode(value, { stream: true }));
+  }
+
+  const tail = decoder.decode();
+  if (tail) {
+    parser.feed(tail);
+  }
+  parser.end();
+  finish();
 }
 
 /**
@@ -59,32 +130,13 @@ export function streamProxyChatSSE(opts: StreamChatOptions): AbortController {
 
       const reader = resp.body?.getReader();
       if (!reader) { opts.onError('No response stream'); return; }
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          if (line.startsWith('data:')) {
-            const data = line.slice(5).trim();
-            if (data === '[DONE]') { opts.onDone(); return; }
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.meta && opts.onMeta) opts.onMeta(parsed.meta);
-              else if (parsed.chunk) opts.onChunk(parsed.chunk);
-              else if (parsed.error) { opts.onError(parsed.error); return; }
-            } catch {
-              if (data) opts.onChunk(data);
-            }
-          }
-        }
-      }
-      opts.onDone();
+      await consumeAgentrixSse(reader, {
+        onChunk: opts.onChunk,
+        onDone: opts.onDone,
+        onError: opts.onError,
+        onMeta: opts.onMeta,
+        onEvent: opts.onEvent,
+      });
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
       opts.onError(err?.message ?? 'Stream error');

@@ -38,6 +38,7 @@ export function AgentConsoleScreen() {
   const navigation = useNavigation<Nav>();
   const { t } = useI18n();
   const activeInstance = useAuthStore((s) => s.activeInstance);
+  const updateInstance = useAuthStore((s) => s.updateInstance);
   // NOTE: do NOT use `?? []` inside the selector — it creates a new array reference
   // every render and triggers an infinite re-render loop.
   const rawInstances = useAuthStore((s) => s.user?.openClawInstances);
@@ -62,9 +63,10 @@ export function AgentConsoleScreen() {
     })();
   }, []);
 
-  const selectedModelLabel = dynamicModels.find((m) => m.id === selectedModelId)?.label
-    ?? SUPPORTED_MODELS.find((m) => m.id === selectedModelId)?.label
-    ?? selectedModelId;
+  const currentEngineId = activeInstance?.resolvedModel || selectedModelId;
+  const selectedModelLabel = dynamicModels.find((m) => m.id === currentEngineId)?.label
+    ?? SUPPORTED_MODELS.find((m) => m.id === currentEngineId)?.label
+    ?? currentEngineId;
 
   const { data: instanceSkillsRaw, refetch, isLoading } = useQuery({
     queryKey: ['instance-skills', activeInstance?.id],
@@ -484,10 +486,22 @@ export function AgentConsoleScreen() {
       <SelectEngineModal 
         visible={showEngineModal} 
         onClose={() => setShowEngineModal(false)}
-        selectedModelId={selectedModelId}
+        selectedModelId={currentEngineId}
         onSelect={async (id) => {
           setSelectedModel(id);
           if (activeInstance?.id) {
+            const nextLabel = dynamicModels.find((model) => model.id === id)?.label
+              ?? SUPPORTED_MODELS.find((model) => model.id === id)?.label
+              ?? id;
+            updateInstance(activeInstance.id, {
+              capabilities: {
+                ...(activeInstance.capabilities || {}),
+                activeModel: id,
+                modelPinned: true,
+              },
+              resolvedModel: id,
+              resolvedModelLabel: nextLabel,
+            });
             try { await switchInstanceModel(activeInstance.id, id); } catch (_) {}
           }
         }}

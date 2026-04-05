@@ -18,6 +18,7 @@ import { BedrockIntegrationModule } from '../bedrock/bedrock-integration.module'
 import { AiProviderModule } from '../../ai-provider/ai-provider.module';
 import { OpenClawProxyModule } from '../../openclaw-proxy/openclaw-proxy.module';
 import { AgentContextModule } from '../../agent-context/agent-context.module';
+import { AgentIntelligenceModule } from '../../agent-intelligence/agent-intelligence.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { AgentContextModule } from '../../agent-context/agent-context.module';
     BedrockIntegrationModule,
     AiProviderModule,
     AgentContextModule,
+    AgentIntelligenceModule,
   ],
   controllers: [ClaudeIntegrationController],
   providers: [ClaudeIntegrationService],

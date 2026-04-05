@@ -1,110 +1,99 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+async function gotoDesktop(page: Page) {
+  try {
+    await page.goto("http://127.0.0.1:1420/", { waitUntil: "domcontentloaded", timeout: 45_000 });
+  } catch (error) {
+    const message = String(error);
+    if (/ERR_CONNECTION_REFUSED|ECONNREFUSED|ERR_ABORTED/i.test(message)) {
+      test.skip(true, "Vite dev server not running");
+      return;
+    }
+    throw error;
+  }
+  await expect(page.locator("body")).toBeVisible({ timeout: 20_000 });
+  await expect.poll(async () => (await page.content()).length, { timeout: 20_000 }).toBeGreaterThan(100);
+}
+
+async function enterGuest(page: Page, onboarded = true) {
+  await gotoDesktop(page);
+  await page.evaluate((flag) => {
+    localStorage.removeItem("agentrix_token");
+    if (flag) {
+      localStorage.setItem("agentrix_onboarded", "1");
+    } else {
+      localStorage.removeItem("agentrix_onboarded");
+    }
+  }, onboarded);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("body")).toBeVisible({ timeout: 20_000 });
+
+  const guestBtn = page.getByRole("button", { name: /Skip as Guest/i });
+  const ball = page.locator("[title*='Agentrix']").first();
+  if (await guestBtn.isVisible().catch(() => false)) {
+    await guestBtn.dispatchEvent("click");
+  }
+
+  if (!onboarded) {
+    await expect(page.locator("text=Welcome to Agentrix")).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: /Get Started/i }).dispatchEvent("click");
+    const skipBtn = page.getByRole("button", { name: /Skip for now/i });
+    if (await skipBtn.isVisible().catch(() => false)) {
+      await skipBtn.dispatchEvent("click");
+    }
+    await page.getByRole("button", { name: /Start Using Agentrix/i }).dispatchEvent("click");
+  }
+
+  await expect(ball).toBeVisible({ timeout: 10_000 });
+}
+
+async function openProMode(page: Page) {
+  await enterGuest(page, true);
+  const ball = page.locator("[title*='Agentrix']").first();
+  await ball.dblclick({ force: true });
+  await expect(page.locator("textarea")).toBeVisible({ timeout: 10_000 });
+}
 
 test.describe("Agentrix Desktop — Smoke Tests", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto("/");
-    // Wait for the app to render
-    await page.waitForSelector("body", { timeout: 5000 });
+  test("login panel renders without crash", async ({ page }) => {
+    await gotoDesktop(page);
+    await expect(page.getByRole("button", { name: /Skip as Guest/i })).toBeVisible();
   });
 
-  test("app renders without crash", async ({ page }) => {
-    // The app should render either login panel or floating ball
-    const body = page.locator("body");
-    await expect(body).toBeVisible();
+  test("guest onboarding reaches floating ball", async ({ page }) => {
+    await enterGuest(page, false);
+    await expect(page.locator("[title*='Agentrix']").first()).toBeVisible();
   });
 
-  test("login panel shows for unauthenticated user", async ({ page }) => {
-    // Clear token to simulate unauthenticated state
-    await page.evaluate(() => localStorage.removeItem("agentrix_auth_token"));
-    await page.reload();
-    // Should show some login UI
-    await page.waitForTimeout(1000);
-    const html = await page.content();
-    // Login panel or guest button should be present
-    expect(html.length).toBeGreaterThan(100);
-  });
-
-  test("guest mode opens chat panel", async ({ page }) => {
-    await page.evaluate(() => localStorage.removeItem("agentrix_auth_token"));
-    await page.reload();
-    await page.waitForTimeout(1000);
-    // Look for guest mode button and click it
-    const guestBtn = page.locator("text=Guest");
-    if (await guestBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await guestBtn.click();
-      await page.waitForTimeout(500);
-    }
-  });
-
-  test("floating ball is visible after login", async ({ page }) => {
-    // Simulate logged-in state with guest mode
-    await page.evaluate(() => {
-      localStorage.setItem("agentrix_onboarded", "1");
-    });
-    await page.reload();
-    await page.waitForTimeout(1500);
+  test("floating ball is visible for onboarded guest", async ({ page }) => {
+    await enterGuest(page, true);
+    await expect(page.locator("[title*='Agentrix']").first()).toBeVisible();
   });
 });
 
 test.describe("Agentrix Desktop — Chat Panel", () => {
-  test.beforeEach(async ({ page }) => {
-    // Set up as logged-in guest user
-    await page.goto("/");
-    await page.evaluate(() => {
-      localStorage.setItem("agentrix_onboarded", "1");
-    });
-    await page.reload();
-    await page.waitForTimeout(1000);
-  });
-
   test("slash command /help shows command list", async ({ page }) => {
-    // This test works when the chat panel is visible
-    // In dev mode, click floating ball to open chat panel
-    const ball = page.locator("[title='Click to chat'], [title='Toggle chat']");
-    if (await ball.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await ball.click();
-      await page.waitForTimeout(500);
-    }
-
-    // Type /help in the textarea
-    const textarea = page.locator("textarea");
-    if (await textarea.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await textarea.fill("/help");
-      await textarea.press("Enter");
-      await page.waitForTimeout(1000);
-      // Should show help text
-      const content = await page.content();
-      expect(content).toContain("Available Commands");
-    }
+    await openProMode(page);
+    await page.locator("textarea").fill("/help");
+    await page.locator("textarea").press("Enter");
+    await expect(page.locator("text=Available Commands")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("new chat button creates new session", async ({ page }) => {
-    const newChatBtn = page.locator("[title='New Chat']");
-    if (await newChatBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await newChatBtn.click();
-      await page.waitForTimeout(500);
-    }
+  test("new chat button is available in pro mode", async ({ page }) => {
+    await openProMode(page);
+    await expect(page.locator("[title='New Chat']")).toBeVisible();
   });
 
-  test("settings panel opens and closes", async ({ page }) => {
-    const settingsBtn = page.locator("[title='Settings']");
-    if (await settingsBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await settingsBtn.click();
-      await page.waitForTimeout(500);
-      // Settings panel should be visible
-      const content = await page.content();
-      expect(content.toLowerCase()).toContain("settings");
-    }
+  test("settings panel opens", async ({ page }) => {
+    await openProMode(page);
+    await page.locator("[title='Settings']").click();
+    await expect(page.locator("text=Agentrix Desktop v0.1.0")).toBeVisible({ timeout: 5_000 });
   });
 });
 
 test.describe("Agentrix Desktop — Error Boundary", () => {
-  test("error boundary catches render errors gracefully", async ({ page }) => {
-    await page.goto("/");
-    await page.waitForTimeout(1000);
-    // Inject a render error by dispatching a custom event that forces an error
-    // This is a smoke test — in real E2E, we'd test with actual error injection
-    const html = await page.content();
-    expect(html).not.toContain("Something went wrong");
+  test("error boundary is not triggered on first render", async ({ page }) => {
+    await gotoDesktop(page);
+    await expect(page.locator("text=Something went wrong")).toHaveCount(0);
   });
 });

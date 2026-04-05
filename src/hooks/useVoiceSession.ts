@@ -12,6 +12,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Alert, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
+import { BleManager } from 'react-native-ble-plx';
 import { AudioQueuePlayer } from '../services/AudioQueuePlayer';
 import {
   isLiveSpeechRecognitionAvailable,
@@ -26,6 +27,11 @@ import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 import { RealtimeVoiceService, type RealtimeVoiceState } from '../services/realtimeVoice.service';
 import { RealtimeMicrophoneService } from '../services/realtimeMicrophone.service';
 import { VADService, createRecordingMeterFn } from '../services/vad.service';
+import { WearablePairingStoreService } from '../services/wearables/wearablePairingStore.service';
+import { WearableAudioRelay } from '../services/wearables/wearableAudioRelay.service';
+import { WearableImageRelay } from '../services/wearables/wearableImageRelay.service';
+import { GlassAuthInterceptor } from '../services/wearables/glassAuthInterceptor.service';
+import type { PairedWearableRecord } from '../services/wearables/wearableTypes';
 
 // Lazy import to avoid circular dependency TDZ during module initialization.
 // testing/e2e.ts imports Zustand stores at top-level, which can cause
@@ -200,6 +206,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
 
   const isSpeakingRef = useRef(false);
   const realtimeVoiceRef = useRef<RealtimeVoiceService | null>(null);
+  const activeGlassRef = useRef<PairedWearableRecord | null>(null);
+  const wearableRelayCleanupRef = useRef<(() => Promise<void>) | null>(null);
   const vadRef = useRef<VADService | null>(null);
     const persistRealtimeAudioChunk = useCallback(async (audioBase64: string, format: string) => {
       const directory = FileSystem.cacheDirectory || FileSystem.documentDirectory;
@@ -302,6 +310,11 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   useEffect(() => {
     if (!useRealtimeChannel || !duplexMode || !token || !instanceId) {
       // Clean up existing realtime connection
+      activeGlassRef.current = null;
+      if (wearableRelayCleanupRef.current) {
+        void wearableRelayCleanupRef.current();
+        wearableRelayCleanupRef.current = null;
+      }
       if (realtimeVoiceRef.current) {
         realtimeVoiceRef.current.disconnect();
         realtimeVoiceRef.current = null;
@@ -314,113 +327,217 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       ? WS_BASE
       : API_BASE.replace(/^http/, 'ws').replace(/\/api$/, '');
     const wsUrl = `${wsBaseUrl}/voice`;
+    let cancelled = false;
+    let service: RealtimeVoiceService | null = null;
 
-    const service = new RealtimeVoiceService({
-      onStateChange: (state) => {
-        addVoiceDiagnostic('realtime-voice', 'state-change', { state });
-        setRealtimeConnected(state !== 'disconnected' && state !== 'connecting' && state !== 'error');
-        if (state === 'connected' && duplexModeRef.current && voiceModeRef.current) {
-          void startLiveSpeechInternalRef.current?.();
-        }
-        // Map realtime states to voice phases
-        switch (state) {
-          case 'listening': setVoicePhase('recording'); break;
-          case 'thinking': setVoicePhase('thinking'); break;
-          case 'speaking': setVoicePhase('speaking'); break;
-          case 'connected': setVoicePhase('idle'); break;
-        }
-      },
-      onInterimTranscript: (text) => {
-        setTranscriptPreview(text);
-      },
-      onFinalTranscript: (text) => {
-        const normalized = text.trim();
-        if (!normalized) {
-          setTranscriptPreview('');
-          return;
-        }
+    const setupWearableRelay = async (sessionId: string) => {
+      const pairedGlass = activeGlassRef.current;
+      const voiceSocket = service?.getSocketClient();
 
-        setTranscriptPreview(normalized);
-        addVoiceDiagnostic('realtime-voice', 'final-transcript', { text: normalized.slice(0, 160) });
+      if (!pairedGlass || !voiceSocket || cancelled) {
+        return;
+      }
 
-        const now = Date.now();
-        const isDuplicateFinal = normalized === lastRealtimeFinalTranscriptRef.current
-          && now - lastRealtimeFinalAtRef.current < REALTIME_FINAL_TRANSCRIPT_DEDUPE_WINDOW_MS;
+      if (wearableRelayCleanupRef.current) {
+        await wearableRelayCleanupRef.current();
+        wearableRelayCleanupRef.current = null;
+      }
 
-        if (isDuplicateFinal) {
-          addVoiceDiagnostic('realtime-voice', 'final-transcript-duplicate-skipped', {
-            text: normalized.slice(0, 160),
+      const bleManager = new BleManager();
+      const audioRelay = new WearableAudioRelay(bleManager, {
+        deviceId: pairedGlass.id,
+        sessionId,
+      }, {
+        onError: (error, direction) => {
+          addVoiceDiagnostic('wearable-relay', 'audio-error', {
+            direction,
+            message: error.message,
+            deviceId: pairedGlass.id,
           });
-          return;
-        }
+        },
+      });
+      const imageRelay = new WearableImageRelay(bleManager, {
+        deviceId: pairedGlass.id,
+        sessionId,
+      }, {
+        onError: (error) => {
+          addVoiceDiagnostic('wearable-relay', 'image-error', {
+            message: error.message,
+            deviceId: pairedGlass.id,
+          });
+        },
+      });
+      const authInterceptor = new GlassAuthInterceptor(sessionId, {
+        onPaymentDetected: (intent) => {
+          addVoiceDiagnostic('wearable-relay', 'payment-detected', {
+            intentId: intent.intentId,
+            token: intent.token,
+            amount: intent.amount,
+          });
+        },
+        onPaymentResult: (result) => {
+          addVoiceDiagnostic('wearable-relay', 'payment-result', result);
+        },
+      });
 
-        lastRealtimeFinalTranscriptRef.current = normalized;
-        lastRealtimeFinalAtRef.current = now;
+      try {
+        await audioRelay.startUpstream(voiceSocket);
+        audioRelay.startDownstream(voiceSocket);
+        await imageRelay.start(voiceSocket);
+        authInterceptor.attach(voiceSocket);
+        wearableRelayCleanupRef.current = async () => {
+          authInterceptor.detach();
+          await imageRelay.stop().catch(() => {});
+          await audioRelay.stop().catch(() => {});
+          bleManager.destroy();
+        };
+        addVoiceDiagnostic('wearable-relay', 'bridge-ready', {
+          deviceId: pairedGlass.id,
+          sessionId,
+        });
+      } catch (error) {
+        authInterceptor.detach();
+        await imageRelay.stop().catch(() => {});
+        await audioRelay.stop().catch(() => {});
+        bleManager.destroy();
+        addVoiceDiagnostic('wearable-relay', 'bridge-failed', {
+          deviceId: pairedGlass.id,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
 
-        onRealtimeUserMessageRef.current?.(normalized);
-      },
-      onAgentTextChunk: (chunk) => {
-        if (!chunk) return;
-        onRealtimeAssistantChunkRef.current?.(chunk);
-      },
-      onAgentAudioChunk: (audioBase64, format) => {
-        // Play audio chunk directly — skip HTTP TTS round-trip
-        if (audioBase64 && audioPlayerRef.current) {
+    void (async () => {
+      const pairedWearables = await WearablePairingStoreService.list().catch(() => []);
+      activeGlassRef.current = pairedWearables.find((item) => item.kind === 'glass') || null;
+
+      if (cancelled) {
+        return;
+      }
+
+      service = new RealtimeVoiceService({
+        onStateChange: (state) => {
+          addVoiceDiagnostic('realtime-voice', 'state-change', { state });
+          setRealtimeConnected(state !== 'disconnected' && state !== 'connecting' && state !== 'error');
+          if (state === 'connected' && duplexModeRef.current && voiceModeRef.current) {
+            void startLiveSpeechInternalRef.current?.();
+          }
+          switch (state) {
+            case 'listening': setVoicePhase('recording'); break;
+            case 'thinking': setVoicePhase('thinking'); break;
+            case 'speaking': setVoicePhase('speaking'); break;
+            case 'connected': setVoicePhase('idle'); break;
+          }
+        },
+        onSessionReady: (sessionId) => {
+          void setupWearableRelay(sessionId);
+        },
+        onInterimTranscript: (text) => {
+          setTranscriptPreview(text);
+        },
+        onFinalTranscript: (text) => {
+          const normalized = text.trim();
+          if (!normalized) {
+            setTranscriptPreview('');
+            return;
+          }
+
+          setTranscriptPreview(normalized);
+          addVoiceDiagnostic('realtime-voice', 'final-transcript', { text: normalized.slice(0, 160) });
+
+          const now = Date.now();
+          const isDuplicateFinal = normalized === lastRealtimeFinalTranscriptRef.current
+            && now - lastRealtimeFinalAtRef.current < REALTIME_FINAL_TRANSCRIPT_DEDUPE_WINDOW_MS;
+
+          if (isDuplicateFinal) {
+            addVoiceDiagnostic('realtime-voice', 'final-transcript-duplicate-skipped', {
+              text: normalized.slice(0, 160),
+            });
+            return;
+          }
+
+          lastRealtimeFinalTranscriptRef.current = normalized;
+          lastRealtimeFinalAtRef.current = now;
+          onRealtimeUserMessageRef.current?.(normalized);
+        },
+        onAgentTextChunk: (chunk) => {
+          if (!chunk) return;
+          onRealtimeAssistantChunkRef.current?.(chunk);
+        },
+        onAgentAudioChunk: (audioBase64, format) => {
+          if (audioBase64 && audioPlayerRef.current) {
+            setIsSpeaking(true);
+            isSpeakingRef.current = true;
+            setVoicePhase('speaking');
+            void persistRealtimeAudioChunk(audioBase64, format)
+              .then((fileUri) => {
+                audioPlayerRef.current?.enqueue(fileUri);
+              })
+              .catch((error) => {
+                addVoiceDiagnostic('realtime-voice', 'audio-persist-failed', {
+                  error: error instanceof Error ? error.message : String(error),
+                });
+                console.warn('[RealtimeVoice] Failed to persist audio chunk:', error);
+              });
+          }
+        },
+        onAgentSpeechStart: () => {
+          realtimeMicrophoneRef.current?.muteForEchoCancel();
           setIsSpeaking(true);
           isSpeakingRef.current = true;
           setVoicePhase('speaking');
-          void persistRealtimeAudioChunk(audioBase64, format)
-            .then((fileUri) => {
-              audioPlayerRef.current?.enqueue(fileUri);
-            })
-            .catch((error) => {
-              addVoiceDiagnostic('realtime-voice', 'audio-persist-failed', {
-                error: error instanceof Error ? error.message : String(error),
-              });
-              console.warn('[RealtimeVoice] Failed to persist audio chunk:', error);
-            });
-        }
-      },
-      onAgentSpeechStart: () => {
-        // Mute mic to prevent echo but keep speech detection for barge-in
-        realtimeMicrophoneRef.current?.muteForEchoCancel();
-        setIsSpeaking(true);
-        isSpeakingRef.current = true;
-        setVoicePhase('speaking');
-      },
-      onAgentResponseEnd: () => {
-        setVoicePhase('idle');
-        onRealtimeAssistantResponseEndRef.current?.();
-      },
-      onToolCall: (tool, status) => {
-        addVoiceDiagnostic('realtime-voice', `tool-${status}`, { tool });
-      },
-      onError: (error) => {
-        addVoiceDiagnostic('realtime-voice', 'error', { error });
-        console.warn('[RealtimeVoice] Error:', error);
-        onRealtimeErrorRef.current?.(error);
-      },
-      onDisconnect: (reason) => {
-        setRealtimeConnected(false);
-        addVoiceDiagnostic('realtime-voice', 'disconnected', { reason });
-        // Complete any in-flight assistant message so it gets persisted
-        onRealtimeAssistantResponseEndRef.current?.();
-      },
-    });
+        },
+        onAgentResponseEnd: () => {
+          setVoicePhase('idle');
+          onRealtimeAssistantResponseEndRef.current?.();
+        },
+        onToolCall: (tool, status) => {
+          addVoiceDiagnostic('realtime-voice', `tool-${status}`, { tool });
+        },
+        onError: (error) => {
+          addVoiceDiagnostic('realtime-voice', 'error', { error });
+          console.warn('[RealtimeVoice] Error:', error);
+          onRealtimeErrorRef.current?.(error);
+        },
+        onDisconnect: (reason) => {
+          setRealtimeConnected(false);
+          addVoiceDiagnostic('realtime-voice', 'disconnected', { reason });
+          if (wearableRelayCleanupRef.current) {
+            void wearableRelayCleanupRef.current();
+            wearableRelayCleanupRef.current = null;
+          }
+          onRealtimeAssistantResponseEndRef.current?.();
+        },
+      });
 
-    realtimeVoiceRef.current = service;
-    service.connect({
-      wsUrl,
-      token,
-      instanceId,
-      language: voiceLanguageHintRef.current,
-      modelId: realtimeModelIdRef.current,
-      agentVoiceId: agentVoiceIdRef.current,
-    });
+      if (cancelled) {
+        service.disconnect();
+        return;
+      }
+
+      realtimeVoiceRef.current = service;
+      service.connect({
+        wsUrl,
+        token,
+        instanceId,
+        language: voiceLanguageHintRef.current,
+        modelId: realtimeModelIdRef.current,
+        agentVoiceId: agentVoiceIdRef.current,
+        deviceType: activeGlassRef.current ? 'glass' : 'phone',
+      });
+    })();
 
     return () => {
-      service.disconnect();
-      realtimeVoiceRef.current = null;
+      cancelled = true;
+      activeGlassRef.current = null;
+      if (wearableRelayCleanupRef.current) {
+        void wearableRelayCleanupRef.current();
+        wearableRelayCleanupRef.current = null;
+      }
+      service?.disconnect();
+      if (realtimeVoiceRef.current === service) {
+        realtimeVoiceRef.current = null;
+      }
       setRealtimeConnected(false);
     };
   }, [
