@@ -38,6 +38,8 @@ export const SUPPORTED_MODELS: ModelOption[] = [
   { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (平台默认 API)',    provider: 'Agentrix Platform', icon: '🤖', badge: 'Default', availability: 'available', costTier: 'free_trial' },
 ];
 
+export type LocalAiStatus = 'not_downloaded' | 'downloading' | 'ready' | 'error';
+
 interface SettingsState {
   customApiKeys: Record<string, string>;
   setCustomApiKey: (provider: string, key: string) => void;
@@ -47,6 +49,12 @@ interface SettingsState {
   
   // AI Model
   selectedModelId: ModelId;
+
+  // Local AI Model (端侧 Gemma)
+  localAiEnabled: boolean;
+  localAiStatus: LocalAiStatus;
+  localAiModelId: string;
+  localAiProgress: number; // 0-100 download progress
   
   // Progressive UI complexity
   uiComplexity: UiComplexity;
@@ -72,6 +80,9 @@ interface SettingsState {
   setEnvironment: (env: Environment) => void;
   setApiBaseUrl: (url: string) => void;
   setSelectedModel: (modelId: ModelId) => void;
+  setLocalAiEnabled: (enabled: boolean) => void;
+  setLocalAiStatus: (status: LocalAiStatus) => void;
+  setLocalAiProgress: (progress: number) => void;
   setUiComplexity: (level: UiComplexity) => void;
   setWakeWordConfig: (patch: Partial<WakeWordSettings>) => void;
   resetWakeWordConfig: () => void;
@@ -122,6 +133,11 @@ export const useSettingsStore = create<SettingsState>()(
       
       selectedModelId: 'claude-haiku-4-5' as ModelId,
 
+      localAiEnabled: false,
+      localAiStatus: 'not_downloaded' as LocalAiStatus,
+      localAiModelId: 'gemma-4-2b',
+      localAiProgress: 0,
+
       uiComplexity: 'beginner' as UiComplexity,
       wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG,
 
@@ -143,6 +159,10 @@ export const useSettingsStore = create<SettingsState>()(
       setApiBaseUrl: (url) => set({ apiBaseUrl: url }),
       
       setSelectedModel: (modelId) => set({ selectedModelId: modelId }),
+
+      setLocalAiEnabled: (enabled) => set({ localAiEnabled: enabled }),
+      setLocalAiStatus: (status) => set({ localAiStatus: status }),
+      setLocalAiProgress: (progress) => set({ localAiProgress: progress }),
 
       setUiComplexity: (level) => set({ uiComplexity: level }),
 

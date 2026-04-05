@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput, Share, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput, Share, Platform, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { UiComplexity } from '../../stores/settingsStore';
+import type { LocalAiStatus } from '../../stores/settingsStore';
 import { useI18n, type Language } from '../../stores/i18nStore';
 import { resolveMobileWakeWordConfig } from '../../config/wakeWord';
 import { clearVoiceDiagnostics, getVoiceDiagnosticsCount, getVoiceDiagnosticsText } from '../../services/voiceDiagnostics';
@@ -36,6 +37,13 @@ export function ClawSettingsScreen() {
   const setWakeWordConfig = useSettingsStore((s) => s.setWakeWordConfig);
   const resetWakeWordConfig = useSettingsStore((s) => s.resetWakeWordConfig);
   const { language, setLanguage, t } = useI18n();
+  const localAiEnabled = useSettingsStore((s) => s.localAiEnabled);
+  const localAiStatus = useSettingsStore((s) => s.localAiStatus);
+  const localAiProgress = useSettingsStore((s) => s.localAiProgress);
+  const localAiModelId = useSettingsStore((s) => s.localAiModelId);
+  const setLocalAiEnabled = useSettingsStore((s) => s.setLocalAiEnabled);
+  const setLocalAiStatus = useSettingsStore((s) => s.setLocalAiStatus);
+  const setLocalAiProgress = useSettingsStore((s) => s.setLocalAiProgress);
   const effectiveWakeWordConfig = resolveMobileWakeWordConfig(wakeWordConfig);
   const diagnosticsCount = getVoiceDiagnosticsCount();
   const [localWakeWordBusy, setLocalWakeWordBusy] = useState(false);
@@ -227,6 +235,27 @@ export function ClawSettingsScreen() {
   ];
 
   const settingGroups = [
+    {
+      title: t({ en: 'AI Engine', zh: 'AI 引擎' }),
+      items: [
+        {
+          id: 'local-ai',
+          icon: '🧠',
+          label: t({ en: 'Local AI Model', zh: '本地 AI 模型' }),
+          value: localAiStatus === 'ready'
+            ? t({ en: 'Ready', zh: '已就绪' })
+            : localAiStatus === 'downloading'
+            ? `${localAiProgress}%`
+            : t({ en: 'Not downloaded', zh: '未下载' }),
+        },
+        {
+          id: 'wearable-devices',
+          icon: '🕶️',
+          label: t({ en: 'Wearable Devices', zh: '可穿戴设备' }),
+          value: '',
+        },
+      ],
+    },
     {
       title: t({ en: 'Agent', zh: '智能体' }),
       items: [
@@ -500,6 +529,14 @@ export function ClawSettingsScreen() {
                 key={item.id}
                 style={[styles.item, i < group.items.length - 1 && styles.itemBorder]}
                 onPress={() => {
+                  if (item.id === 'local-ai') {
+                    navigation.navigate('LocalAiModel' as never);
+                    return;
+                  }
+                  if (item.id === 'wearable-devices') {
+                    navigation.navigate('WearableHub' as never);
+                    return;
+                  }
                   if (item.id === 'notify') {
                     toggleNotifications(!notificationsEnabled);
                     return;

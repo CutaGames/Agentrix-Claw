@@ -109,6 +109,8 @@ export type MeStackParamList = {
   NotificationCenter: undefined;
   ShareCard: ShareCardRouteParams;
   SocialListener: undefined;
+  LocalAiModel: undefined;
+  WearableHub: undefined;
 };
 
 export type DiscoverStackParamList = {

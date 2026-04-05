@@ -25,9 +25,11 @@ import {
   type WearableServiceSnapshot,
 } from '../../services/wearables/wearableTypes';
 
-type DeviceFilter = 'all' | 'ring' | 'band' | 'clip' | 'sensor';
+type DeviceFilter = 'all' | 'glass' | 'watch' | 'ring' | 'band' | 'clip' | 'sensor';
 
 const KIND_CFG: Record<WearableKind | 'unknown', { icon: string; en: string; zh: string; color: string }> = {
+  glass: { icon: '🕶️', en: 'AI Glasses', zh: 'AI 眼镜', color: '#EC4899' },
+  watch: { icon: '⌚', en: 'Watch', zh: '手表', color: '#F59E0B' },
   ring: { icon: '💍', en: 'Ring', zh: '戒指', color: '#8B5CF6' },
   band: { icon: '⌚', en: 'Band', zh: '手环', color: '#3B82F6' },
   clip: { icon: '📎', en: 'Clip', zh: '夹扣', color: '#10B981' },
@@ -230,6 +232,21 @@ export function WearableHubScreen({ navigation }: any) {
           </Text>
         </View>
 
+        {/* ── Supported device types ── */}
+        <View style={st.supportedRow}>
+          {([
+            { icon: '🕶️', label: t({ en: 'AI Glasses', zh: 'AI 眼镜' }), color: '#EC4899' },
+            { icon: '⌚', label: t({ en: 'Watch', zh: '手表' }), color: '#F59E0B' },
+            { icon: '💍', label: t({ en: 'Ring', zh: '戒指' }), color: '#8B5CF6' },
+            { icon: '📡', label: t({ en: 'Sensor', zh: '传感器' }), color: '#10B981' },
+          ]).map((d) => (
+            <View key={d.label} style={[st.supportedChip, { borderColor: d.color + '40' }]}>
+              <Text style={{ fontSize: 18 }}>{d.icon}</Text>
+              <Text style={[st.supportedText, { color: d.color }]}>{d.label}</Text>
+            </View>
+          ))}
+        </View>
+
         {/* ── Paired devices ── */}
         {pairedRecords.length > 0 && (
           <View style={st.section}>
@@ -316,7 +333,7 @@ export function WearableHubScreen({ navigation }: any) {
           {/* Filter chips */}
           {(isScanning || scanCandidates.length > 0) && (
             <View style={st.filterRow}>
-              {(['all', 'ring', 'band', 'clip', 'sensor'] as DeviceFilter[]).map((f) => {
+              {(['all', 'glass', 'watch', 'ring', 'band', 'clip', 'sensor'] as DeviceFilter[]).map((f) => {
                 const lbl = f === 'all'
                   ? t({ en: 'All', zh: '全部' })
                   : t({ en: KIND_CFG[f].en, zh: KIND_CFG[f].zh });
@@ -448,6 +465,14 @@ const st = StyleSheet.create({
   header: { paddingVertical: 8 },
   headerTitle: { fontSize: 22, fontWeight: '700', color: colors.textPrimary },
   headerSub: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  supportedRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  supportedChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 8, paddingHorizontal: 12,
+    borderRadius: 12, borderWidth: 1,
+    backgroundColor: colors.bgCard,
+  },
+  supportedText: { fontSize: 12, fontWeight: '600' },
   section: { gap: 10 },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: colors.textMuted, letterSpacing: 1, textTransform: 'uppercase' },
   pairedCard: {

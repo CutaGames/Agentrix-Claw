@@ -524,6 +524,13 @@ const logoutBtn: CSSProperties = {
 function LocalModelSection() {
   const [models, setModels] = useState<Array<{ name: string; path: string; sizeBytes: number }>>([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+
+  const RECOMMENDED_MODELS = [
+    { id: "gemma-4-2b", name: "Gemma 4 2B (Q4_K_M)", size: "1.5 GB", sizeBytes: 1.5e9, desc: "Recommended for most devices. Fast inference, low memory." },
+    { id: "gemma-4-4b", name: "Gemma 4 4B (Q4_K_M)", size: "2.8 GB", sizeBytes: 2.8e9, desc: "Higher quality. Requires 8GB+ RAM." },
+  ];
 
   useEffect(() => {
     let cancelled = false;
@@ -547,33 +554,122 @@ function LocalModelSection() {
     return `${(bytes / 1e3).toFixed(0)} KB`;
   };
 
+  const handleDownload = (modelId: string) => {
+    setDownloadingId(modelId);
+    setDownloadProgress(0);
+    // Simulate download — in production this would use Tauri's download API
+    let progress = 0;
+    const timer = setInterval(() => {
+      progress += Math.random() * 12 + 3;
+      if (progress >= 100) {
+        progress = 100;
+        clearInterval(timer);
+        setDownloadProgress(100);
+        setDownloadingId(null);
+        // Refresh model list
+        (async () => {
+          try {
+            const mgr = new LocalModelManager("models");
+            const list = await mgr.listModels();
+            setModels(list);
+          } catch { /* */ }
+        })();
+      } else {
+        setDownloadProgress(Math.round(progress));
+      }
+    }, 400);
+  };
+
+  const isModelDownloaded = (modelId: string) => models.some((m) => m.name.toLowerCase().includes(modelId.replace("gemma-4-", "gemma")));
+
   return (
     <div style={section}>
-      <div style={sectionTitle}>Local Models (端侧)</div>
-      {loading ? (
-        <div style={{ fontSize: 12, color: "var(--text-dim)", padding: "4px 0" }}>Scanning models…</div>
-      ) : models.length === 0 ? (
-        <div style={{ fontSize: 12, color: "var(--text-dim)", padding: "4px 0" }}>
-          No local GGUF models found. Place .gguf files in the app models directory.
-        </div>
-      ) : (
-        <div style={{ display: "grid", gap: 6 }}>
-          {models.map((m) => (
-            <div key={m.path} style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "6px 8px", borderRadius: 6,
-              background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)",
+      <div style={sectionTitle}>Local Models (端侧 AI)</div>
+
+      {/* Tri-tier explanation */}
+      <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "4px 0", lineHeight: "16px" }}>
+        📱 Local → ☁️ Cloud API → 🧠 Ultra. Download a local model for offline inference, faster wake word detection, and privacy filtering.
+      </div>
+
+      {/* Recommended models */}
+      <div style={{ display: "grid", gap: 8, marginTop: 4 }}>
+        {RECOMMENDED_MODELS.map((rm) => {
+          const downloaded = isModelDownloaded(rm.id);
+          const isDownloading = downloadingId === rm.id;
+          return (
+            <div key={rm.id} style={{
+              padding: "10px 12px", borderRadius: 8,
+              background: downloaded ? "rgba(16,185,129,0.06)" : "rgba(255,255,255,0.04)",
+              border: `1px solid ${downloaded ? "rgba(16,185,129,0.3)" : "var(--border)"}`,
             }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {m.name}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: downloaded ? "#10B981" : "var(--text)" }}>
+                    {rm.name} {downloaded ? "✅" : ""}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>{rm.desc}</div>
                 </div>
-                <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{formatSize(m.sizeBytes)}</div>
+                {downloaded ? (
+                  <div style={{ fontSize: 10, color: "#10B981", fontWeight: 600 }}>Active</div>
+                ) : isDownloading ? (
+                  <div style={{ fontSize: 10, color: "#3B82F6", fontWeight: 600, minWidth: 40, textAlign: "right" }}>
+                    {downloadProgress}%
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleDownload(rm.id)}
+                    style={{
+                      padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(59,130,246,0.3)",
+                      background: "rgba(59,130,246,0.1)", color: "#3B82F6", fontSize: 10,
+                      fontWeight: 600, cursor: "pointer",
+                    }}
+                  >
+                    ⬇ {rm.size}
+                  </button>
+                )}
               </div>
+              {isDownloading && (
+                <div style={{
+                  height: 4, background: "rgba(255,255,255,0.08)", borderRadius: 2,
+                  marginTop: 6, overflow: "hidden",
+                }}>
+                  <div style={{
+                    height: "100%", width: `${downloadProgress}%`,
+                    background: "#3B82F6", borderRadius: 2, transition: "width 0.3s",
+                  }} />
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
+
+      {/* Already downloaded models */}
+      {loading ? (
+        <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "4px 0" }}>Scanning local models…</div>
+      ) : models.length > 0 ? (
+        <>
+          <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            Downloaded Models
+          </div>
+          <div style={{ display: "grid", gap: 6 }}>
+            {models.map((m) => (
+              <div key={m.path} style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "6px 8px", borderRadius: 6,
+                background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)",
+              }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {m.name}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{formatSize(m.sizeBytes)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

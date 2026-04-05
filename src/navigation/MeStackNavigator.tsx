@@ -16,6 +16,8 @@ import { WalletBackupScreen } from '../screens/me/WalletBackupScreen';
 import { WalletSetupScreen } from '../screens/me/WalletSetupScreen';
 import { SocialListenerScreen } from '../screens/social/SocialListenerScreen';
 import { ScanScreen } from '../screens/me/ScanScreen';
+import { LocalAiModelScreen } from '../screens/me/LocalAiModelScreen';
+import { WearableHubScreen } from '../screens/agent/WearableHubScreen';
 import { useI18n } from '../stores/i18nStore';
 
 const Stack = createNativeStackNavigator<MeStackParamList>();
@@ -46,6 +48,8 @@ export function MeStackNavigator() {
       <Stack.Screen name="NotificationCenter" component={NotificationCenterScreen} options={{ title: t({ en: 'Notifications', zh: '通知' }) }} />
       <Stack.Screen name="ShareCard" component={ShareCardScreen} options={{ title: t({ en: 'Share', zh: '分享' }) }} />
       <Stack.Screen name="SocialListener" component={SocialListenerScreen} options={{ title: t({ en: 'Social Listener', zh: '社交监听' }) }} />
+      <Stack.Screen name="LocalAiModel" component={LocalAiModelScreen} options={{ title: t({ en: 'Local AI Model', zh: '本地 AI 模型' }) }} />
+      <Stack.Screen name="WearableHub" component={WearableHubScreen} options={{ title: t({ en: 'Wearable Devices', zh: '可穿戴设备' }) }} />
     </Stack.Navigator>
   );
 }
