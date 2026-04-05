@@ -44,9 +44,9 @@ if npm run build:nest 2>&1; then
 else
     echo "⚠️  nest build 失败，尝试使用 tsc 直接编译..."
     
-    # 使用 tsc 直接编译
+    # 使用 tsc 直接编译 (--incremental false 避免 TS 5.9 跳过 emit 的 bug)
     echo "📦 使用 TypeScript 编译器直接编译 ($BUILD_TSCONFIG)..."
-    npx tsc -p "$BUILD_TSCONFIG"
+    npx tsc -p "$BUILD_TSCONFIG" --incremental false
     
     if [ $? -ne 0 ]; then
         echo "❌ TypeScript 编译失败"
