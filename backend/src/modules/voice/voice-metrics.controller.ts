@@ -106,11 +106,7 @@ export class VoiceMetricsController {
       const ttsStart = Date.now();
       try {
         const { edgeTTS } = await import('./adapters/edge-tts.adapter');
-        const chunks: Buffer[] = [];
-        for await (const chunk of edgeTTS('Hello', { voice: 'en-US-AriaNeural' })) {
-          chunks.push(chunk);
-          break; // Only measure time to first chunk
-        }
+        await edgeTTS('Hello', { voice: 'en-US-AriaNeural' });
       } catch { /* benchmark, ignore errors */ }
       const ttsLatencyMs = Date.now() - ttsStart;
 
