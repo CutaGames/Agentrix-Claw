@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { useAuthStore } from "../services/store";
 import { pickWorkspaceFolder, getWorkspaceDir, setWorkspaceDir as saveWorkspaceDir } from "../services/workspace";
 import { readDesktopWakeWordConfig, resetDesktopWakeWordConfig, saveDesktopWakeWordConfig } from "../services/wakeWordConfig";
+import { LocalModelManager } from "../services/localLLM";
 
 interface ModelOption {
   id: string;
@@ -335,6 +336,9 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
           </div>
         </div>
 
+        {/* Local Models */}
+        <LocalModelSection />
+
         {/* Version & Update */}
         <div style={{ ...section, borderBottom: "none" }}>
           <div style={sectionTitle}>About</div>
@@ -516,3 +520,60 @@ const logoutBtn: CSSProperties = {
   cursor: "pointer",
   marginTop: 8,
 };
+
+function LocalModelSection() {
+  const [models, setModels] = useState<Array<{ name: string; path: string; sizeBytes: number }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const mgr = new LocalModelManager("models");
+        const list = await mgr.listModels();
+        if (!cancelled) setModels(list);
+      } catch {
+        // Tauri bridge not available (dev mode)
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const formatSize = (bytes: number) => {
+    if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+    if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(0)} MB`;
+    return `${(bytes / 1e3).toFixed(0)} KB`;
+  };
+
+  return (
+    <div style={section}>
+      <div style={sectionTitle}>Local Models (端侧)</div>
+      {loading ? (
+        <div style={{ fontSize: 12, color: "var(--text-dim)", padding: "4px 0" }}>Scanning models…</div>
+      ) : models.length === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--text-dim)", padding: "4px 0" }}>
+          No local GGUF models found. Place .gguf files in the app models directory.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 6 }}>
+          {models.map((m) => (
+            <div key={m.path} style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "6px 8px", borderRadius: 6,
+              background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)",
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {m.name}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{formatSize(m.sizeBytes)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

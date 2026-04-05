@@ -263,6 +263,10 @@ export default function ChatPanel({
   const [streamFeedback, setStreamFeedback] = useState<StreamFeedback | null>(null);
   const [activeToolRun, setActiveToolRun] = useState<ActiveToolRun | null>(null);
   const [sendStartedAt, setSendStartedAt] = useState<number | null>(null);
+  // Deep-think + fabric device visual state
+  const [deepThinkActive, setDeepThinkActive] = useState(false);
+  const [deepThinkTargetModel, setDeepThinkTargetModel] = useState<string | null>(null);
+  const [fabricDevices, setFabricDevices] = useState<FabricDevice[]>([]);
   const [continuePrompt, setContinuePrompt] = useState<string | null>(null);
   const [windowBounds, setWindowBounds] = useState(() => ({
     width: typeof window !== "undefined" ? window.innerWidth : 480,
@@ -1147,6 +1151,8 @@ export default function ChatPanel({
   }, [settleRealtimeVoiceTurn]);
 
   const handleRealtimeDeepThinkStart = useCallback((targetModel: string) => {
+    setDeepThinkActive(true);
+    setDeepThinkTargetModel(targetModel || null);
     setStreamFeedback({
       tone: "info",
       label: "深度分析已转入超脑",
@@ -1155,6 +1161,8 @@ export default function ChatPanel({
   }, []);
 
   const handleRealtimeDeepThinkDone = useCallback((summary: string, model?: string) => {
+    setDeepThinkActive(false);
+    setDeepThinkTargetModel(null);
     setStreamFeedback({
       tone: "success",
       label: "深度分析完成",
@@ -1168,6 +1176,7 @@ export default function ChatPanel({
   }, [addSystemMessage]);
 
   const handleRealtimeFabricDevicesChanged = useCallback((devices: FabricDevice[]) => {
+    setFabricDevices(devices);
     if (devices.length <= 1) {
       return;
     }
@@ -2922,6 +2931,47 @@ export default function ChatPanel({
             </span>
           )}
         </div>
+        {/* Deep-think indicator */}
+        {deepThinkActive && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "6px 12px", borderRadius: 8,
+            background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.3)",
+            animation: "pulse 2s ease-in-out infinite",
+          }}>
+            <span style={{ fontSize: 16 }}>🧠</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#c084fc" }}>
+              深度思考中…
+            </span>
+            {deepThinkTargetModel && (
+              <span style={{ fontSize: 10, color: "rgba(192,132,252,0.7)" }}>
+                → {deepThinkTargetModel}
+              </span>
+            )}
+          </div>
+        )}
+        {/* Fabric device bar */}
+        {fabricDevices.length > 1 && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "4px 10px", borderRadius: 8,
+            background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.25)",
+          }}>
+            <span style={{ fontSize: 12, color: "#93c5fd", fontWeight: 600 }}>
+              🔗 {fabricDevices.length} 设备
+            </span>
+            {fabricDevices.map((d, i) => (
+              <span key={i} style={{
+                fontSize: 11, padding: "2px 6px", borderRadius: 999,
+                background: d.isPrimary ? "rgba(59,130,246,0.25)" : "rgba(255,255,255,0.06)",
+                color: d.isPrimary ? "#60a5fa" : "var(--text-dim)",
+                border: d.isPrimary ? "1px solid rgba(59,130,246,0.4)" : "1px solid transparent",
+              }}>
+                {d.isPrimary ? "👑 " : ""}{d.deviceType}
+              </span>
+            ))}
+          </div>
+        )}
         {!!pendingAttachments.length && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }} title={pendingAttachmentSummary}>
             {pendingAttachments.map((attachment) => (

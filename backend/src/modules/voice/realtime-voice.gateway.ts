@@ -8,7 +8,7 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { forwardRef, Inject, Logger, OnModuleInit } from '@nestjs/common';
+import { forwardRef, Inject, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -127,7 +127,7 @@ const STREAMING_FINALIZATION_TIMEOUT_MS = 2000;
   namespace: '/voice',
   maxHttpBufferSize: 1e7, // 10MB for audio data
 })
-export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit {
+export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit, OnModuleDestroy {
   @WebSocketServer()
   server: Server;
 
@@ -137,6 +137,7 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
   private readonly geminiAdapter = new GeminiLiveAdapter();
   private cascadeStrategy: CascadeVoiceStrategy;
   private gemmaStrategy: GemmaMultimodalVoiceStrategy;
+  private staleCheckInterval: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -161,6 +162,42 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     this.logger.log(
       `Voice strategies initialized: cascade=available, gemma-multimodal=${this.gemmaStrategy.isAvailable() ? 'available' : 'unavailable'}`,
     );
+
+    // Periodic stale session cleanup (every 60s)
+    this.staleCheckInterval = setInterval(() => this.cleanupStaleSessions(), 60_000);
+  }
+
+  onModuleDestroy() {
+    if (this.staleCheckInterval) {
+      clearInterval(this.staleCheckInterval);
+      this.staleCheckInterval = null;
+    }
+  }
+
+  /** Remove voice sessions whose socket has disconnected */
+  private cleanupStaleSessions() {
+    const now = Date.now();
+    const maxIdleMs = 10 * 60_000; // 10 minutes
+    let cleaned = 0;
+
+    for (const [sessionId, session] of this.sessions.entries()) {
+      const socketStillConnected = this.server?.sockets?.sockets?.has(session.socketId);
+      const idle = now - session.createdAt > maxIdleMs;
+
+      if (!socketStillConnected || idle) {
+        session.geminiSession?.close?.();
+        session.streamingSession?.abort();
+        session.currentResponseAbort?.abort();
+        this.clearPendingAgentEnd(session);
+        this.getStrategyForSession(session)?.endSession(sessionId);
+        this.sessions.delete(sessionId);
+        cleaned++;
+      }
+    }
+
+    if (cleaned > 0) {
+      this.logger.log(`Cleaned ${cleaned} stale voice session(s). Active: ${this.sessions.size}`);
+    }
   }
 
   /**
