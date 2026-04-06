@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { useAuthStore } from "../services/store";
 import { pickWorkspaceFolder, getWorkspaceDir, setWorkspaceDir as saveWorkspaceDir } from "../services/workspace";
 import { readDesktopWakeWordConfig, resetDesktopWakeWordConfig, saveDesktopWakeWordConfig } from "../services/wakeWordConfig";
-import { LocalModelManager, type LocalModelDownloadEvent } from "../services/localLLM";
+import { LocalModelManager, LocalLLMSidecar, type LocalModelDownloadEvent } from "../services/localLLM";
 
 interface ModelOption {
   id: string;
@@ -532,10 +532,7 @@ function LocalModelSection() {
     try { return localStorage.getItem("agentrix_local_model_path") || null; } catch { return null; }
   });
   const [sidecarStatus, setSidecarStatus] = useState<string>("stopped");
-  const [sidecarRef] = useState(() => {
-    const { LocalLLMSidecar } = require("../services/localLLM") as typeof import("../services/localLLM");
-    return new LocalLLMSidecar((s) => setSidecarStatus(s));
-  });
+  const [sidecarRef] = useState(() => new LocalLLMSidecar((s) => setSidecarStatus(s)));
 
   const RECOMMENDED_MODELS = [
     {
