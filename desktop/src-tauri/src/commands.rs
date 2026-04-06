@@ -1,5 +1,6 @@
-﻿use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+﻿use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use crate::BallPosition;
+use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
 use std::sync::mpsc;
 use std::sync::Mutex;
@@ -9,6 +10,7 @@ use std::os::windows::process::CommandExt;
 use std::time::{Duration, Instant};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FileEntry {
@@ -1503,7 +1505,8 @@ pub fn stop_llm_sidecar() -> Result<(), String> {
 
 /// List GGUF model files in a directory.
 pub fn list_local_models(models_dir: String) -> Result<Vec<LocalModelInfo>, String> {
-    let dir = Path::new(&models_dir);
+    let resolved_dir = resolve_models_dir(&models_dir)?;
+    let dir = resolved_dir.as_path();
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
@@ -1530,6 +1533,230 @@ pub struct LocalModelInfo {
     pub name: String,
     pub path: String,
     pub size_bytes: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalModelDownloadEvent {
+    pub model_id: String,
+    pub file_name: String,
+    pub status: String,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub progress: f64,
+    pub path: Option<String>,
+    pub message: Option<String>,
+}
+
+fn desktop_app_data_dir() -> Result<PathBuf, String> {
+    #[cfg(target_os = "windows")]
+    {
+        return std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .map(|base| base.join("Agentrix Desktop"))
+            .ok_or_else(|| "APPDATA is not available".to_string());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(config_home) = std::env::var_os("XDG_CONFIG_HOME") {
+            return Ok(PathBuf::from(config_home).join("agentrix-desktop"));
+        }
+
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join(".config").join("agentrix-desktop"))
+            .ok_or_else(|| "HOME is not available".to_string())
+    }
+}
+
+fn resolve_models_dir(models_dir: &str) -> Result<PathBuf, String> {
+    let trimmed = models_dir.trim();
+    if trimmed.is_empty() {
+        return Ok(desktop_app_data_dir()?.join("models"));
+    }
+
+    let candidate = PathBuf::from(trimmed);
+    if candidate.is_absolute() {
+        return Ok(candidate);
+    }
+
+    Ok(desktop_app_data_dir()?.join(candidate))
+}
+
+fn emit_local_model_download(app: &AppHandle, payload: LocalModelDownloadEvent) {
+    let _ = app.emit("local-model-download", payload);
+}
+
+pub async fn download_model(
+    app: AppHandle,
+    model_id: String,
+    url: String,
+    models_dir: String,
+    file_name: String,
+) -> Result<LocalModelInfo, String> {
+    let sanitized_name = Path::new(&file_name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Invalid model file name".to_string())?
+        .to_string();
+
+    if sanitized_name != file_name {
+        return Err("Invalid model file name".to_string());
+    }
+
+    let dir = resolve_models_dir(&models_dir)?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let final_path = dir.join(&sanitized_name);
+    if final_path.is_file() {
+        let meta = std::fs::metadata(&final_path).map_err(|e| e.to_string())?;
+        let info = LocalModelInfo {
+            name: sanitized_name.clone(),
+            path: final_path.to_string_lossy().to_string(),
+            size_bytes: meta.len(),
+        };
+        emit_local_model_download(
+            &app,
+            LocalModelDownloadEvent {
+                model_id,
+                file_name: sanitized_name,
+                status: "completed".to_string(),
+                downloaded_bytes: info.size_bytes,
+                total_bytes: Some(info.size_bytes),
+                progress: 100.0,
+                path: Some(info.path.clone()),
+                message: Some("Model already exists locally".to_string()),
+            },
+        );
+        return Ok(info);
+    }
+
+    let partial_path = dir.join(format!("{}.partial", sanitized_name));
+    if partial_path.exists() {
+        let _ = std::fs::remove_file(&partial_path);
+    }
+
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let mut response = client
+        .get(&url)
+        .header(USER_AGENT, "Agentrix Desktop/0.1")
+        .send()
+        .await
+        .map_err(|e| format!("Download request failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Download failed with status {}", response.status()));
+    }
+
+    let total_bytes = response.content_length();
+    emit_local_model_download(
+        &app,
+        LocalModelDownloadEvent {
+            model_id: model_id.clone(),
+            file_name: sanitized_name.clone(),
+            status: "started".to_string(),
+            downloaded_bytes: 0,
+            total_bytes,
+            progress: 0.0,
+            path: Some(final_path.to_string_lossy().to_string()),
+            message: None,
+        },
+    );
+
+    let mut file = tokio::fs::File::create(&partial_path)
+        .await
+        .map_err(|e| format!("Failed to create model file: {}", e))?;
+    let mut downloaded_bytes = 0_u64;
+
+    loop {
+        let chunk = match response.chunk().await {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => break,
+            Err(err) => {
+                let message = format!("Download stream failed: {}", err);
+                let _ = tokio::fs::remove_file(&partial_path).await;
+                emit_local_model_download(
+                    &app,
+                    LocalModelDownloadEvent {
+                        model_id: model_id.clone(),
+                        file_name: sanitized_name.clone(),
+                        status: "error".to_string(),
+                        downloaded_bytes,
+                        total_bytes,
+                        progress: 0.0,
+                        path: None,
+                        message: Some(message.clone()),
+                    },
+                );
+                return Err(message);
+            }
+        };
+
+        tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
+            .await
+            .map_err(|e| format!("Failed to write model chunk: {}", e))?;
+
+        downloaded_bytes += chunk.len() as u64;
+        let progress = if let Some(total) = total_bytes {
+            if total == 0 {
+                0.0
+            } else {
+                downloaded_bytes as f64 * 100.0 / total as f64
+            }
+        } else {
+            0.0
+        };
+
+        emit_local_model_download(
+            &app,
+            LocalModelDownloadEvent {
+                model_id: model_id.clone(),
+                file_name: sanitized_name.clone(),
+                status: "progress".to_string(),
+                downloaded_bytes,
+                total_bytes,
+                progress,
+                path: None,
+                message: None,
+            },
+        );
+    }
+
+    tokio::io::AsyncWriteExt::flush(&mut file)
+        .await
+        .map_err(|e| format!("Failed to flush model file: {}", e))?;
+    drop(file);
+
+    tokio::fs::rename(&partial_path, &final_path)
+        .await
+        .map_err(|e| format!("Failed to finalize model file: {}", e))?;
+
+    let meta = std::fs::metadata(&final_path).map_err(|e| e.to_string())?;
+    let info = LocalModelInfo {
+        name: sanitized_name.clone(),
+        path: final_path.to_string_lossy().to_string(),
+        size_bytes: meta.len(),
+    };
+
+    emit_local_model_download(
+        &app,
+        LocalModelDownloadEvent {
+            model_id,
+            file_name: sanitized_name,
+            status: "completed".to_string(),
+            downloaded_bytes: info.size_bytes,
+            total_bytes: Some(info.size_bytes),
+            progress: 100.0,
+            path: Some(info.path.clone()),
+            message: None,
+        },
+    );
+
+    Ok(info)
 }
 
 fn find_llama_server_binary() -> Option<PathBuf> {

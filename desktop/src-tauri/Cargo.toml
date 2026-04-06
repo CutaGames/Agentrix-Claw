@@ -27,6 +27,8 @@ tauri-plugin-http = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-process = "2"
 tauri-plugin-clipboard-manager = "2"
+reqwest = { version = "0.12", features = ["stream"] }
+tokio = { version = "1", features = ["fs", "io-util"] }
 mdns-sd = "0.11"
 hostname = "0.4"
 serde = { version = "1", features = ["derive"] }

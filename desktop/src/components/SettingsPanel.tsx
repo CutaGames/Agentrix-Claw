@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { useAuthStore } from "../services/store";
 import { pickWorkspaceFolder, getWorkspaceDir, setWorkspaceDir as saveWorkspaceDir } from "../services/workspace";
 import { readDesktopWakeWordConfig, resetDesktopWakeWordConfig, saveDesktopWakeWordConfig } from "../services/wakeWordConfig";
-import { LocalModelManager } from "../services/localLLM";
+import { LocalModelManager, type LocalModelDownloadEvent } from "../services/localLLM";
 
 interface ModelOption {
   id: string;
@@ -526,18 +526,74 @@ function LocalModelSection() {
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
+  const [manager] = useState(() => new LocalModelManager("models"));
+  const [activeModelPath, setActiveModelPath] = useState<string | null>(() => {
+    try { return localStorage.getItem("agentrix_local_model_path") || null; } catch { return null; }
+  });
+  const [sidecarStatus, setSidecarStatus] = useState<string>("stopped");
+  const [sidecarRef] = useState(() => {
+    const { LocalLLMSidecar } = require("../services/localLLM") as typeof import("../services/localLLM");
+    return new LocalLLMSidecar((s) => setSidecarStatus(s));
+  });
 
   const RECOMMENDED_MODELS = [
-    { id: "gemma-4-2b", name: "Gemma 4 2B (Q4_K_M)", size: "1.5 GB", sizeBytes: 1.5e9, desc: "Recommended for most devices. Fast inference, low memory." },
-    { id: "gemma-4-4b", name: "Gemma 4 4B (Q4_K_M)", size: "2.8 GB", sizeBytes: 2.8e9, desc: "Higher quality. Requires 8GB+ RAM." },
+    {
+      id: "gemma-2-2b",
+      name: "Gemma 2 2B (Q4_K_M)",
+      size: "1.7 GB",
+      sizeBytes: 1.7e9,
+      fileName: "gemma-2-2b-it-Q4_K_M.gguf",
+      url: "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf?download=true",
+      matchTerms: ["gemma-2-2b-it-q4_k_m", "gemma-2-2b"],
+      desc: "入门本地模型，适合轻薄本和低功耗设备。",
+    },
+    {
+      id: "gemma-3-4b",
+      name: "Gemma 3 4B (Q4_0)",
+      size: "3.0 GB",
+      sizeBytes: 3.0e9,
+      fileName: "model.gguf",
+      url: "https://huggingface.co/google/gemma-3-4b-it-qat-q4_0-gguf/resolve/main/model.gguf?download=true",
+      matchTerms: ["gemma-3-4b", "model.gguf"],
+      desc: "质量更高，适合 8GB 以上内存的日常本地问答。",
+    },
+    {
+      id: "gemma-2-27b",
+      name: "Gemma 2 27B (Q4_K_M)",
+      size: "16.4 GB",
+      sizeBytes: 16.4e9,
+      fileName: "gemma-2-27b-it-Q4_K_M.gguf",
+      url: "https://huggingface.co/bartowski/gemma-2-27b-it-GGUF/resolve/main/gemma-2-27b-it-Q4_K_M.gguf?download=true",
+      matchTerms: ["gemma-2-27b-it-q4_k_m", "gemma-2-27b"],
+      desc: "工作站档位，本机直接跑复杂推理，建议 32GB+ RAM。",
+    },
+    {
+      id: "gemma-4-31b",
+      name: "Gemma 4 31B (Custom URL)",
+      size: "30 GB+",
+      sizeBytes: 30e9,
+      fileName: "gemma-4-31b-it-Q4_K_M.gguf",
+      url: "https://huggingface.co/QuantFactory/gemma-4-31b-it-GGUF/resolve/main/gemma-4-31b-it-Q4_K_M.gguf?download=true",
+      matchTerms: ["gemma-4-31b-it-q4_k_m", "gemma-4-31b"],
+      desc: "高端台式机/服务器工作站档位，跳过云端直接本机工作。",
+    },
   ];
+
+  const refreshModels = useCallback(async () => {
+    try {
+      const list = await manager.listModels();
+      setModels(list);
+    } catch {
+      // Tauri bridge not available (dev mode)
+    }
+  }, [manager]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const mgr = new LocalModelManager("models");
-        const list = await mgr.listModels();
+        const list = await manager.listModels();
         if (!cancelled) setModels(list);
       } catch {
         // Tauri bridge not available (dev mode)
@@ -546,7 +602,7 @@ function LocalModelSection() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [manager]);
 
   const formatSize = (bytes: number) => {
     if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
@@ -554,33 +610,56 @@ function LocalModelSection() {
     return `${(bytes / 1e3).toFixed(0)} KB`;
   };
 
-  const handleDownload = (modelId: string) => {
+  const handleDownload = async (modelId: string) => {
+    const target = RECOMMENDED_MODELS.find((item) => item.id === modelId);
+    if (!target) return;
+
     setDownloadingId(modelId);
     setDownloadProgress(0);
-    // Simulate download — in production this would use Tauri's download API
-    let progress = 0;
-    const timer = setInterval(() => {
-      progress += Math.random() * 12 + 3;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(timer);
-        setDownloadProgress(100);
-        setDownloadingId(null);
-        // Refresh model list
-        (async () => {
-          try {
-            const mgr = new LocalModelManager("models");
-            const list = await mgr.listModels();
-            setModels(list);
-          } catch { /* */ }
-        })();
-      } else {
-        setDownloadProgress(Math.round(progress));
-      }
-    }, 400);
+    setDownloadMessage(null);
+
+    try {
+      await manager.downloadModel({
+        modelId: target.id,
+        url: target.url,
+        fileName: target.fileName,
+        onProgress: (event: LocalModelDownloadEvent) => {
+          if (event.status === "error") {
+            setDownloadMessage(event.message || "模型下载失败");
+            return;
+          }
+
+          if (typeof event.progress === "number") {
+            setDownloadProgress(Math.max(0, Math.min(100, Math.round(event.progress))));
+          }
+
+          if (event.status === "started") {
+            setDownloadMessage("开始下载模型…");
+          } else if (event.status === "progress" && event.totalBytes) {
+            setDownloadMessage(`${formatSize(event.downloadedBytes)} / ${formatSize(event.totalBytes)}`);
+          } else if (event.status === "completed") {
+            setDownloadMessage("模型下载完成");
+          }
+        },
+      });
+
+      await refreshModels();
+    } catch (error: any) {
+      setDownloadMessage(error?.message || "模型下载失败");
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
-  const isModelDownloaded = (modelId: string) => models.some((m) => m.name.toLowerCase().includes(modelId.replace("gemma-4-", "gemma")));
+  const isModelDownloaded = (modelId: string) => {
+    const target = RECOMMENDED_MODELS.find((item) => item.id === modelId);
+    if (!target) return false;
+
+    return models.some((model) => {
+      const lowerName = model.name.toLowerCase();
+      return target.matchTerms.some((term) => lowerName.includes(term.toLowerCase()));
+    });
+  };
 
   return (
     <div style={section}>
@@ -617,7 +696,7 @@ function LocalModelSection() {
                   </div>
                 ) : (
                   <button
-                    onClick={() => handleDownload(rm.id)}
+                    onClick={() => { void handleDownload(rm.id); }}
                     style={{
                       padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(59,130,246,0.3)",
                       background: "rgba(59,130,246,0.1)", color: "#3B82F6", fontSize: 10,
@@ -629,22 +708,33 @@ function LocalModelSection() {
                 )}
               </div>
               {isDownloading && (
-                <div style={{
-                  height: 4, background: "rgba(255,255,255,0.08)", borderRadius: 2,
-                  marginTop: 6, overflow: "hidden",
-                }}>
+                <>
                   <div style={{
-                    height: "100%", width: `${downloadProgress}%`,
-                    background: "#3B82F6", borderRadius: 2, transition: "width 0.3s",
-                  }} />
-                </div>
+                    height: 4, background: "rgba(255,255,255,0.08)", borderRadius: 2,
+                    marginTop: 6, overflow: "hidden",
+                  }}>
+                    <div style={{
+                      height: "100%", width: `${downloadProgress}%`,
+                      background: "#3B82F6", borderRadius: 2, transition: "width 0.3s",
+                    }} />
+                  </div>
+                  {downloadMessage ? (
+                    <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 4 }}>{downloadMessage}</div>
+                  ) : null}
+                </>
               )}
             </div>
           );
         })}
       </div>
 
-      {/* Already downloaded models */}
+      {downloadMessage && !downloadingId ? (
+        <div style={{ fontSize: 11, color: downloadMessage.includes("失败") ? "#f87171" : "var(--text-dim)", marginTop: 8 }}>
+          {downloadMessage}
+        </div>
+      ) : null}
+
+      {/* Already downloaded models — select & launch */}
       {loading ? (
         <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "4px 0" }}>Scanning local models…</div>
       ) : models.length > 0 ? (
@@ -652,21 +742,79 @@ function LocalModelSection() {
           <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>
             Downloaded Models
           </div>
+          {sidecarStatus !== "stopped" && (
+            <div style={{ fontSize: 11, color: sidecarStatus === "running" ? "#10B981" : sidecarStatus === "error" ? "#f87171" : "#3B82F6", marginBottom: 4 }}>
+              Sidecar: {sidecarStatus}{sidecarStatus === "running" ? " (localhost:8787)" : ""}
+            </div>
+          )}
           <div style={{ display: "grid", gap: 6 }}>
-            {models.map((m) => (
-              <div key={m.path} style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "6px 8px", borderRadius: 6,
-                background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)",
-              }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {m.name}
+            {models.map((m) => {
+              const isDefault = activeModelPath === m.path;
+              return (
+                <div key={m.path} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "6px 8px", borderRadius: 6,
+                  background: isDefault ? "rgba(16,185,129,0.06)" : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${isDefault ? "rgba(16,185,129,0.3)" : "var(--border)"}`,
+                }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: isDefault ? "#10B981" : "var(--text)" }}>
+                      {isDefault ? "★ " : ""}{m.name}
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{formatSize(m.sizeBytes)}</div>
                   </div>
-                  <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{formatSize(m.sizeBytes)}</div>
+                  <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    {!isDefault && (
+                      <button
+                        onClick={() => {
+                          localStorage.setItem("agentrix_local_model_path", m.path);
+                          setActiveModelPath(m.path);
+                        }}
+                        style={{
+                          padding: "3px 8px", borderRadius: 4, border: "1px solid rgba(16,185,129,0.3)",
+                          background: "rgba(16,185,129,0.08)", color: "#10B981", fontSize: 10,
+                          fontWeight: 600, cursor: "pointer",
+                        }}
+                      >
+                        Set Default
+                      </button>
+                    )}
+                    {isDefault && sidecarStatus !== "running" && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await sidecarRef.start({ modelPath: m.path, contextSize: 4096, nGpuLayers: 0 });
+                          } catch (err: any) {
+                            setDownloadMessage(`Sidecar error: ${err?.message || "unknown"}`);
+                          }
+                        }}
+                        disabled={sidecarStatus === "starting"}
+                        style={{
+                          padding: "3px 8px", borderRadius: 4, border: "1px solid rgba(59,130,246,0.3)",
+                          background: "rgba(59,130,246,0.1)", color: "#3B82F6", fontSize: 10,
+                          fontWeight: 600, cursor: sidecarStatus === "starting" ? "default" : "pointer",
+                          opacity: sidecarStatus === "starting" ? 0.5 : 1,
+                        }}
+                      >
+                        {sidecarStatus === "starting" ? "Starting…" : "▶ Start"}
+                      </button>
+                    )}
+                    {isDefault && sidecarStatus === "running" && (
+                      <button
+                        onClick={async () => { await sidecarRef.stop(); }}
+                        style={{
+                          padding: "3px 8px", borderRadius: 4, border: "1px solid rgba(239,68,68,0.3)",
+                          background: "rgba(239,68,68,0.08)", color: "#ef4444", fontSize: 10,
+                          fontWeight: 600, cursor: "pointer",
+                        }}
+                      >
+                        ■ Stop
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       ) : null}

@@ -236,6 +236,17 @@ fn desktop_bridge_list_local_models(models_dir: String) -> Result<Vec<commands::
 }
 
 #[tauri::command]
+async fn desktop_bridge_download_model(
+    app: AppHandle,
+    model_id: String,
+    url: String,
+    models_dir: String,
+    file_name: String,
+) -> Result<commands::LocalModelInfo, String> {
+    commands::download_model(app, model_id, url, models_dir, file_name).await
+}
+
+#[tauri::command]
 fn desktop_bridge_log_debug_event(message: String) -> Result<(), String> {
     eprintln!("[agentrix-debug] {}", message);
     Ok(())
@@ -497,6 +508,7 @@ pub fn run() {
             desktop_bridge_start_llm_sidecar,
             desktop_bridge_stop_llm_sidecar,
             desktop_bridge_list_local_models,
+            desktop_bridge_download_model,
         ])
         .setup(|app| {
             // Grant WebView2 permissions (microphone, camera, etc.) on the main window

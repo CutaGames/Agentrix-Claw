@@ -19,6 +19,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 // ── Types ──────────────────────────────────────────────
 
@@ -55,6 +56,17 @@ export interface ChatCompletionResponse {
 }
 
 export type SidecarStatus = "stopped" | "starting" | "running" | "error";
+
+export interface LocalModelDownloadEvent {
+  modelId: string;
+  fileName: string;
+  status: "started" | "progress" | "completed" | "error";
+  downloadedBytes: number;
+  totalBytes?: number;
+  progress: number;
+  path?: string;
+  message?: string;
+}
 
 // ── Service ────────────────────────────────────────────
 
@@ -269,5 +281,34 @@ export class LocalModelManager {
   async getDefaultModelPath(): Promise<string | null> {
     const models = await this.listModels();
     return models.length > 0 ? models[0].path : null;
+  }
+
+  async downloadModel(options: {
+    modelId: string;
+    url: string;
+    fileName: string;
+    onProgress?: (event: LocalModelDownloadEvent) => void;
+  }): Promise<{ name: string; path: string; sizeBytes: number }> {
+    const unlisten = await listen<LocalModelDownloadEvent>("local-model-download", (event) => {
+      if (event.payload.modelId === options.modelId) {
+        options.onProgress?.(event.payload);
+      }
+    });
+
+    try {
+      const result = await invoke<{ name: string; path: string; size_bytes: number }>(
+        "desktop_bridge_download_model",
+        {
+          modelId: options.modelId,
+          url: options.url,
+          modelsDir: this.modelsDir,
+          fileName: options.fileName,
+        },
+      );
+
+      return { name: result.name, path: result.path, sizeBytes: result.size_bytes };
+    } finally {
+      unlisten();
+    }
   }
 }

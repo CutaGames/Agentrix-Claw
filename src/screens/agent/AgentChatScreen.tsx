@@ -11,7 +11,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
-import { useSettingsStore, SUPPORTED_MODELS, type ModelOption } from '../../stores/settingsStore';
+import { useSettingsStore, SUPPORTED_MODELS, type ModelOption, type LocalAiStatus } from '../../stores/settingsStore';
 import { streamProxyChatSSE, streamDirectClaude } from '../../services/realtime.service';
 import { getInstanceStatus, sendAgentMessage, switchInstanceModel } from '../../services/openclaw.service';
 import { DeviceBridgingService } from '../../services/deviceBridging.service';
@@ -568,6 +568,8 @@ export function AgentChatScreen() {
   const duplexModeRequested = !!route.params?.duplexMode;
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
+  const localAiStatus = useSettingsStore((s) => s.localAiStatus);
+  const localAiModelId = useSettingsStore((s) => s.localAiModelId);
   const speechRate = useSettingsStore((s) => s.speechRate);
   const setSpeechRate = useSettingsStore((s) => s.setSpeechRate);
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
@@ -774,14 +776,29 @@ export function AgentChatScreen() {
       try {
         const models = await apiFetch<Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }>>('/ai-providers/available-models');
         if (Array.isArray(models) && models.length > 0) {
-          setAvailableModels(models.map((m) => ({
+          const cloudModels: ModelOption[] = models.map((m) => ({
             id: m.id,
             label: m.label,
             provider: m.provider,
             icon: m.isDefault ? '🤖' : '💎',
             availability: 'available' as const,
             costTier: m.costTier,
-          })));
+          }));
+          // Always prepend local model if downloaded and ready
+          if (localAiStatus === 'ready') {
+            const localEntry: ModelOption = {
+              id: MobileLocalInferenceService.modelId,
+              label: `${MobileLocalInferenceService.modelLabel} (端侧)`,
+              provider: 'On-device',
+              icon: '📱',
+              badge: 'Local',
+              availability: 'available',
+              costTier: 'free',
+            };
+            setAvailableModels([localEntry, ...cloudModels.filter(m => m.id !== MobileLocalInferenceService.modelId)]);
+          } else {
+            setAvailableModels(cloudModels);
+          }
         }
       } catch {}
       // Load per-agent preferred model from the bound agent account
@@ -799,7 +816,7 @@ export function AgentChatScreen() {
         }
       } catch {}
     })();
-  }, [instanceId, activeInstance?.id, activeInstance?.metadata?.agentAccountId, activeInstance?.resolvedModelLabel]);
+  }, [instanceId, activeInstance?.id, activeInstance?.metadata?.agentAccountId, activeInstance?.resolvedModelLabel, localAiStatus]);
 
   // All messages (persisted) and visible slice for lazy rendering
   const allMessagesRef = useRef<Message[]>([]);
@@ -1321,6 +1338,10 @@ export function AgentChatScreen() {
       }
 
       // Try OpenClaw proxy first (requires active instance)
+      // If local model was selected but bridge unavailable, fall back to default cloud model
+      const proxyModelId = effectiveModelId === MobileLocalInferenceService.modelId
+        ? 'claude-haiku-4-5'
+        : effectiveModelId;
       if (!streamSucceeded && instanceId) {
         await new Promise<void>((resolve) => {
           const ac = streamProxyChatSSE({
@@ -1328,7 +1349,7 @@ export function AgentChatScreen() {
             message: outgoingText,
             sessionId: sessionIdRef.current,
             token,
-            model: effectiveModelId,
+            model: proxyModelId,
             voiceId: agentVoiceId || undefined,
             onMeta: (meta) => {
               if (meta.resolvedModelLabel) setResolvedModelLabel(meta.resolvedModelLabel);
@@ -1386,7 +1407,7 @@ export function AgentChatScreen() {
             const ac = streamDirectClaude({
               messages: history,
               token,
-              model: effectiveModelId,
+              model: proxyModelId,
               sessionId: sessionIdRef.current,
               onChunk: (chunk) => {
                 streamSucceeded = true;
