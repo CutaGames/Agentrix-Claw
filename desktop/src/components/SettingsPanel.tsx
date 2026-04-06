@@ -343,7 +343,7 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
         <div style={{ ...section, borderBottom: "none" }}>
           <div style={sectionTitle}>About</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0" }}>
-            <span style={{ fontSize: 12, color: "var(--text-dim)" }}>Agentrix Desktop v0.1.0</span>
+            <span style={{ fontSize: 12, color: "var(--text-dim)" }}>Agentrix Desktop v0.1.1</span>
             {updateStatus === "idle" && (
               <button onClick={handleCheckUpdate} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)" }}>
                 Check for Updates

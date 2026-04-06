@@ -452,6 +452,7 @@ export function streamDirectChat(opts: {
   sessionId: string;
   agentId?: string | null;
   token: string;
+  model?: string;
   mode?: "ask" | "agent" | "plan";
   onChunk: (chunk: string) => void;
   onDone: () => void;
@@ -474,6 +475,7 @@ export function streamDirectChat(opts: {
       mode: opts.mode || "agent",
       platform: "desktop",
       deviceId: getDesktopDeviceId(),
+      options: opts.model ? { model: opts.model } : undefined,
       ...(opts.agentId ? { agentId: opts.agentId } : {}),
     }),
     signal: ac.signal,

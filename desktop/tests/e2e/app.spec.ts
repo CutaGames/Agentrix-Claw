@@ -87,7 +87,7 @@ test.describe("Agentrix Desktop — Chat Panel", () => {
   test("settings panel opens", async ({ page }) => {
     await openProMode(page);
     await page.locator("[title='Settings']").click();
-    await expect(page.locator("text=Agentrix Desktop v0.1.0")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator("text=Agentrix Desktop v0.1.1")).toBeVisible({ timeout: 5_000 });
   });
 });
 

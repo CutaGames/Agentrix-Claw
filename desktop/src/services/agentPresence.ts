@@ -126,7 +126,7 @@ function connectPresence(token: string) {
       deviceType: "desktop",
       platform: navigator.platform || "unknown",
       deviceName: "Agentrix Desktop",
-      appVersion: "0.1.0",
+      appVersion: "0.1.1",
       capabilities: ["chat", "notification", "screenshot", "run-command", "file-access"],
     },
     transports: ["websocket"],

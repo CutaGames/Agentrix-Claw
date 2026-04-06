@@ -39,6 +39,17 @@ try { Audio = require('expo-av').Audio; } catch (_) {}
 
 type RouteT = RouteProp<AgentStackParamList, 'AgentChat'>;
 
+const LOCAL_ONLY_MODEL_IDS = new Set([
+  MobileLocalInferenceService.modelId,
+  'gemma-4-2b',
+  'gemma-4-4b',
+  'gemma-nano-2b-local',
+]);
+
+function isLocalOnlyModelId(modelId?: string | null) {
+  return !!modelId && LOCAL_ONLY_MODEL_IDS.has(modelId);
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -584,8 +595,15 @@ export function AgentChatScreen() {
   // Per-agent preferred model (from agent account)
   const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
   const [agentVoiceId, setAgentVoiceId] = useState<string | null>(null);
+  const isLocalModelSelected = isLocalOnlyModelId(selectedModelId);
+  const remoteResolvedModelId = (!isLocalOnlyModelId(agentPreferredModel) ? agentPreferredModel : null)
+    || (!isLocalOnlyModelId(activeInstance?.resolvedModel) ? activeInstance?.resolvedModel : null)
+    || (!isLocalOnlyModelId(selectedModelId) ? selectedModelId : null)
+    || 'claude-haiku-4-5';
   // The effective model ID to display and send
-  const effectiveModelId = agentPreferredModel || activeInstance?.resolvedModel || selectedModelId;
+  const effectiveModelId = isLocalModelSelected
+    ? selectedModelId
+    : agentPreferredModel || activeInstance?.resolvedModel || selectedModelId;
 
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
   const storageKey = `chat_hist_${instanceId}`;
@@ -1339,8 +1357,8 @@ export function AgentChatScreen() {
 
       // Try OpenClaw proxy first (requires active instance)
       // If local model was selected but bridge unavailable, fall back to default cloud model
-      const proxyModelId = effectiveModelId === MobileLocalInferenceService.modelId
-        ? 'claude-haiku-4-5'
+      const proxyModelId = isLocalOnlyModelId(effectiveModelId)
+        ? remoteResolvedModelId
         : effectiveModelId;
       if (!streamSucceeded && instanceId) {
         await new Promise<void>((resolve) => {

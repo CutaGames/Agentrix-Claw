@@ -1519,6 +1519,9 @@ export class OpenClawProxyService {
     const instanceModelPinned = (instance.capabilities as any)?.modelPinned === true;
     // Local-only model IDs that cannot be routed to any cloud provider
     const LOCAL_ONLY_MODELS = ['gemma-nano-2b', 'gemma-4-2b', 'gemma-nano-2b-local'];
+    const sanitizedInstanceActiveModel = instanceActiveModel && !LOCAL_ONLY_MODELS.includes(instanceActiveModel)
+      ? instanceActiveModel
+      : undefined;
     const rawPreferredModel = agentAccount?.preferredModel;
     const sanitizedPreferred = rawPreferredModel && !LOCAL_ONLY_MODELS.includes(rawPreferredModel)
       ? rawPreferredModel : undefined;
@@ -1527,9 +1530,9 @@ export class OpenClawProxyService {
       ? rawDtoModel : undefined;
     let resolvedModel = sanitizedPreferred
       || sanitizedDtoModel
-      || (instanceModelPinned ? instanceActiveModel : undefined)
+      || (instanceModelPinned ? sanitizedInstanceActiveModel : undefined)
       || defaultConfig?.selectedModel
-      || instanceActiveModel
+      || sanitizedInstanceActiveModel
       || process.env.DEFAULT_MODEL
       || 'claude-haiku-4-5';
     let resolvedProvider = agentAccount?.preferredProvider || undefined;

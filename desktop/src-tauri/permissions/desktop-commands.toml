@@ -35,6 +35,11 @@ commands.allow = [
   "desktop_bridge_set_auth_token",
   "desktop_bridge_delete_auth_token",
   "desktop_bridge_log_debug_event",
+  # Local LLM / model management
+  "desktop_bridge_start_llm_sidecar",
+  "desktop_bridge_stop_llm_sidecar",
+  "desktop_bridge_list_local_models",
+  "desktop_bridge_download_model",
   # Screen capture (P3.2)
   "desktop_bridge_capture_screen",
   # Git integration (P3.3)

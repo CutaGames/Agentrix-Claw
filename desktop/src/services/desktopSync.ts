@@ -103,7 +103,7 @@ export async function syncDesktopHeartbeat(token: string) {
     body: JSON.stringify({
       deviceId: getDesktopDeviceId(),
       platform: navigator.platform || "unknown",
-      appVersion: "0.1.0",
+      appVersion: "0.1.1",
       context,
     }),
   });

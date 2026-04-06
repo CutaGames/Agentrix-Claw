@@ -1615,6 +1615,12 @@ export default function ChatPanel({
       const targetSessionId = sessionIdRef.current;
       const targetRuntime = sessionRuntimeRef.current[targetSessionId] || createEmptySessionRuntimeState();
       const useDesktopLocalModel = selectedModel === DESKTOP_LOCAL_MODEL_ID;
+      const activeInst = activeInstanceId
+        ? instances.find((instance) => instance.id === activeInstanceId)
+        : undefined;
+      const fallbackCloudModel = activeInst?.resolvedModel && activeInst.resolvedModel !== DESKTOP_LOCAL_MODEL_ID
+        ? activeInst.resolvedModel
+        : undefined;
 
       if ((!text && pendingAttachments.length === 0) || targetRuntime.sending || uploadingAttachments) {
         return;
@@ -1946,6 +1952,7 @@ export default function ChatPanel({
 
         if (useDesktopLocalModel) {
           const controller = new AbortController();
+          let shouldFallbackToCloud = false;
           sessionAbortControllersRef.current[targetSessionId] = controller;
           if (targetSessionId === sessionIdRef.current) {
             abortRef.current = controller;
@@ -1989,40 +1996,67 @@ export default function ChatPanel({
             }
           } catch (error: any) {
             const message = error?.message || String(error);
-            updateSessionMessages(
-              targetSessionId,
-              (prev) => prev.map((existing) => (
-                existing.id === assistantId
-                  ? {
-                      ...existing,
-                      content: existing.content.trim().length > 0 ? existing.content : `Error: ${message}`,
-                      error: true,
-                      streaming: false,
-                    }
-                  : existing
-              )),
-              { persist: true, markUnread: true },
-            );
-            setStreamFeedback({
-              tone: "error",
-              label: "本地模型执行失败",
-              detail: message,
-            });
+            shouldFallbackToCloud = Boolean(authToken);
+            if (!shouldFallbackToCloud) {
+              updateSessionMessages(
+                targetSessionId,
+                (prev) => prev.map((existing) => (
+                  existing.id === assistantId
+                    ? {
+                        ...existing,
+                        content: existing.content.trim().length > 0 ? existing.content : `Error: ${message}`,
+                        error: true,
+                        streaming: false,
+                      }
+                    : existing
+                )),
+                { persist: true, markUnread: true },
+              );
+              setStreamFeedback({
+                tone: "error",
+                label: "本地模型执行失败",
+                detail: message,
+              });
+            } else {
+              updateSessionMessages(
+                targetSessionId,
+                (prev) => prev.map((existing) => (
+                  existing.id === assistantId
+                    ? {
+                        ...existing,
+                        content: "",
+                        error: false,
+                        streaming: true,
+                        meta: undefined,
+                      }
+                    : existing
+                )),
+              );
+              setStreamFeedback({
+                tone: "warning",
+                label: "本地模型不可用，切换云端",
+                detail: message,
+              });
+            }
           } finally {
             sessionAbortControllersRef.current[targetSessionId] = null;
             if (targetSessionId === sessionIdRef.current) {
               abortRef.current = null;
             }
-            patchSessionRuntime(targetSessionId, { sending: false });
-            setSendStartedAt(null);
-            setActiveToolRun(null);
-            voiceInitiatedRef.current = false;
-            if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
-              setBallState("idle");
+            if (!shouldFallbackToCloud) {
+              patchSessionRuntime(targetSessionId, { sending: false });
+              setSendStartedAt(null);
+              setActiveToolRun(null);
+              voiceInitiatedRef.current = false;
+              if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
+                setBallState("idle");
+              }
             }
           }
 
-          return;
+          if (!shouldFallbackToCloud) {
+            return;
+          }
         }
 
         if (!authToken) {
@@ -2058,7 +2092,7 @@ export default function ChatPanel({
               message: outboundText,
               sessionId: targetSessionId,
               token: authToken,
-              model: selectedModel || undefined,
+              model: useDesktopLocalModel ? fallbackCloudModel : selectedModel || undefined,
               mode: chatMode,
               onChunk: chunkHandler,
               onMeta: metaHandler,
@@ -2072,6 +2106,7 @@ export default function ChatPanel({
               sessionId: targetSessionId,
               agentId: activeAgentId,
               token: authToken,
+              model: useDesktopLocalModel ? fallbackCloudModel : selectedModel || undefined,
               mode: chatMode,
               onChunk: chunkHandler,
               onDone: doneHandler(resolve),
@@ -2100,6 +2135,7 @@ export default function ChatPanel({
       activeInstanceId,
       token,
       selectedModel,
+      instances,
       messages,
       pendingAttachments,
       appendChunk,

@@ -1292,18 +1292,25 @@ export class AuthController {
       openClawInstances: instances.map(i => {
         const acctId = i.agentAccountId || (i.metadata as any)?.agentAccountId;
         const acct = acctId ? accountMap.get(acctId) : undefined;
+        const LOCAL_ONLY_MODELS = ['gemma-nano-2b', 'gemma-4-2b', 'gemma-nano-2b-local'];
         const instanceActiveModel = (i.capabilities as any)?.activeModel;
+        const sanitizedInstanceActiveModel = instanceActiveModel && !LOCAL_ONLY_MODELS.includes(instanceActiveModel)
+          ? instanceActiveModel
+          : undefined;
         const instanceModelPinned = (i.capabilities as any)?.modelPinned === true;
+        const sanitizedPreferredModel = acct?.preferredModel && !LOCAL_ONLY_MODELS.includes(acct.preferredModel)
+          ? acct.preferredModel
+          : undefined;
         // Priority: agentAccount.preferredModel → explicitly pinned instance model → user's defaultProviderConfig → instance baseline
-        const resolvedModel = acct?.preferredModel
-          || (instanceModelPinned ? instanceActiveModel : undefined)
+        const resolvedModel = sanitizedPreferredModel
+          || (instanceModelPinned ? sanitizedInstanceActiveModel : undefined)
           || defaultProviderConfig?.selectedModel
-          || instanceActiveModel
+          || sanitizedInstanceActiveModel
           || undefined;
         const resolvedProvider = acct?.preferredProvider
-          || (instanceModelPinned ? modelProviderMap.get(instanceActiveModel) : undefined)
+          || (instanceModelPinned ? modelProviderMap.get(sanitizedInstanceActiveModel) : undefined)
           || defaultProviderConfig?.providerId
-          || modelProviderMap.get(instanceActiveModel)
+          || modelProviderMap.get(sanitizedInstanceActiveModel)
           || undefined;
         const resolvedModelLabel = allCatalogModels.find((m: any) => m.id === resolvedModel)?.label
           || resolvedModel;
