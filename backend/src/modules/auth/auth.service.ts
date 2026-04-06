@@ -11,6 +11,9 @@ import { AccountService } from '../account/account.service';
 import { AccountOwnerType } from '../../entities/account.entity';
 import { UserAgent, UserAgentStatus, DelegationLevel } from '../../entities/user-agent.entity';
 import { ConfigService } from '@nestjs/config';
+import { DesktopPairSession } from '../../entities/desktop-pair-session.entity';
+
+const DESKTOP_PAIR_TTL_MS = 10 * 60 * 1000;
 
 @Injectable()
 export class AuthService {
@@ -24,6 +27,8 @@ export class AuthService {
     private walletRepository: Repository<WalletConnection>,
     @InjectRepository(UserAgent)
     private userAgentRepository: Repository<UserAgent>,
+    @InjectRepository(DesktopPairSession)
+    private desktopPairSessionRepository: Repository<DesktopPairSession>,
     private jwtService: JwtService,
     @Inject(forwardRef(() => AccountService))
     private accountService: AccountService,
@@ -1033,37 +1038,63 @@ export class AuthService {
 
   // ========== Desktop Pair (扫码配对登录) ==========
 
-  private desktopPairSessions = new Map<string, { token?: string; expiresAt: number }>();
+  private async requireDesktopPairSession(sessionId: string): Promise<DesktopPairSession> {
+    const session = await this.desktopPairSessionRepository.findOne({
+      where: { sessionId },
+    });
+
+    if (!session) {
+      throw new BadRequestException('Session not found or expired');
+    }
+
+    if (session.expiresAt.getTime() < Date.now()) {
+      await this.desktopPairSessionRepository.remove(session);
+      throw new BadRequestException('Session expired');
+    }
+
+    return session;
+  }
 
   /**
    * 创建桌面配对会话（桌面端调用）
    */
-  createDesktopPairSession(sessionId: string): { sessionId: string; expiresAt: number } {
-    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 min
-    this.desktopPairSessions.set(sessionId, { expiresAt });
+  async createDesktopPairSession(sessionId: string): Promise<{ sessionId: string; expiresAt: number }> {
+    const expiresAt = new Date(Date.now() + DESKTOP_PAIR_TTL_MS);
+    const existing = await this.desktopPairSessionRepository.findOne({
+      where: { sessionId },
+    });
 
-    // 清理过期会话
-    for (const [key, val] of this.desktopPairSessions.entries()) {
-      if (val.expiresAt < Date.now()) this.desktopPairSessions.delete(key);
-    }
+    const session = existing
+      ? Object.assign(existing, { token: null, resolvedAt: null, expiresAt })
+      : this.desktopPairSessionRepository.create({ sessionId, token: null, resolvedAt: null, expiresAt });
 
-    return { sessionId, expiresAt };
+    await this.desktopPairSessionRepository.save(session);
+    return { sessionId, expiresAt: expiresAt.getTime() };
   }
 
   /**
    * 桌面端轮询配对结果
    */
-  pollDesktopPairSession(sessionId: string): { resolved: boolean; token?: string } {
-    const session = this.desktopPairSessions.get(sessionId);
-    if (!session) return { resolved: false };
-    if (session.expiresAt < Date.now()) {
-      this.desktopPairSessions.delete(sessionId);
+  async pollDesktopPairSession(sessionId: string): Promise<{ resolved: boolean; token?: string }> {
+    const session = await this.desktopPairSessionRepository.findOne({
+      where: { sessionId },
+    });
+
+    if (!session) {
       return { resolved: false };
     }
-    if (session.token) {
-      this.desktopPairSessions.delete(sessionId);
-      return { resolved: true, token: session.token };
+
+    if (session.expiresAt.getTime() < Date.now()) {
+      await this.desktopPairSessionRepository.remove(session);
+      return { resolved: false };
     }
+
+    if (session.token) {
+      const token = session.token;
+      await this.desktopPairSessionRepository.remove(session);
+      return { resolved: true, token };
+    }
+
     return { resolved: false };
   }
 
@@ -1071,16 +1102,13 @@ export class AuthService {
    * 移动端确认配对（已登录用户扫码后调用）
    */
   async confirmDesktopPair(sessionId: string, user: User): Promise<{ success: boolean }> {
-    const session = this.desktopPairSessions.get(sessionId);
-    if (!session) throw new BadRequestException('Session not found or expired');
-    if (session.expiresAt < Date.now()) {
-      this.desktopPairSessions.delete(sessionId);
-      throw new BadRequestException('Session expired');
-    }
+    const session = await this.requireDesktopPairSession(sessionId);
 
     // 为桌面端生成 JWT
     const loginResult = await this.login(user);
     session.token = loginResult.access_token;
+    session.resolvedAt = new Date();
+    await this.desktopPairSessionRepository.save(session);
     this.logger.log(`Desktop pair confirmed for user ${user.id}, session ${sessionId}`);
     return { success: true };
   }
@@ -1088,15 +1116,11 @@ export class AuthService {
   /**
    * OAuth 浏览器回调直接完成桌面端配对（无需移动端再次确认）
    */
-  resolveDesktopPairSession(sessionId: string, token: string): { success: boolean } {
-    const session = this.desktopPairSessions.get(sessionId);
-    if (!session) throw new BadRequestException('Session not found or expired');
-    if (session.expiresAt < Date.now()) {
-      this.desktopPairSessions.delete(sessionId);
-      throw new BadRequestException('Session expired');
-    }
-
+  async resolveDesktopPairSession(sessionId: string, token: string): Promise<{ success: boolean }> {
+    const session = await this.requireDesktopPairSession(sessionId);
     session.token = token;
+    session.resolvedAt = new Date();
+    await this.desktopPairSessionRepository.save(session);
     this.logger.log(`Desktop pair resolved via OAuth callback, session ${sessionId}`);
     return { success: true };
   }

@@ -262,6 +262,65 @@ describe('RealtimeVoiceGateway', () => {
     );
   });
 
+  it('drops local-only realtime model IDs when starting a session', async () => {
+    const { gateway, sessionFabric } = createGateway();
+    const client = {
+      id: 'socket-1',
+      userId: 'user-1',
+      emit: jest.fn(),
+      join: jest.fn(),
+    } as any;
+
+    jest.spyOn(gateway as any, 'initializeStreamingSession').mockResolvedValue(undefined);
+
+    await gateway.handleSessionStart(client, {
+      sessionId: 'session-1',
+      instanceId: 'instance-1',
+      duplexMode: false,
+      model: 'gemma-4-4b',
+      deviceType: 'phone',
+    });
+
+    const session = (gateway as any).sessions.get('session-1');
+    expect(session.model).toBeUndefined();
+    expect(sessionFabric.joinSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'session-1',
+        userId: 'user-1',
+      }),
+    );
+    expect(client.emit).toHaveBeenCalledWith(
+      'voice:session:ready',
+      expect.objectContaining({ sessionId: 'session-1', instanceId: 'instance-1' }),
+    );
+  });
+
+  it('does not let local-only realtime model IDs overwrite an active session model', async () => {
+    const { gateway } = createGateway();
+    const client = { userId: 'user-1', emit: jest.fn() } as any;
+    const strategy = {
+      processText: jest.fn().mockResolvedValue(undefined),
+    };
+
+    (gateway as any).cascadeStrategy = strategy;
+
+    const session = createSession({
+      model: 'gpt-4o-mini',
+      v2Strategy: 'cascade',
+    });
+
+    (gateway as any).sessions.set('session-1', session);
+
+    await gateway.handleVoiceText(client, {
+      sessionId: 'session-1',
+      text: 'hello world',
+      model: 'gemma-4-4b',
+    });
+
+    expect(session.model).toBe('gpt-4o-mini');
+    expect(strategy.processText).toHaveBeenCalledWith('session-1', 'hello world');
+  });
+
   it('returns fabric device list when queried', async () => {
     const { gateway, sessionFabric } = createGateway();
     const client = { userId: 'user-1', emit: jest.fn() } as any;

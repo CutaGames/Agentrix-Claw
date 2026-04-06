@@ -1120,7 +1120,7 @@ export function AgentChatScreen() {
     instanceId,
     isSending: sending,
     useRealtimeChannel: true,
-    realtimeModelId: effectiveModelId,
+    realtimeModelId: remoteResolvedModelId,
     speechRate,
     onSendMessage: (text, attachments) => {
       void handleSendRef.current(text, attachments);

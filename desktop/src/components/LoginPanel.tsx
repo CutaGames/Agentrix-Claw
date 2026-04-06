@@ -5,7 +5,7 @@ import agentrixLogo from "../assets/agentrix-logo.png";
 import { API_BASE, useAuthStore } from "../services/store";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 const PAIR_POLL_INTERVAL = 2000;
-const PAIR_TTL = 300_000; // 5 min
+const PAIR_TTL = 300_000; // Fallback until backend returns expiresAt
 
 // Use Tauri HTTP plugin to bypass CORS in WebView2
 async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
@@ -102,18 +102,19 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
 
   // OAuth: open system browser to provider, reuse pairing session
   const handleOAuth = useCallback(async (provider: "google" | "discord") => {
-    // Ensure we have a pairing session for the callback
-    const sid = sessionId || `desktop-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    if (!sessionId) {
-      setSessionId(sid);
+    let sid = sessionId;
+    if (!sid || expired) {
       try {
-        await apiFetch(`${API_BASE}/auth/desktop-pair/create`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: sid }),
-        });
-      } catch {}
+        const created = await startPairSession();
+        sid = created.sessionId;
+      } catch (error) {
+        console.warn('[LoginPanel] Failed to refresh pair session before OAuth:', error);
+        setExpired(true);
+        return;
+      }
     }
+    if (!sid) return;
+
     const url = `${API_BASE}/auth/${provider}?desktop_session=${encodeURIComponent(sid)}`;
     try {
       await shellOpen(url);
@@ -135,6 +136,7 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
     if (timerRef.current) clearTimeout(timerRef.current);
 
     // Register session with backend (must use apiFetch for CORS bypass in Tauri)
+    let expiresAt = Date.now() + PAIR_TTL;
     try {
       const createRes = await apiFetch(`${API_BASE}/auth/desktop-pair/create`, {
         method: "POST",
@@ -143,12 +145,22 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
       });
       const createStatus = createRes.status;
       if (createStatus < 200 || createStatus >= 300) {
-        console.warn('Desktop pair create failed:', createStatus);
-      } else {
-        console.log('[LoginPanel] Session created:', id);
+        throw new Error(`Desktop pair create failed: ${createStatus}`);
       }
+      const raw = await createRes.text().catch(() => "");
+      if (raw) {
+        try {
+          const payload = JSON.parse(raw);
+          if (typeof payload?.expiresAt === "number") {
+            expiresAt = payload.expiresAt;
+          }
+        } catch {}
+      }
+      console.log('[LoginPanel] Session created:', id);
     } catch (e) {
       console.warn('Desktop pair create error:', e);
+      setExpired(true);
+      throw e;
     }
 
     // Poll for token (note: tauriFetch .ok may not work, use .status)
@@ -179,7 +191,9 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
     timerRef.current = setTimeout(() => {
       if (pollRef.current) clearInterval(pollRef.current);
       setExpired(true);
-    }, PAIR_TTL);
+    }, Math.max(1000, expiresAt - Date.now()));
+
+    return { sessionId: id, expiresAt };
   };
 
   useEffect(() => {

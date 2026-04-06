@@ -122,7 +122,7 @@ export class AuthController {
         accessToken: tokenData.id_token || tokenData.access_token,
       });
 
-      return this.finalizeBrowserOAuthSuccess(
+      return await this.finalizeBrowserOAuthSuccess(
         res,
         'Google',
         SocialAccountType.GOOGLE,
@@ -206,7 +206,7 @@ export class AuthController {
         accessToken: tokenData.access_token,
       });
 
-      return this.finalizeBrowserOAuthSuccess(
+      return await this.finalizeBrowserOAuthSuccess(
         res,
         'Discord',
         SocialAccountType.DISCORD,
@@ -550,7 +550,7 @@ export class AuthController {
     res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeTitle}</title></head><body style="margin:0;font-family:Segoe UI,Arial,sans-serif;background:#0b1220;color:#e5e7eb;display:flex;align-items:center;justify-content:center;min-height:100vh;"><div style="max-width:420px;padding:28px 24px;border-radius:18px;background:#111827;border:1px solid rgba(255,255,255,0.08);box-shadow:0 18px 48px rgba(0,0,0,0.35);text-align:center;"><div style="font-size:34px;margin-bottom:12px;">${success ? '✓' : '!'}</div><h1 style="margin:0 0 10px;font-size:22px;">${safeTitle}</h1><p style="margin:0 0 16px;color:#9ca3af;line-height:1.6;">${safeMessage}</p><p style="margin:0;font-size:12px;color:#6b7280;">可以返回 Agentrix Desktop，当前浏览器页可直接关闭。</p></div>${success ? '<script>setTimeout(function(){window.close();},1200);</script>' : ''}</body></html>`);
   }
 
-  private finalizeBrowserOAuthSuccess(
+  private async finalizeBrowserOAuthSuccess(
     res: Response,
     providerLabel: string,
     socialType: SocialAccountType,
@@ -558,7 +558,7 @@ export class AuthController {
     desktopSession?: string,
   ) {
     if (desktopSession) {
-      this.authService.resolveDesktopPairSession(desktopSession, loginResult.access_token);
+      await this.authService.resolveDesktopPairSession(desktopSession, loginResult.access_token);
       this.sendDesktopPairResult(res, `${providerLabel} 登录成功`, `桌面端已完成 ${providerLabel} 登录。`);
       return;
     }
@@ -1292,7 +1292,7 @@ export class AuthController {
       openClawInstances: instances.map(i => {
         const acctId = i.agentAccountId || (i.metadata as any)?.agentAccountId;
         const acct = acctId ? accountMap.get(acctId) : undefined;
-        const LOCAL_ONLY_MODELS = ['gemma-nano-2b', 'gemma-4-2b', 'gemma-nano-2b-local'];
+        const LOCAL_ONLY_MODELS = ['gemma-nano-2b', 'gemma-4-2b', 'gemma-4-4b', 'gemma-nano-2b-local'];
         const instanceActiveModel = (i.capabilities as any)?.activeModel;
         const sanitizedInstanceActiveModel = instanceActiveModel && !LOCAL_ONLY_MODELS.includes(instanceActiveModel)
           ? instanceActiveModel
@@ -1387,7 +1387,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: '会话已创建' })
   async createDesktopPair(@Body() body: { sessionId: string }) {
     if (!body.sessionId) throw new BadRequestException('sessionId is required');
-    return this.authService.createDesktopPairSession(body.sessionId);
+    return await this.authService.createDesktopPairSession(body.sessionId);
   }
 
   @Get('desktop-pair/poll')
@@ -1396,7 +1396,7 @@ export class AuthController {
   async pollDesktopPair(@Request() req) {
     const sessionId = req.query?.session;
     if (!sessionId) throw new BadRequestException('session query param is required');
-    return this.authService.pollDesktopPairSession(sessionId);
+    return await this.authService.pollDesktopPairSession(sessionId);
   }
 
   @Post('desktop-pair/confirm')

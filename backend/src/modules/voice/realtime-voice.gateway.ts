@@ -118,6 +118,15 @@ const PCM_SAMPLE_RATE = 16000;
 const PCM_CHANNEL_COUNT = 1;
 const PCM_BITS_PER_SAMPLE = 16;
 const STREAMING_FINALIZATION_TIMEOUT_MS = 2000;
+const LOCAL_ONLY_MODEL_IDS = new Set(['gemma-nano-2b', 'gemma-4-2b', 'gemma-4-4b', 'gemma-nano-2b-local']);
+
+function sanitizeRealtimeModelId(modelId?: string | null): string | undefined {
+  if (!modelId) {
+    return undefined;
+  }
+
+  return LOCAL_ONLY_MODEL_IDS.has(modelId) ? undefined : modelId;
+}
 
 @WebSocketGateway({
   cors: {
@@ -292,7 +301,7 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
       instanceId: data.instanceId,
       lang: data.lang || 'en',
       voiceId: data.voiceId,
-      model: data.model,
+      model: sanitizeRealtimeModelId(data.model),
       duplexMode: data.duplexMode ?? false,
       audioChunks: [],
       streamingSession: null,
@@ -413,7 +422,7 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
 
     this.logger.debug(`voice:text received for session ${data.sessionId} (instance: ${session.instanceId})`);
 
-    session.model = data.model || session.model;
+    session.model = sanitizeRealtimeModelId(data.model) || session.model;
 
     // Route text to Gemini Live when active
     if (session.useGeminiLive && session.geminiSession) {

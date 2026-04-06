@@ -20,6 +20,7 @@ import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
 import { UserAgent } from '../../entities/user-agent.entity';
 import { AgentAccount } from '../../entities/agent-account.entity';
 import { UserProviderConfig } from '../../entities/user-provider-config.entity';
+import { DesktopPairSession } from '../../entities/desktop-pair-session.entity';
 import { ApiKeyModule } from '../api-key/api-key.module';
 import { AccountModule } from '../account/account.module';
 import { AiProviderModule } from '../ai-provider/ai-provider.module';
@@ -29,7 +30,7 @@ import { ApiKeyGuard } from '../api-key/guards/api-key.guard';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, WalletConnection, SocialAccount, AdminUser, OpenClawInstance, UserAgent, AgentAccount, UserProviderConfig]),
+    TypeOrmModule.forFeature([User, WalletConnection, SocialAccount, AdminUser, OpenClawInstance, UserAgent, AgentAccount, UserProviderConfig, DesktopPairSession]),
     PassportModule,
     ApiKeyModule,
     forwardRef(() => AccountModule),

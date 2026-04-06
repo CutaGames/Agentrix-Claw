@@ -22,6 +22,7 @@ import { User, UserRole } from '../../entities/user.entity';
 import { WalletConnection, ChainType } from '../../entities/wallet-connection.entity';
 import { AccountService } from '../account/account.service';
 import { UserAgent } from '../../entities/user-agent.entity';
+import { DesktopPairSession } from '../../entities/desktop-pair-session.entity';
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 
@@ -70,11 +71,38 @@ describe('AuthService', () => {
   let userRepo: ReturnType<typeof mockRepo>;
   let walletRepo: ReturnType<typeof mockRepo>;
   let userAgentRepo: ReturnType<typeof mockRepo>;
+  let desktopPairRepo: any;
 
   beforeEach(async () => {
     userRepo = mockRepo();
     walletRepo = mockRepo();
     userAgentRepo = mockRepo();
+    const desktopPairState = new Map<string, any>();
+    desktopPairRepo = {
+      findOne: jest.fn().mockImplementation(({ where }: any) => Promise.resolve(desktopPairState.get(where?.sessionId) || null)),
+      create: jest.fn().mockImplementation((dto: any) => ({
+        id: dto.id || 'pair-record',
+        createdAt: dto.createdAt || new Date(),
+        updatedAt: dto.updatedAt || new Date(),
+        ...dto,
+      })),
+      save: jest.fn().mockImplementation((entity: any) => {
+        const next = {
+          id: entity.id || 'pair-record',
+          createdAt: entity.createdAt || new Date(),
+          updatedAt: new Date(),
+          ...entity,
+        };
+        desktopPairState.set(next.sessionId, next);
+        return Promise.resolve(next);
+      }),
+      remove: jest.fn().mockImplementation((entity: any) => {
+        if (entity?.sessionId) {
+          desktopPairState.delete(entity.sessionId);
+        }
+        return Promise.resolve(entity);
+      }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -82,6 +110,7 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(WalletConnection), useValue: walletRepo },
         { provide: getRepositoryToken(UserAgent), useValue: userAgentRepo },
+        { provide: getRepositoryToken(DesktopPairSession), useValue: desktopPairRepo },
         { provide: JwtService, useValue: mockJwtService },
         { provide: AccountService, useValue: mockAccountService },
         { provide: ConfigService, useValue: mockConfigService },
@@ -278,22 +307,22 @@ describe('AuthService', () => {
   // ── Desktop Pair ──────────────────────────────────────────────────────────
 
   describe('desktopPair', () => {
-    it('should create and poll a pair session', () => {
-      const created = service.createDesktopPairSession('session-abc');
+    it('should create and poll a pair session', async () => {
+      const created = await service.createDesktopPairSession('session-abc');
       expect(created.sessionId).toBe('session-abc');
       expect(created.expiresAt).toBeGreaterThan(Date.now());
 
-      const poll1 = service.pollDesktopPairSession('session-abc');
+      const poll1 = await service.pollDesktopPairSession('session-abc');
       expect(poll1.resolved).toBe(false);
     });
 
-    it('should return false for unknown session', () => {
-      const poll = service.pollDesktopPairSession('unknown');
+    it('should return false for unknown session', async () => {
+      const poll = await service.pollDesktopPairSession('unknown');
       expect(poll.resolved).toBe(false);
     });
 
     it('should resolve after confirmDesktopPair', async () => {
-      service.createDesktopPairSession('pair-1');
+      await service.createDesktopPairSession('pair-1');
       walletRepo.findOne.mockResolvedValue(null);
 
       await service.confirmDesktopPair('pair-1', {
@@ -303,18 +332,18 @@ describe('AuthService', () => {
         roles: [UserRole.USER],
       } as any);
 
-      const poll = service.pollDesktopPairSession('pair-1');
+      const poll = await service.pollDesktopPairSession('pair-1');
       expect(poll.resolved).toBe(true);
       expect(poll.token).toBe('mock-jwt-token');
     });
 
-    it('should resolve after direct OAuth pair completion', () => {
-      service.createDesktopPairSession('pair-oauth');
+    it('should resolve after direct OAuth pair completion', async () => {
+      await service.createDesktopPairSession('pair-oauth');
 
-      const result = service.resolveDesktopPairSession('pair-oauth', 'oauth-jwt-token');
+      const result = await service.resolveDesktopPairSession('pair-oauth', 'oauth-jwt-token');
 
       expect(result.success).toBe(true);
-      const poll = service.pollDesktopPairSession('pair-oauth');
+      const poll = await service.pollDesktopPairSession('pair-oauth');
       expect(poll.resolved).toBe(true);
       expect(poll.token).toBe('oauth-jwt-token');
     });
@@ -325,8 +354,8 @@ describe('AuthService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw if session not found on direct OAuth completion', () => {
-      expect(() => service.resolveDesktopPairSession('missing', 'token')).toThrow(BadRequestException);
+    it('should throw if session not found on direct OAuth completion', async () => {
+      await expect(service.resolveDesktopPairSession('missing', 'token')).rejects.toThrow(BadRequestException);
     });
   });
 
