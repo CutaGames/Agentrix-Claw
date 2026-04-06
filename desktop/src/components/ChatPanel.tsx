@@ -376,6 +376,7 @@ export default function ChatPanel({
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const { LogicalSize } = await import("@tauri-apps/api/dpi");
       const win = getCurrentWindow();
+      await win.setResizable(true);
       await win.setSize(new LogicalSize(1100, 820));
       await win.setMinSize(new LogicalSize(720, 560));
       await win.setAlwaysOnTop(false);
@@ -2448,6 +2449,7 @@ export default function ChatPanel({
           gap: 10,
           WebkitAppRegion: "drag",
         }}
+        data-tauri-drag-region
       >
         <FloatingBall onTap={onClose} state={ballState} />
         <div style={{ flex: 1, minWidth: 0 }}>

@@ -1517,15 +1517,23 @@ export class OpenClawProxyService {
       : null;
     const instanceActiveModel = (instance.capabilities as any)?.activeModel;
     const instanceModelPinned = (instance.capabilities as any)?.modelPinned === true;
-    let resolvedModel = agentAccount?.preferredModel
-      || dto.model
+    // Local-only model IDs that cannot be routed to any cloud provider
+    const LOCAL_ONLY_MODELS = ['gemma-nano-2b', 'gemma-4-2b', 'gemma-nano-2b-local'];
+    const rawPreferredModel = agentAccount?.preferredModel;
+    const sanitizedPreferred = rawPreferredModel && !LOCAL_ONLY_MODELS.includes(rawPreferredModel)
+      ? rawPreferredModel : undefined;
+    const rawDtoModel = dto.model;
+    const sanitizedDtoModel = rawDtoModel && !LOCAL_ONLY_MODELS.includes(rawDtoModel)
+      ? rawDtoModel : undefined;
+    let resolvedModel = sanitizedPreferred
+      || sanitizedDtoModel
       || (instanceModelPinned ? instanceActiveModel : undefined)
       || defaultConfig?.selectedModel
       || instanceActiveModel
       || process.env.DEFAULT_MODEL
       || 'claude-haiku-4-5';
     let resolvedProvider = agentAccount?.preferredProvider || undefined;
-    const requestedProvider = this.inferProviderFromModelId(dto.model);
+    const requestedProvider = this.inferProviderFromModelId(sanitizedDtoModel);
     const modelBoundProvider = this.inferProviderFromModelId(resolvedModel);
 
     // Explicit chat model selection must win over any stored default provider.
