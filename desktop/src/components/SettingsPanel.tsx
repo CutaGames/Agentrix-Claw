@@ -541,7 +541,7 @@ function LocalModelSection() {
       size: "1.7 GB",
       sizeBytes: 1.7e9,
       fileName: "gemma-2-2b-it-Q4_K_M.gguf",
-      url: "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf?download=true",
+      url: "https://hf-mirror.com/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf?download=true",
       matchTerms: ["gemma-2-2b-it-q4_k_m", "gemma-2-2b"],
       desc: "入门本地模型，适合轻薄本和低功耗设备。",
     },
@@ -551,7 +551,7 @@ function LocalModelSection() {
       size: "3.0 GB",
       sizeBytes: 3.0e9,
       fileName: "model.gguf",
-      url: "https://huggingface.co/google/gemma-3-4b-it-qat-q4_0-gguf/resolve/main/model.gguf?download=true",
+      url: "https://hf-mirror.com/google/gemma-3-4b-it-qat-q4_0-gguf/resolve/main/model.gguf?download=true",
       matchTerms: ["gemma-3-4b", "model.gguf"],
       desc: "质量更高，适合 8GB 以上内存的日常本地问答。",
     },
@@ -561,7 +561,7 @@ function LocalModelSection() {
       size: "16.4 GB",
       sizeBytes: 16.4e9,
       fileName: "gemma-2-27b-it-Q4_K_M.gguf",
-      url: "https://huggingface.co/bartowski/gemma-2-27b-it-GGUF/resolve/main/gemma-2-27b-it-Q4_K_M.gguf?download=true",
+      url: "https://hf-mirror.com/bartowski/gemma-2-27b-it-GGUF/resolve/main/gemma-2-27b-it-Q4_K_M.gguf?download=true",
       matchTerms: ["gemma-2-27b-it-q4_k_m", "gemma-2-27b"],
       desc: "工作站档位，本机直接跑复杂推理，建议 32GB+ RAM。",
     },
@@ -571,7 +571,7 @@ function LocalModelSection() {
       size: "30 GB+",
       sizeBytes: 30e9,
       fileName: "gemma-4-31b-it-Q4_K_M.gguf",
-      url: "https://huggingface.co/QuantFactory/gemma-4-31b-it-GGUF/resolve/main/gemma-4-31b-it-Q4_K_M.gguf?download=true",
+      url: "https://hf-mirror.com/QuantFactory/gemma-4-31b-it-GGUF/resolve/main/gemma-4-31b-it-Q4_K_M.gguf?download=true",
       matchTerms: ["gemma-4-31b-it-q4_k_m", "gemma-4-31b"],
       desc: "高端台式机/服务器工作站档位，跳过云端直接本机工作。",
     },
@@ -642,7 +642,8 @@ function LocalModelSection() {
 
       await refreshModels();
     } catch (error: any) {
-      setDownloadMessage(error?.message || "模型下载失败");
+      const msg = typeof error === 'string' ? error : (error?.message || "模型下载失败");
+      setDownloadMessage(msg);
     } finally {
       setDownloadingId(null);
     }
