@@ -34,6 +34,7 @@ import { DesktopSyncService } from '../desktop-sync/desktop-sync.service';
 import { DesktopCommandStatus, DesktopCommandKind } from '../desktop-sync/dto/desktop-sync.dto';
 import { AgentContextService } from '../agent-context/agent-context.service';
 import { AgentOrchestrationService } from '../agent-orchestration/agent-orchestration.service';
+import { RuntimeSeamService } from '../query-engine/runtime-seam.service';
 
 export interface ChatMessageDto {
   message: string | any[];
@@ -98,6 +99,8 @@ export class OpenClawProxyService {
     private readonly desktopSyncService: DesktopSyncService,
     private readonly agentContextService: AgentContextService,
     private readonly agentOrchestrationService: AgentOrchestrationService,
+    @Inject(forwardRef(() => RuntimeSeamService))
+    private readonly runtimeSeamService: RuntimeSeamService,
   ) {}
 
   private async ensureOwnedInstance(userId: string, instanceId: string): Promise<OpenClawInstance> {
@@ -1796,6 +1799,13 @@ export class OpenClawProxyService {
       model: executionModel,
       metadata: { toolCalls: result?.toolCalls },
     }).catch((err: any) => this.logger.warn(`Post-message hook error: ${err.message}`));
+
+    // P0: RuntimeSeam post-process — flush pending memory writes
+    this.runtimeSeamService.postProcess(
+      { userId, sessionId, agentId: agentAccount?.id, message: messageText, model: executionModel },
+      text,
+      result?.toolCalls,
+    ).catch((err: any) => this.logger.warn(`RuntimeSeam postProcess error: ${err.message}`));
 
     await this.savePlatformHostedMessage(session, userId, MessageRole.USER, messageText, {
       source: 'platform-hosted-chat',

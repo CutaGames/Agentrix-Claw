@@ -84,6 +84,27 @@ export class Plugin {
     agents?: Array<{ name: string; model?: string; systemPrompt: string }>;
     tools?: Array<{ name: string; description: string; inputSchema: Record<string, any> }>;
     permissions?: string[];
+    /** P2: Plugin-owned resources — what this plugin registers into the runtime */
+    ownedTools?: string[];      // tool names this plugin exclusively owns
+    ownedHooks?: string[];      // hook event types this plugin registers
+    ownedChannels?: string[];   // channel types (e.g. 'wechat', 'telegram')
+    ownedServices?: string[];   // service identifiers
+  };
+
+  // P2: Plugin-first contract — permissions and sandbox
+  @Column({ type: 'text', array: true, default: '{}' })
+  requiredPermissions?: string[];  // permissions the plugin needs (e.g. 'tools:read', 'memory:write', 'network:outbound')
+
+  @Column({ type: 'varchar', length: 50, default: 'none' })
+  sandboxLevel?: string;  // 'none' | 'process' | 'wasm' — isolation level
+
+  @Column({ type: 'jsonb', nullable: true })
+  securityPolicy?: {
+    allowedDomains?: string[];       // network access whitelist
+    maxMemoryMb?: number;            // memory limit
+    maxExecutionMs?: number;         // execution time limit
+    allowFileSystem?: boolean;       // filesystem access
+    allowNetwork?: boolean;          // network access
   };
 
   @Column({ default: true })

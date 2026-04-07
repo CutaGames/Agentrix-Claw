@@ -257,4 +257,168 @@ export class McpServerRegistryService {
       throw err;
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // P3: OAuth/OIDC Token Exchange
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Exchange OAuth2 credentials for an access token.
+   * Used when an MCP server requires OAuth2 authentication.
+   */
+  async exchangeOAuthToken(server: McpServer): Promise<string | null> {
+    if (server.auth?.type !== 'oauth2') return null;
+    if (!server.auth.tokenUrl || !server.auth.clientId) return null;
+
+    try {
+      const params = new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: server.auth.clientId,
+        ...(server.auth.clientSecret ? { client_secret: server.auth.clientSecret } : {}),
+        ...(server.auth.scopes?.length ? { scope: server.auth.scopes.join(' ') } : {}),
+      });
+
+      const res = await fetch(server.auth.tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!res.ok) {
+        this.logger.warn(`OAuth token exchange failed for ${server.name}: HTTP ${res.status}`);
+        return null;
+      }
+
+      const data = await res.json();
+      return data.access_token || null;
+    } catch (err: any) {
+      this.logger.warn(`OAuth token exchange error for ${server.name}: ${err.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Build auth headers for an MCP server request, handling all auth types.
+   */
+  async buildAuthHeaders(server: McpServer): Promise<Record<string, string>> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+    if (!server.auth) return headers;
+
+    switch (server.auth.type) {
+      case 'bearer':
+        if (server.auth.token) {
+          headers['Authorization'] = `Bearer ${server.auth.token}`;
+        }
+        break;
+
+      case 'oauth2': {
+        const token = await this.exchangeOAuthToken(server);
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        break;
+      }
+
+      case 'api_key':
+        if (server.auth.token) {
+          headers['X-API-Key'] = server.auth.token;
+        }
+        break;
+    }
+
+    return headers;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // P3: Desktop Stdio Relay Bridge
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Register a stdio MCP server discovered by the desktop client.
+   * Desktop Tauri sidecar discovers tools locally and pushes them to backend.
+   */
+  async registerDesktopDiscoveredTools(
+    serverId: string,
+    tools: Array<{ name: string; description?: string; inputSchema?: Record<string, any> }>,
+  ): Promise<McpServer | null> {
+    const server = await this.mcpServerRepo.findOne({ where: { id: serverId } });
+    if (!server) return null;
+
+    server.discoveredTools = tools;
+    server.toolCount = tools.length;
+    server.status = McpServerStatus.CONNECTED;
+    server.lastConnectedAt = new Date();
+    server.lastError = undefined;
+
+    this.logger.log(`Desktop relay: registered ${tools.length} stdio tools for "${server.name}"`);
+    return this.mcpServerRepo.save(server);
+  }
+
+  /**
+   * Relay a tool call to a desktop stdio MCP server via WebSocket.
+   * The backend sends the call to the desktop client which executes it locally.
+   */
+  async relayStdioToolCall(
+    serverId: string,
+    toolName: string,
+    args: Record<string, any>,
+    userId: string,
+  ): Promise<{ relayed: boolean; result?: any; error?: string }> {
+    const server = await this.mcpServerRepo.findOne({ where: { id: serverId } });
+    if (!server || server.transport !== McpTransport.STDIO) {
+      return { relayed: false, error: 'Not a stdio server' };
+    }
+
+    // Relay via WebSocket to desktop client
+    // The desktop client handles actual stdio process execution
+    try {
+      const { RelayRegistry } = await import('../openclaw-connection/telegram-bot.service');
+      const relayTarget = `mcp-${serverId}`;
+      RelayRegistry.emitToAgent(relayTarget, {
+        type: 'mcp-tool-call',
+        serverId,
+        toolName,
+        args,
+        requestId: `mcp-${Date.now()}`,
+      });
+
+      return { relayed: true };
+    } catch (err: any) {
+      return { relayed: false, error: err.message };
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // P3: Mobile Relay (backend proxies MCP calls for mobile clients)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Execute an MCP tool call on behalf of a mobile client.
+   * Mobile clients cannot connect to MCP servers directly.
+   * The backend acts as proxy.
+   */
+  async proxyToolCallForMobile(
+    userId: string,
+    serverIdOrName: string,
+    toolName: string,
+    args: Record<string, any>,
+  ): Promise<any> {
+    // Find the server by ID or name
+    let server = await this.mcpServerRepo.findOne({ where: { id: serverIdOrName, userId } });
+    if (!server) {
+      server = await this.mcpServerRepo.findOne({ where: { name: serverIdOrName, userId } });
+    }
+    if (!server) throw new Error('MCP server not found');
+
+    if (server.transport === McpTransport.STDIO) {
+      const relay = await this.relayStdioToolCall(server.id, toolName, args, userId);
+      if (!relay.relayed) throw new Error(relay.error || 'Stdio relay failed');
+      return relay.result;
+    }
+
+    // For SSE/HTTP servers, execute directly
+    return this.executeToolCall(server.id, toolName, args);
+  }
 }

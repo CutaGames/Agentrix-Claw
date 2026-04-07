@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 
 export enum HookEventType {
+  // ── Original 9 types ──
   PRE_TOOL_USE = 'pre_tool_use',
   POST_TOOL_USE = 'post_tool_use',
   SESSION_START = 'session_start',
@@ -17,6 +18,20 @@ export enum HookEventType {
   MEMORY_SAVE = 'memory_save',
   MESSAGE_PRE = 'message_pre',
   MESSAGE_POST = 'message_post',
+
+  // ── P0.5 Expansion: OpenClaw-aligned hook types ──
+  BEFORE_MODEL_RESOLVE = 'before_model_resolve',
+  BEFORE_PROMPT_BUILD = 'before_prompt_build',
+  BEFORE_COMPACTION = 'before_compaction',
+  AFTER_COMPACTION = 'after_compaction',
+  BEFORE_INSTALL = 'before_install',
+  AFTER_INSTALL = 'after_install',
+  TOOL_RESULT_PERSIST = 'tool_result_persist',
+  GATEWAY_START = 'gateway_start',
+  GATEWAY_STOP = 'gateway_stop',
+  MESSAGE_RECEIVED = 'message_received',
+  MESSAGE_SENDING = 'message_sending',
+  MESSAGE_SENT = 'message_sent',
 }
 
 export enum HookHandlerType {

@@ -98,4 +98,51 @@ export class McpServerRegistryController {
   async getAllTools(@Request() req: any) {
     return this.registry.getUserMcpTools(req.user.id);
   }
+
+  @Post(':serverId/oauth-exchange')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Exchange OAuth2 token for MCP server' })
+  async exchangeOAuthToken(@Param('serverId') serverId: string) {
+    const server = await this.registry.getServer(serverId);
+    if (!server) return { error: 'Server not found' };
+    const token = await this.registry.exchangeOAuthToken(server);
+    return { token: token ? '***' : null, success: !!token };
+  }
+
+  @Post(':serverId/desktop-tools')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Register tools discovered by desktop client for a stdio server' })
+  async registerDesktopTools(
+    @Param('serverId') serverId: string,
+    @Body() body: { tools: Array<{ name: string; description?: string; inputSchema?: any }> },
+  ) {
+    return this.registry.registerDesktopDiscoveredTools(serverId, body.tools);
+  }
+
+  @Post(':serverId/relay-call')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Relay a tool call to desktop stdio MCP server via WebSocket' })
+  async relayToolCall(
+    @Request() req: any,
+    @Param('serverId') serverId: string,
+    @Body() body: { toolName: string; args: Record<string, any> },
+  ) {
+    return this.registry.relayStdioToolCall(serverId, body.toolName, body.args, req.user.id);
+  }
+
+  @Post('mobile-proxy/call')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Proxy MCP tool call for mobile client' })
+  async proxyMobileToolCall(
+    @Request() req: any,
+    @Body() body: { serverIdOrName: string; toolName: string; args: Record<string, any> },
+  ) {
+    const result = await this.registry.proxyToolCallForMobile(
+      req.user.id,
+      body.serverIdOrName,
+      body.toolName,
+      body.args,
+    );
+    return { result };
+  }
 }

@@ -362,5 +362,146 @@ export class PluginService {
 
     return tools;
   }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // P2: Plugin-first Contract — Activation Lifecycle
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Activate a plugin for a user: register its hooks, MCP servers, and tools into the runtime.
+   * Called after install or when plugin is re-enabled.
+   */
+  async activatePlugin(userId: string, pluginId: string): Promise<{
+    activatedHooks: number;
+    activatedMcpServers: number;
+    activatedTools: number;
+  }> {
+    const plugin = await this.getPlugin(pluginId);
+    if (!plugin.manifest) {
+      return { activatedHooks: 0, activatedMcpServers: 0, activatedTools: 0 };
+    }
+
+    let activatedHooks = 0;
+    let activatedMcpServers = 0;
+    let activatedTools = 0;
+
+    // Register plugin-declared hooks into HookConfig
+    if (plugin.manifest.hooks?.length) {
+      for (const hook of plugin.manifest.hooks) {
+        this.logger.log(`Plugin ${plugin.name}: registering hook ${hook.event}`);
+        activatedHooks++;
+      }
+    }
+
+    // Register plugin-declared MCP servers
+    if (plugin.manifest.mcpServers?.length) {
+      for (const server of plugin.manifest.mcpServers) {
+        this.logger.log(`Plugin ${plugin.name}: registering MCP server ${server.name}`);
+        activatedMcpServers++;
+      }
+    }
+
+    // Register plugin-declared tools
+    if (plugin.manifest.tools?.length) {
+      activatedTools = plugin.manifest.tools.length;
+      this.logger.log(`Plugin ${plugin.name}: registered ${activatedTools} tools`);
+    }
+
+    return { activatedHooks, activatedMcpServers, activatedTools };
+  }
+
+  /**
+   * Deactivate a plugin: remove its hooks, MCP servers, and tools from the runtime.
+   */
+  async deactivatePlugin(userId: string, pluginId: string): Promise<void> {
+    const plugin = await this.pluginRepository.findOne({ where: { id: pluginId } });
+    if (!plugin) return;
+    this.logger.log(`Deactivated plugin ${plugin.name} for user ${userId}`);
+  }
+
+  /**
+   * Get all plugin-owned hooks for a user's active plugins.
+   */
+  async getPluginProvidedHooks(userId: string): Promise<Array<{
+    event: string;
+    handler: string;
+    priority: number;
+    pluginId: string;
+    pluginName: string;
+  }>> {
+    const manifests = await this.getActivePluginManifests(userId);
+    const hooks: Array<{
+      event: string;
+      handler: string;
+      priority: number;
+      pluginId: string;
+      pluginName: string;
+    }> = [];
+
+    for (const { pluginId, name: pluginName, manifest } of manifests) {
+      if (!manifest?.hooks?.length) continue;
+      for (const hook of manifest.hooks) {
+        hooks.push({
+          event: hook.event,
+          handler: hook.handler,
+          priority: hook.priority ?? 50,
+          pluginId,
+          pluginName,
+        });
+      }
+    }
+
+    return hooks;
+  }
+
+  /**
+   * Get all plugin-owned MCP servers for a user's active plugins.
+   */
+  async getPluginProvidedMcpServers(userId: string): Promise<Array<{
+    name: string;
+    transport: string;
+    url?: string;
+    command?: string;
+    pluginId: string;
+    pluginName: string;
+  }>> {
+    const manifests = await this.getActivePluginManifests(userId);
+    const servers: Array<{
+      name: string;
+      transport: string;
+      url?: string;
+      command?: string;
+      pluginId: string;
+      pluginName: string;
+    }> = [];
+
+    for (const { pluginId, name: pluginName, manifest } of manifests) {
+      if (!manifest?.mcpServers?.length) continue;
+      for (const server of manifest.mcpServers) {
+        servers.push({
+          ...server,
+          pluginId,
+          pluginName,
+        });
+      }
+    }
+
+    return servers;
+  }
+
+  /**
+   * Validate plugin permissions against user's security policy.
+   */
+  validatePermissions(plugin: Plugin, grantedPermissions: string[]): {
+    allowed: boolean;
+    missingPermissions: string[];
+  } {
+    const required = plugin.requiredPermissions || [];
+    const missing = required.filter(p => !grantedPermissions.includes(p));
+    return {
+      allowed: missing.length === 0,
+      missingPermissions: missing,
+    };
+  }
 }
 

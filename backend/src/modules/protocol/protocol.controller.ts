@@ -1,9 +1,13 @@
-import { Controller, Get, Param, Query, Post, Body } from '@nestjs/common';
+import { Controller, Get, Param, Query, Post, Body, Delete } from '@nestjs/common';
 import { ProtocolService } from './protocol.service';
+import { AcpBridgeService, AcpSteerCommand, AcpReplyDispatch } from './acp-bridge.service';
 
 @Controller('api')
 export class ProtocolController {
-  constructor(private readonly protocolService: ProtocolService) {}
+  constructor(
+    private readonly protocolService: ProtocolService,
+    private readonly acpBridgeService: AcpBridgeService,
+  ) {}
 
   // UCP (Unified Commerce Protocol) - Gemini
   @Get('ucp/skills')
@@ -85,5 +89,65 @@ export class ProtocolController {
   @Get('protocols/discovery')
   async getProtocolDiscovery() {
     return this.protocolService.getProtocolDiscovery();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ACP Bridge — Session Lifecycle & Actions
+  // ═══════════════════════════════════════════════════════════════════════
+
+  @Post('acp/sessions')
+  async createAcpSession(
+    @Body() body: { userId: string; agentId?: string; metadata?: Record<string, any> },
+  ) {
+    return this.acpBridgeService.createSession(body.userId, body.agentId, body.metadata);
+  }
+
+  @Get('acp/sessions/:sessionId')
+  async getAcpSession(@Param('sessionId') sessionId: string) {
+    return this.acpBridgeService.loadSession(sessionId);
+  }
+
+  @Get('acp/sessions/:sessionId/status')
+  async getAcpSessionStatus(@Param('sessionId') sessionId: string) {
+    return this.acpBridgeService.getSessionStatus(sessionId);
+  }
+
+  @Post('acp/sessions/:sessionId/steer')
+  async steerAcpSession(
+    @Param('sessionId') sessionId: string,
+    @Body() command: AcpSteerCommand,
+  ) {
+    return this.acpBridgeService.steerSession(sessionId, command);
+  }
+
+  @Delete('acp/sessions/:sessionId')
+  async killAcpSession(
+    @Param('sessionId') sessionId: string,
+    @Body() body: { reason?: string },
+  ) {
+    return this.acpBridgeService.killSession(sessionId, body.reason);
+  }
+
+  @Get('acp/sessions')
+  async listAcpSessions(@Query('userId') userId: string) {
+    return this.acpBridgeService.listSessions(userId);
+  }
+
+  @Post('acp/dispatch')
+  async replyDispatch(@Body() dispatch: AcpReplyDispatch) {
+    return this.acpBridgeService.replyDispatch(dispatch);
+  }
+
+  @Get('acp/actions')
+  async listAcpActions() {
+    return this.acpBridgeService.listActions();
+  }
+
+  @Post('acp/actions/:actionId/invoke')
+  async invokeAcpAction(
+    @Param('actionId') actionId: string,
+    @Body() body: { sessionId: string; parameters: Record<string, any>; userId: string },
+  ) {
+    return this.acpBridgeService.invokeAction(body.sessionId, actionId, body.parameters, body.userId);
   }
 }

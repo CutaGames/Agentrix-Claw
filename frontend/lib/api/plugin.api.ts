@@ -88,6 +88,26 @@ class PluginApi {
       body: JSON.stringify({ paymentMethod }),
     })
   }
+
+  async activatePlugin(pluginId: string): Promise<{ activated: boolean; hooks: number; mcpServers: number; tools: number }> {
+    return this.request<{ activated: boolean; hooks: number; mcpServers: number; tools: number }>(`/plugins/${pluginId}/activate`, {
+      method: 'POST',
+    })
+  }
+
+  async deactivatePlugin(pluginId: string): Promise<{ deactivated: boolean }> {
+    return this.request<{ deactivated: boolean }>(`/plugins/${pluginId}/deactivate`, {
+      method: 'POST',
+    })
+  }
+
+  async getPluginPermissions(pluginId: string): Promise<{
+    requiredPermissions: string[]
+    sandboxLevel: string
+    securityPolicy: Record<string, any>
+  }> {
+    return this.request(`/plugins/${pluginId}/permissions`)
+  }
 }
 
 export const pluginApi = new PluginApi()

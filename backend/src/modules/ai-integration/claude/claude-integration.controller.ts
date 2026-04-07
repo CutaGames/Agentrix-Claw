@@ -7,6 +7,7 @@ import { AiProviderService } from '../../ai-provider/ai-provider.service';
 import { OpenClawProxyService } from '../../openclaw-proxy/openclaw-proxy.service';
 import { AgentContextService } from '../../agent-context/agent-context.service';
 import { AgentIntelligenceService } from '../../agent-intelligence/agent-intelligence.service';
+import { RuntimeSeamService } from '../../query-engine/runtime-seam.service';
 
 @Controller('claude')
 export class ClaudeIntegrationController {
@@ -21,6 +22,8 @@ export class ClaudeIntegrationController {
     private openClawProxyService: OpenClawProxyService,
     private agentContextService: AgentContextService,
     private agentIntelligenceService: AgentIntelligenceService,
+    @Inject(forwardRef(() => RuntimeSeamService))
+    private runtimeSeamService: RuntimeSeamService,
   ) {}
 
   /** Best-effort userId extraction from Bearer token (no guard — stays public). */
@@ -173,23 +176,36 @@ export class ClaudeIntegrationController {
         : '';
 
     // If the client already provides a system message, use it as-is.
-    // Otherwise inject the layered context from shared AgentContextService.
+    // Otherwise inject the layered context via RuntimeSeamService (P0 unified contract).
     const hasClientSystemMessage = messages.some(m => m.role === 'system');
 
     let baseMessages: typeof messages;
     if (hasClientSystemMessage) {
       baseMessages = messages;
     } else {
-      // Phase 3: Use shared context builder for consistent system prompts across both chat paths
-      const builtContext = await this.agentContextService.buildContext({
+      // P0: Use RuntimeSeamService for consistent context across both chat paths
+      const seamContext = await this.runtimeSeamService.buildRuntimeContext({
         userId: context.userId || '',
+        sessionId: context.sessionId || `claude-${Date.now()}`,
         agentId,
-        sessionId: context.sessionId,
+        message: lastUserText,
         needsTools: mode !== 'ask',
+        model: options?.model,
         modelLabel: options?.model || 'AI',
+        mode,
+        platform,
       });
+
+      if (seamContext.hookBlocked) {
+        return {
+          text: seamContext.hookBlockMessage || 'Message blocked by pre-message hook.',
+          toolCalls: null,
+          stopReason: 'hook_blocked',
+        };
+      }
+
       baseMessages = [
-        { role: 'system' as const, content: builtContext.systemPrompt },
+        { role: 'system' as const, content: seamContext.systemPrompt },
         ...messages,
       ];
     }
@@ -265,6 +281,23 @@ export class ClaudeIntegrationController {
     }
 
     const result = await this.claudeService.chatWithFunctions(allMessages, chatOptions);
+
+    // P0: Post-process via RuntimeSeamService (hooks + memory flush)
+    if (context.userId && context.sessionId && typeof result?.text === 'string') {
+      this.runtimeSeamService.postProcess(
+        {
+          userId: context.userId,
+          sessionId: context.sessionId,
+          agentId,
+          message: lastUserText,
+          model: options?.model,
+        },
+        result.text,
+        result?.toolCalls,
+      ).catch((err: Error) => {
+        this.logger.warn(`RuntimeSeam postProcess failed: ${err.message}`);
+      });
+    }
 
     if (context.sessionId && context.userId && lastUserText && typeof result?.text === 'string' && result.text.trim()) {
       this.agentIntelligenceService.extractAndSaveMemories(

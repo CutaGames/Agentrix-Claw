@@ -21,6 +21,7 @@ import { AgentOrchestrationModule } from '../agent-orchestration/agent-orchestra
 import { HookModule } from '../hooks/hook.module';
 import { McpRegistryModule } from '../mcp-registry/mcp-registry.module';
 import { DesktopSyncModule } from '../desktop-sync/desktop-sync.module';
+import { QueryEngineModule } from '../query-engine/query-engine.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { DesktopSyncModule } from '../desktop-sync/desktop-sync.module';
     HookModule,
     McpRegistryModule,
     DesktopSyncModule,
+    forwardRef(() => QueryEngineModule),
   ],
   providers: [OpenClawProxyService],
   controllers: [OpenClawProxyController],

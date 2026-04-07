@@ -136,6 +136,83 @@ export async function deleteMcpServer(token: string, serverId: string) {
   return res.ok;
 }
 
+// P3: OAuth token exchange for MCP server
+export async function exchangeMcpOAuthToken(token: string, serverId: string) {
+  const res = await apiFetch(`${API_BASE}/mcp-servers/${serverId}/oauth-exchange`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// P3: Register tools discovered by desktop client for a stdio MCP server
+export async function registerDesktopMcpTools(
+  token: string,
+  serverId: string,
+  tools: Array<{ name: string; description?: string; inputSchema?: any }>,
+) {
+  const res = await apiFetch(`${API_BASE}/mcp-servers/${serverId}/desktop-tools`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ tools }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// P3: Relay tool call to desktop stdio MCP server via WebSocket
+export async function relayMcpToolCall(
+  token: string,
+  serverId: string,
+  toolName: string,
+  args: Record<string, any>,
+) {
+  const res = await apiFetch(`${API_BASE}/mcp-servers/${serverId}/relay-call`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ toolName, args }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// P1: Memory Slot API for desktop
+export async function recallMemorySlots(
+  token: string,
+  options: { scopes?: string[]; limit?: number; sessionId?: string },
+) {
+  const res = await apiFetch(`${API_BASE}/memory-slots/recall`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(options),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function writeMemorySlot(
+  token: string,
+  params: { key: string; value: any; scope: string; type: string; importance?: number; tags?: string[] },
+) {
+  const res = await apiFetch(`${API_BASE}/memory-slots`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function deleteMemorySlot(token: string, key: string, scope?: string) {
+  const query = scope ? `?scope=${scope}` : '';
+  const res = await apiFetch(`${API_BASE}/memory-slots/${encodeURIComponent(key)}${query}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.ok;
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Session Export / Fork / Search (P7.4)
 // ═══════════════════════════════════════════════════════════════════════

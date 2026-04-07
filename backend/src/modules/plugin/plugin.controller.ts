@@ -118,5 +118,45 @@ export class PluginController {
   ): Promise<{ success: boolean; userPlugin?: UserPlugin; message: string }> {
     return this.pluginService.purchasePlugin(req.user.id, pluginId, paymentMethod);
   }
+
+  @Post(':pluginId/activate')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '激活插件（注册 hooks/MCP/tools）' })
+  @ApiResponse({ status: 200, description: '插件已激活' })
+  async activatePlugin(
+    @Request() req: any,
+    @Param('pluginId') pluginId: string,
+  ): Promise<{ activated: boolean; hooks: number; mcpServers: number; tools: number }> {
+    return this.pluginService.activatePlugin(req.user.id, pluginId);
+  }
+
+  @Post(':pluginId/deactivate')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '停用插件' })
+  @ApiResponse({ status: 200, description: '插件已停用' })
+  async deactivatePlugin(
+    @Request() req: any,
+    @Param('pluginId') pluginId: string,
+  ): Promise<{ deactivated: boolean }> {
+    return this.pluginService.deactivatePlugin(req.user.id, pluginId);
+  }
+
+  @Get(':pluginId/permissions')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '获取插件所需权限' })
+  @ApiResponse({ status: 200, description: '插件权限信息' })
+  async getPluginPermissions(
+    @Param('pluginId') pluginId: string,
+  ): Promise<{ requiredPermissions: string[]; sandboxLevel: string; securityPolicy: any }> {
+    const plugin = await this.pluginService.getPlugin(pluginId);
+    return {
+      requiredPermissions: plugin.requiredPermissions || [],
+      sandboxLevel: plugin.sandboxLevel || 'none',
+      securityPolicy: plugin.securityPolicy || {},
+    };
+  }
 }
 
