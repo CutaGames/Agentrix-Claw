@@ -1311,14 +1311,17 @@ export function AgentChatScreen() {
       let proxyFailureMessage: string | null = null;
 
       const shouldTryLocalNano = (
-        effectiveModelId === MobileLocalInferenceService.modelId
+        isLocalOnlyModelId(effectiveModelId)
         && attachments.length === 0
       );
 
       if (shouldTryLocalNano && await MobileLocalInferenceService.isAvailable()) {
         const localAbort = new AbortController();
         streamAbortRef.current = localAbort;
-        setResolvedModelLabel(MobileLocalInferenceService.modelLabel);
+        const localModelLabel = effectiveModelId === MobileLocalInferenceService.modelId
+          ? MobileLocalInferenceService.modelLabel
+          : `${effectiveModelId} (Local)`;
+        setResolvedModelLabel(localModelLabel);
 
         const localHistory = currentMsgs
           .filter((message) => (message.role === 'user' || message.role === 'assistant') && message.content.trim())
@@ -1336,7 +1339,7 @@ export function AgentChatScreen() {
             { role: 'system', content: `You are ${instanceName}. Keep responses concise, practical, and conversational.` },
             ...localHistory,
             { role: 'user', content: text },
-          ])) {
+          ], { model: effectiveModelId })) {
             if (localAbort.signal.aborted || responseInterruptedRef.current) {
               break;
             }

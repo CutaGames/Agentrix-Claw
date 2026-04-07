@@ -49,7 +49,33 @@ export function ScanScreen() {
         const pairSession = pairUrl.searchParams.get('session');
         const platform = pairUrl.searchParams.get('platform') || 'desktop';
         if (!pairSession) throw new Error(t({ en: 'QR code missing session info.', zh: '二维码缺少会话信息。' }));
-        await confirmDesktopPair(pairSession);
+
+        // Retry confirm up to 2 times with delay (session may still be propagating)
+        let lastErr: any;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            await confirmDesktopPair(pairSession);
+            lastErr = null;
+            break;
+          } catch (e: any) {
+            lastErr = e;
+            if (attempt < 2) {
+              await new Promise(r => setTimeout(r, 1000));
+            }
+          }
+        }
+        if (lastErr) {
+          const platformLabel = platform === 'web'
+            ? t({ en: 'Web', zh: '网页端' })
+            : t({ en: 'Desktop', zh: '桌面端' });
+          throw new Error(
+            t({
+              en: `${platformLabel} session expired or not found. Please refresh the QR code on ${platformLabel} and try again.`,
+              zh: `${platformLabel}会话已过期或不存在，请在${platformLabel}刷新二维码后重新扫描。`,
+            }),
+          );
+        }
+
         const platformLabel = platform === 'web'
           ? t({ en: 'Web', zh: '网页端' })
           : t({ en: 'Desktop', zh: '桌面端' });

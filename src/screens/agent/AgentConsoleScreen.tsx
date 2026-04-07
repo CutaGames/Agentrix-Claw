@@ -360,7 +360,11 @@ export function AgentConsoleScreen() {
               { icon: '🔁', label: t({ en: 'ACP Sessions', zh: 'ACP 会话' }), route: 'AcpSessions' as const },
               { icon: '⚙️', label: t({ en: 'Workflows', zh: '工作流' }), route: 'WorkflowList' as const },
               { icon: '🛠️', label: t({ en: 'Agent Tools', zh: '系统工具' }), route: 'AgentTools' as const },
-              { icon: '👥', label: t({ en: 'Team Space', zh: '团队空间' }), route: 'TeamSpace' as const },
+              { icon: '�', label: t({ en: 'Dreaming', zh: '梦境引擎' }), route: 'DreamingDashboard' as const },
+              { icon: '🧩', label: t({ en: 'Plugin Hub', zh: '插件中心' }), route: 'PluginHub' as const },
+              { icon: '📝', label: t({ en: 'Memory Wiki', zh: '记忆Wiki' }), route: 'MemoryWiki' as const },
+              { icon: '🔌', label: t({ en: 'MCP Manager', zh: 'MCP 管理' }), route: 'McpManager' as const },
+              { icon: '�👥', label: t({ en: 'Team Space', zh: '团队空间' }), route: 'TeamSpace' as const },
               { icon: '🤖', label: t({ en: 'Agent Accounts', zh: '智能体账户' }), route: 'AgentAccount' as const },
             ] as const).map((item) => (
               <TouchableOpacity

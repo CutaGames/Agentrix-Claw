@@ -91,7 +91,7 @@ async function bootstrap() {
     prefix: '/api/uploads/',
   });
 
-  const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
+  const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000,https://agentrix.top,https://www.agentrix.top,https://api.agentrix.top,tauri://localhost,https://tauri.localhost';
   const corsOrigins = corsOrigin.split(',').map(origin => origin.trim());
 
   // GPTs / ChatGPT Actions: if ALLOW_GPTs is set, add known OpenAI origins

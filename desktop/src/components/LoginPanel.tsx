@@ -123,7 +123,7 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
     }
     // Switch to QR tab so user can see the polling is active
     setTab("qr");
-  }, [sessionId]);
+  }, [sessionId, expired]);
 
   // Generate a pairing session ID, register with backend, and start polling
   const startPairSession = async () => {
@@ -228,7 +228,7 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
         {/* Tab switcher */}
         <div style={tabBar}>
           <button
-            onClick={() => setTab("qr")}
+            onClick={() => { setTab("qr"); if (expired) startPairSession(); }}
             style={{ ...tabBtn, ...(tab === "qr" ? tabBtnActive : {}) }}
           >
             📱 扫码
