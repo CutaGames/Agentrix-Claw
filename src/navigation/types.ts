@@ -29,6 +29,8 @@ export type AgentStackParamList = {
   AgentLogs: undefined;
   DesktopControl: undefined;
   MemoryManagement: undefined;
+  AgentMemory: undefined;
+  AcpSessions: undefined;
   WorkflowList: undefined;
   WorkflowDetail: { workflowId?: string };
   AgentAccount: undefined;

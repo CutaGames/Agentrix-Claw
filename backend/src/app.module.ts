@@ -185,6 +185,7 @@ import { LlmRouterModule } from './modules/llm-router/llm-router.module';
     VoiceModule,
     CartModule,
     SkillModule,
+    ProtocolModule,
     McpModule,
     UCPModule,
     X402DiscoveryModule,

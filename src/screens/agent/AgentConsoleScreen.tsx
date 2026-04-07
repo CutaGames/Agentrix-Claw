@@ -356,6 +356,8 @@ export function AgentConsoleScreen() {
               { icon: '💻', label: t({ en: 'Desktop Control', zh: '桌面控制' }), route: 'DesktopControl' as const },
               { icon: '⌚', label: t({ en: 'Wearables', zh: '可穿戴设备' }), route: 'WearableHub' as const },
               { icon: '🧠', label: t({ en: 'Memory Hub', zh: '记忆中心' }), route: 'MemoryManagement' as const },
+              { icon: '🗃️', label: t({ en: 'Memory Slots', zh: '记忆槽' }), route: 'AgentMemory' as const },
+              { icon: '🔁', label: t({ en: 'ACP Sessions', zh: 'ACP 会话' }), route: 'AcpSessions' as const },
               { icon: '⚙️', label: t({ en: 'Workflows', zh: '工作流' }), route: 'WorkflowList' as const },
               { icon: '🛠️', label: t({ en: 'Agent Tools', zh: '系统工具' }), route: 'AgentTools' as const },
               { icon: '👥', label: t({ en: 'Team Space', zh: '团队空间' }), route: 'TeamSpace' as const },

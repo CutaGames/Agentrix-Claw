@@ -56,6 +56,8 @@ import { StoragePlanScreen } from '../screens/agent/StoragePlanScreen';
 import { AgentLogsScreen } from '../screens/agent/AgentLogsScreen';
 import { DesktopControlScreen } from '../screens/agent/DesktopControlScreen';
 import { MemoryManagementScreen } from '../screens/agent/MemoryManagementScreen';
+import AgentMemoryScreen from '../screens/agent/AgentMemoryScreen';
+import AcpSessionsScreen from '../screens/agent/AcpSessionsScreen';
 import { WorkflowListScreen } from '../screens/agent/WorkflowListScreen';
 import { WorkflowDetailScreen } from '../screens/agent/WorkflowDetailScreen';
 import { VoiceChatScreen } from '../screens/agent/VoiceChatScreen';
@@ -107,6 +109,8 @@ export function AgentStackNavigator() {
       <Stack.Screen name="AgentLogs" component={AgentLogsScreen} options={{ title: t({ en: 'Activity Logs', zh: '活动日志' }) }} />
       <Stack.Screen name="DesktopControl" component={DesktopControlScreen} options={{ title: t({ en: 'Desktop Control', zh: '桌面控制' }) }} />
       <Stack.Screen name="MemoryManagement" component={MemoryManagementScreen} options={{ title: t({ en: 'Memory Hub', zh: '记忆中心' }) }} />
+      <Stack.Screen name="AgentMemory" component={AgentMemoryScreen} options={{ title: t({ en: 'Memory Slots', zh: '记忆槽' }) }} />
+      <Stack.Screen name="AcpSessions" component={AcpSessionsScreen} options={{ title: t({ en: 'ACP Sessions', zh: 'ACP 会话' }) }} />
       <Stack.Screen name="WorkflowList" component={WorkflowListScreen} options={{ title: t({ en: 'Workflows', zh: '工作流' }) }} />
       <Stack.Screen name="WorkflowDetail" component={WorkflowDetailScreen} options={{ title: t({ en: 'Workflow', zh: '工作流' }) }} />
       {/* Deploy screens — accessible post-onboarding */}

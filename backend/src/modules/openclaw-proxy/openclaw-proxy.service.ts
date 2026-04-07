@@ -32,7 +32,6 @@ import { HookEventType } from '../../entities/hook-config.entity';
 import { McpServerRegistryService } from '../mcp-registry/mcp-server-registry.service';
 import { DesktopSyncService } from '../desktop-sync/desktop-sync.service';
 import { DesktopCommandStatus, DesktopCommandKind } from '../desktop-sync/dto/desktop-sync.dto';
-import { AgentContextService } from '../agent-context/agent-context.service';
 import { AgentOrchestrationService } from '../agent-orchestration/agent-orchestration.service';
 import { RuntimeSeamService } from '../query-engine/runtime-seam.service';
 
@@ -97,7 +96,6 @@ export class OpenClawProxyService {
     @Inject(forwardRef(() => McpServerRegistryService))
     private readonly mcpRegistryService: McpServerRegistryService,
     private readonly desktopSyncService: DesktopSyncService,
-    private readonly agentContextService: AgentContextService,
     private readonly agentOrchestrationService: AgentOrchestrationService,
     @Inject(forwardRef(() => RuntimeSeamService))
     private readonly runtimeSeamService: RuntimeSeamService,
@@ -1627,9 +1625,6 @@ export class OpenClawProxyService {
       }
     }
 
-    // P4.2 Auto-Memory: load relevant memories via shared context builder
-    // (memory retrieval is now done inside agentContextService.buildContext)
-
     // P4.3 Compaction: check if history needs compaction
     const historyMessages = this.buildPlatformHistoryMessages(effectiveHistory);
     if (this.intelligenceService.needsCompaction([...historyMessages, { role: 'user', content: messageText }])) {
@@ -1646,91 +1641,70 @@ export class OpenClawProxyService {
       });
     }
 
-    // Phase 3: Layered context builder (shared across both chat paths)
-    const builtContext = await this.agentContextService.buildContext({
+    const executionModel = this.resolveExecutionModelId(resolvedModel);
+    const seamContext = await this.runtimeSeamService.buildRuntimeContext({
       userId,
       agentId: agentAccount?.id,
       sessionId: session.id,
       instanceName: instance.name || 'Agent',
-      modelLabel: resolvedModelLabel,
+      message: Array.isArray(dto.message) ? dto.message : messageText,
+      baseTools: effectiveTools,
+      onToolCall: effectiveOnToolCall,
       needsTools,
+      model: executionModel,
+      modelLabel: resolvedModelLabel,
+      provider: resolvedProvider,
+      userCredentials,
       permissionProfile: permissionProfile || undefined,
       planModeAddition: planModeSystemAddition || undefined,
+      mode: dto.mode,
+      platform: dto.platform,
     });
 
-    // Use cacheable system blocks for prompt caching when available
-    const systemContent = this.agentContextService.buildCacheableSystemBlocks(builtContext);
+    if (seamContext.hookBlocked) {
+      return {
+        sessionId,
+        reply: {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: seamContext.hookBlockMessage || 'Message blocked by pre-message hook.',
+          createdAt: new Date().toISOString(),
+        },
+        toolCalls: null,
+        platformHosted: true,
+      };
+    }
+
+    const systemContent = seamContext.systemBlocks.length > 1
+      ? seamContext.systemBlocks
+      : seamContext.systemPrompt;
 
     const messages = [
       {
         role: 'system' as const,
-        content: systemContent.length > 1 ? systemContent : builtContext.systemPrompt,
+        content: systemContent,
       },
       ...historyMessages,
       { role: 'user' as const, content: Array.isArray(dto.message) ? dto.message : this.buildUserContent(dto.message) },
     ];
 
-    const executionModel = this.resolveExecutionModelId(resolvedModel);
     _lap(`pre-LLM (model=${executionModel}, provider=${resolvedProvider || 'platform'}, msgs=${messages.length})`);
-
-    // ── P6.1 Pre-message hooks ──────────────────────────────────────
-    try {
-      const preHookResults = await this.hookService.executeHooks({
-        userId,
-        sessionId,
-        eventType: HookEventType.MESSAGE_PRE,
-        message: messageText,
-        model: executionModel,
-      });
-      if (this.hookService.hasBlockingResult(preHookResults)) {
-        return {
-          sessionId,
-          reply: {
-            id: `assistant-${Date.now()}`,
-            role: 'assistant',
-            content: 'Message blocked by pre-message hook.',
-            createdAt: new Date().toISOString(),
-          },
-          toolCalls: null,
-          platformHosted: true,
-        };
-      }
-    } catch (err: any) {
-      this.logger.warn(`Pre-message hook error: ${err.message}`);
-    }
-
-    // ── P6.3 MCP Server tools injection ─────────────────────────────
-    try {
-      const mcpTools = await this.mcpRegistryService.getUserMcpTools(userId);
-      if (mcpTools.length > 0 && needsTools) {
-        for (const mcpTool of mcpTools) {
-          effectiveTools.push({
-            name: mcpTool.name,
-            description: mcpTool.description,
-            input_schema: mcpTool.input_schema,
-          });
-        }
-        this.logger.log(`Injected ${mcpTools.length} MCP server tools`);
-      }
-    } catch (err: any) {
-      this.logger.warn(`MCP tools injection failed: ${err.message}`);
-    }
 
     let result: any;
     if (resolvedProvider === 'gemini') {
       result = await this.geminiIntegrationService.chatWithFunctions(messages as Array<{ role: 'user' | 'assistant' | 'system'; content: string }>, {
         model: executionModel,
         context: { userId, sessionId },
-        additionalTools: effectiveTools,
-        onToolCall: effectiveOnToolCall,
+        additionalTools: seamContext.effectiveTools,
+        onToolCall: seamContext.effectiveOnToolCall,
         userApiKey: userCredentials?.apiKey,
       });
     } else if (this.isOpenAICompatibleProvider(resolvedProvider)) {
       result = await this.openAIIntegrationService.chatWithFunctions(messages, {
         model: executionModel,
         context: { userId, sessionId },
-        additionalTools: this.toOpenAITools(effectiveTools),
-        onToolCall: effectiveOnToolCall,
+        additionalTools: this.toOpenAITools(seamContext.effectiveTools),
+        onToolCall: seamContext.effectiveOnToolCall,
         userApiKey: userCredentials?.apiKey,
         userBaseURL: userCredentials?.baseUrl,
         onChunk: streamingCallbacks?.onChunk,
@@ -1739,8 +1713,8 @@ export class OpenClawProxyService {
       result = await this.claudeIntegrationService.chatWithFunctions(messages, {
         model: executionModel,
         context: { userId, sessionId },
-        additionalTools: effectiveTools,
-        onToolCall: effectiveOnToolCall,
+        additionalTools: seamContext.effectiveTools,
+        onToolCall: seamContext.effectiveOnToolCall,
         userCredentials: userCredentials
           ? { ...userCredentials, model: executionModel }
           : undefined,
@@ -1790,19 +1764,9 @@ export class OpenClawProxyService {
       hasToolCalls: (result?.toolCalls?.length || 0) > 0,
     });
 
-    // ── P6.1 Post-message hooks ─────────────────────────────────────
-    this.hookService.executeHooks({
-      userId,
-      sessionId,
-      eventType: HookEventType.MESSAGE_POST,
-      message: text,
-      model: executionModel,
-      metadata: { toolCalls: result?.toolCalls },
-    }).catch((err: any) => this.logger.warn(`Post-message hook error: ${err.message}`));
-
     // P0: RuntimeSeam post-process — flush pending memory writes
     this.runtimeSeamService.postProcess(
-      { userId, sessionId, agentId: agentAccount?.id, message: messageText, model: executionModel },
+      { userId, sessionId: session.id, agentId: agentAccount?.id, message: messageText, model: executionModel },
       text,
       result?.toolCalls,
     ).catch((err: any) => this.logger.warn(`RuntimeSeam postProcess error: ${err.message}`));

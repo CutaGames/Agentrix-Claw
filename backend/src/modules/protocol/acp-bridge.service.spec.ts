@@ -4,6 +4,7 @@ import { NotFoundException } from '@nestjs/common';
 import { AcpBridgeService, AcpSessionStatus } from './acp-bridge.service';
 import { AgentSession, SessionStatus } from '../../entities/agent-session.entity';
 import { Skill } from '../../entities/skill.entity';
+import { SkillExecutorService } from '../skill/skill-executor.service';
 
 describe('AcpBridgeService', () => {
   let service: AcpBridgeService;
@@ -21,6 +22,10 @@ describe('AcpBridgeService', () => {
     createQueryBuilder: jest.fn(),
   };
 
+  const mockSkillExecutorService = {
+    execute: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -29,6 +34,7 @@ describe('AcpBridgeService', () => {
         AcpBridgeService,
         { provide: getRepositoryToken(AgentSession), useValue: mockSessionRepo },
         { provide: getRepositoryToken(Skill), useValue: mockSkillRepo },
+        { provide: SkillExecutorService, useValue: mockSkillExecutorService },
       ],
     }).compile();
 
@@ -163,6 +169,25 @@ describe('AcpBridgeService', () => {
       const result = await service.listSessions('u1');
       expect(result).toHaveLength(1);
       expect(result[0].sessionId).toBe('acp-1');
+      expect(mockSessionRepo.find).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+        order: { lastMessageAt: 'DESC' },
+        take: 50,
+      });
+    });
+
+    it('should surface killed sessions with killed status', async () => {
+      const sessions = [
+        {
+          sessionId: 'acp-killed', userId: 'u1', status: SessionStatus.EXPIRED,
+          metadata: { killedAt: new Date().toISOString() }, lastMessageAt: new Date(),
+          createdAt: new Date(), updatedAt: new Date(),
+        },
+      ];
+      mockSessionRepo.find.mockResolvedValue(sessions);
+
+      const result = await service.listSessions('u1');
+      expect(result[0].status).toBe(AcpSessionStatus.KILLED);
     });
   });
 
@@ -186,6 +211,68 @@ describe('AcpBridgeService', () => {
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('Weather');
       expect(result[0].operationId).toBe('sk1');
+    });
+  });
+
+  describe('invokeAction', () => {
+    it('should execute the skill via SkillExecutorService and persist action metadata', async () => {
+      const session = {
+        id: '1',
+        sessionId: 'acp-123',
+        userId: 'u1',
+        agentId: 'agent-1',
+        status: SessionStatus.ACTIVE,
+        metadata: { source: 'acp-bridge' },
+        lastMessageAt: new Date('2026-04-09T00:00:00.000Z'),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const skill = {
+        id: 'skill-1',
+        name: 'Weather',
+        status: 'active',
+      };
+      mockSessionRepo.findOne.mockResolvedValue(session);
+      mockSkillRepo.findOne.mockResolvedValue(skill);
+      mockSkillExecutorService.execute.mockResolvedValue({
+        success: true,
+        data: { forecast: 'sunny' },
+        executionTime: 42,
+        skillId: 'skill-1',
+        skillName: 'Weather',
+      });
+      mockSessionRepo.save.mockImplementation(async (entity: any) => entity);
+
+      const result = await service.invokeAction('acp-123', 'skill-1', { city: 'Singapore' }, 'u1');
+
+      expect(mockSkillExecutorService.execute).toHaveBeenCalledWith('skill-1', { city: 'Singapore' }, {
+        userId: 'u1',
+        sessionId: 'acp-123',
+        platform: 'acp',
+        metadata: {
+          source: 'acp-bridge',
+          agentId: 'agent-1',
+          acpSessionId: 'acp-123',
+        },
+      });
+      expect(mockSessionRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+        metadata: expect.objectContaining({
+          lastAcpAction: expect.objectContaining({
+            skillId: 'skill-1',
+            skillName: 'Weather',
+            success: true,
+            executionTime: 42,
+          }),
+        }),
+      }));
+      expect(result).toEqual(expect.objectContaining({
+        success: true,
+        sessionId: 'acp-123',
+        skillId: 'skill-1',
+        skillName: 'Weather',
+        result: { forecast: 'sunny' },
+        executionTime: 42,
+      }));
     });
   });
 });

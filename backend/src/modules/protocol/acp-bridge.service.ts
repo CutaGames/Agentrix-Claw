@@ -11,11 +11,12 @@
  * - Skill execution via ACP protocol format
  * - Map Agentrix marketplace/wallet/task to ACP surface
  */
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AgentSession, SessionStatus } from '../../entities/agent-session.entity';
 import { Skill } from '../../entities/skill.entity';
+import { SkillExecutorService } from '../skill/skill-executor.service';
 
 // ============================================================
 // ACP Types (aligned with @agentclientprotocol/sdk 0.15.x)
@@ -77,6 +78,7 @@ export class AcpBridgeService {
     private readonly sessionRepo: Repository<AgentSession>,
     @InjectRepository(Skill)
     private readonly skillRepo: Repository<Skill>,
+    private readonly skillExecutorService: SkillExecutorService,
   ) {}
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -108,9 +110,9 @@ export class AcpBridgeService {
   /**
    * Load an existing ACP session.
    */
-  async loadSession(sessionId: string): Promise<AcpSession> {
+  async loadSession(sessionId: string, userId?: string): Promise<AcpSession> {
     const session = await this.sessionRepo.findOne({
-      where: { sessionId },
+      where: userId ? { sessionId, userId } : { sessionId },
     });
 
     if (!session) {
@@ -123,8 +125,8 @@ export class AcpBridgeService {
   /**
    * Get session status.
    */
-  async getSessionStatus(sessionId: string): Promise<{ status: AcpSessionStatus; lastActivityAt: string }> {
-    const session = await this.loadSession(sessionId);
+  async getSessionStatus(sessionId: string, userId?: string): Promise<{ status: AcpSessionStatus; lastActivityAt: string }> {
+    const session = await this.loadSession(sessionId, userId);
     return {
       status: session.status,
       lastActivityAt: session.lastActivityAt,
@@ -134,8 +136,10 @@ export class AcpBridgeService {
   /**
    * Steer a session (pause, resume, cancel, redirect).
    */
-  async steerSession(sessionId: string, command: AcpSteerCommand): Promise<AcpSession> {
-    const dbSession = await this.sessionRepo.findOne({ where: { sessionId } });
+  async steerSession(sessionId: string, command: AcpSteerCommand, userId?: string): Promise<AcpSession> {
+    const dbSession = await this.sessionRepo.findOne({
+      where: userId ? { sessionId, userId } : { sessionId },
+    });
     if (!dbSession) throw new NotFoundException(`ACP session not found: ${sessionId}`);
 
     switch (command.type) {
@@ -169,8 +173,10 @@ export class AcpBridgeService {
   /**
    * Kill a session.
    */
-  async killSession(sessionId: string, reason?: string): Promise<void> {
-    const dbSession = await this.sessionRepo.findOne({ where: { sessionId } });
+  async killSession(sessionId: string, reason?: string, userId?: string): Promise<void> {
+    const dbSession = await this.sessionRepo.findOne({
+      where: userId ? { sessionId, userId } : { sessionId },
+    });
     if (!dbSession) return;
 
     dbSession.status = SessionStatus.EXPIRED;
@@ -189,7 +195,7 @@ export class AcpBridgeService {
    */
   async listSessions(userId: string): Promise<AcpSession[]> {
     const sessions = await this.sessionRepo.find({
-      where: { userId, status: SessionStatus.ACTIVE },
+      where: { userId },
       order: { lastMessageAt: 'DESC' },
       take: 50,
     });
@@ -205,12 +211,12 @@ export class AcpBridgeService {
    * Dispatch a reply from one session to another.
    * This enables cross-session communication between agents.
    */
-  async replyDispatch(dispatch: AcpReplyDispatch): Promise<{
+  async replyDispatch(dispatch: AcpReplyDispatch, userId?: string): Promise<{
     delivered: boolean;
     targetStatus: AcpSessionStatus;
   }> {
     const target = await this.sessionRepo.findOne({
-      where: { sessionId: dispatch.toSessionId },
+      where: userId ? { sessionId: dispatch.toSessionId, userId } : { sessionId: dispatch.toSessionId },
     });
 
     if (!target || target.status === SessionStatus.EXPIRED) {
@@ -284,29 +290,60 @@ export class AcpBridgeService {
     sessionId: string;
     skillId: string;
     result: any;
+    skillName?: string;
+    error?: string;
+    executionTime?: number;
+    billingInfo?: {
+      amount: number;
+      currency: string;
+      paymentId: string;
+    };
   }> {
     // Validate session
-    const session = await this.sessionRepo.findOne({ where: { sessionId } });
+    const session = await this.sessionRepo.findOne({ where: { sessionId, userId } });
     if (!session) throw new NotFoundException('ACP session not found');
     if (session.status !== SessionStatus.ACTIVE) {
-      throw new Error('ACP session is not active');
+      throw new BadRequestException('ACP session is not active');
     }
 
     // Validate skill
     const skill = await this.skillRepo.findOne({ where: { id: skillId, status: 'active' as any } });
     if (!skill) throw new NotFoundException('Skill not found');
 
-    // TODO: Execute skill via SkillExecutorService with payment flow
-    // For now, return a stub that matches the ACP protocol format
-    return {
-      success: true,
-      sessionId,
-      skillId,
-      result: {
-        message: `Skill "${skill.name}" invoked via ACP bridge`,
-        params,
-        note: 'Full execution flow pending SkillExecutorService integration',
+    const executionResult = await this.skillExecutorService.execute(skill.id, params, {
+      userId,
+      sessionId: session.sessionId,
+      platform: 'acp',
+      metadata: {
+        source: 'acp-bridge',
+        agentId: session.agentId,
+        acpSessionId: session.sessionId,
       },
+    });
+
+    session.lastMessageAt = new Date();
+    session.metadata = {
+      ...(session.metadata as Record<string, any> | null),
+      lastAcpAction: {
+        skillId: skill.id,
+        skillName: skill.name,
+        success: executionResult.success,
+        executedAt: session.lastMessageAt.toISOString(),
+        executionTime: executionResult.executionTime,
+        error: executionResult.error,
+      },
+    };
+    await this.sessionRepo.save(session);
+
+    return {
+      success: executionResult.success,
+      sessionId,
+      skillId: skill.id,
+      skillName: executionResult.skillName || skill.name,
+      result: executionResult.data,
+      error: executionResult.error,
+      executionTime: executionResult.executionTime,
+      billingInfo: executionResult.billingInfo,
     };
   }
 
@@ -319,18 +356,19 @@ export class AcpBridgeService {
       sessionId: session.sessionId,
       agentId: session.agentId,
       userId: session.userId,
-      status: this.mapSessionStatus(session.status),
+      status: this.mapSessionStatus(session.status, session.metadata as Record<string, any> | null),
       createdAt: session.createdAt?.toISOString() || new Date().toISOString(),
       lastActivityAt: session.lastMessageAt?.toISOString() || new Date().toISOString(),
       metadata: session.metadata as Record<string, any>,
     };
   }
 
-  private mapSessionStatus(status: SessionStatus): AcpSessionStatus {
+  private mapSessionStatus(status: SessionStatus, metadata?: Record<string, any> | null): AcpSessionStatus {
     switch (status) {
       case SessionStatus.ACTIVE: return AcpSessionStatus.ACTIVE;
       case SessionStatus.ARCHIVED: return AcpSessionStatus.PAUSED;
-      case SessionStatus.EXPIRED: return AcpSessionStatus.COMPLETED;
+      case SessionStatus.EXPIRED:
+        return metadata?.killedAt ? AcpSessionStatus.KILLED : AcpSessionStatus.COMPLETED;
       default: return AcpSessionStatus.ACTIVE;
     }
   }
