@@ -127,7 +127,7 @@ export class PluginController {
   async activatePlugin(
     @Request() req: any,
     @Param('pluginId') pluginId: string,
-  ): Promise<{ activated: boolean; hooks: number; mcpServers: number; tools: number }> {
+  ): Promise<{ activatedHooks: number; activatedMcpServers: number; activatedTools: number }> {
     return this.pluginService.activatePlugin(req.user.id, pluginId);
   }
 
