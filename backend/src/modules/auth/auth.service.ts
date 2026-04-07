@@ -1100,9 +1100,20 @@ export class AuthService {
 
   /**
    * 移动端确认配对（已登录用户扫码后调用）
+   * 如果 session 不存在（桌面端 create 请求因代理/网络问题未到达），自动创建
    */
   async confirmDesktopPair(sessionId: string, user: User): Promise<{ success: boolean }> {
-    const session = await this.requireDesktopPairSession(sessionId);
+    let session = await this.desktopPairSessionRepository.findOne({ where: { sessionId } });
+    if (!session) {
+      this.logger.warn(`Desktop pair session "${sessionId}" not found during confirm — creating on-the-fly`);
+      session = this.desktopPairSessionRepository.create({
+        sessionId,
+        expiresAt: new Date(Date.now() + DESKTOP_PAIR_TTL_MS),
+      });
+    } else if (session.expiresAt.getTime() < Date.now()) {
+      this.logger.warn(`Desktop pair session "${sessionId}" expired during confirm — refreshing`);
+      session.expiresAt = new Date(Date.now() + DESKTOP_PAIR_TTL_MS);
+    }
 
     // 为桌面端生成 JWT
     const loginResult = await this.login(user);
@@ -1115,9 +1126,20 @@ export class AuthService {
 
   /**
    * OAuth 浏览器回调直接完成桌面端配对（无需移动端再次确认）
+   * 如果 session 不存在（桌面端 create 请求因代理/网络问题未到达），自动创建
    */
   async resolveDesktopPairSession(sessionId: string, token: string): Promise<{ success: boolean }> {
-    const session = await this.requireDesktopPairSession(sessionId);
+    let session = await this.desktopPairSessionRepository.findOne({ where: { sessionId } });
+    if (!session) {
+      this.logger.warn(`Desktop pair session "${sessionId}" not found during OAuth resolve — creating on-the-fly`);
+      session = this.desktopPairSessionRepository.create({
+        sessionId,
+        expiresAt: new Date(Date.now() + DESKTOP_PAIR_TTL_MS),
+      });
+    } else if (session.expiresAt.getTime() < Date.now()) {
+      this.logger.warn(`Desktop pair session "${sessionId}" expired during OAuth resolve — refreshing`);
+      session.expiresAt = new Date(Date.now() + DESKTOP_PAIR_TTL_MS);
+    }
     session.token = token;
     session.resolvedAt = new Date();
     await this.desktopPairSessionRepository.save(session);

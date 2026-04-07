@@ -64,7 +64,8 @@ export class AuthController {
     const apiBase = this.configService.get<string>('API_BASE_URL') || 'https://api.agentrix.top/api';
     const callbackUrl = this.configService.get<string>('GOOGLE_CALLBACK_URL') || `${apiBase}/auth/google/callback`;
     const desktopSession = this.firstQueryValue(req.query?.desktop_session);
-    const stateKey = this.encodeOAuthState({ ds: desktopSession });
+    const callbackPort = desktopSession ? this.firstQueryValue(req.query?.callback_port) : undefined;
+    const stateKey = this.encodeOAuthState({ ds: desktopSession, cp: callbackPort ? parseInt(callbackPort, 10) : undefined });
 
     const params = new URLSearchParams({
       client_id: clientId,
@@ -87,9 +88,10 @@ export class AuthController {
     const state = this.firstQueryValue(req.query?.state);
     const stateData = this.decodeOAuthState(state);
     const desktopSession = typeof stateData?.ds === 'string' ? stateData.ds : undefined;
+    const callbackPort = typeof stateData?.cp === 'number' ? stateData.cp : undefined;
 
     if (oauthError || !code) {
-      return this.finalizeBrowserOAuthError(res, 'Google', oauthError || 'Google login failed', desktopSession);
+      return this.finalizeBrowserOAuthError(res, 'Google', oauthError || 'Google login failed', desktopSession, callbackPort);
     }
 
     try {
@@ -128,10 +130,11 @@ export class AuthController {
         SocialAccountType.GOOGLE,
         loginResult,
         desktopSession,
+        callbackPort,
       );
     } catch (error) {
       this.logger.error(`Google OAuth callback failed: ${error.message}`);
-      return this.finalizeBrowserOAuthError(res, 'Google', error.message || 'Google login failed', desktopSession);
+      return this.finalizeBrowserOAuthError(res, 'Google', error.message || 'Google login failed', desktopSession, callbackPort);
     }
   }
 
@@ -146,7 +149,8 @@ export class AuthController {
     const apiBase = this.configService.get<string>('API_BASE_URL') || 'https://api.agentrix.top/api';
     const callbackUrl = this.configService.get<string>('DISCORD_CALLBACK_URL') || `${apiBase}/auth/discord/callback`;
     const desktopSession = this.firstQueryValue(req.query?.desktop_session);
-    const stateKey = this.encodeOAuthState({ ds: desktopSession });
+    const callbackPort = desktopSession ? this.firstQueryValue(req.query?.callback_port) : undefined;
+    const stateKey = this.encodeOAuthState({ ds: desktopSession, cp: callbackPort ? parseInt(callbackPort, 10) : undefined });
 
     const params = new URLSearchParams({
       client_id: clientId,
@@ -167,9 +171,10 @@ export class AuthController {
     const state = this.firstQueryValue(req.query?.state);
     const stateData = this.decodeOAuthState(state);
     const desktopSession = typeof stateData?.ds === 'string' ? stateData.ds : undefined;
+    const callbackPort = typeof stateData?.cp === 'number' ? stateData.cp : undefined;
 
     if (oauthError || !code) {
-      return this.finalizeBrowserOAuthError(res, 'Discord', oauthError || 'Discord login failed', desktopSession);
+      return this.finalizeBrowserOAuthError(res, 'Discord', oauthError || 'Discord login failed', desktopSession, callbackPort);
     }
 
     try {
@@ -212,10 +217,11 @@ export class AuthController {
         SocialAccountType.DISCORD,
         loginResult,
         desktopSession,
+        callbackPort,
       );
     } catch (error) {
       this.logger.error(`Discord OAuth callback failed: ${error.message}`);
-      return this.finalizeBrowserOAuthError(res, 'Discord', error.message || 'Discord login failed', desktopSession);
+      return this.finalizeBrowserOAuthError(res, 'Discord', error.message || 'Discord login failed', desktopSession, callbackPort);
     }
   }
 
@@ -556,9 +562,17 @@ export class AuthController {
     socialType: SocialAccountType,
     loginResult: any,
     desktopSession?: string,
+    callbackPort?: number,
   ) {
     if (desktopSession) {
       await this.authService.resolveDesktopPairSession(desktopSession, loginResult.access_token);
+
+      // If desktop provided a local callback port, redirect token there (loopback auth)
+      if (callbackPort && callbackPort > 0 && callbackPort < 65536) {
+        const localUrl = `http://127.0.0.1:${callbackPort}/auth-callback?token=${encodeURIComponent(loginResult.access_token)}&provider=${providerLabel}`;
+        return res.redirect(localUrl);
+      }
+
       this.sendDesktopPairResult(res, `${providerLabel} 登录成功`, `桌面端已完成 ${providerLabel} 登录。`);
       return;
     }
@@ -576,8 +590,14 @@ export class AuthController {
     providerLabel: string,
     error: string,
     desktopSession?: string,
+    callbackPort?: number,
   ) {
     if (desktopSession) {
+      // If desktop provided a local callback port, redirect error there
+      if (callbackPort && callbackPort > 0 && callbackPort < 65536) {
+        const localUrl = `http://127.0.0.1:${callbackPort}/auth-callback?error=${encodeURIComponent(error)}&provider=${providerLabel}`;
+        return res.redirect(localUrl);
+      }
       this.sendDesktopPairResult(res, `${providerLabel} 登录失败`, error, false);
       return;
     }

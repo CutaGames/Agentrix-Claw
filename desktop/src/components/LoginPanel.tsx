@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import agentrixLogo from "../assets/agentrix-logo.png";
 import { API_BASE, useAuthStore } from "../services/store";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
@@ -44,6 +46,35 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
     const t = setTimeout(() => setCountdown(countdown - 1), 1000);
     return () => clearTimeout(t);
   }, [countdown]);
+
+  // Listen for auth token from local OAuth callback server (loopback auth)
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    listen<string>("auth-token-received", (event) => {
+      const token = event.payload;
+      if (token) {
+        console.log("[LoginPanel] Received token via local auth callback");
+        localStorage.setItem("agentrix_token", token);
+        if (pollRef.current) clearInterval(pollRef.current);
+        if (timerRef.current) clearTimeout(timerRef.current);
+        useAuthStore.setState({ token });
+        useAuthStore.getState().loadToken();
+      }
+    }).then(fn => { unlisten = fn; });
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
+  // Manual token paste state
+  const [manualToken, setManualToken] = useState("");
+  const handleManualToken = useCallback(() => {
+    const t = manualToken.trim();
+    if (!t) return;
+    localStorage.setItem("agentrix_token", t);
+    if (pollRef.current) clearInterval(pollRef.current);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    useAuthStore.setState({ token: t });
+    useAuthStore.getState().loadToken();
+  }, [manualToken]);
 
   const handleSendCode = useCallback(async () => {
     const trimmed = email.trim();
@@ -100,7 +131,7 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
     }
   }, [email, code]);
 
-  // OAuth: open system browser to provider, reuse pairing session
+  // OAuth: open system browser to provider, use local loopback callback server
   const handleOAuth = useCallback(async (provider: "google" | "discord") => {
     let sid = sessionId;
     if (!sid || expired) {
@@ -108,14 +139,27 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
         const created = await startPairSession();
         sid = created.sessionId;
       } catch (error) {
-        console.warn('[LoginPanel] Failed to refresh pair session before OAuth:', error);
-        setExpired(true);
-        return;
+        // Session creation failed (likely proxy/network issue) — use a local-only ID
+        sid = `desktop-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        console.warn('[LoginPanel] Session create failed, using local ID for OAuth:', sid);
       }
     }
     if (!sid) return;
 
-    const url = `${API_BASE}/auth/${provider}?desktop_session=${encodeURIComponent(sid)}`;
+    // Start local auth callback server (loopback redirect, bypasses proxy)
+    let callbackPort: number | null = null;
+    try {
+      callbackPort = await invoke<number>("desktop_bridge_start_auth_callback_server");
+      console.log('[LoginPanel] Local auth callback server on port', callbackPort);
+    } catch (e) {
+      console.warn('[LoginPanel] Could not start local auth server:', e);
+    }
+
+    let url = `${API_BASE}/auth/${provider}?desktop_session=${encodeURIComponent(sid)}`;
+    if (callbackPort) {
+      url += `&callback_port=${callbackPort}`;
+    }
+
     try {
       await shellOpen(url);
     } catch {
@@ -373,6 +417,29 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
 
         {/* Download prompt */}
         <div style={{ textAlign: "center", paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+          {/* Manual token paste (fallback for network issues) */}
+          <details style={{ marginBottom: 10, textAlign: "left" }}>
+            <summary style={{ fontSize: 11, color: "var(--text-dim)", cursor: "pointer", userSelect: "none" }}>
+              🔑 手动粘贴 Token
+            </summary>
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              <input
+                type="text"
+                value={manualToken}
+                onChange={(e) => setManualToken(e.target.value)}
+                placeholder="Paste token here"
+                style={{ ...inputStyle, flex: 1, fontSize: 11, padding: "6px 8px" }}
+              />
+              <button
+                onClick={handleManualToken}
+                disabled={!manualToken.trim()}
+                style={{ ...refreshBtn, fontSize: 11, padding: "6px 10px", opacity: manualToken.trim() ? 1 : 0.5 }}
+              >
+                登录
+              </button>
+            </div>
+          </details>
+
           <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "0 0 8px", lineHeight: 1.6 }}>
             还没有 App？
           </p>

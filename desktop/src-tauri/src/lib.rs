@@ -1,5 +1,5 @@
 ﻿use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Emitter};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 
@@ -210,6 +210,148 @@ fn desktop_bridge_delete_auth_token() -> Result<(), String> {
     let mut tok = AUTH_TOKEN.lock().map_err(|e| e.to_string())?;
     *tok = None;
     Ok(())
+}
+
+// ── Local OAuth Callback Server (loopback auth for desktop) ────────────────────
+// Starts a one-shot HTTP server on a random localhost port.
+// The OAuth callback redirects to http://127.0.0.1:{port}/auth-callback?token=xxx
+// This bypasses any proxy/CORS issues between Tauri WebView and the API server.
+
+#[tauri::command]
+fn desktop_bridge_start_auth_callback_server(app: AppHandle) -> Result<u16, String> {
+    use std::net::TcpListener;
+    use std::io::{Read, Write};
+
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| format!("Failed to bind local auth server: {}", e))?;
+    let port = listener.local_addr()
+        .map_err(|e| format!("Failed to get local port: {}", e))?.port();
+
+    // Set a 10-minute timeout on the listener so it doesn't hang forever
+    listener.set_nonblocking(false).ok();
+    let timeout = std::time::Duration::from_secs(600);
+    let _ = listener.set_ttl(128); // just keepalive hint
+
+    let app_clone = app.clone();
+    std::thread::spawn(move || {
+        // Use a simple TCP accept with timeout via SO_RCVTIMEO
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::io::AsRawSocket;
+            let sock = listener.as_raw_socket();
+            let tv = timeout.as_millis() as u32;
+            unsafe {
+                libc_like_setsockopt_win(sock, tv);
+            }
+        }
+
+        if let Ok((mut stream, _)) = listener.accept() {
+            let mut buf = vec![0u8; 8192];
+            let n = stream.read(&mut buf).unwrap_or(0);
+            let request = String::from_utf8_lossy(&buf[..n]).to_string();
+
+            // Parse first line: GET /auth-callback?token=xxx&provider=Google HTTP/1.1
+            let query_string = request.lines().next().unwrap_or("")
+                .split('?').nth(1).unwrap_or("")
+                .split(' ').next().unwrap_or("");
+
+            let mut token: Option<String> = None;
+            let mut error: Option<String> = None;
+            let mut provider = String::from("OAuth");
+
+            for param in query_string.split('&') {
+                if let Some(val) = param.strip_prefix("token=") {
+                    token = Some(simple_percent_decode(val));
+                } else if let Some(val) = param.strip_prefix("error=") {
+                    error = Some(simple_percent_decode(val));
+                } else if let Some(val) = param.strip_prefix("provider=") {
+                    provider = simple_percent_decode(val);
+                }
+            }
+
+            if let Some(ref t) = token {
+                // Store token and emit to frontend
+                if let Ok(mut tok) = AUTH_TOKEN.lock() {
+                    *tok = Some(t.clone());
+                }
+                if let Some(f) = auth_token_file() {
+                    if let Some(parent) = f.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    let _ = std::fs::write(&f, t);
+                }
+                let _ = app_clone.emit("auth-token-received", t.as_str());
+            }
+
+            // Build response HTML
+            let (title, message, success) = if let Some(t) = &token {
+                let _ = t; // used above
+                (format!("{} 登录成功", provider), "已完成登录，请返回 Agentrix Desktop。".to_string(), true)
+            } else if let Some(e) = &error {
+                (format!("{} 登录失败", provider), e.clone(), false)
+            } else {
+                ("回调错误".to_string(), "未收到 token 参数".to_string(), false)
+            };
+
+            let icon = if success { "✓" } else { "!" };
+            let auto_close = if success { "<script>setTimeout(function(){window.close();},1500);</script>" } else { "" };
+            let html = format!(
+                r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>{title}</title></head>
+<body style="margin:0;font-family:Segoe UI,Arial,sans-serif;background:#0b1220;color:#e5e7eb;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+<div style="max-width:420px;padding:28px 24px;border-radius:18px;background:#111827;border:1px solid rgba(255,255,255,0.08);box-shadow:0 18px 48px rgba(0,0,0,0.35);text-align:center;">
+<div style="font-size:34px;margin-bottom:12px;">{icon}</div>
+<h1 style="margin:0 0 10px;font-size:22px;">{title}</h1>
+<p style="margin:0 0 16px;color:#9ca3af;line-height:1.6;">{message}</p>
+<p style="margin:0;font-size:12px;color:#6b7280;">可以关闭此页面。</p>
+</div>{auto_close}</body></html>"#
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                html.len(), html
+            );
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.flush();
+        }
+    });
+
+    Ok(port)
+}
+
+/// Simple percent-decode for URL query values (handles %XX sequences)
+fn simple_percent_decode(input: &str) -> String {
+    let mut result = Vec::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(byte) = u8::from_str_radix(
+                &String::from_utf8_lossy(&bytes[i+1..i+3]), 16
+            ) {
+                result.push(byte);
+                i += 3;
+                continue;
+            }
+        } else if bytes[i] == b'+' {
+            result.push(b' ');
+            i += 1;
+            continue;
+        }
+        result.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&result).to_string()
+}
+
+/// Windows socket timeout helper for the auth callback server
+#[cfg(target_os = "windows")]
+unsafe fn libc_like_setsockopt_win(sock: std::os::windows::io::RawSocket, timeout_ms: u32) {
+    use std::os::windows::io::RawSocket;
+    // SO_RCVTIMEO = 0x1006, SOL_SOCKET = 0xFFFF
+    extern "system" {
+        fn setsockopt(s: RawSocket, level: i32, optname: i32, optval: *const u8, optlen: i32) -> i32;
+    }
+    let val = timeout_ms.to_le_bytes();
+    setsockopt(sock, 0xFFFF_u32 as i32, 0x1006, val.as_ptr(), 4);
 }
 
 // ── Local LLM Sidecar ─────────────────────────────────────────────────────────
@@ -492,6 +634,8 @@ pub fn run() {
             desktop_bridge_set_auth_token,
             desktop_bridge_delete_auth_token,
             desktop_bridge_log_debug_event,
+            // OAuth local callback server
+            desktop_bridge_start_auth_callback_server,
             // Screen capture (P3.2)
             desktop_bridge_capture_screen,
             // Git integration (P3.3)

@@ -35,6 +35,8 @@ commands.allow = [
   "desktop_bridge_set_auth_token",
   "desktop_bridge_delete_auth_token",
   "desktop_bridge_log_debug_event",
+  # OAuth local callback server
+  "desktop_bridge_start_auth_callback_server",
   # Local LLM / model management
   "desktop_bridge_start_llm_sidecar",
   "desktop_bridge_stop_llm_sidecar",
