@@ -140,7 +140,8 @@ export class PluginController {
     @Request() req: any,
     @Param('pluginId') pluginId: string,
   ): Promise<{ deactivated: boolean }> {
-    return this.pluginService.deactivatePlugin(req.user.id, pluginId);
+    await this.pluginService.deactivatePlugin(req.user.id, pluginId);
+    return { deactivated: true };
   }
 
   @Get(':pluginId/permissions')
