@@ -1,4 +1,4 @@
-import { Module, Global } from '@nestjs/common';
+import { Module, Global, forwardRef } from '@nestjs/common';
 import { DiscoveryModule } from '@nestjs/core';
 import { ToolRegistryService } from './tool-registry.service';
 import { AccountModule } from '../account/account.module';
@@ -12,7 +12,12 @@ import { GetBalanceTool } from './tools/wallet/get-balance.tool';
 
 @Global()
 @Module({
-  imports: [DiscoveryModule, ProductModule, OrderModule, AccountModule],
+  imports: [
+    DiscoveryModule,
+    forwardRef(() => ProductModule),
+    forwardRef(() => OrderModule),
+    forwardRef(() => AccountModule),
+  ],
   providers: [
     ToolRegistryService,
     SearchProductsTool,
