@@ -55,7 +55,15 @@ jobs:
           npm run build || (rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json)
 
           pm2 restart agentrix-backend --update-env
-          sleep 10
+          HEALTH_OK=0
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if curl -fsS http://127.0.0.1:3000/api/health; then
+              HEALTH_OK=1
+              break
+            fi
+            echo "Health check attempt ${attempt} failed, retrying..."
+            sleep 5
+          done
 
           echo "=== Deployed backend HEAD ==="
           cd /home/ubuntu/Agentrix
@@ -65,5 +73,13 @@ jobs:
           pm2 show agentrix-backend | grep -E 'status|script path|uptime|restarts' || true
 
           echo "=== Health check ==="
+          if [ "$HEALTH_OK" -ne 1 ]; then
+            echo "=== PM2 recent logs ==="
+            pm2 logs agentrix-backend --lines 120 --nostream || true
+            echo "=== Port 3000 listeners ==="
+            ss -ltnp | grep ':3000' || true
+            exit 1
+          fi
+
           curl -fsS http://127.0.0.1:3000/api/health
           REMOTE
