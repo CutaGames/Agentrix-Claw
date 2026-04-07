@@ -121,6 +121,9 @@ import { QueryEngineModule } from './modules/query-engine/query-engine.module';
 import { CostTrackerModule } from './modules/cost-tracker/cost-tracker.module';
 // LLM Router: tri-tier model routing
 import { LlmRouterModule } from './modules/llm-router/llm-router.module';
+// OpenClaw 4.5: Dreaming Engine, Memory-Wiki
+import { DreamingModule } from './modules/dreaming/dreaming.module';
+import { MemoryWikiModule } from './modules/memory-wiki/memory-wiki.module';
 
 @Module({
   imports: [
@@ -249,6 +252,9 @@ import { LlmRouterModule } from './modules/llm-router/llm-router.module';
     CostTrackerModule,
     // LLM Router: tri-tier model routing
     LlmRouterModule,
+    // OpenClaw 4.5: Dreaming Engine, Memory-Wiki
+    DreamingModule,
+    MemoryWikiModule,
   ],
   controllers: [AppController],
   providers: [

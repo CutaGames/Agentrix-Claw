@@ -65,6 +65,10 @@ import { ContextVisualizer } from "./ContextVisualizer";
 import CrossDevicePanel from "./CrossDevicePanel";
 import AgentEconomyPanel from "./AgentEconomyPanel";
 import MemoryPanel from "./MemoryPanel";
+import DreamPanel from "./DreamPanel";
+import PluginPanel from "./PluginPanel";
+import MemoryWikiPanel from "./MemoryWikiPanel";
+import McpPanel from "./McpPanel";
 import HandoffBanner from "./HandoffBanner";
 import WearableNotification from "./WearableNotification";
 import { startOfflineCache, stopOfflineCache, getQueueLength } from "../services/offlineCache";
@@ -201,6 +205,10 @@ export default function ChatPanel({
   const [crossDeviceOpen, setCrossDeviceOpen] = useState(false);
   const [economyPanelOpen, setEconomyPanelOpen] = useState(false);
   const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
+  const [dreamPanelOpen, setDreamPanelOpen] = useState(false);
+  const [pluginPanelOpen, setPluginPanelOpen] = useState(false);
+  const [wikiPanelOpen, setWikiPanelOpen] = useState(false);
+  const [mcpPanelOpen, setMcpPanelOpen] = useState(false);
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
   const desktopDeviceId = useMemo(() => getDesktopDeviceId(), []);
   const [chatMode, setChatMode] = useState<ChatMode>(() => {
@@ -2567,6 +2575,18 @@ export default function ChatPanel({
         <button onClick={() => setMemoryPanelOpen(true)} style={iconBtnStyle} title="Memory">
           🧠
         </button>
+        <button onClick={() => setDreamPanelOpen(true)} style={iconBtnStyle} title="Dreaming">
+          💤
+        </button>
+        <button onClick={() => setPluginPanelOpen(true)} style={iconBtnStyle} title="Plugin Hub">
+          🧩
+        </button>
+        <button onClick={() => setWikiPanelOpen(true)} style={iconBtnStyle} title="Memory Wiki">
+          📝
+        </button>
+        <button onClick={() => setMcpPanelOpen(true)} style={iconBtnStyle} title="MCP Manager">
+          🔌
+        </button>
         <button onClick={() => setSettingsOpen(true)} style={iconBtnStyle} title="Settings">
           ⚙
         </button>
@@ -2684,6 +2704,12 @@ export default function ChatPanel({
         token={token}
         sessionId={sessionIdRef.current}
       />
+
+      {/* OpenClaw 4.5 panels */}
+      <DreamPanel open={dreamPanelOpen} onClose={() => setDreamPanelOpen(false)} />
+      <PluginPanel open={pluginPanelOpen} onClose={() => setPluginPanelOpen(false)} />
+      <MemoryWikiPanel open={wikiPanelOpen} onClose={() => setWikiPanelOpen(false)} />
+      <McpPanel open={mcpPanelOpen} onClose={() => setMcpPanelOpen(false)} />
 
       {/* History sidebar */}
       {historyOpen && (

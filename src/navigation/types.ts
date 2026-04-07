@@ -49,6 +49,11 @@ export type AgentStackParamList = {
   ConnectExisting: undefined;
   LocalDeploy: { directScan?: boolean } | undefined;
   SocialBind: { instanceId: string; platform?: 'telegram' };
+  // OpenClaw 4.5 features
+  DreamingDashboard: undefined;
+  PluginHub: undefined;
+  MemoryWiki: undefined;
+  McpManager: undefined;
 };
 
 export type ShareCardRouteParams = {

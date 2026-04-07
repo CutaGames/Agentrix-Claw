@@ -77,6 +77,10 @@ import { CloudDeployScreen } from '../screens/onboarding/CloudDeployScreen';
 import { ConnectExistingScreen } from '../screens/onboarding/ConnectExistingScreen';
 import { LocalDeployScreen } from '../screens/onboarding/LocalDeployScreen';
 import { SocialBindScreen } from '../screens/onboarding/SocialBindScreen';
+import { DreamingDashboardScreen } from '../screens/agent/DreamingDashboardScreen';
+import { PluginHubScreen } from '../screens/agent/PluginHubScreen';
+import { MemoryWikiScreen } from '../screens/agent/MemoryWikiScreen';
+import { McpManagerScreen } from '../screens/agent/McpManagerScreen';
 import { useI18n } from '../stores/i18nStore';
 import { isVoiceUiE2EEnabled } from '../testing/e2e';
 
@@ -128,6 +132,11 @@ export function AgentStackNavigator() {
       <Stack.Screen name="AgentPermissions" component={AgentPermissionsScreen} options={{ title: t({ en: 'Permissions & Security', zh: '权限与安全' }) }} />
       <Stack.Screen name="AgentTools" component={AgentToolsScreen} options={{ title: t({ en: 'Agent Tools', zh: '系统工具' }) }} />
       <Stack.Screen name="AgentSpace" component={AgentSpaceScreen} options={{ title: t({ en: 'Agent Space', zh: 'Agent 协作空间' }) }} />
+      {/* OpenClaw 4.5 features */}
+      <Stack.Screen name="DreamingDashboard" component={DreamingDashboardScreen} options={{ title: t({ en: 'Dreaming Engine', zh: '梦境引擎' }) }} />
+      <Stack.Screen name="PluginHub" component={PluginHubScreen} options={{ title: t({ en: 'Plugin Hub', zh: '插件中心' }) }} />
+      <Stack.Screen name="MemoryWiki" component={MemoryWikiScreen} options={{ title: t({ en: 'Memory Wiki', zh: '记忆维基' }) }} />
+      <Stack.Screen name="McpManager" component={McpManagerScreen} options={{ title: t({ en: 'MCP Manager', zh: 'MCP 管理' }) }} />
     </Stack.Navigator>
   );
 }

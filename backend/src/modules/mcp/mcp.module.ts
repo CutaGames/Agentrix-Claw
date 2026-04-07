@@ -15,6 +15,8 @@ import { StructuredResponseService } from './structured-response.service';
 import { AgentPaymentSkillService } from './agent-payment-skill.service';
 import { NaturalLanguageIntentService } from './natural-language-intent.service';
 import { IntentConfirmationService } from './intent-confirmation.service';
+import { McpOAuthService } from './mcp-oauth.service';
+import { McpOAuthController } from './mcp-oauth.controller';
 import { SkillModule } from '../skill/skill.module';
 import { MarketplaceModule } from '../marketplace/marketplace.module';
 import { ProductModule } from '../product/product.module';
@@ -50,7 +52,7 @@ import { Payment } from '../../entities/payment.entity';
     forwardRef(() => CommerceModule),
     forwardRef(() => A2AModule),
   ],
-  controllers: [McpController, OidcController, OAuthController, GuestCheckoutController],
+  controllers: [McpController, OidcController, OAuthController, GuestCheckoutController, McpOAuthController],
   providers: [
     McpService,
     GuestCheckoutService,
@@ -61,6 +63,7 @@ import { Payment } from '../../entities/payment.entity';
     AgentPaymentSkillService,
     NaturalLanguageIntentService,
     IntentConfirmationService,
+    McpOAuthService,
   ],
   exports: [
     McpService,
@@ -72,6 +75,7 @@ import { Payment } from '../../entities/payment.entity';
     AgentPaymentSkillService,
     NaturalLanguageIntentService,
     IntentConfirmationService,
+    McpOAuthService,
   ],
 })
 export class McpModule {}
