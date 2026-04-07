@@ -22,4 +22,5 @@ android/app/build.gradle
 android/app/debug.keystore
 android/app/proguard-rules.pro
 android/app/src
+shared
 src
