@@ -95,6 +95,7 @@ import {
   isDesktopLocalModelId,
   normalizeDesktopLocalModelId,
   streamDesktopLocalChat,
+  checkDesktopLocalModelReady,
 } from "../services/localChat";
 import { LocalLLMSidecar } from "../services/localLLM";
 
@@ -1971,6 +1972,64 @@ export default function ChatPanel({
             abortRef.current = controller;
           }
 
+          // Pre-flight: check if local model + binary are available
+          const readiness = await checkDesktopLocalModelReady();
+          if (!readiness.ready) {
+            // No local model available — skip local attempt, fall through to cloud
+            shouldFallbackToCloud = Boolean(authToken);
+            if (!shouldFallbackToCloud) {
+              updateSessionMessages(
+                targetSessionId,
+                (prev) => prev.map((existing) => (
+                  existing.id === assistantId
+                    ? {
+                        ...existing,
+                        content: `⚠️ ${readiness.message || '本地模型不可用'}`,
+                        error: true,
+                        streaming: false,
+                      }
+                    : existing
+                )),
+                { persist: true, markUnread: true },
+              );
+              setStreamFeedback({
+                tone: "error",
+                label: "本地模型不可用",
+                detail: readiness.message || "请在设置中下载本地模型",
+              });
+            } else {
+              updateSessionMessages(
+                targetSessionId,
+                (prev) => prev.map((existing) => (
+                  existing.id === assistantId
+                    ? { ...existing, content: "", error: false, streaming: true, meta: undefined }
+                    : existing
+                )),
+              );
+              setStreamFeedback({
+                tone: "warning",
+                label: "本地模型不可用，切换云端",
+                detail: readiness.message || "请在设置中下载本地模型",
+              });
+            }
+
+            if (!shouldFallbackToCloud) {
+              sessionAbortControllersRef.current[targetSessionId] = null;
+              if (targetSessionId === sessionIdRef.current) {
+                abortRef.current = null;
+              }
+              patchSessionRuntime(targetSessionId, { sending: false });
+              setSendStartedAt(null);
+              setActiveToolRun(null);
+              voiceInitiatedRef.current = false;
+              if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
+                setBallState("idle");
+              }
+              return;
+            }
+          }
+
+          if (readiness.ready) {
           updateSessionMessages(
             targetSessionId,
             (prev) => prev.map((message) => (
@@ -2066,6 +2125,7 @@ export default function ChatPanel({
               }
             }
           }
+          } // end if (readiness.ready)
 
           if (!shouldFallbackToCloud) {
             return;

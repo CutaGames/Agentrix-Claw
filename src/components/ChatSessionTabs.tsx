@@ -46,8 +46,6 @@ interface Props {
 }
 
 export function ChatSessionTabs({ sessions, activeSessionId, onSelect, onNew, onClose, t }: Props) {
-  if (sessions.length <= 1) return null; // Don't show tabs for single session
-
   return (
     <View style={styles.container}>
       <ScrollView

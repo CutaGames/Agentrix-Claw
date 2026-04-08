@@ -75,6 +75,31 @@ export async function resolveDesktopLocalModelPath(): Promise<string | null> {
   return null;
 }
 
+export interface LocalModelReadiness {
+  ready: boolean;
+  hasModel: boolean;
+  hasBinary: boolean;
+  modelPath: string | null;
+  message?: string;
+}
+
+export async function checkDesktopLocalModelReady(): Promise<LocalModelReadiness> {
+  const modelPath = await resolveDesktopLocalModelPath();
+  const hasModel = !!modelPath;
+
+  if (!hasModel) {
+    return {
+      ready: false,
+      hasModel: false,
+      hasBinary: false,
+      modelPath: null,
+      message: '未找到本地 GGUF 模型。请在设置 → 本地模型中下载。',
+    };
+  }
+
+  return { ready: true, hasModel: true, hasBinary: true, modelPath };
+}
+
 export async function ensureDesktopLocalSidecar(sidecar: LocalLLMSidecar): Promise<string> {
   const modelPath = await resolveDesktopLocalModelPath();
   if (!modelPath) {

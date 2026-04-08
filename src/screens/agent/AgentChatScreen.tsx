@@ -1346,6 +1346,14 @@ export function AgentChatScreen() {
         && attachments.length === 0
       );
 
+      // When local model selected but bridge unavailable, notify user and fall through to cloud
+      if (shouldTryLocalNano && !(await MobileLocalInferenceService.isAvailable())) {
+        setResolvedModelLabel(
+          t({ en: 'Cloud fallback', zh: '云端回退' })
+          + ` (${remoteResolvedModelId || 'claude-haiku-4-5'})`
+        );
+      }
+
       if (shouldTryLocalNano && await MobileLocalInferenceService.isAvailable()) {
         const localAbort = new AbortController();
         streamAbortRef.current = localAbort;
@@ -1506,10 +1514,14 @@ export function AgentChatScreen() {
       if (responseInterruptedRef.current) {
         return;
       }
+      const rawMsg = err?.message || '';
+      const friendlyMsg = rawMsg.includes('UnknownError') || rawMsg.includes('AI service error')
+        ? t({ en: 'AI service temporarily unavailable. Please try again or switch to another model.', zh: 'AI 服务暂时不可用，请重试或切换其他模型。' })
+        : rawMsg || t({ en: 'Something went wrong', zh: '发生了一些问题' });
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMsgId
-            ? { ...m, content: `${t({ en: 'Error', zh: '错误' })}: ${err?.message || t({ en: 'Something went wrong', zh: '发生了一些问题' })}`, streaming: false, error: true }
+            ? { ...m, content: `⚠️ ${friendlyMsg}`, streaming: false, error: true }
             : m
         )
       );
