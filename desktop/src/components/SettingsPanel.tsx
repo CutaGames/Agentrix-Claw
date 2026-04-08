@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useAuthStore } from "../services/store";
 import { pickWorkspaceFolder, getWorkspaceDir, setWorkspaceDir as saveWorkspaceDir } from "../services/workspace";
 import { readDesktopWakeWordConfig, resetDesktopWakeWordConfig, saveDesktopWakeWordConfig } from "../services/wakeWordConfig";
@@ -534,6 +536,67 @@ function LocalModelSection() {
   const [sidecarStatus, setSidecarStatus] = useState<string>("stopped");
   const [sidecarRef] = useState(() => new LocalLLMSidecar((s) => setSidecarStatus(s)));
 
+  // llama-server binary state
+  const [binaryAvailable, setBinaryAvailable] = useState<boolean | null>(null);
+  const [binaryPath, setBinaryPath] = useState<string | null>(null);
+  const [binaryDownloading, setBinaryDownloading] = useState(false);
+  const [binaryMessage, setBinaryMessage] = useState<string | null>(null);
+
+  // Check llama-server binary on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await invoke<{ available: boolean; path: string | null; message: string | null }>(
+          "desktop_bridge_check_llama_server"
+        );
+        if (!cancelled) {
+          setBinaryAvailable(status.available);
+          setBinaryPath(status.path);
+        }
+      } catch {
+        if (!cancelled) setBinaryAvailable(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Listen for download events
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      unlisten = await listen<{ status: string; message: string; path?: string }>(
+        "llama-server-download",
+        (event) => {
+          setBinaryMessage(event.payload.message);
+          if (event.payload.status === "completed") {
+            setBinaryAvailable(true);
+            setBinaryPath(event.payload.path || null);
+            setBinaryDownloading(false);
+          }
+        }
+      );
+    })();
+    return () => { unlisten?.(); };
+  }, []);
+
+  const handleBinaryDownload = async () => {
+    setBinaryDownloading(true);
+    setBinaryMessage("正在下载推理引擎…");
+    try {
+      const result = await invoke<{ available: boolean; path: string | null; message: string | null }>(
+        "desktop_bridge_download_llama_server"
+      );
+      setBinaryAvailable(result.available);
+      setBinaryPath(result.path);
+      setBinaryMessage(result.message || "安装完成");
+    } catch (err: any) {
+      setBinaryMessage(`下载失败: ${typeof err === "string" ? err : err?.message || "unknown"}`);
+    } finally {
+      setBinaryDownloading(false);
+    }
+  };
+
   const RECOMMENDED_MODELS = [
     {
       id: "gemma-2-2b",
@@ -666,6 +729,41 @@ function LocalModelSection() {
       {/* Tri-tier explanation */}
       <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "4px 0", lineHeight: "16px" }}>
         📱 Local → ☁️ Cloud API → 🧠 Ultra. Download a local model for offline inference, faster wake word detection, and privacy filtering.
+      </div>
+
+      {/* llama-server binary status */}
+      <div style={{
+        padding: "8px 12px", borderRadius: 8, marginTop: 4,
+        background: binaryAvailable ? "rgba(16,185,129,0.06)" : "rgba(239,68,68,0.06)",
+        border: `1px solid ${binaryAvailable ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: binaryAvailable ? "#10B981" : "#f87171" }}>
+              ⚙️ 推理引擎 (llama-server) {binaryAvailable === null ? "检测中…" : binaryAvailable ? "✅ 已安装" : "❌ 未安装"}
+            </div>
+            {binaryPath && (
+              <div style={{ fontSize: 9, color: "var(--text-dim)", marginTop: 2, wordBreak: "break-all" }}>{binaryPath}</div>
+            )}
+            {binaryMessage && (
+              <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>{binaryMessage}</div>
+            )}
+          </div>
+          {!binaryAvailable && binaryAvailable !== null && (
+            <button
+              onClick={() => { void handleBinaryDownload(); }}
+              disabled={binaryDownloading}
+              style={{
+                padding: "4px 12px", borderRadius: 6, border: "1px solid rgba(59,130,246,0.3)",
+                background: "rgba(59,130,246,0.1)", color: "#3B82F6", fontSize: 10,
+                fontWeight: 600, cursor: binaryDownloading ? "default" : "pointer",
+                opacity: binaryDownloading ? 0.5 : 1, whiteSpace: "nowrap",
+              }}
+            >
+              {binaryDownloading ? "下载中…" : "⬇ 一键安装"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Recommended models */}

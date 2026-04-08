@@ -1,4 +1,5 @@
 import { appDataDir, join } from '@tauri-apps/api/path';
+import { invoke } from '@tauri-apps/api/core';
 import { LocalLLMSidecar, LocalModelManager, type ChatMessage } from './localLLM';
 
 export const DESKTOP_LOCAL_MODEL_ID = 'gemma-nano-2b-local';
@@ -94,6 +95,27 @@ export async function checkDesktopLocalModelReady(): Promise<LocalModelReadiness
       hasBinary: false,
       modelPath: null,
       message: '未找到本地 GGUF 模型。请在设置 → 本地模型中下载。',
+    };
+  }
+
+  // Check if llama-server binary is actually available
+  let hasBinary = false;
+  try {
+    const status = await invoke<{ available: boolean; path: string | null; message: string | null }>(
+      'desktop_bridge_check_llama_server'
+    );
+    hasBinary = status.available;
+  } catch {
+    hasBinary = false;
+  }
+
+  if (!hasBinary) {
+    return {
+      ready: false,
+      hasModel: true,
+      hasBinary: false,
+      modelPath,
+      message: '未找到推理引擎 llama-server。请在设置 → 本地模型中下载安装。',
     };
   }
 

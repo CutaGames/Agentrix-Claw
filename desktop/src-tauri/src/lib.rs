@@ -394,6 +394,16 @@ fn desktop_bridge_log_debug_event(message: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn desktop_bridge_check_llama_server() -> Result<commands::LlamaServerStatus, String> {
+    commands::check_llama_server_available()
+}
+
+#[tauri::command]
+async fn desktop_bridge_download_llama_server(app: AppHandle) -> Result<commands::LlamaServerStatus, String> {
+    commands::download_llama_server(app).await
+}
+
 // ── Screen Capture (P3.2) ──────────────────────────────────────────
 
 #[tauri::command]
@@ -653,6 +663,8 @@ pub fn run() {
             desktop_bridge_stop_llm_sidecar,
             desktop_bridge_list_local_models,
             desktop_bridge_download_model,
+            desktop_bridge_check_llama_server,
+            desktop_bridge_download_llama_server,
         ])
         .setup(|app| {
             // Grant WebView2 permissions (microphone, camera, etc.) on the main window

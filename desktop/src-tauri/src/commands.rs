@@ -1804,3 +1804,165 @@ fn find_llama_server_binary() -> Option<PathBuf> {
 
     None
 }
+
+/// Check if llama-server binary is available on this system.
+pub fn check_llama_server_available() -> Result<LlamaServerStatus, String> {
+    match find_llama_server_binary() {
+        Some(path) => Ok(LlamaServerStatus {
+            available: true,
+            path: Some(path.to_string_lossy().to_string()),
+            message: None,
+        }),
+        None => Ok(LlamaServerStatus {
+            available: false,
+            path: None,
+            message: Some("llama-server binary not found".to_string()),
+        }),
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LlamaServerStatus {
+    pub available: bool,
+    pub path: Option<String>,
+    pub message: Option<String>,
+}
+
+/// Download llama-server binary from llama.cpp GitHub releases.
+pub async fn download_llama_server(app: AppHandle) -> Result<LlamaServerStatus, String> {
+    let bin_dir = desktop_app_data_dir()?.join("bin");
+    std::fs::create_dir_all(&bin_dir).map_err(|e| format!("Failed to create bin dir: {}", e))?;
+
+    #[cfg(target_os = "windows")]
+    let target_binary = bin_dir.join("llama-server.exe");
+    #[cfg(target_os = "macos")]
+    let target_binary = bin_dir.join("llama-server");
+    #[cfg(target_os = "linux")]
+    let target_binary = bin_dir.join("llama-server");
+
+    // If already present, skip download
+    if target_binary.is_file() {
+        return Ok(LlamaServerStatus {
+            available: true,
+            path: Some(target_binary.to_string_lossy().to_string()),
+            message: Some("llama-server already installed".to_string()),
+        });
+    }
+
+    // Download URL for latest stable llama.cpp release
+    // Uses GitHub API to find latest release, then downloads the right asset
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
+
+    #[cfg(target_os = "windows")]
+    let asset_pattern = "win-x64";
+    #[cfg(target_os = "macos")]
+    let asset_pattern = "macos-arm64";
+    #[cfg(target_os = "linux")]
+    let asset_pattern = "linux-x64";
+
+    // Get latest release info
+    let release: serde_json::Value = client
+        .get("https://api.github.com/repos/ggerganov/llama.cpp/releases/latest")
+        .header(USER_AGENT, "Agentrix Desktop/0.1")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch release info: {}", e))?
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse release: {}", e))?;
+
+    let assets = release["assets"].as_array()
+        .ok_or_else(|| "No assets in release".to_string())?;
+
+    // Find the right binary asset (prefer non-cuda, non-vulkan for broadest compatibility)
+    let download_url = assets.iter()
+        .filter_map(|a| {
+            let name = a["name"].as_str()?;
+            let url = a["browser_download_url"].as_str()?;
+            if name.contains(asset_pattern) && name.ends_with(".zip") && !name.contains("cuda") && !name.contains("vulkan") {
+                Some(url.to_string())
+            } else {
+                None
+            }
+        })
+        .next()
+        .ok_or_else(|| format!("No matching asset found for platform pattern '{}'", asset_pattern))?;
+
+    let tag = release["tag_name"].as_str().unwrap_or("unknown");
+
+    let _ = app.emit("llama-server-download", serde_json::json!({
+        "status": "downloading",
+        "message": format!("Downloading llama-server {} ...", tag),
+    }));
+
+    // Download the zip
+    let response = client
+        .get(&download_url)
+        .header(USER_AGENT, "Agentrix Desktop/0.1")
+        .send()
+        .await
+        .map_err(|e| format!("Download failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Download failed: HTTP {}", response.status()));
+    }
+
+    let zip_bytes = response.bytes().await
+        .map_err(|e| format!("Failed to read download: {}", e))?;
+
+    let _ = app.emit("llama-server-download", serde_json::json!({
+        "status": "extracting",
+        "message": "Extracting llama-server...",
+    }));
+
+    // Extract llama-server from zip
+    let cursor = std::io::Cursor::new(&zip_bytes);
+    let mut archive = zip::ZipArchive::new(cursor)
+        .map_err(|e| format!("Failed to open zip: {}", e))?;
+
+    #[cfg(target_os = "windows")]
+    let server_name = "llama-server.exe";
+    #[cfg(not(target_os = "windows"))]
+    let server_name = "llama-server";
+
+    let mut extracted = false;
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)
+            .map_err(|e| format!("Zip entry error: {}", e))?;
+        let name = file.name().to_string();
+        if name.ends_with(server_name) {
+            let mut out = std::fs::File::create(&target_binary)
+                .map_err(|e| format!("Failed to create binary: {}", e))?;
+            std::io::copy(&mut file, &mut out)
+                .map_err(|e| format!("Failed to extract binary: {}", e))?;
+            extracted = true;
+
+            // Make executable on Unix
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&target_binary, std::fs::Permissions::from_mode(0o755))
+                    .map_err(|e| format!("Failed to set permissions: {}", e))?;
+            }
+            break;
+        }
+    }
+
+    if !extracted {
+        return Err(format!("Could not find {} in downloaded archive", server_name));
+    }
+
+    let _ = app.emit("llama-server-download", serde_json::json!({
+        "status": "completed",
+        "message": format!("llama-server {} installed", tag),
+        "path": target_binary.to_string_lossy().to_string(),
+    }));
+
+    Ok(LlamaServerStatus {
+        available: true,
+        path: Some(target_binary.to_string_lossy().to_string()),
+        message: Some(format!("Installed llama-server {}", tag)),
+    })
+}
