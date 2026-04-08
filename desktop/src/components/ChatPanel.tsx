@@ -7,6 +7,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type ChangeEvent,
+  type MouseEvent,
 } from "react";
 import {
   useAuthStore,
@@ -90,6 +91,9 @@ import type { StreamEvent } from "../../../shared/stream-parser.ts";
 import {
   DESKTOP_LOCAL_MODEL_ID,
   DESKTOP_LOCAL_MODEL_LABEL,
+  getDesktopLocalModelLabel,
+  isDesktopLocalModelId,
+  normalizeDesktopLocalModelId,
   streamDesktopLocalChat,
 } from "../services/localChat";
 import { LocalLLMSidecar } from "../services/localLLM";
@@ -646,11 +650,11 @@ export default function ChatPanel({
           setModels(m);
           // Use user's resolved model from any source (subscription, custom provider, agent-account)
           const activeInst = instances.find((i) => i.id === activeInstanceId);
-          if (selectedModel === DESKTOP_LOCAL_MODEL_ID) {
+          if (isDesktopLocalModelId(selectedModel)) {
             return;
           }
           if (activeInst?.resolvedModel) {
-            setSelectedModel(activeInst.resolvedModel);
+            setSelectedModel(normalizeDesktopLocalModelId(activeInst.resolvedModel));
           } else {
             setSelectedModel(m[0]?.id || "");
           }
@@ -676,11 +680,11 @@ export default function ChatPanel({
   useEffect(() => {
     const activeInst = instances.find((i) => i.id === activeInstanceId);
     if (
-      selectedModel !== DESKTOP_LOCAL_MODEL_ID
+      !isDesktopLocalModelId(selectedModel)
       && activeInst?.resolvedModel
       && activeInst.resolvedModel !== selectedModel
     ) {
-      setSelectedModel(activeInst.resolvedModel);
+      setSelectedModel(normalizeDesktopLocalModelId(activeInst.resolvedModel));
     }
   }, [instances, activeInstanceId, selectedModel]);
 
@@ -1199,22 +1203,23 @@ export default function ChatPanel({
   }, []);
 
   const persistSelectedModel = useCallback(async (modelId: string, options?: { announce?: boolean }) => {
-    setSelectedModel(modelId);
+    const normalizedModelId = normalizeDesktopLocalModelId(modelId);
+    setSelectedModel(normalizedModelId);
 
     try {
-      localStorage.setItem("agentrix_desktop_selected_model", modelId);
+      localStorage.setItem("agentrix_desktop_selected_model", normalizedModelId);
     } catch {}
 
-    if (modelId === DESKTOP_LOCAL_MODEL_ID) {
+    if (isDesktopLocalModelId(normalizedModelId)) {
       if (options?.announce) {
-        addSystemMessage(`✅ Switched to model: ${DESKTOP_LOCAL_MODEL_LABEL}`);
+        addSystemMessage(`✅ Switched to model: ${getDesktopLocalModelLabel(modelId)}`);
       }
       return true;
     }
 
     if (!activeInstanceId || !token) {
       if (options?.announce) {
-        const label = models.find((model) => model.id === modelId)?.label || modelId;
+        const label = models.find((model) => model.id === normalizedModelId)?.label || normalizedModelId;
         addSystemMessage(`✅ Switched to model: ${label}`);
       }
       return true;
@@ -1227,7 +1232,7 @@ export default function ChatPanel({
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ modelId }),
+        body: JSON.stringify({ modelId: normalizedModelId }),
       });
 
       if (!response.ok) {
@@ -1238,7 +1243,7 @@ export default function ChatPanel({
       await loadToken();
 
       if (options?.announce) {
-        const label = models.find((model) => model.id === modelId)?.label || modelId;
+        const label = models.find((model) => model.id === normalizedModelId)?.label || normalizedModelId;
         addSystemMessage(`✅ Switched to model: ${label}`);
       }
 
@@ -1622,11 +1627,11 @@ export default function ChatPanel({
       const text = (overrideText || input).trim();
       const targetSessionId = sessionIdRef.current;
       const targetRuntime = sessionRuntimeRef.current[targetSessionId] || createEmptySessionRuntimeState();
-      const useDesktopLocalModel = selectedModel === DESKTOP_LOCAL_MODEL_ID;
+      const useDesktopLocalModel = isDesktopLocalModelId(selectedModel);
       const activeInst = activeInstanceId
         ? instances.find((instance) => instance.id === activeInstanceId)
         : undefined;
-      const fallbackCloudModel = activeInst?.resolvedModel && activeInst.resolvedModel !== DESKTOP_LOCAL_MODEL_ID
+      const fallbackCloudModel = activeInst?.resolvedModel && !isDesktopLocalModelId(activeInst.resolvedModel)
         ? activeInst.resolvedModel
         : undefined;
 
@@ -1973,8 +1978,8 @@ export default function ChatPanel({
                 ? {
                     ...message,
                     meta: {
-                      resolvedModel: DESKTOP_LOCAL_MODEL_ID,
-                      resolvedModelLabel: DESKTOP_LOCAL_MODEL_LABEL,
+                      resolvedModel: normalizeDesktopLocalModelId(selectedModel),
+                      resolvedModelLabel: getDesktopLocalModelLabel(selectedModel),
                     },
                   }
                 : message
@@ -2427,6 +2432,26 @@ export default function ChatPanel({
     return () => unlisten?.();
   }, [effectiveProMode, onClose]);
 
+  const handleTitleBarMouseDown = useCallback(async (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("[data-no-drag='true'], button, select, input, textarea, a")) {
+      return;
+    }
+
+    event.preventDefault();
+
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      await getCurrentWindow().startDragging();
+    } catch {
+      // Not in Tauri or drag API unavailable.
+    }
+  }, []);
+
   const panel: CSSProperties = {
     position: "relative",
     width: "100%",
@@ -2493,14 +2518,18 @@ export default function ChatPanel({
           gap: 10,
           WebkitAppRegion: "drag",
         }}
+        onMouseDown={handleTitleBarMouseDown}
         data-tauri-drag-region
       >
-        <FloatingBall onTap={onClose} state={ballState} />
+        <div data-no-drag="true" style={{ display: "flex", WebkitAppRegion: "no-drag" }}>
+          <FloatingBall onTap={onClose} state={ballState} />
+        </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* Instance selector (synced from mobile OpenClaw instances) */}
           <select
             value={activeInstanceId || ""}
             onChange={(e) => setActiveInstance(e.target.value)}
+            data-no-drag="true"
             style={{
               background: "transparent",
               color: "var(--text)",
@@ -2528,6 +2557,7 @@ export default function ChatPanel({
           <select
             value={selectedModel}
             onChange={(e) => { void persistSelectedModel(e.target.value); }}
+            data-no-drag="true"
             style={{
               background: "transparent",
               color: "var(--text-dim)",
@@ -2543,7 +2573,7 @@ export default function ChatPanel({
               const activeInst = instances.find((i) => i.id === activeInstanceId);
               const userModel = activeInst?.resolvedModel;
               const userLabel = activeInst?.resolvedModelLabel;
-              if (userModel && !models.some((m: any) => m.id === userModel) && userModel !== DESKTOP_LOCAL_MODEL_ID) {
+              if (userModel && !models.some((m: any) => m.id === userModel) && !isDesktopLocalModelId(userModel)) {
                 return <option key={userModel} value={userModel}>{userLabel || userModel}</option>;
               }
               return null;
@@ -2565,7 +2595,9 @@ export default function ChatPanel({
         <button onClick={() => { setHistoryOpen(!historyOpen); setFileTreeOpen(false); }} style={iconBtnStyle} title="Chat History">
           📋
         </button>
-        <NotificationBadge count={unreadNotifCount} onClick={() => { setNotifOpen(!notifOpen); setHistoryOpen(false); setFileTreeOpen(false); }} />
+        <div data-no-drag="true" style={{ display: "flex", WebkitAppRegion: "no-drag" }}>
+          <NotificationBadge count={unreadNotifCount} onClick={() => { setNotifOpen(!notifOpen); setHistoryOpen(false); setFileTreeOpen(false); }} />
+        </div>
         <button onClick={() => setCrossDeviceOpen(true)} style={iconBtnStyle} title="Cross-Device Hub">
           🔗
         </button>

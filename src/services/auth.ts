@@ -17,12 +17,68 @@ function getBackendBaseUrl(): string {
   return getApiConfig().baseUrl || 'https://api.agentrix.top/api';
 }
 
-function normalizeOverrideApiBase(baseUrl?: string): string | undefined {
-  const trimmed = baseUrl?.trim().replace(/\/+$/, '');
+const AGENTRIX_HOST_SUFFIX = '.agentrix.top';
+const LOOPBACK_BASE_URL_RE = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/.*)?$/i;
+
+function parseApiBase(baseUrl?: string): URL | null {
+  const trimmed = baseUrl?.trim();
   if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(trimmed.replace(/\/+$/, ''));
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeApiBase(baseUrl?: string): string | undefined {
+  const parsed = parseApiBase(baseUrl);
+  if (!parsed) {
     return undefined;
   }
-  return /\/api$/i.test(trimmed) ? trimmed : `${trimmed}/api`;
+
+  const normalized = parsed.toString().replace(/\/+$/, '');
+  return /\/api$/i.test(normalized) ? normalized : `${normalized}/api`;
+}
+
+function isAgentrixHostedApiBase(baseUrl?: string): boolean {
+  const parsed = parseApiBase(baseUrl);
+  if (!parsed) {
+    return false;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  return hostname === 'agentrix.top' || hostname.endsWith(AGENTRIX_HOST_SUFFIX);
+}
+
+function normalizeOverrideApiBase(baseUrl?: string): string | undefined {
+  const normalized = normalizeApiBase(baseUrl);
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (LOOPBACK_BASE_URL_RE.test(normalized)) {
+    return getBackendBaseUrl();
+  }
+
+  const currentBase = normalizeApiBase(getBackendBaseUrl()) || 'https://api.agentrix.top/api';
+  const currentParsed = parseApiBase(currentBase);
+  const overrideParsed = parseApiBase(normalized);
+  if (currentParsed && overrideParsed && currentParsed.origin.toLowerCase() === overrideParsed.origin.toLowerCase()) {
+    return normalized;
+  }
+
+  if (isAgentrixHostedApiBase(normalized)) {
+    return normalized;
+  }
+
+  return currentBase;
 }
 
 async function readApiErrorMessage(res: Response): Promise<string> {

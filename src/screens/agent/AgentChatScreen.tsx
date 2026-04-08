@@ -37,12 +37,27 @@ import { MobileLocalInferenceService } from '../../services/mobileLocalInference
 let Audio: any = null;
 try { Audio = require('expo-av').Audio; } catch (_) {}
 
+async function runSelectionHaptic() {
+  if (typeof Haptics.selectionAsync !== 'function') return;
+  try {
+    await Haptics.selectionAsync();
+  } catch {}
+}
+
+async function runImpactHaptic(style: Haptics.ImpactFeedbackStyle) {
+  if (typeof Haptics.impactAsync !== 'function') return;
+  try {
+    await Haptics.impactAsync(style);
+  } catch {}
+}
+
 type RouteT = RouteProp<AgentStackParamList, 'AgentChat'>;
 
 const LOCAL_ONLY_MODEL_IDS = new Set([
   MobileLocalInferenceService.modelId,
   'gemma-4-2b',
   'gemma-4-4b',
+  'gemma-nano-2b',
   'gemma-nano-2b-local',
 ]);
 
@@ -356,7 +371,7 @@ const MessageBubble = ({
     const text = getCopyableMessageText(item);
     if (!text) return;
     await DeviceBridgingService.writeClipboard(text);
-    Haptics.selectionAsync().catch(() => {});
+    void runSelectionHaptic();
     Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'Message copied to clipboard.', zh: '消息已复制到剪贴板。' }));
   }, [item, t]);
 
@@ -365,7 +380,7 @@ const MessageBubble = ({
   }, [t]);
 
   const handleLongPress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    void runImpactHaptic(Haptics.ImpactFeedbackStyle.Medium);
     setCtxVisible(true);
   }, []);
 
@@ -610,6 +625,7 @@ export function AgentChatScreen() {
   const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
   const [agentVoiceId, setAgentVoiceId] = useState<string | null>(null);
   const isLocalModelSelected = isLocalOnlyModelId(selectedModelId);
+  const duplexUsesRealtimeChannel = !isLocalModelSelected;
   const remoteResolvedModelId = (!isLocalOnlyModelId(agentPreferredModel) ? agentPreferredModel : null)
     || (!isLocalOnlyModelId(activeInstance?.resolvedModel) ? activeInstance?.resolvedModel : null)
     || (!isLocalOnlyModelId(selectedModelId) ? selectedModelId : null)
@@ -963,13 +979,13 @@ export function AgentChatScreen() {
         : remoteClipboard.text;
       return next.slice(0, 2000);
     });
-    Haptics.selectionAsync().catch(() => {});
+    void runSelectionHaptic();
   }, [remoteClipboard]);
 
   const handleCopyDesktopClipboard = useCallback(async () => {
     if (!remoteClipboard?.text) return;
     await DeviceBridgingService.writeClipboard(remoteClipboard.text);
-    Haptics.selectionAsync().catch(() => {});
+    void runSelectionHaptic();
     Alert.alert(
       t({ en: 'Desktop Clipboard Copied', zh: '桌面剪贴板已复制' }),
       t({ en: 'The latest desktop clipboard text is now on your phone.', zh: '最新桌面剪贴板内容已复制到手机剪贴板。' }),
@@ -1133,7 +1149,7 @@ export function AgentChatScreen() {
     instanceName,
     instanceId,
     isSending: sending,
-    useRealtimeChannel: true,
+    useRealtimeChannel: duplexUsesRealtimeChannel,
     realtimeModelId: remoteResolvedModelId,
     speechRate,
     onSendMessage: (text, attachments) => {
@@ -1156,6 +1172,7 @@ export function AgentChatScreen() {
     onStopCurrentResponse: stopCurrentResponse,
     t,
   });
+  const duplexSessionConnected = !duplexUsesRealtimeChannel || realtimeConnected;
   const shouldShowVoiceQuickGuide = voiceMode && (voiceModeRequested || duplexModeRequested || liveSpeechPermissionState === 'denied' || messages.length <= 1);
 
   // Sync voiceMode/duplexMode when route params change on an already-mounted screen
@@ -1241,7 +1258,7 @@ export function AgentChatScreen() {
         type: localAttachment.mimeType,
       });
       setPendingAttachments((prev) => [...prev, uploaded]);
-      await Haptics.selectionAsync();
+      await runSelectionHaptic();
     } catch (error: any) {
       Alert.alert(t({ en: 'Attachment Error', zh: '附件错误' }), error?.message || t({ en: 'Failed to upload attachment.', zh: '上传附件失败。' }));
     } finally {
@@ -1319,7 +1336,7 @@ export function AgentChatScreen() {
     }
 
     try {
-      await Haptics.selectionAsync();
+      await runSelectionHaptic();
 
       let streamSucceeded = false;
       let proxyFailureMessage: string | null = null;
@@ -1566,7 +1583,7 @@ export function AgentChatScreen() {
         fileName: `photo-${Date.now()}.jpg`,
         mimeType: 'image/jpeg',
       });
-      Haptics.selectionAsync().catch(() => {});
+      void runSelectionHaptic();
       setShowCameraModal(false);
     } catch (error: any) {
       Alert.alert(t({ en: 'Camera Error', zh: '拍照错误' }), error?.message || t({ en: 'Failed to capture photo.', zh: '拍照失败。' }));
@@ -1616,7 +1633,7 @@ export function AgentChatScreen() {
     if (!input) return;
     try {
       await DeviceBridgingService.writeClipboard(input);
-      Haptics.selectionAsync().catch(() => {});
+      void runSelectionHaptic();
       Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'Draft copied to clipboard.', zh: '未发送内容已复制到剪贴板。' }));
     } catch (error: any) {
       Alert.alert(t({ en: 'Copy Failed', zh: '复制失败' }), error?.message || t({ en: 'Failed to copy draft.', zh: '复制草稿失败。' }));
@@ -1740,7 +1757,7 @@ export function AgentChatScreen() {
     setQuotedMessage(msg);
     const snippet = msg.content?.slice(0, 60)?.replace(/\n/g, ' ') || '';
     setInput((prev) => prev ? prev : `> ${snippet}…\n`);
-    Haptics.selectionAsync().catch(() => {});
+    void runSelectionHaptic();
   }, []);
 
   const handleExportNote = useCallback((msg: Message) => {
@@ -1960,7 +1977,7 @@ export function AgentChatScreen() {
           <View testID="voice-status-bar" accessibilityLabel="voice-status-bar" style={styles.voiceStatusBar}>
             <View
               testID="voice-session-state"
-              accessibilityLabel={`voice-session-state:${voiceInteractionMode}:${duplexMode ? 'duplex' : 'basic'}:${voicePhase}:${realtimeConnected ? 'connected' : 'disconnected'}`}
+              accessibilityLabel={`voice-session-state:${voiceInteractionMode}:${duplexMode ? 'duplex' : 'basic'}:${voicePhase}:${duplexSessionConnected ? 'connected' : 'disconnected'}`}
               style={styles.e2eHiddenMarker}
             />
             <View
@@ -1977,13 +1994,17 @@ export function AgentChatScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.voiceStatusText}>
                   {voicePhase === 'idle' && (duplexMode
-                    ? (realtimeConnected
-                      ? t({ en: 'Realtime duplex is ready. Just speak naturally; no need to hold the button.', zh: '实时双工已就绪，直接说话即可，无需再按住按钮。' })
-                      : t({ en: 'Voice session is ready. Listening will start automatically.', zh: '语音会话已就绪，正在连接实时通道并自动开始聆听。' }))
+                    ? (duplexUsesRealtimeChannel
+                      ? (realtimeConnected
+                        ? t({ en: 'Realtime duplex is ready. Just speak naturally; no need to hold the button.', zh: '实时双工已就绪，直接说话即可，无需再按住按钮。' })
+                        : t({ en: 'Voice session is ready. Listening will start automatically.', zh: '语音会话已就绪，正在连接实时通道并自动开始聆听。' }))
+                      : t({ en: 'Live voice is ready. Speak naturally to chat with the local model.', zh: '连续语音已就绪，直接说话即可与本地模型对话。' }))
                     : t({ en: 'Voice panel is open. Tap and hold or switch to live mode to start talking.', zh: '语音面板已打开。按住说话，或切到实时模式开始对话。' }))}
                   {voicePhase === 'recording' && (voiceInteractionMode === 'tap'
                     ? duplexMode
-                      ? t({ en: 'Realtime listening… pause briefly to send', zh: '实时聆听中… 稍停即发送' })
+                      ? (duplexUsesRealtimeChannel
+                        ? t({ en: 'Realtime listening… pause briefly to send', zh: '实时聆听中… 稍停即发送' })
+                        : t({ en: 'Live listening… pause briefly to send', zh: '连续聆听中… 稍停即发送' }))
                       : t({ en: 'Listening… tap again to send', zh: '正在聆听… 再点一次发送' })
                     : t({ en: 'Listening… release to send', zh: '正在聆听… 松开发送' }))}
                 {voicePhase === 'transcribing' && t({ en: 'Transcribing your voice…', zh: '正在转写你的语音…' })}
@@ -2096,14 +2117,14 @@ export function AgentChatScreen() {
 
       <View style={styles.inputRow}>
         {voiceMode ? (
-          duplexMode && realtimeConnected ? (
-            /* Active realtime voice call — status display */
+          duplexMode && duplexSessionConnected ? (
+            /* Active duplex voice session — status display */
             <TouchableOpacity
               testID="chat-voice-action-button"
               accessibilityLabel={`chat-voice-action-button:call:${voicePhase}:${liveListening ? 'live' : 'idle'}`}
               style={[styles.holdTalkBtn, styles.holdTalkBtnCall]}
               onPress={() => {
-                if (liveListening) sendRealtimeInterrupt();
+                if (duplexUsesRealtimeChannel && liveListening) sendRealtimeInterrupt();
                 setDuplexMode(false);
               }}
               activeOpacity={0.85}
@@ -2115,10 +2136,12 @@ export function AgentChatScreen() {
                   ? t({ en: '💭  Thinking…', zh: '💭  思考中…' })
                   : voicePhase === 'speaking'
                   ? t({ en: '🔊  Speaking…', zh: '🔊  回复中…' })
-                  : t({ en: '📞  In Call — Tap to End', zh: '📞  通话中 — 点击挂断' })}
+                  : (duplexUsesRealtimeChannel
+                    ? t({ en: '📞  In Call — Tap to End', zh: '📞  通话中 — 点击挂断' })
+                    : t({ en: '🎙  Live Voice — Tap to End', zh: '🎙  连续语音中 — 点击结束' }))}
               </Text>
             </TouchableOpacity>
-          ) : duplexMode && !realtimeConnected ? (
+          ) : duplexMode && duplexUsesRealtimeChannel && !realtimeConnected ? (
             /* Connecting to realtime voice — show connecting state */
             <View
               style={[styles.holdTalkBtn, styles.holdTalkBtnCall]}
@@ -2195,7 +2218,7 @@ export function AgentChatScreen() {
               onPress={() => {
                 if (!liveVoiceAvailable) {
                   Alert.alert(
-                    t({ en: 'Realtime Voice Unavailable', zh: '实时语音不可用' }),
+                    t({ en: 'Live Voice Unavailable', zh: '连续语音不可用' }),
                     t({ en: 'This build does not have native live speech recognition available yet.', zh: '当前构建暂未提供原生实时语音识别能力。' }),
                   );
                   return;
@@ -2308,7 +2331,7 @@ export function AgentChatScreen() {
                 onPress={() => {
                   if (!liveVoiceAvailable && !duplexMode) {
                     Alert.alert(
-                      t({ en: 'Realtime Voice Unavailable', zh: '实时语音不可用' }),
+                      t({ en: 'Live Voice Unavailable', zh: '连续语音不可用' }),
                       t({ en: 'This build does not have native live speech recognition available yet.', zh: '当前构建暂未提供原生实时语音识别能力。' }),
                     );
                     return;

@@ -3,9 +3,36 @@ import { LocalLLMSidecar, LocalModelManager, type ChatMessage } from './localLLM
 
 export const DESKTOP_LOCAL_MODEL_ID = 'gemma-nano-2b-local';
 export const DESKTOP_LOCAL_MODEL_LABEL = 'Gemma Nano 2B (Local)';
+export const DESKTOP_LOCAL_MODEL_ALIASES = new Set([
+  DESKTOP_LOCAL_MODEL_ID,
+  'gemma-nano-2b',
+  'gemma-4-2b',
+  'gemma-4-4b',
+]);
 
 const MODEL_PATH_STORAGE_KEY = 'agentrix_local_model_path';
 const MODELS_DIR_STORAGE_KEY = 'agentrix_local_models_dir';
+
+export function isDesktopLocalModelId(modelId?: string | null): boolean {
+  return !!modelId && DESKTOP_LOCAL_MODEL_ALIASES.has(modelId);
+}
+
+export function normalizeDesktopLocalModelId(modelId?: string | null): string {
+  return isDesktopLocalModelId(modelId) ? DESKTOP_LOCAL_MODEL_ID : (modelId || DESKTOP_LOCAL_MODEL_ID);
+}
+
+export function getDesktopLocalModelLabel(modelId?: string | null): string {
+  switch (modelId) {
+    case 'gemma-4-4b':
+      return 'Gemma 4 4B (Local)';
+    case 'gemma-4-2b':
+      return 'Gemma 4 2B (Local)';
+    case 'gemma-nano-2b':
+    case 'gemma-nano-2b-local':
+    default:
+      return DESKTOP_LOCAL_MODEL_LABEL;
+  }
+}
 
 function getStoredPath(key: string): string | null {
   try {
