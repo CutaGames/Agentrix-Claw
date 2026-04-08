@@ -25,6 +25,10 @@ import {
   stopAndroidBackgroundWakeWordService,
   syncAndroidBackgroundWakeWordConfig,
 } from './src/services/androidBackgroundWakeWord.service';
+import { initLlamaBridge } from './src/services/llamaRnBridge';
+
+// Register llama.rn bridge for on-device LLM inference
+initLlamaBridge();
 
 const queryClient = new QueryClient({
   defaultOptions: {
