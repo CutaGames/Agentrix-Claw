@@ -34,7 +34,7 @@ export interface ModelOption {
 
 /** Hardcoded fallback models — used only when backend is unreachable */
 export const SUPPORTED_MODELS: ModelOption[] = [
-  { id: 'gemma-nano-2b',    label: 'Gemma Nano 2B (端侧本地)',       provider: 'On-device',         icon: '📱', badge: 'Local', availability: 'available', costTier: 'free' },
+  { id: 'gemma-4-2b',       label: 'Gemma 4 2B (端侧本地)',          provider: 'On-device',         icon: '📱', badge: 'Local', availability: 'available', costTier: 'free' },
   { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (平台默认 API)',    provider: 'Agentrix Platform', icon: '🤖', badge: 'Default', availability: 'available', costTier: 'free_trial' },
 ];
 
@@ -82,6 +82,7 @@ interface SettingsState {
   setSelectedModel: (modelId: ModelId) => void;
   setLocalAiEnabled: (enabled: boolean) => void;
   setLocalAiStatus: (status: LocalAiStatus) => void;
+  setLocalAiModelId: (modelId: string) => void;
   setLocalAiProgress: (progress: number) => void;
   setUiComplexity: (level: UiComplexity) => void;
   setWakeWordConfig: (patch: Partial<WakeWordSettings>) => void;
@@ -162,6 +163,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       setLocalAiEnabled: (enabled) => set({ localAiEnabled: enabled }),
       setLocalAiStatus: (status) => set({ localAiStatus: status }),
+      setLocalAiModelId: (modelId) => set({ localAiModelId: modelId }),
       setLocalAiProgress: (progress) => set({ localAiProgress: progress }),
 
       setUiComplexity: (level) => set({ uiComplexity: level }),

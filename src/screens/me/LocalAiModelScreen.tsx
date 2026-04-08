@@ -68,6 +68,7 @@ export function LocalAiModelScreen() {
   const localAiModelId = useSettingsStore((s) => s.localAiModelId);
   const setLocalAiEnabled = useSettingsStore((s) => s.setLocalAiEnabled);
   const setLocalAiStatus = useSettingsStore((s) => s.setLocalAiStatus);
+  const setLocalAiModelId = useSettingsStore((s) => s.setLocalAiModelId);
   const setLocalAiProgress = useSettingsStore((s) => s.setLocalAiProgress);
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
@@ -100,6 +101,7 @@ export function LocalAiModelScreen() {
   };
 
   const handleDownload = useCallback((modelId: string) => {
+    setLocalAiModelId(modelId);
     setLocalAiStatus('downloading');
     setLocalAiProgress(0);
     setDownloadSpeed('');
@@ -122,6 +124,7 @@ export function LocalAiModelScreen() {
         setLocalAiProgress(100);
         setLocalAiStatus('ready');
         setLocalAiEnabled(true);
+        setSelectedModel(modelId);
         setDownloadSpeed('');
         setDownloadEta('');
         Alert.alert(
@@ -140,7 +143,7 @@ export function LocalAiModelScreen() {
         );
       },
     });
-  }, [setLocalAiEnabled, setLocalAiProgress, setLocalAiStatus, t]);
+  }, [setLocalAiEnabled, setLocalAiModelId, setLocalAiProgress, setLocalAiStatus, setSelectedModel, t]);
 
   const handlePause = useCallback(async () => {
     const state = await OtaModelDownloadService.pauseDownload();
@@ -163,6 +166,7 @@ export function LocalAiModelScreen() {
         setLocalAiProgress(100);
         setLocalAiStatus('ready');
         setLocalAiEnabled(true);
+        setSelectedModel(localAiModelId);
         pauseStateRef.current = null;
       },
       onError: (error: string) => {
@@ -170,7 +174,7 @@ export function LocalAiModelScreen() {
         Alert.alert(t({ en: 'Resume Failed', zh: '恢复失败' }), error);
       },
     });
-  }, [setLocalAiEnabled, setLocalAiProgress, setLocalAiStatus, t]);
+  }, [localAiModelId, setLocalAiEnabled, setLocalAiProgress, setLocalAiStatus, setSelectedModel, t]);
 
   const handleDelete = useCallback(() => {
     Alert.alert(

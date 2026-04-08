@@ -17,6 +17,28 @@ function getBackendBaseUrl(): string {
   return getApiConfig().baseUrl || 'https://api.agentrix.top/api';
 }
 
+function normalizeOverrideApiBase(baseUrl?: string): string | undefined {
+  const trimmed = baseUrl?.trim().replace(/\/+$/, '');
+  if (!trimmed) {
+    return undefined;
+  }
+  return /\/api$/i.test(trimmed) ? trimmed : `${trimmed}/api`;
+}
+
+async function readApiErrorMessage(res: Response): Promise<string> {
+  const text = await res.text().catch(() => '');
+  let message = `Request failed: ${res.status}`;
+  try {
+    const payload = JSON.parse(text);
+    message = payload.message || payload.error || message;
+  } catch {
+    if (text) {
+      message = text;
+    }
+  }
+  return message;
+}
+
 // ClawLink deep link scheme
 function getMobileCallbackUrl(): string {
   return AuthSession.makeRedirectUri({
@@ -401,6 +423,41 @@ export async function confirmDesktopPair(sessionId: string): Promise<{ success: 
     method: 'POST',
     body: JSON.stringify({ sessionId }),
   });
+}
+
+export async function confirmDesktopPairWithApiBase(
+  sessionId: string,
+  apiBaseOverride?: string,
+): Promise<{ success: boolean }> {
+  const normalizedBase = normalizeOverrideApiBase(apiBaseOverride);
+  if (!normalizedBase) {
+    return confirmDesktopPair(sessionId);
+  }
+
+  const token = getApiConfig().token || useAuthStore.getState().token;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${normalizedBase}/auth/desktop-pair/confirm`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ sessionId }),
+  });
+
+  if (!res.ok) {
+    throw new Error(await readApiErrorMessage(res));
+  }
+
+  if (res.status === 204) {
+    return { success: true };
+  }
+
+  return res.json().catch(() => ({ success: true }));
 }
 
 export async function waitForQrBind(sessionId: string): Promise<OpenClawInstance | null> {

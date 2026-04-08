@@ -1,13 +1,14 @@
-import { Controller, Get, Post, Body, Query, Req, Logger, Inject, forwardRef } from '@nestjs/common';
-import { Request } from 'express';
+import { Controller, Get, Post, Body, Query, Req, Res, Logger, Inject, forwardRef } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { ClaudeIntegrationService } from './claude-integration.service';
 import { AiProviderService } from '../../ai-provider/ai-provider.service';
-import { OpenClawProxyService } from '../../openclaw-proxy/openclaw-proxy.service';
+import { OpenClawProxyService, UnifiedChatRequestDto } from '../../openclaw-proxy/openclaw-proxy.service';
 import { AgentContextService } from '../../agent-context/agent-context.service';
 import { AgentIntelligenceService } from '../../agent-intelligence/agent-intelligence.service';
 import { RuntimeSeamService } from '../../query-engine/runtime-seam.service';
+import { formatSSE, formatSSEDone, type StreamEvent } from '../../query-engine/interfaces/stream-event.interface';
 
 @Controller('claude')
 export class ClaudeIntegrationController {
@@ -36,6 +37,23 @@ export class ClaudeIntegrationController {
       return payload?.sub as string | undefined;
     } catch {
       return undefined;
+    }
+  }
+
+  private initSse(res: Response): void {
+    if (res.headersSent) return;
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+  }
+
+  private writeSse(res: Response, payload: string): void {
+    if (res.writableEnded) return;
+    res.write(payload);
+    if ((res as any).flush) {
+      (res as any).flush();
     }
   }
 
@@ -130,6 +148,7 @@ export class ClaudeIntegrationController {
   @Post('chat')
   async chat(
     @Req() req: Request,
+    @Res() res: Response,
     @Body()
     body: {
       messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string | any[] }>;
@@ -143,6 +162,7 @@ export class ClaudeIntegrationController {
         userId?: string;
         sessionId?: string;
       };
+      stream?: boolean;
       options?: {
         model?: string;
         temperature?: number;
@@ -152,6 +172,16 @@ export class ClaudeIntegrationController {
     },
   ) {
     const { messages, anthropicApiKey, context = {}, options, sessionId, agentId, mode, platform, deviceId } = body;
+    const wantsStream = body.stream === true || String(req.headers?.accept || '').includes('text/event-stream');
+    const startMs = Date.now();
+
+    const emitStructured = (event: StreamEvent) => {
+      this.writeSse(res, formatSSE(event));
+    };
+
+    const emitMeta = (meta: Record<string, any>) => {
+      this.writeSse(res, `data: ${JSON.stringify({ meta })}\n\n`);
+    };
 
     if (!context.sessionId && sessionId) {
       context.sessionId = sessionId;
@@ -162,8 +192,42 @@ export class ClaudeIntegrationController {
       context.userId = this.extractUserIdFromToken(req);
     }
 
+    if (context.userId) {
+      const compatibilityPayload: UnifiedChatRequestDto = {
+        ...body,
+        sessionId: context.sessionId || sessionId,
+        agentId,
+        mode,
+        platform,
+        deviceId,
+        context,
+      };
+
+      if (wantsStream) {
+        await this.openClawProxyService.streamDefaultChat(context.userId, compatibilityPayload, res);
+        return;
+      }
+
+      const proxied = await this.openClawProxyService.sendDefaultChat(context.userId, compatibilityPayload);
+      const text = proxied?.reply?.content || proxied?.text || proxied?.content || proxied?.message || '';
+
+      return res.json({
+        ...proxied,
+        text,
+        content: text,
+        message: text,
+        reply: proxied?.reply || {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: text,
+          createdAt: new Date().toISOString(),
+        },
+        via: 'openclaw-proxy',
+      });
+    }
+
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return { error: 'messages array is required and must not be empty' };
+      return res.status(400).json({ error: 'messages array is required and must not be empty' });
     }
 
     const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
@@ -197,11 +261,28 @@ export class ClaudeIntegrationController {
       });
 
       if (seamContext.hookBlocked) {
-        return {
+        const blockedResult = {
           text: seamContext.hookBlockMessage || 'Message blocked by pre-message hook.',
           toolCalls: null,
           stopReason: 'hook_blocked',
         };
+
+        if (wantsStream) {
+          this.initSse(res);
+          emitStructured({ type: 'text_delta', text: blockedResult.text });
+          emitStructured({
+            type: 'done',
+            reason: 'end_turn',
+            totalDurationMs: Date.now() - startMs,
+            totalInputTokens: 0,
+            totalOutputTokens: 0,
+          });
+          this.writeSse(res, formatSSEDone());
+          res.end();
+          return;
+        }
+
+        return res.json(blockedResult);
       }
 
       baseMessages = [
@@ -254,12 +335,76 @@ export class ClaudeIntegrationController {
       userCredentials?: { apiKey: string; secretKey?: string; region?: string; baseUrl?: string; providerId: string; model?: string };
       additionalTools?: any[];
       onToolCall?: (name: string, args: any) => Promise<any>;
+      onChunk?: (text: string) => void;
     } = {
       ...options,
       context,
       userApiKey: anthropicApiKey,
       userCredentials: userCreds,
     };
+
+    let streamedTextBytes = 0;
+    const toolCallIds = new Map<string, string>();
+
+    const emitClaudeChunk = (chunk: string) => {
+      if (!chunk) return;
+
+      const trimmed = chunk.trim();
+      if (!trimmed) return;
+
+      if (trimmed === '[Thinking]' || trimmed === '[/Thinking]') {
+        return;
+      }
+
+      const thinkingMatch = trimmed.match(/^\[Think\]\s*(.*)$/s);
+      if (thinkingMatch) {
+        emitStructured({ type: 'thinking', text: thinkingMatch[1] || '' });
+        return;
+      }
+
+      const toolStartMatch = trimmed.match(/^\[Tool Start\]\s*(.+)$/s);
+      if (toolStartMatch) {
+        const toolName = toolStartMatch[1].trim() || 'tool';
+        const toolCallId = `claude-tool-${Date.now()}-${toolCallIds.size + 1}`;
+        toolCallIds.set(toolName, toolCallId);
+        emitStructured({ type: 'tool_start', toolCallId, toolName, input: {} });
+        return;
+      }
+
+      const toolDoneMatch = trimmed.match(/^\[Tool Done\]\s*(.+)$/s);
+      if (toolDoneMatch) {
+        const toolName = toolDoneMatch[1].trim() || 'tool';
+        const toolCallId = toolCallIds.get(toolName) || `claude-tool-${Date.now()}-${toolCallIds.size + 1}`;
+        emitStructured({ type: 'tool_result', toolCallId, toolName, success: true, result: null, durationMs: 0 });
+        return;
+      }
+
+      const toolErrorMatch = trimmed.match(/^\[Tool Error\]\s*([^:]+):\s*(.+)$/s);
+      if (toolErrorMatch) {
+        const toolName = toolErrorMatch[1].trim() || 'tool';
+        const toolCallId = toolCallIds.get(toolName) || `claude-tool-${Date.now()}-${toolCallIds.size + 1}`;
+        emitStructured({
+          type: 'tool_error',
+          toolCallId,
+          toolName,
+          error: toolErrorMatch[2].trim(),
+          retriable: false,
+        });
+        return;
+      }
+
+      if (trimmed.startsWith('[Tool Call]')) {
+        return;
+      }
+
+      streamedTextBytes += chunk.length;
+      emitStructured({ type: 'text_delta', text: chunk });
+    };
+
+    if (wantsStream) {
+      this.initSse(res);
+      chatOptions.onChunk = emitClaudeChunk;
+    }
 
     if (mode === 'ask') {
       chatOptions.additionalTools = [];
@@ -280,7 +425,24 @@ export class ClaudeIntegrationController {
       }
     }
 
-    const result = await this.claudeService.chatWithFunctions(allMessages, chatOptions);
+    let result: any;
+    try {
+      result = await this.claudeService.chatWithFunctions(allMessages, chatOptions);
+    } catch (error: any) {
+      this.logger.error(`Claude chat failed: ${error.message}`, error.stack);
+
+      if (wantsStream) {
+        if (!res.headersSent) {
+          this.initSse(res);
+        }
+        emitStructured({ type: 'error', error: error.message || 'Claude chat failed', retriable: false });
+        this.writeSse(res, formatSSEDone());
+        res.end();
+        return;
+      }
+
+      return res.status(500).json({ error: error.message || 'Claude chat failed' });
+    }
 
     // P0: Post-process via RuntimeSeamService (hooks + memory flush)
     if (context.userId && context.sessionId && typeof result?.text === 'string') {
@@ -311,7 +473,41 @@ export class ClaudeIntegrationController {
       });
     }
 
-    return result;
+    if (wantsStream) {
+      const fullText = typeof result?.text === 'string' ? result.text : '';
+      if (fullText && streamedTextBytes < fullText.length * 0.5) {
+        const fallbackChunks = fullText.match(/.{1,80}/gs) || [fullText];
+        for (const chunk of fallbackChunks) {
+          emitStructured({ type: 'text_delta', text: chunk });
+        }
+      }
+
+      if (options?.model) {
+        emitMeta({ resolvedModel: options.model, resolvedModelLabel: options.model });
+      }
+
+      const doneReason =
+        result?.stopReason === 'max_tokens'
+        || result?.stopReason === 'stop_sequence'
+        || result?.stopReason === 'abort'
+        || result?.stopReason === 'error'
+        || result?.stopReason === 'end_turn'
+          ? result.stopReason
+          : 'end_turn';
+
+      emitStructured({
+        type: 'done',
+        reason: doneReason,
+        totalDurationMs: Date.now() - startMs,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+      });
+      this.writeSse(res, formatSSEDone());
+      res.end();
+      return;
+    }
+
+    return res.json(result);
   }
 }
 

@@ -157,7 +157,7 @@ async function createTaskForAgent(dto: {
 
 async function chatWithAgent(agentName: string, message: string): Promise<string> {
   try {
-    const res = await apiFetch<any>('/claude/chat', {
+    const res = await apiFetch<any>('/openclaw/proxy/chat', {
       method: 'POST',
       body: JSON.stringify({ message, agentName, context: 'team-profile' }),
     });

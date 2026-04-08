@@ -50,6 +50,20 @@ function isLocalOnlyModelId(modelId?: string | null) {
   return !!modelId && LOCAL_ONLY_MODEL_IDS.has(modelId);
 }
 
+function getLocalModelLabel(modelId: string) {
+  switch (modelId) {
+    case 'gemma-4-4b':
+      return 'Gemma 4 4B (Local)';
+    case 'gemma-nano-2b-local':
+      return 'Gemma Nano 2B (Local)';
+    case 'gemma-nano-2b':
+      return 'Gemma Nano 2B (Local)';
+    case 'gemma-4-2b':
+    default:
+      return 'Gemma 4 2B (Local)';
+  }
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -805,15 +819,15 @@ export function AgentChatScreen() {
           // Always prepend local model if downloaded and ready
           if (localAiStatus === 'ready') {
             const localEntry: ModelOption = {
-              id: MobileLocalInferenceService.modelId,
-              label: `${MobileLocalInferenceService.modelLabel} (端侧)`,
+              id: localAiModelId,
+              label: `${getLocalModelLabel(localAiModelId)} (端侧)`,
               provider: 'On-device',
               icon: '📱',
               badge: 'Local',
               availability: 'available',
               costTier: 'free',
             };
-            setAvailableModels([localEntry, ...cloudModels.filter(m => m.id !== MobileLocalInferenceService.modelId)]);
+            setAvailableModels([localEntry, ...cloudModels.filter(m => m.id !== localAiModelId)]);
           } else {
             setAvailableModels(cloudModels);
           }
@@ -834,7 +848,7 @@ export function AgentChatScreen() {
         }
       } catch {}
     })();
-  }, [instanceId, activeInstance?.id, activeInstance?.metadata?.agentAccountId, activeInstance?.resolvedModelLabel, localAiStatus]);
+  }, [instanceId, activeInstance?.id, activeInstance?.metadata?.agentAccountId, activeInstance?.resolvedModelLabel, localAiModelId, localAiStatus]);
 
   // All messages (persisted) and visible slice for lazy rendering
   const allMessagesRef = useRef<Message[]>([]);
@@ -1320,7 +1334,7 @@ export function AgentChatScreen() {
         streamAbortRef.current = localAbort;
         const localModelLabel = effectiveModelId === MobileLocalInferenceService.modelId
           ? MobileLocalInferenceService.modelLabel
-          : `${effectiveModelId} (Local)`;
+          : getLocalModelLabel(effectiveModelId);
         setResolvedModelLabel(localModelLabel);
 
         const localHistory = currentMsgs

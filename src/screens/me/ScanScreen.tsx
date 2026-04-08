@@ -7,7 +7,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
-import { confirmDesktopPair, bindOpenClaw, mapRawInstance } from '../../services/auth';
+import { confirmDesktopPairWithApiBase, bindOpenClaw, mapRawInstance } from '../../services/auth';
 import { registerLocalRelayAgent } from '../../services/openclaw.service';
 
 /**
@@ -48,13 +48,14 @@ export function ScanScreen() {
         const pairUrl = new URL(scanText);
         const pairSession = pairUrl.searchParams.get('session');
         const platform = pairUrl.searchParams.get('platform') || 'desktop';
+        const pairApiBase = pairUrl.searchParams.get('api') || undefined;
         if (!pairSession) throw new Error(t({ en: 'QR code missing session info.', zh: '二维码缺少会话信息。' }));
 
         // Retry confirm up to 2 times with delay (session may still be propagating)
         let lastErr: any;
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
-            await confirmDesktopPair(pairSession);
+            await confirmDesktopPairWithApiBase(pairSession, pairApiBase);
             lastErr = null;
             break;
           } catch (e: any) {

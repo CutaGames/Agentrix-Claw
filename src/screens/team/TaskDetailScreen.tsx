@@ -85,7 +85,7 @@ async function cancelTask(taskId: string, reason?: string): Promise<void> {
 }
 
 async function chatWithAgent(agentCodename: string, message: string): Promise<string> {
-  const res = await apiFetch<{ response?: string; message?: string }>('/claude/chat', {
+  const res = await apiFetch<{ response?: string; message?: string }>('/openclaw/proxy/chat', {
     method: 'POST',
     body: JSON.stringify({ message, agentName: agentCodename, context: 'task-execution' }),
   });

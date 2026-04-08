@@ -8,7 +8,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
-import { bindOpenClaw, confirmDesktopPair, mapRawInstance } from '../../services/auth';
+import { bindOpenClaw, confirmDesktopPairWithApiBase, mapRawInstance } from '../../services/auth';
 import { registerLocalRelayAgent } from '../../services/openclaw.service';
 
 // Wizard steps:
@@ -107,8 +107,27 @@ export function LocalDeployScreen() {
           // Desktop pairing QR code — extract session ID and confirm
           const pairUrl = new URL(scanText);
           const pairSession = pairUrl.searchParams.get('session');
+          const pairApiBase = pairUrl.searchParams.get('api') || undefined;
           if (!pairSession) throw new Error('Desktop QR code missing session. Please refresh and try again.');
-          await confirmDesktopPair(pairSession);
+
+          let lastErr: any;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              await confirmDesktopPairWithApiBase(pairSession, pairApiBase);
+              lastErr = null;
+              break;
+            } catch (error: any) {
+              lastErr = error;
+              if (attempt < 2) {
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+              }
+            }
+          }
+
+          if (lastErr) {
+            throw lastErr;
+          }
+
           Alert.alert(
             t({ en: 'Paired!', zh: '配对成功！' }),
             t({ en: 'Desktop is now logged in with your account.', zh: '桌面端已使用你的账号登录。' }),

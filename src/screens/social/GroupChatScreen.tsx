@@ -157,7 +157,7 @@ export function GroupChatScreen() {
       ]);
       try {
         // Call the agent via the HQ chat endpoint
-        const response = await apiFetch<any>('/claude/chat', {
+        const response = await apiFetch<any>('/openclaw/proxy/chat', {
           method: 'POST',
           body: JSON.stringify({
             message: text.replace(AGENT_MENTION_RE, '').trim() || text,

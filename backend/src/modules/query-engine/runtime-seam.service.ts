@@ -10,8 +10,9 @@
  * - Stream event emission
  * - Plugin-provided tool injection
  *
- * Both `/claude/chat` and `/openclaw/proxy/:id/stream` should call
- * `runtimeSeam.execute()` instead of directly calling LLM services.
+ * The canonical runtime now lives under `/openclaw/proxy`.
+ * `/claude/chat` remains only as a compatibility shim and should delegate
+ * into the same OpenClaw runtime instead of maintaining a second execution path.
  */
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { HookService } from '../hooks/hook.service';

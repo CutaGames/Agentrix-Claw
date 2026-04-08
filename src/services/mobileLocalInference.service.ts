@@ -31,8 +31,8 @@ type LocalBridge = {
   }) => Promise<string[] | LocalBridgeGenerateResult>;
 };
 
-const DEFAULT_MODEL_ID = 'gemma-nano-2b';
-const DEFAULT_MODEL_LABEL = 'Gemma Nano 2B (Local)';
+const DEFAULT_MODEL_ID = 'gemma-4-2b';
+const DEFAULT_MODEL_LABEL = 'Gemma 4 2B (Local)';
 
 function resolveBridge(): LocalBridge | null {
   const nativeBridge = (NativeModules as Record<string, unknown>)?.AgentrixLocalLLM as LocalBridge | undefined;

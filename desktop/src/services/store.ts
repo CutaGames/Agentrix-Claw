@@ -178,6 +178,7 @@ interface AuthState {
   activeAgentId: string | null;
   instances: OpenClawInstance[];
   activeInstanceId: string | null;
+  acceptToken: (token: string) => Promise<void>;
   loadToken: () => Promise<void>;
   login: (email: string, code: string) => Promise<boolean>;
   sendCode: (email: string) => Promise<boolean>;
@@ -195,6 +196,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   activeAgentId: null,
   instances: [],
   activeInstanceId: null,
+
+  acceptToken: async (token: string) => {
+    await secureSetToken(token);
+    set({ token, isGuest: false });
+    await get().loadToken();
+  },
 
   loadToken: async () => {
     try {
@@ -279,10 +286,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const data = JSON.parse(text);
     const token = data.token || data.access_token;
     if (!token) return false;
-    await secureSetToken(token);
-    set({ token });
-    // Fetch full user + agents
-    await get().loadToken();
+    await get().acceptToken(token);
     return true;
   },
 
@@ -446,7 +450,7 @@ export function streamChat(opts: {
   return ac;
 }
 
-/** Direct Claude/Bedrock fallback */
+/** Default OpenClaw proxy chat via the user's primary instance */
 export function streamDirectChat(opts: {
   messages: Array<{ role: string; content: string }>;
   sessionId: string;
@@ -465,6 +469,7 @@ export function streamDirectChat(opts: {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${opts.token}`,
+      Accept: "text/event-stream",
     },
     body: JSON.stringify({
       messages: opts.messages,
@@ -484,41 +489,24 @@ export function streamDirectChat(opts: {
   // Use tauriFetch (bypasses CORS) with fallback to window.fetch
   const doFetch = async () => {
     try {
-      return await tauriFetch(`${API_BASE}/claude/chat`, fetchInit as any);
+      return await tauriFetch(`${API_BASE}/openclaw/proxy/stream`, fetchInit as any);
     } catch {
-      return await fetch(`${API_BASE}/claude/chat`, fetchInit);
+      return await fetch(`${API_BASE}/openclaw/proxy/stream`, fetchInit);
     }
   };
 
   doFetch()
     .then(async (res) => {
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
         opts.onError(`HTTP ${res.status}`);
         return;
       }
-      const data = await res.json();
-      if (data.error) {
-        opts.onError(data.error);
-        return;
-      }
-      const reply =
-        (typeof data?.text === "string" && data.text) ||
-        (typeof data?.content === "string" && data.content) ||
-        (typeof data?.message === "string" && data.message) ||
-        (typeof data?.reply === "string" && data.reply) ||
-        (typeof data?.reply?.content === "string" && data.reply.content) ||
-        "";
-      if (!reply) {
-        opts.onError("Empty response from AI service");
-        return;
-      }
-      // Simulate streaming for consistency
-      const words = reply.split(" ");
-      for (let i = 0; i < words.length; i++) {
-        opts.onChunk(words[i] + (i < words.length - 1 ? " " : ""));
-        await new Promise((r) => setTimeout(r, 30));
-      }
-      opts.onDone();
+      const reader = res.body.getReader();
+      await consumeAgentrixSse(reader, {
+        onChunk: opts.onChunk,
+        onDone: opts.onDone,
+        onError: opts.onError,
+      });
     })
     .catch((err) => {
       if (err.name !== "AbortError") opts.onError(err.message);

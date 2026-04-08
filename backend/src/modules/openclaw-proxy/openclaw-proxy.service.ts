@@ -9,7 +9,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { AgentAccount, AgentAccountStatus } from '../../entities/agent-account.entity';
 import { AgentMessage, MessageRole, MessageType } from '../../entities/agent-message.entity';
 import { AgentSession, SessionStatus } from '../../entities/agent-session.entity';
@@ -37,6 +37,7 @@ import { RuntimeSeamService } from '../query-engine/runtime-seam.service';
 
 export interface ChatMessageDto {
   message: string | any[];
+  history?: Array<{ role: 'user' | 'assistant'; content: string | any[] }>;
   sessionId?: string;
   context?: Record<string, any>;
   model?: string;
@@ -44,6 +45,28 @@ export interface ChatMessageDto {
   mode?: 'ask' | 'agent' | 'plan';
   platform?: 'desktop' | 'mobile' | 'web';
   deviceId?: string;
+  agentId?: string;
+}
+
+export interface UnifiedChatRequestDto {
+  message?: string | any[];
+  messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string | any[] }>;
+  sessionId?: string;
+  agentId?: string;
+  mode?: 'ask' | 'agent' | 'plan';
+  platform?: 'desktop' | 'mobile' | 'web';
+  deviceId?: string;
+  voiceId?: string;
+  context?: Record<string, any>;
+  stream?: boolean;
+  anthropicApiKey?: string;
+  model?: string;
+  options?: {
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+    enableModelRouting?: boolean;
+  };
 }
 
 export interface ChatStreamCallbacks {
@@ -103,6 +126,135 @@ export class OpenClawProxyService {
 
   private async ensureOwnedInstance(userId: string, instanceId: string): Promise<OpenClawInstance> {
     return this.connectionService.getInstanceById(userId, instanceId);
+  }
+
+  private extractTextContent(content: string | any[] | undefined): string {
+    if (typeof content === 'string') {
+      return content;
+    }
+
+    if (!Array.isArray(content)) {
+      return '';
+    }
+
+    return content
+      .map((block: any) => {
+        if (typeof block === 'string') {
+          return block;
+        }
+        if (typeof block?.text === 'string') {
+          return block.text;
+        }
+        return '';
+      })
+      .join('\n')
+      .trim();
+  }
+
+  private buildExplicitHistoryMessages(history?: ChatMessageDto['history']) {
+    return (history || [])
+      .filter((message) => message.role === 'user' || message.role === 'assistant')
+      .filter((message) => {
+        if (typeof message.content === 'string') {
+          return message.content.trim().length > 0;
+        }
+        return Array.isArray(message.content) && message.content.length > 0;
+      })
+      .map((message) => ({
+        role: message.role,
+        content: this.extractTextContent(message.content),
+      }));
+  }
+
+  private normalizeChatRequest(body: UnifiedChatRequestDto): ChatMessageDto {
+    const providedMessages = Array.isArray(body.messages) ? body.messages : [];
+    const explicitMessageProvided = body.message !== undefined && body.message !== null;
+    let normalizedMessage = body.message;
+    let normalizedHistory: Array<{ role: 'user' | 'assistant'; content: string | any[] }> = [];
+
+    if (providedMessages.length > 0) {
+      let lastUserIndex = -1;
+      for (let index = providedMessages.length - 1; index >= 0; index -= 1) {
+        if (providedMessages[index]?.role === 'user') {
+          lastUserIndex = index;
+          break;
+        }
+      }
+
+      if (explicitMessageProvided) {
+        normalizedHistory = providedMessages
+          .filter((message) => message.role === 'user' || message.role === 'assistant')
+          .map((message) => ({ role: message.role as 'user' | 'assistant', content: message.content }));
+
+        const lastHistoryMessage = normalizedHistory[normalizedHistory.length - 1];
+        if (
+          lastHistoryMessage?.role === 'user'
+          && this.extractTextContent(lastHistoryMessage.content) === this.extractTextContent(normalizedMessage)
+        ) {
+          normalizedHistory = normalizedHistory.slice(0, -1);
+        }
+      } else if (lastUserIndex >= 0) {
+        normalizedMessage = providedMessages[lastUserIndex].content;
+        normalizedHistory = providedMessages
+          .slice(0, lastUserIndex)
+          .filter((message) => message.role === 'user' || message.role === 'assistant')
+          .map((message) => ({ role: message.role as 'user' | 'assistant', content: message.content }));
+      }
+    }
+
+    const hasMessage = normalizedMessage !== undefined && normalizedMessage !== null && (
+      (typeof normalizedMessage === 'string' && normalizedMessage.trim().length > 0)
+      || (Array.isArray(normalizedMessage) && normalizedMessage.length > 0)
+    );
+
+    if (!hasMessage) {
+      throw new BadRequestException('message or messages[last user] is required');
+    }
+
+    return {
+      message: normalizedMessage as string | any[],
+      history: normalizedHistory.length > 0 ? normalizedHistory : undefined,
+      sessionId: typeof body.context?.sessionId === 'string' ? body.context.sessionId : body.sessionId,
+      context: body.context,
+      model: body.options?.model || body.model,
+      voiceId: body.voiceId,
+      mode: body.mode,
+      platform: body.platform,
+      deviceId: body.deviceId,
+      agentId: body.agentId,
+    };
+  }
+
+  private async resolveDefaultInstanceForUser(userId: string, agentId?: string): Promise<OpenClawInstance> {
+    const candidates = await this.instanceRepo.find({
+      where: {
+        userId,
+        status: In([OpenClawInstanceStatus.ACTIVE, OpenClawInstanceStatus.PROVISIONING]),
+      },
+      order: {
+        isPrimary: 'DESC',
+        updatedAt: 'DESC',
+      },
+      take: 20,
+    });
+
+    if (candidates.length === 0) {
+      throw new NotFoundException('No active OpenClaw instance is available for this user');
+    }
+
+    if (agentId) {
+      const matched = candidates.find((instance) => {
+        const metadataAgentId = typeof instance.metadata?.agentAccountId === 'string'
+          ? instance.metadata.agentAccountId
+          : undefined;
+        return instance.agentAccountId === agentId || metadataAgentId === agentId;
+      });
+      if (matched) {
+        return matched;
+      }
+    }
+
+    return candidates.find((instance) => instance.isPrimary) || candidates[0];
   }
 
   private async resolveInstance(userId: string, instanceId: string): Promise<OpenClawInstance> {
@@ -1451,9 +1603,7 @@ export class OpenClawProxyService {
     const _t0 = Date.now();
     const _lap = (label: string) => this.logger.log(`⏱ ${label}: ${Date.now() - _t0}ms`);
     const sessionId = dto.sessionId || `platform-${Date.now()}`;
-    const messageText = Array.isArray(dto.message)
-      ? dto.message.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
-      : dto.message;
+    const messageText = this.extractTextContent(dto.message);
     const session = await this.getOrCreatePlatformHostedSession(userId, instance, sessionId);
     _lap('getOrCreateSession');
     const directSkillIntent = await this.tryHandleDirectSkillIntent(userId, instance, messageText, sessionId);
@@ -1481,7 +1631,9 @@ export class OpenClawProxyService {
       this.buildPlatformHostedTools(userId, instance),
       this.resolveRuntimePermissionProfile(userId, instance),
       this.aiProviderService.getDefaultConfig(userId),
-      this.getPlatformConversationHistory(userId, instance.id),
+      dto.history?.length
+        ? Promise.resolve([])
+        : this.getPlatformConversationHistory(userId, instance.id),
     ]);
     _lap(`parallelQueries (tools=${additionalTools.length}, history=${persistedHistory.length})`);
 
@@ -1595,7 +1747,8 @@ export class OpenClawProxyService {
 
     // For simple messages without tools, use minimal history to reduce input tokens
     // (12 history msgs with tool results can add 5000+ tokens → 4s extra latency)
-    const effectiveHistory = needsTools
+    const explicitHistory = this.buildExplicitHistoryMessages(dto.history);
+    const effectivePersistedHistory = needsTools
       ? persistedHistory
       : persistedHistory.slice(-4);
 
@@ -1626,7 +1779,10 @@ export class OpenClawProxyService {
     }
 
     // P4.3 Compaction: check if history needs compaction
-    const historyMessages = this.buildPlatformHistoryMessages(effectiveHistory);
+    const historyMessages = explicitHistory.length > 0
+      ? [...explicitHistory]
+      : this.buildPlatformHistoryMessages(effectivePersistedHistory);
+    const hadConversationHistory = historyMessages.length > 0;
     if (this.intelligenceService.needsCompaction([...historyMessages, { role: 'user', content: messageText }])) {
       this.logger.log(`💾 Conversation needs compaction (session=${sessionId})`);
       const { compacted, result: compactionResult } = await this.intelligenceService.compactHistory(historyMessages);
@@ -1751,7 +1907,7 @@ export class OpenClawProxyService {
     ).catch((err) => this.logger.warn(`Memory extraction failed: ${err.message}`));
 
     // P4.4 Auto-title session on first message
-    if (persistedHistory.length === 0) {
+    if (!hadConversationHistory) {
       this.intelligenceService.autoTitleSession(session.id, messageText).catch(
         (err) => this.logger.warn(`Auto-title failed: ${err.message}`),
       );
@@ -2418,6 +2574,18 @@ export class OpenClawProxyService {
     } catch {
       return { online: false };
     }
+  }
+
+  async sendDefaultChat(userId: string, body: UnifiedChatRequestDto) {
+    const dto = this.normalizeChatRequest(body);
+    const instance = await this.resolveDefaultInstanceForUser(userId, dto.agentId);
+    return this.sendChat(userId, instance.id, dto);
+  }
+
+  async streamDefaultChat(userId: string, body: UnifiedChatRequestDto, res: Response) {
+    const dto = this.normalizeChatRequest(body);
+    const instance = await this.resolveDefaultInstanceForUser(userId, dto.agentId);
+    await this.streamChat(userId, instance.id, dto, res);
   }
 
   // ═══════════════════════════════════════════════════════════

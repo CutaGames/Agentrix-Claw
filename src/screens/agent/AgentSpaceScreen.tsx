@@ -139,7 +139,7 @@ export function AgentSpaceScreen() {
       qc.setQueryData(['space-messages', spaceId], (old: SpaceMessage[] | undefined) => [...(old ?? []), typingMsg]);
 
       try {
-        const response = await apiFetch<any>('/claude/chat', {
+        const response = await apiFetch<any>('/openclaw/proxy/chat', {
           method: 'POST',
           body: JSON.stringify({
             message: text.replace(AGENT_MENTION_RE, '').trim() || text,

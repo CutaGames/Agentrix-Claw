@@ -13,6 +13,7 @@ import {
 import { watchColors } from '../theme/watchColors';
 import { watchLayout } from '../theme/watchLayout';
 import { API_BASE } from '../../config/env';
+import { getApiConfig } from '../../services/api';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -44,9 +45,14 @@ export function WatchChatScreen() {
       setSending(true);
 
       try {
-        const res = await fetch(`${API_BASE}/claude/chat`, {
+        const token = getApiConfig().token;
+        const endpoint = token ? `${API_BASE}/openclaw/proxy/chat` : `${API_BASE}/claude/chat`;
+        const res = await fetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({
             message: trimmed,
             source: 'watch',
