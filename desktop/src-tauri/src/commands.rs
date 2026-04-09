@@ -1850,8 +1850,9 @@ pub async fn download_llama_server(app: AppHandle) -> Result<LlamaServerStatus, 
     }
 
     // Download URL for latest stable llama.cpp release
-    // Uses GitHub API to find latest release, then downloads the right asset
+    // Try ghfast.top mirror first (GFW-friendly), fall back to GitHub directly
     let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
 
@@ -1862,16 +1863,37 @@ pub async fn download_llama_server(app: AppHandle) -> Result<LlamaServerStatus, 
     #[cfg(target_os = "linux")]
     let asset_pattern = "linux-x64";
 
-    // Get latest release info
-    let release: serde_json::Value = client
-        .get("https://api.github.com/repos/ggerganov/llama.cpp/releases/latest")
-        .header(USER_AGENT, "Agentrix Desktop/0.1")
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch release info: {}", e))?
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse release: {}", e))?;
+    // Try mirror first, then direct GitHub
+    let api_urls = [
+        "https://ghfast.top/https://api.github.com/repos/ggerganov/llama.cpp/releases/latest",
+        "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest",
+    ];
+
+    let mut release: Option<serde_json::Value> = None;
+    let mut last_err = String::new();
+    for api_url in &api_urls {
+        match client
+            .get(*api_url)
+            .header(USER_AGENT, "Agentrix Desktop/0.1")
+            .timeout(std::time::Duration::from_secs(15))
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    if json.get("assets").is_some() {
+                        release = Some(json);
+                        break;
+                    }
+                }
+            }
+            Err(e) => {
+                last_err = format!("{}", e);
+            }
+        }
+    }
+
+    let release = release.ok_or_else(|| format!("Failed to fetch release info (all mirrors failed): {}", last_err))?;
 
     let assets = release["assets"].as_array()
         .ok_or_else(|| "No assets in release".to_string())?;
@@ -1897,20 +1919,31 @@ pub async fn download_llama_server(app: AppHandle) -> Result<LlamaServerStatus, 
         "message": format!("Downloading llama-server {} ...", tag),
     }));
 
-    // Download the zip
-    let response = client
-        .get(&download_url)
-        .header(USER_AGENT, "Agentrix Desktop/0.1")
-        .send()
-        .await
-        .map_err(|e| format!("Download failed: {}", e))?;
+    // Try downloading via mirror first, then direct
+    let download_urls = vec![
+        format!("https://ghfast.top/{}", download_url),
+        download_url.clone(),
+    ];
 
-    if !response.status().is_success() {
-        return Err(format!("Download failed: HTTP {}", response.status()));
+    let mut zip_bytes: Option<Vec<u8>> = None;
+    for url in &download_urls {
+        match client
+            .get(url)
+            .header(USER_AGENT, "Agentrix Desktop/0.1")
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(data) = resp.bytes().await {
+                    zip_bytes = Some(data.to_vec());
+                    break;
+                }
+            }
+            _ => continue,
+        }
     }
 
-    let zip_bytes = response.bytes().await
-        .map_err(|e| format!("Failed to read download: {}", e))?;
+    let zip_bytes = zip_bytes.ok_or_else(|| "Download failed: all mirrors exhausted".to_string())?;
 
     let _ = app.emit("llama-server-download", serde_json::json!({
         "status": "extracting",

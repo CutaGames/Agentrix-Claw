@@ -20,13 +20,17 @@ export class RateLimitGuard implements CanActivate {
 
   constructor(private configService: ConfigService) {
     this.ttl = this.configService.get<number>('RATE_LIMIT_TTL', 60) * 1000;
-    this.limit = this.configService.get<number>('RATE_LIMIT_MAX', 100);
+    this.limit = this.configService.get<number>('RATE_LIMIT_MAX', 200);
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const key = this.getKey(request);
     const now = Date.now();
+
+    // Authenticated users get a higher limit
+    const isAuthenticated = !!request.headers?.authorization;
+    const effectiveLimit = isAuthenticated ? this.limit * 3 : this.limit;
 
     // 清理过期记录
     this.cleanup(now);
@@ -43,7 +47,7 @@ export class RateLimitGuard implements CanActivate {
       return true;
     }
 
-    if (record.count >= this.limit) {
+    if (record.count >= effectiveLimit) {
       throw new HttpException(
         {
           statusCode: HttpStatus.TOO_MANY_REQUESTS,
@@ -60,6 +64,9 @@ export class RateLimitGuard implements CanActivate {
   }
 
   private getKey(request: any): string {
+    // Use user ID for authenticated requests, IP for anonymous
+    const userId = request.user?.id || request.user?.sub;
+    if (userId) return `rate_limit:user:${userId}`;
     const ip = request.ip || request.connection?.remoteAddress || 'unknown';
     return `rate_limit:${ip}`;
   }

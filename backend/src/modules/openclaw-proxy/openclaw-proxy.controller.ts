@@ -155,4 +155,22 @@ export class OpenClawProxyController {
   ) {
     return this.proxyService.executePlatformToolBatch(req.user.id, instanceId, body.calls);
   }
+
+  // ===== Local Model Conversation Sync =====
+
+  @Post('sync-local-messages')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sync local model conversation messages to backend for memory persistence' })
+  async syncLocalMessages(
+    @Request() req: any,
+    @Body() body: {
+      sessionId: string;
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+      model?: string;
+      platform?: string;
+      deviceId?: string;
+    },
+  ) {
+    return this.proxyService.syncLocalConversation(req.user.id, body);
+  }
 }

@@ -2708,4 +2708,61 @@ export class OpenClawProxyService {
       failed: results.filter((r) => !r.success).length,
     };
   }
+
+  /**
+   * Sync local model conversation messages to backend for memory persistence.
+   * Called by desktop/mobile after a local LLM (Gemma) conversation completes.
+   */
+  async syncLocalConversation(
+    userId: string,
+    body: {
+      sessionId: string;
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+      model?: string;
+      platform?: string;
+      deviceId?: string;
+    },
+  ) {
+    if (!body.messages?.length) {
+      return { saved: 0 };
+    }
+
+    // Find or create a session for local conversations
+    const clientSessionId = body.sessionId || `local-${Date.now()}`;
+    let session = await this.sessionRepo.findOne({
+      where: { userId, sessionId: clientSessionId },
+    });
+
+    if (!session) {
+      session = this.sessionRepo.create({
+        userId,
+        sessionId: clientSessionId,
+        title: 'Local Model Chat',
+        status: SessionStatus.ACTIVE,
+        metadata: {
+          source: 'local-model',
+          model: body.model || 'gemma-4-e2b',
+          platform: body.platform || 'desktop',
+          deviceId: body.deviceId,
+        },
+        context: { intent: null, entities: {}, userProfile: {} },
+        lastMessageAt: new Date(),
+      });
+      session = await this.sessionRepo.save(session);
+    }
+
+    // Save each message
+    let saved = 0;
+    for (const msg of body.messages) {
+      if (!msg.content?.trim()) continue;
+      const role = msg.role === 'user' ? MessageRole.USER : MessageRole.ASSISTANT;
+      await this.savePlatformHostedMessage(session, userId, role, msg.content, {
+        source: 'local-model',
+        model: body.model || 'gemma-4-e2b',
+      });
+      saved++;
+    }
+
+    return { saved, sessionId: clientSessionId };
+  }
 }

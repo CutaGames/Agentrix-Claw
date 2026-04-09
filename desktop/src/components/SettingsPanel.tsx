@@ -881,7 +881,8 @@ function LocalModelSection() {
                           try {
                             await sidecarRef.start({ modelPath: m.path, contextSize: 4096, nGpuLayers: 0 });
                           } catch (err: any) {
-                            setDownloadMessage(`Sidecar error: ${err?.message || "unknown"}`);
+                            const msg = typeof err === "string" ? err : (err?.message || String(err));
+                            setDownloadMessage(`Sidecar error: ${msg}`);
                           }
                         }}
                         disabled={sidecarStatus === "starting"}

@@ -540,7 +540,15 @@ export function streamChat(opts: {
   doFetch()
     .then(async (res) => {
       if (!res.ok || !res.body) {
-        opts.onError(`HTTP ${res.status}`);
+        let detail = `HTTP ${res.status}`;
+        try {
+          const text = await res.text();
+          if (text) {
+            const json = JSON.parse(text);
+            detail = json.message || json.error || detail;
+          }
+        } catch { /* ignore */ }
+        opts.onError(detail);
         return;
       }
       const reader = res.body.getReader();
@@ -554,7 +562,7 @@ export function streamChat(opts: {
     })
     .catch((err) => {
       if (err.name !== "AbortError") {
-        opts.onError(err.message);
+        opts.onError(err?.message || String(err));
       }
     });
 
@@ -609,7 +617,15 @@ export function streamDirectChat(opts: {
   doFetch()
     .then(async (res) => {
       if (!res.ok || !res.body) {
-        opts.onError(`HTTP ${res.status}`);
+        let detail = `HTTP ${res.status}`;
+        try {
+          const text = await res.text();
+          if (text) {
+            const json = JSON.parse(text);
+            detail = json.message || json.error || detail;
+          }
+        } catch { /* ignore */ }
+        opts.onError(detail);
         return;
       }
       const reader = res.body.getReader();
@@ -620,10 +636,37 @@ export function streamDirectChat(opts: {
       });
     })
     .catch((err) => {
-      if (err.name !== "AbortError") opts.onError(err.message);
+      if (err.name !== "AbortError") opts.onError(err?.message || String(err));
     });
 
   return ac;
+}
+
+/** Sync local model conversation to backend for memory persistence */
+export async function syncLocalConversation(
+  token: string,
+  sessionId: string,
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  model?: string,
+): Promise<void> {
+  try {
+    await apiFetch(`${API_BASE}/openclaw/proxy/sync-local-messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        sessionId,
+        messages,
+        model: model || 'gemma-4-e2b',
+        platform: 'desktop',
+        deviceId: getDesktopDeviceId(),
+      }),
+    });
+  } catch {
+    // Non-critical — local chat still works even if sync fails
+  }
 }
 
 /** Fetch available AI models */

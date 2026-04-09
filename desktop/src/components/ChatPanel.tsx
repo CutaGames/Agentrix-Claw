@@ -12,6 +12,7 @@ import {
 import {
   useAuthStore,
   streamDirectChat,
+  syncLocalConversation,
   streamChat,
   fetchModels,
   apiFetch,
@@ -2065,6 +2066,23 @@ export default function ChatPanel({
               finalizeMessage(targetSessionId, assistantId);
               sentenceAcc?.flush();
               setStreamFeedback(null);
+
+              // Sync local conversation to backend for memory persistence
+              if (authToken) {
+                // Read latest messages via updater to get current state
+                let syncMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+                syncMessages.push({ role: 'user', content: outboundText });
+                updateSessionMessages(targetSessionId, (prev) => {
+                  const aMsg = prev.find((m) => m.id === assistantId);
+                  if (aMsg?.content?.trim()) {
+                    syncMessages.push({ role: 'assistant', content: aMsg.content });
+                  }
+                  return prev; // no mutation
+                });
+                if (syncMessages.length > 1) {
+                  void syncLocalConversation(authToken, targetSessionId, syncMessages, normalizeDesktopLocalModelId(selectedModel));
+                }
+              }
             }
           } catch (error: any) {
             const message = error?.message || String(error);
