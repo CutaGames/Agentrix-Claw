@@ -20,6 +20,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 
 // ── Types ──────────────────────────────────────────────
 
@@ -68,6 +69,14 @@ export interface LocalModelDownloadEvent {
   message?: string;
 }
 
+async function localHttpFetch(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await tauriFetch(url, init as any);
+  } catch {
+    return await fetch(url, init);
+  }
+}
+
 // ── Service ────────────────────────────────────────────
 
 export class LocalLLMSidecar {
@@ -98,7 +107,7 @@ export class LocalLLMSidecar {
       });
 
       // Wait for server to become healthy
-      await this.waitForHealth(15000);
+      await this.waitForHealth(45000);
       this.setStatus("running");
 
       // Start health check polling
@@ -140,7 +149,7 @@ export class LocalLLMSidecar {
       throw new Error("Local LLM sidecar is not running");
     }
 
-    const response = await fetch(`http://127.0.0.1:${this.port}/v1/chat/completions`, {
+    const response = await localHttpFetch(`http://127.0.0.1:${this.port}/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -169,9 +178,9 @@ export class LocalLLMSidecar {
       throw new Error("Local LLM sidecar is not running");
     }
 
-    const response = await fetch(`http://127.0.0.1:${this.port}/v1/chat/completions`, {
+    const response = await localHttpFetch(`http://127.0.0.1:${this.port}/v1/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       body: JSON.stringify({
         messages,
         temperature: options?.temperature ?? 0.7,
@@ -220,9 +229,10 @@ export class LocalLLMSidecar {
   /** Check if the sidecar is healthy */
   async checkHealth(): Promise<boolean> {
     try {
-      const res = await fetch(`http://127.0.0.1:${this.port}/health`, {
-        signal: AbortSignal.timeout(3000),
-      });
+      const res = await Promise.race([
+        localHttpFetch(`http://127.0.0.1:${this.port}/health`),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Local health check timeout")), 3000)),
+      ]);
       return res.ok;
     } catch {
       return false;

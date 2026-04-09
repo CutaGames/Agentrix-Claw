@@ -11,7 +11,7 @@
   },
   "app": {
     "security": {
-      "csp": "default-src 'self' https://api.agentrix.top https://agentrix.top; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://api.agentrix.top https://agentrix.top https://*.agentrix.top; connect-src 'self' http://ipc.localhost https://api.agentrix.top https://agentrix.top wss://api.agentrix.top; font-src 'self' data:; media-src 'self' blob:"
+      "csp": "default-src 'self' https://api.agentrix.top https://agentrix.top; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://api.agentrix.top https://agentrix.top https://*.agentrix.top; connect-src 'self' http://ipc.localhost http://127.0.0.1:8787 http://localhost:8787 https://api.agentrix.top https://agentrix.top wss://api.agentrix.top; font-src 'self' data:; media-src 'self' blob:"
     },
     "windows": [
       {
