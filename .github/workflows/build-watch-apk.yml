@@ -192,7 +192,7 @@ jobs:
           chmod 600 /tmp/deploy.pem
           DEST="/home/ubuntu/Agentrix/frontend/public/downloads"
           OPTS="-o StrictHostKeyChecking=no -i /tmp/deploy.pem"
-          scp $OPTS "$APK_PATH" "ubuntu@18.139.157.116:${DEST}/agentrix-watch.apk"
+          scp $OPTS "$APK_PATH" "ubuntu@47.130.176.148:${DEST}/agentrix-watch.apk"
           echo "✅ Watch APK uploaded to server"
           echo "📥 Download: https://www.agentrix.top/downloads/agentrix-watch.apk"
 

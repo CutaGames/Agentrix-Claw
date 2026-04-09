@@ -162,6 +162,7 @@ export interface StreamParserCallbacks {
 export class AgentrixStreamParser {
   private buffer = '';
   private isDone = false;
+  private seenStructuredTextDelta = false;
 
   constructor(private readonly callbacks: StreamParserCallbacks) {}
 
@@ -205,6 +206,7 @@ export class AgentrixStreamParser {
   reset(): void {
     this.buffer = '';
     this.isDone = false;
+    this.seenStructuredTextDelta = false;
   }
 
   /**
@@ -255,8 +257,8 @@ export class AgentrixStreamParser {
         this.callbacks.onMeta?.(parsed.meta);
       }
 
-      if (typeof parsed.chunk === 'string' && parsed.chunk.length > 0) {
-        // Don't double-emit text_delta if it was already emitted as structured
+      if (typeof parsed.chunk === 'string' && parsed.chunk.length > 0 && !this.seenStructuredTextDelta) {
+        // Don't double-emit text_delta if backend also sends structured format
         this.callbacks.onTextDelta?.({ type: 'text_delta', text: parsed.chunk });
       }
 
@@ -280,6 +282,7 @@ export class AgentrixStreamParser {
   private dispatchStructuredEvent(event: StreamEvent): void {
     switch (event.type) {
       case 'text_delta':
+        this.seenStructuredTextDelta = true;
         this.callbacks.onTextDelta?.(event);
         break;
       case 'thinking':

@@ -1932,7 +1932,7 @@ export default function ChatPanel({
               message.id === assistantId
                 ? {
                     ...message,
-                    content: message.content.trim().length > 0 ? message.content : `Error: ${err}`,
+                    content: message.content.trim().length > 0 ? message.content : `Error: ${err || '未知错误'}`,
                     error: true,
                     streaming: false,
                   }
@@ -2492,7 +2492,12 @@ export default function ChatPanel({
     return () => unlisten?.();
   }, [effectiveProMode, onClose]);
 
-  const handleTitleBarMouseDown = useCallback(async (event: MouseEvent<HTMLDivElement>) => {
+  const tauriWindowRef = useRef<Awaited<typeof import('@tauri-apps/api/window')> | null>(null);
+  useEffect(() => {
+    import('@tauri-apps/api/window').then((mod) => { tauriWindowRef.current = mod; }).catch(() => {});
+  }, []);
+
+  const handleTitleBarMouseDown = useCallback((event: MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
       return;
     }
@@ -2505,8 +2510,7 @@ export default function ChatPanel({
     event.preventDefault();
 
     try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      await getCurrentWindow().startDragging();
+      tauriWindowRef.current?.getCurrentWindow().startDragging();
     } catch {
       // Not in Tauri or drag API unavailable.
     }

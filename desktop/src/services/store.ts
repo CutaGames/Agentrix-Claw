@@ -3,7 +3,9 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { getDesktopDeviceId } from "./desktop";
 import { AgentrixStreamParser, type StreamEvent } from "../../../shared/stream-parser.ts";
 
-const DEFAULT_API_BASE = "https://api.agentrix.top/api";
+export const DEFAULT_API_BASE = "https://api.agentrix.top/api";
+export const API_BASE_STORAGE_KEY = "agentrix_api_base";
+const AGENTRIX_HOST_SUFFIX = ".agentrix.top";
 
 function normalizeApiBase(base: string) {
   const trimmed = base.trim().replace(/\/+$/, "");
@@ -13,21 +15,84 @@ function normalizeApiBase(base: string) {
   return /\/api$/i.test(trimmed) ? trimmed : `${trimmed}/api`;
 }
 
+function parseApiBase(base: string): URL | null {
+  try {
+    const parsed = new URL(normalizeApiBase(base));
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function getTrustedEnvApiBase(base: string): string {
+  const normalized = normalizeApiBase(base || DEFAULT_API_BASE);
+  return parseApiBase(normalized) ? normalized : DEFAULT_API_BASE;
+}
+
+function isAgentrixHostedApiBase(base: string): boolean {
+  const parsed = parseApiBase(base);
+  if (!parsed) {
+    return false;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  return hostname === "agentrix.top" || hostname.endsWith(AGENTRIX_HOST_SUFFIX);
+}
+
+export function sanitizePersistedApiBase(base: string, trustedBase: string = DEFAULT_API_BASE): string | null {
+  const trimmed = base.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const candidate = parseApiBase(trimmed);
+  if (!candidate) {
+    return null;
+  }
+
+  const trusted = parseApiBase(trustedBase);
+  if (trusted && candidate.origin.toLowerCase() === trusted.origin.toLowerCase()) {
+    return normalizeApiBase(trimmed);
+  }
+
+  if (isAgentrixHostedApiBase(trimmed)) {
+    return normalizeApiBase(trimmed);
+  }
+
+  return null;
+}
+
 function resolveApiBase() {
   const envBase = typeof import.meta !== "undefined" ? String(import.meta.env.VITE_API_BASE || "").trim() : "";
+  const trustedEnvBase = getTrustedEnvApiBase(envBase);
   let localOverride = "";
   try {
-    localOverride = String(localStorage.getItem("agentrix_api_base") || "").trim();
+    localOverride = String(localStorage.getItem(API_BASE_STORAGE_KEY) || "").trim();
   } catch {
     localOverride = "";
   }
-  return normalizeApiBase(localOverride || envBase || DEFAULT_API_BASE);
+
+  const safeOverride = sanitizePersistedApiBase(localOverride, trustedEnvBase);
+  if (!safeOverride && localOverride) {
+    try {
+      localStorage.removeItem(API_BASE_STORAGE_KEY);
+    } catch {
+      // Ignore storage cleanup failures.
+    }
+  }
+
+  return safeOverride || trustedEnvBase;
 }
 
 export const API_BASE = resolveApiBase();
 
 // ─── Secure Token Storage ──────────────────────────────
 // Use Tauri Store plugin (encrypted on-disk) when available, else localStorage fallback
+const TOKEN_STORAGE_KEY = "agentrix_token";
+
 let _tauriStore: any = null;
 async function getTauriStore() {
   if (_tauriStore) return _tauriStore;
@@ -40,30 +105,74 @@ async function getTauriStore() {
   }
 }
 
+function readLocalToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalToken(token: string): void {
+  try {
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } catch {
+    // Ignore local persistence failures.
+  }
+}
+
+function clearLocalToken(): void {
+  try {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // Ignore local persistence failures.
+  }
+}
+
 async function secureGetToken(): Promise<string | null> {
+  const localToken = readLocalToken();
   const store = await getTauriStore();
+  let storeToken: string | null = null;
   if (store) {
     const val = await store.get("agentrix_token");
-    if (val) return val as string;
+    if (val) {
+      storeToken = String(val);
+    }
   }
-  // Fallback: localStorage (for dev / browser)
-  return localStorage.getItem("agentrix_token");
+
+  // Prefer the immediately-updated local token so QR/OAuth login can survive reloads
+  // even if the async Tauri store write hasn't completed yet.
+  if (localToken) {
+    if (store && localToken !== storeToken) {
+      void store.set(TOKEN_STORAGE_KEY, localToken).catch(() => {
+        // Best-effort sync only.
+      });
+    }
+    return localToken;
+  }
+
+  if (storeToken) {
+    writeLocalToken(storeToken);
+    return storeToken;
+  }
+
+  return null;
 }
 
 async function secureSetToken(token: string): Promise<void> {
+  writeLocalToken(token);
   const store = await getTauriStore();
   if (store) {
-    await store.set("agentrix_token", token);
+    await store.set(TOKEN_STORAGE_KEY, token);
   }
-  localStorage.setItem("agentrix_token", token);
 }
 
 async function secureClearToken(): Promise<void> {
+  clearLocalToken();
   const store = await getTauriStore();
   if (store) {
-    await store.delete("agentrix_token");
+    await store.delete(TOKEN_STORAGE_KEY);
   }
-  localStorage.removeItem("agentrix_token");
 }
 
 // Use Tauri HTTP plugin (bypasses CORS) when available, else standard fetch
@@ -198,9 +307,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   activeInstanceId: null,
 
   acceptToken: async (token: string) => {
-    await secureSetToken(token);
     set({ token, isGuest: false });
-    await get().loadToken();
+    void secureSetToken(token).catch((error) => {
+      console.warn("[acceptToken] failed to persist token:", error);
+    });
   },
 
   loadToken: async () => {
@@ -287,6 +397,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const token = data.token || data.access_token;
     if (!token) return false;
     await get().acceptToken(token);
+    await get().loadToken();
     return true;
   },
 
@@ -363,7 +474,7 @@ async function consumeAgentrixSse(
     },
     onError: (event) => {
       emit(event);
-      fail(event.error);
+      fail(event.error || '未知错误');
     },
     onMeta: (meta) => callbacks.onMeta?.(meta as { resolvedModel?: string; resolvedModelLabel?: string }),
   });

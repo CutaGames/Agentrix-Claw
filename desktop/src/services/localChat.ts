@@ -2,13 +2,18 @@ import { appDataDir, join } from '@tauri-apps/api/path';
 import { invoke } from '@tauri-apps/api/core';
 import { LocalLLMSidecar, LocalModelManager, type ChatMessage } from './localLLM';
 
-export const DESKTOP_LOCAL_MODEL_ID = 'gemma-nano-2b-local';
-export const DESKTOP_LOCAL_MODEL_LABEL = 'Gemma Nano 2B (Local)';
+export const DESKTOP_LOCAL_MODEL_ID = 'gemma-4-e2b-local';
+export const DESKTOP_LOCAL_MODEL_LABEL = 'Gemma 4 E2B (Local)';
 export const DESKTOP_LOCAL_MODEL_ALIASES = new Set([
   DESKTOP_LOCAL_MODEL_ID,
+  'gemma-nano-2b-local',
   'gemma-nano-2b',
+  'gemma-4-e2b',
+  'gemma-4-e4b',
   'gemma-4-2b',
   'gemma-4-4b',
+  'gemma-4-26b-a4b',
+  'gemma-4-31b',
 ]);
 
 const MODEL_PATH_STORAGE_KEY = 'agentrix_local_model_path';
@@ -24,10 +29,15 @@ export function normalizeDesktopLocalModelId(modelId?: string | null): string {
 
 export function getDesktopLocalModelLabel(modelId?: string | null): string {
   switch (modelId) {
+    case 'gemma-4-e4b':
     case 'gemma-4-4b':
-      return 'Gemma 4 4B (Local)';
+      return 'Gemma 4 E4B (Local)';
+    case 'gemma-4-26b-a4b':
+      return 'Gemma 4 26B-A4B (Local)';
+    case 'gemma-4-31b':
+      return 'Gemma 4 31B (Local)';
+    case 'gemma-4-e2b':
     case 'gemma-4-2b':
-      return 'Gemma 4 2B (Local)';
     case 'gemma-nano-2b':
     case 'gemma-nano-2b-local':
     default:

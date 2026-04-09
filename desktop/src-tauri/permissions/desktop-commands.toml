@@ -42,6 +42,8 @@ commands.allow = [
   "desktop_bridge_stop_llm_sidecar",
   "desktop_bridge_list_local_models",
   "desktop_bridge_download_model",
+  "desktop_bridge_check_llama_server",
+  "desktop_bridge_download_llama_server",
   # Screen capture (P3.2)
   "desktop_bridge_capture_screen",
   # Git integration (P3.3)
