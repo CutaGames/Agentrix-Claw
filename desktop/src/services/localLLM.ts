@@ -147,6 +147,8 @@ export class LocalLLMSidecar {
         messages,
         temperature: options?.temperature ?? 0.7,
         max_tokens: options?.maxTokens ?? 512,
+        reasoning_format: "none",
+        chat_template_kwargs: { enable_thinking: false },
         stream: false,
       }),
     });
@@ -174,6 +176,8 @@ export class LocalLLMSidecar {
         messages,
         temperature: options?.temperature ?? 0.7,
         max_tokens: options?.maxTokens ?? 512,
+        reasoning_format: "none",
+        chat_template_kwargs: { enable_thinking: false },
         stream: true,
       }),
     });
@@ -204,7 +208,7 @@ export class LocalLLMSidecar {
 
         try {
           const chunk = JSON.parse(data);
-          const content = chunk.choices?.[0]?.delta?.content;
+          const content = chunk.choices?.[0]?.delta?.content || chunk.choices?.[0]?.delta?.reasoning_content;
           if (content) yield content;
         } catch {
           // Skip malformed SSE lines

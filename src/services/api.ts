@@ -163,6 +163,29 @@ export async function uploadChatAttachment(file: {
   };
 }
 
+export async function syncLocalConversation(options: {
+  sessionId: string;
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  model?: string;
+  platform?: 'mobile' | 'desktop';
+  deviceId?: string;
+}): Promise<void> {
+  try {
+    await apiFetch('/openclaw/proxy/sync-local-messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        sessionId: options.sessionId,
+        messages: options.messages,
+        model: options.model,
+        platform: options.platform || 'mobile',
+        deviceId: options.deviceId,
+      }),
+    });
+  } catch {
+    // Non-blocking: local conversation should still complete even if sync fails.
+  }
+}
+
 // ========== Memory API ==========
 
 export const memoryApi = {

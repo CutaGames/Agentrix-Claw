@@ -70,6 +70,28 @@ function chunkText(text: string): string[] {
   return trimmed.match(/.{1,48}(?:\s+|$)/g)?.map((item) => item.trim()).filter(Boolean) || [trimmed];
 }
 
+function normalizeLocalOutput(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const withoutThinkTags = trimmed.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  if (!/^Thinking Process:/i.test(withoutThinkTags)) {
+    return withoutThinkTags;
+  }
+
+  const parts = withoutThinkTags.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length > 1) {
+    const tail = parts[parts.length - 1];
+    if (tail && !/^Thinking Process:/i.test(tail)) {
+      return tail;
+    }
+  }
+
+  return withoutThinkTags;
+}
+
 export class MobileLocalInferenceService {
   static readonly modelId = DEFAULT_MODEL_ID;
   static readonly modelLabel = DEFAULT_MODEL_LABEL;
@@ -104,7 +126,7 @@ export class MobileLocalInferenceService {
         temperature: options?.temperature,
         maxTokens: options?.maxTokens,
       });
-      return extractText(result);
+      return normalizeLocalOutput(extractText(result));
     }
 
     if (typeof bridge.generateStream === 'function') {
@@ -116,10 +138,10 @@ export class MobileLocalInferenceService {
       });
 
       if (Array.isArray(streamed)) {
-        return streamed.join('');
+        return normalizeLocalOutput(streamed.join(''));
       }
 
-      return extractText(streamed);
+      return normalizeLocalOutput(extractText(streamed));
     }
 
     throw new Error('Local mobile inference bridge does not implement a generate API.');
@@ -143,22 +165,21 @@ export class MobileLocalInferenceService {
       });
 
       if (Array.isArray(streamed)) {
-        for (const chunk of streamed) {
-          if (chunk) {
-            yield chunk;
-          }
+        const normalized = normalizeLocalOutput(streamed.join(''));
+        for (const chunk of chunkText(normalized)) {
+          yield chunk;
         }
         return;
       }
 
-      const text = extractText(streamed);
+      const text = normalizeLocalOutput(extractText(streamed));
       for (const chunk of chunkText(text)) {
         yield chunk;
       }
       return;
     }
 
-    const text = await this.generate(messages, options);
+    const text = normalizeLocalOutput(await this.generate(messages, options));
     for (const chunk of chunkText(text)) {
       yield chunk;
     }

@@ -25,7 +25,7 @@ import { useI18n } from '../../stores/i18nStore';
 import DesktopDiscoveryBanner from '../../components/DesktopDiscoveryBanner';
 import { VoiceOnboardingTooltip } from '../../components/VoiceOnboardingTooltip';
 import { ChatSessionTabs, loadSessions, saveSessions, MAX_SESSIONS, type ChatSession } from '../../components/ChatSessionTabs';
-import { uploadChatAttachment, apiFetch, type UploadedChatAttachment } from '../../services/api';
+import { uploadChatAttachment, apiFetch, syncLocalConversation, type UploadedChatAttachment } from '../../services/api';
 import { mapRawInstance } from '../../services/auth';
 import { fetchLatestDesktopClipboard, type MobileDesktopClipboardSnapshot } from '../../services/desktopSync';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -1370,12 +1370,12 @@ export function AgentChatScreen() {
             content: message.content,
           }));
 
-        streamSucceeded = true;
         resetVoicePhaseAfterResponse();
 
         try {
+          let localProducedOutput = false;
           for await (const chunk of MobileLocalInferenceService.generateTextStream([
-            { role: 'system', content: `You are ${instanceName}. Keep responses concise, practical, and conversational.` },
+            { role: 'system', content: `You are ${instanceName}. Keep responses concise, practical, and conversational. Never reveal chain-of-thought or thinking traces. Reply with the final answer directly.` },
             ...localHistory,
             { role: 'user', content: text },
           ], { model: effectiveModelId })) {
@@ -1387,10 +1387,30 @@ export function AgentChatScreen() {
               continue;
             }
 
+            localProducedOutput = true;
+            streamSucceeded = true;
             appendToStreamingMessage(assistantMsgId, chunk);
             enqueueStreamedSpeech(chunk);
           }
           enqueueStreamedSpeech('', true);
+
+          const finalAssistant = (allMessagesRef.current || []).find((message) => message.id === assistantMsgId)?.content?.trim();
+          if (!localProducedOutput || !finalAssistant) {
+            streamSucceeded = false;
+            proxyFailureMessage = t({ en: 'Local model returned an empty response.', zh: '本地模型返回了空响应。' });
+          }
+
+          if (token && finalAssistant) {
+            void syncLocalConversation({
+              sessionId: sessionIdRef.current,
+              messages: [
+                { role: 'user', content: text },
+                { role: 'assistant', content: finalAssistant },
+              ],
+              model: effectiveModelId,
+              platform: 'mobile',
+            });
+          }
         } catch (error: any) {
           streamSucceeded = false;
           proxyFailureMessage = error?.message || t({ en: 'Local model inference failed.', zh: '本地模型推理失败。' });

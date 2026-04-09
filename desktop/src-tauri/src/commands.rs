@@ -1460,7 +1460,9 @@ pub fn start_llm_sidecar(
     cmd.arg("--model").arg(&model_path)
        .arg("--port").arg(port.to_string())
        .arg("--ctx-size").arg(context_size.to_string())
-       .arg("--n-gpu-layers").arg(n_gpu_layers.to_string());
+         .arg("--n-gpu-layers").arg(n_gpu_layers.to_string())
+         .arg("--reasoning").arg("off")
+         .arg("--reasoning-format").arg("none");
 
     if let Some(t) = threads {
         cmd.arg("--threads").arg(t.to_string());
@@ -1857,14 +1859,16 @@ pub async fn download_llama_server(app: AppHandle) -> Result<LlamaServerStatus, 
         .map_err(|e| format!("HTTP client error: {}", e))?;
 
     #[cfg(target_os = "windows")]
-    let asset_pattern = "win-x64";
+    let asset_candidates = ["bin-win-cpu-x64.zip", "win-cpu-x64.zip"];
     #[cfg(target_os = "macos")]
-    let asset_pattern = "macos-arm64";
+    let asset_candidates = ["bin-macos-arm64.tar.gz", "macos-arm64.tar.gz"];
     #[cfg(target_os = "linux")]
-    let asset_pattern = "linux-x64";
+    let asset_candidates = ["bin-ubuntu-x64.tar.gz", "ubuntu-x64.tar.gz"];
 
     // Try mirror first, then direct GitHub
     let api_urls = [
+        "https://ghfast.top/https://api.github.com/repos/ggml-org/llama.cpp/releases/latest",
+        "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest",
         "https://ghfast.top/https://api.github.com/repos/ggerganov/llama.cpp/releases/latest",
         "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest",
     ];
@@ -1899,24 +1903,26 @@ pub async fn download_llama_server(app: AppHandle) -> Result<LlamaServerStatus, 
         .ok_or_else(|| "No assets in release".to_string())?;
 
     // Find the right binary asset (prefer non-cuda, non-vulkan for broadest compatibility)
-    let download_url = assets.iter()
+    let matched_asset = assets.iter()
         .filter_map(|a| {
             let name = a["name"].as_str()?;
             let url = a["browser_download_url"].as_str()?;
-            if name.contains(asset_pattern) && name.ends_with(".zip") && !name.contains("cuda") && !name.contains("vulkan") {
-                Some(url.to_string())
+            if asset_candidates.iter().any(|candidate| name.contains(candidate)) && !name.contains("cuda") && !name.contains("vulkan") && !name.contains("sycl") && !name.contains("hip") {
+                Some((name.to_string(), url.to_string()))
             } else {
                 None
             }
         })
         .next()
-        .ok_or_else(|| format!("No matching asset found for platform pattern '{}'", asset_pattern))?;
+        .ok_or_else(|| format!("No matching llama.cpp asset found. Candidates: {}", asset_candidates.join(", ")))?;
+
+    let (asset_name, download_url) = matched_asset;
 
     let tag = release["tag_name"].as_str().unwrap_or("unknown");
 
     let _ = app.emit("llama-server-download", serde_json::json!({
         "status": "downloading",
-        "message": format!("Downloading llama-server {} ...", tag),
+        "message": format!("Downloading llama-server {} ({}) ...", tag, asset_name),
     }));
 
     // Try downloading via mirror first, then direct
@@ -1950,7 +1956,8 @@ pub async fn download_llama_server(app: AppHandle) -> Result<LlamaServerStatus, 
         "message": "Extracting llama-server...",
     }));
 
-    // Extract llama-server from zip
+    // Extract the Windows runtime bundle so llama-server has all required DLLs.
+    // New llama.cpp releases ship multiple ggml/llama runtime DLLs alongside the EXE.
     let cursor = std::io::Cursor::new(&zip_bytes);
     let mut archive = zip::ZipArchive::new(cursor)
         .map_err(|e| format!("Failed to open zip: {}", e))?;
@@ -1965,21 +1972,29 @@ pub async fn download_llama_server(app: AppHandle) -> Result<LlamaServerStatus, 
         let mut file = archive.by_index(i)
             .map_err(|e| format!("Zip entry error: {}", e))?;
         let name = file.name().to_string();
-        if name.ends_with(server_name) {
-            let mut out = std::fs::File::create(&target_binary)
-                .map_err(|e| format!("Failed to create binary: {}", e))?;
-            std::io::copy(&mut file, &mut out)
-                .map_err(|e| format!("Failed to extract binary: {}", e))?;
-            extracted = true;
+        if file.is_dir() {
+            continue;
+        }
 
-            // Make executable on Unix
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&target_binary, std::fs::Permissions::from_mode(0o755))
-                    .map_err(|e| format!("Failed to set permissions: {}", e))?;
-            }
-            break;
+        let Some(file_name) = std::path::Path::new(&name).file_name() else {
+            continue;
+        };
+
+        let out_path = bin_dir.join(file_name);
+        let mut out = std::fs::File::create(&out_path)
+            .map_err(|e| format!("Failed to create extracted file {}: {}", out_path.to_string_lossy(), e))?;
+        std::io::copy(&mut file, &mut out)
+            .map_err(|e| format!("Failed to extract {}: {}", name, e))?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&out_path, std::fs::Permissions::from_mode(0o755))
+                .map_err(|e| format!("Failed to set permissions: {}", e))?;
+        }
+
+        if name.ends_with(server_name) {
+            extracted = true;
         }
     }
 
