@@ -12,7 +12,6 @@
   "dependencies": {
     "@picovoice/porcupine-web": "^4.0.0",
     "@picovoice/web-voice-processor": "^4.0.9",
-    "@rollup/rollup-linux-x64-gnu": "^4.60.0",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-autostart": "^2.2.0",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",

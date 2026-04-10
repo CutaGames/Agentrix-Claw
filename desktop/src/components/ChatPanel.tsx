@@ -904,12 +904,12 @@ export default function ChatPanel({
     localSidecarRef.current = sidecar;
 
     void (async () => {
-      const readiness = await checkDesktopLocalModelReady(selectedModel).catch(() => null);
+      const readiness = await checkDesktopLocalModelReady().catch(() => null);
       if (cancelled || !readiness?.ready) {
         return;
       }
 
-      await ensureDesktopLocalSidecar(sidecar, selectedModel).catch(() => {});
+      await ensureDesktopLocalSidecar(sidecar).catch(() => {});
     })();
 
     return () => {
@@ -2246,7 +2246,7 @@ export default function ChatPanel({
           }
 
           // Pre-flight: check if local model + binary are available
-          const readiness = await checkDesktopLocalModelReady(selectedModel);
+          const readiness = await checkDesktopLocalModelReady();
           if (!readiness.ready) {
             // No local model available — skip local attempt, fall through to cloud
             shouldFallbackToCloud = Boolean(authToken);
@@ -2330,7 +2330,7 @@ export default function ChatPanel({
               });
             }
 
-            await ensureDesktopLocalSidecar(localSidecar, selectedModel);
+            await ensureDesktopLocalSidecar(localSidecar);
             setStreamFeedback(getLocalPrefillFeedback(history));
 
             let receivedFirstLocalChunk = false;
