@@ -8,6 +8,20 @@ export class ExpandHookEventTypes1781000000000 implements MigrationInterface {
   name = 'ExpandHookEventTypes1781000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const [enumExists] = await queryRunner.query(`
+      SELECT EXISTS (
+        SELECT 1
+        FROM pg_type t
+        INNER JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE t.typname = 'hook_configs_eventtype_enum'
+          AND n.nspname = current_schema()
+      ) AS "exists"
+    `);
+
+    if (!enumExists?.exists) {
+      return;
+    }
+
     // PostgreSQL allows adding new values to an existing enum
     const newValues = [
       'before_model_resolve',

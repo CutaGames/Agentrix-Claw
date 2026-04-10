@@ -1321,9 +1321,9 @@ export class AuthController {
         const sanitizedPreferredModel = acct?.preferredModel && !LOCAL_ONLY_MODELS.includes(acct.preferredModel)
           ? acct.preferredModel
           : undefined;
-        // Priority: agentAccount.preferredModel → explicitly pinned instance model → user's defaultProviderConfig → instance baseline
-        const resolvedModel = sanitizedPreferredModel
-          || (instanceModelPinned ? sanitizedInstanceActiveModel : undefined)
+        // Priority: explicitly pinned instance model → agentAccount.preferredModel → user's defaultProviderConfig → instance baseline
+        const resolvedModel = (instanceModelPinned ? sanitizedInstanceActiveModel : undefined)
+          || sanitizedPreferredModel
           || defaultProviderConfig?.selectedModel
           || sanitizedInstanceActiveModel
           || undefined;
