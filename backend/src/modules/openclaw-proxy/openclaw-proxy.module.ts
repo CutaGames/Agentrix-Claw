@@ -21,6 +21,8 @@ import { AgentOrchestrationModule } from '../agent-orchestration/agent-orchestra
 import { HookModule } from '../hooks/hook.module';
 import { McpRegistryModule } from '../mcp-registry/mcp-registry.module';
 import { DesktopSyncModule } from '../desktop-sync/desktop-sync.module';
+import { LlmRouterModule } from '../llm-router/llm-router.module';
+import { CostTrackerModule } from '../cost-tracker/cost-tracker.module';
 import { QueryEngineModule } from '../query-engine/query-engine.module';
 
 @Module({
@@ -39,6 +41,8 @@ import { QueryEngineModule } from '../query-engine/query-engine.module';
     HookModule,
     McpRegistryModule,
     DesktopSyncModule,
+    LlmRouterModule,
+    CostTrackerModule,
     forwardRef(() => QueryEngineModule),
   ],
   providers: [OpenClawProxyService],

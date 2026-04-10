@@ -6,10 +6,10 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "build": "sh build.sh || (rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.build.json --incremental false && npm run build:verify)",
+    "build": "node ./scripts/build-backend.mjs",
     "build:nest": "nest build",
-    "build:tsc": "rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.build.json --incremental false",
-    "build:verify": "test -f dist/main.js || (echo '❌ Build failed: dist/main.js not found' && exit 1)",
+    "build:tsc": "node ./scripts/build-backend.mjs --tsc-only",
+    "build:verify": "node ./scripts/build-backend.mjs --verify-only",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",

@@ -112,6 +112,11 @@ function buildOutgoingMessageContent(text: string, attachments: UploadedChatAtta
         type: 'image',
         source: { type: 'url', url: attachment.publicUrl },
       });
+    } else if (attachment.kind === 'video' || attachment.isVideo || attachment.mimetype?.startsWith('video/')) {
+      multimodalContent.push({
+        type: 'text',
+        text: `[Video Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachment.publicUrl}`,
+      });
     } else if (attachment.mimetype?.startsWith('audio/') || attachment.originalName.match(/\.(mp3|wav|m4a|ogg)$/i)) {
       multimodalContent.push({
         type: 'input_audio',
@@ -148,8 +153,9 @@ function extractUrlsFromMessage(content: string) {
   const allUrls = dedupeUrls([...markdownImageUrls, ...plainUrls]);
   const imageUrls = allUrls.filter((url) => /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(url));
   const audioUrls = allUrls.filter((url) => /\.(mp3|wav|m4a|ogg|aac|flac|opus|wma)(\?.*)?$/i.test(url));
-  const fileUrls = allUrls.filter((url) => !imageUrls.includes(url) && !audioUrls.includes(url) && /(\/api\/uploads\/|\.(pdf|txt|md|csv|json|docx?|xlsx?|pptx?))(\?.*)?$/i.test(url));
-  return { imageUrls, audioUrls, fileUrls };
+  const videoUrls = allUrls.filter((url) => /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(url));
+  const fileUrls = allUrls.filter((url) => !imageUrls.includes(url) && !audioUrls.includes(url) && !videoUrls.includes(url) && /(\/api\/uploads\/|\.(pdf|txt|md|csv|json|docx?|xlsx?|pptx?))(\?.*)?$/i.test(url));
+  return { imageUrls, audioUrls, videoUrls, fileUrls };
 }
 
 function getCopyableMessageText(message: Message) {
@@ -160,13 +166,13 @@ function getCopyableMessageText(message: Message) {
 function buildDisplayMessageText(content: string) {
   if (!content) return '';
 
-  const { imageUrls, audioUrls, fileUrls } = extractUrlsFromMessage(content);
+  const { imageUrls, audioUrls, videoUrls, fileUrls } = extractUrlsFromMessage(content);
   let display = content
     .replace(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g, '')
     .replace(/\[User Attachments\][\s\S]*$/g, '')
     .trim();
 
-  for (const url of [...imageUrls, ...audioUrls, ...fileUrls]) {
+  for (const url of [...imageUrls, ...audioUrls, ...videoUrls, ...fileUrls]) {
     display = display.replace(new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '');
   }
 
@@ -361,7 +367,7 @@ const MessageBubble = ({
   const isUser = item.role === 'user';
   const hasThoughts = item.thoughts && item.thoughts.length > 0;
   const bubbleText = buildDisplayMessageText(item.content) || (item.streaming ? '...' : '');
-  const { imageUrls, audioUrls, fileUrls } = extractUrlsFromMessage(item.content || '');
+  const { imageUrls, audioUrls, videoUrls, fileUrls } = extractUrlsFromMessage(item.content || '');
   const canSpeak = !isUser && !!bubbleText && !item.streaming && !item.error;
   const isThisMessageSpeaking = speakingMessageId === item.id;
   const [ctxVisible, setCtxVisible] = useState(false);
@@ -506,6 +512,10 @@ const MessageBubble = ({
               >
                 {attachment.isImage ? (
                   <Image source={{ uri: attachment.publicUrl }} style={sf.mediaThumb} resizeMode="cover" />
+                ) : attachment.isVideo ? (
+                  <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>🎬</Text></View>
+                ) : attachment.isAudio ? (
+                  <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>🎵</Text></View>
                 ) : (
                   <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>📎</Text></View>
                 )}
@@ -534,6 +544,19 @@ const MessageBubble = ({
           <View style={sf.mediaList}>
             {audioUrls.map((url) => (
               <InlineAudioPlayer key={`${item.id}-audio-${url}`} uri={url} />
+            ))}
+          </View>
+        )}
+        {!!videoUrls.length && (
+          <View style={sf.mediaList}>
+            {videoUrls.map((url) => (
+              <TouchableOpacity key={`${item.id}-video-${url}`} style={sf.mediaCard} activeOpacity={0.8} onPress={() => openExternalUrl(url)}>
+                <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>🎬</Text></View>
+                <View style={sf.mediaMeta}>
+                  <Text style={sf.mediaName} numberOfLines={1}>{t({ en: 'Generated video', zh: '生成视频' })}</Text>
+                  <Text style={sf.mediaSub} numberOfLines={1}>{url}</Text>
+                </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}

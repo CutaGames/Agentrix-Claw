@@ -175,6 +175,14 @@ export const AGENT_PRESET_SKILLS: PresetSkill[] = [
     icon: '🔗',
   },
   {
+    handlerName: 'video_generate',
+    displayName: 'Video Generate',
+    description: 'Generate a video asynchronously from a text prompt. Returns a background task id immediately and can be called later with taskId to fetch status or result.',
+    category: 'tools',
+    enabledByDefault: true,
+    icon: '🎬',
+  },
+  {
     handlerName: 'code_eval',
     displayName: 'Code Eval',
     description: 'Execute a JavaScript code snippet in a sandboxed environment and return the result. Useful for calculations, data transformation, and quick scripting tasks.',

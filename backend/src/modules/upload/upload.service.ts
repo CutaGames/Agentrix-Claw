@@ -8,6 +8,7 @@ export class UploadService {
   private readonly uploadDir = path.join(process.cwd(), 'uploads', 'products');
   private readonly chatUploadDir = path.join(process.cwd(), 'uploads', 'chat');
   private readonly maxAttachmentSize = 15 * 1024 * 1024;
+  private readonly maxVideoAttachmentSize = 50 * 1024 * 1024;
 
   constructor() {
     this.ensureDir(this.uploadDir);
@@ -57,8 +58,14 @@ export class UploadService {
       throw new BadRequestException('No file uploaded');
     }
 
-    if (file.size > this.maxAttachmentSize) {
-      throw new BadRequestException('Attachment is too large. Max size is 15 MB.');
+    const isVideo = file.mimetype.startsWith('video/');
+    const maxSize = isVideo ? this.maxVideoAttachmentSize : this.maxAttachmentSize;
+    if (file.size > maxSize) {
+      throw new BadRequestException(
+        isVideo
+          ? 'Video attachment is too large. Max size is 50 MB.'
+          : 'Attachment is too large. Max size is 15 MB.',
+      );
     }
 
     const allowedMimeTypes = [
@@ -75,6 +82,8 @@ export class UploadService {
       'audio/aac',
       'video/mp4',
       'video/webm',
+      'video/quicktime',
+      'video/x-m4v',
       'application/pdf',
       'text/plain',
       'text/markdown',
@@ -95,11 +104,13 @@ export class UploadService {
     const saved = this.saveFile(file, this.chatUploadDir, '/api/uploads/chat');
     const isImage = file.mimetype.startsWith('image/');
     const isAudio = file.mimetype.startsWith('audio/');
+    const isVideoAttachment = file.mimetype.startsWith('video/');
     return {
       ...saved,
-      kind: isImage ? 'image' : isAudio ? 'audio' : 'file',
+      kind: isImage ? 'image' : isVideoAttachment ? 'video' : isAudio ? 'audio' : 'file',
       isImage,
       isAudio,
+      isVideo: isVideoAttachment,
     };
   }
 }

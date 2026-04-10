@@ -79,8 +79,8 @@ export class AgentIntelligenceController {
 
   @Get('sessions/:sessionId/resume')
   @ApiOperation({ summary: 'Load a session for resume (messages + memories + plan)' })
-  async resumeSession(@Param('sessionId') sessionId: string) {
-    const data = await this.intelligenceService.loadSessionForResume(sessionId);
+  async resumeSession(@Request() req: any, @Param('sessionId') sessionId: string) {
+    const data = await this.intelligenceService.loadSessionForResume(req.user.id, sessionId);
     if (!data) return { error: 'Session not found' };
     return data;
   }

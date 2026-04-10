@@ -28,8 +28,10 @@ export interface UploadedChatAttachment {
   originalName: string;
   mimetype: string;
   size: number;
-  kind: 'image' | 'file';
+  kind: 'image' | 'audio' | 'video' | 'file';
   isImage: boolean;
+  isAudio: boolean;
+  isVideo: boolean;
 }
 
 let config: ApiConfig = {

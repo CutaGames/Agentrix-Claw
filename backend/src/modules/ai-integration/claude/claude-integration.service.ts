@@ -176,6 +176,24 @@ export class ClaudeIntegrationService {
         },
       },
       {
+        name: 'video_generate',
+        description: 'Generate a video asynchronously from a text prompt. Returns quickly with a taskId, and can be called again later with that taskId to fetch status or the final video URL.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            prompt: { type: 'string', description: 'Text prompt describing the video to generate' },
+            taskId: { type: 'string', description: 'Existing async task id to query instead of creating a new task' },
+            provider: { type: 'string', description: 'Provider id, currently fal' },
+            model: { type: 'string', description: 'Provider model path override' },
+            duration: { type: 'string', enum: ['5', '10'], description: 'Approximate output duration in seconds' },
+            aspectRatio: { type: 'string', enum: ['16:9', '9:16', '1:1'], description: 'Aspect ratio for the generated video' },
+            negativePrompt: { type: 'string', description: 'Things the model should avoid generating' },
+            cfgScale: { type: 'number', description: 'Guidance scale override' },
+            generateAudio: { type: 'boolean', description: 'Whether the provider should try to generate audio as well' },
+          },
+        },
+      },
+      {
         name: 'add_to_agentrix_cart',
         description: '将商品加入购物车',
         input_schema: {
@@ -847,7 +865,8 @@ export class ClaudeIntegrationService {
         case 'task_submit':
         case 'skill_publish':
         case 'resource_publish':
-        case 'marketplace_purchase': {
+        case 'marketplace_purchase':
+        case 'video_generate': {
           const executor = this.getSkillExecutor();
           if (!executor) {
             return { success: false, error: 'Skill service unavailable' };
@@ -855,7 +874,10 @@ export class ClaudeIntegrationService {
           try {
             const result = await executor.executeInternal(functionName, parameters, {
               userId: context.userId,
-              metadata: {},
+              sessionId: (context as any).sessionId,
+              metadata: {
+                deviceId: (context as any).deviceId,
+              },
             });
             return { success: true, data: result };
           } catch (skillErr: any) {
@@ -1179,6 +1201,7 @@ export class ClaudeIntegrationService {
       model?: string;
       temperature?: number;
       maxTokens?: number;
+      maxToolRounds?: number;
       context?: { userId?: string; sessionId?: string };
       userApiKey?: string; // 用户提供的 API Key（可选）— backward compat
       userCredentials?: UserProviderCredentials; // Full provider credentials (preferred)
@@ -1354,7 +1377,7 @@ export class ClaudeIntegrationService {
       }
 
       // Multi-turn agent loop for Anthropic direct API
-      const maxToolRounds = 5;
+      const maxToolRounds = options?.maxToolRounds ?? 5;
       let allToolCalls: any[] = [];
       let currentConversationMessages = [...conversationMessages];
       let lastStopReason = response?.stop_reason || 'end_turn';

@@ -96,7 +96,7 @@ export interface TurnInfoEvent {
 
 export interface DoneEvent {
   type: 'done';
-  reason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'abort' | 'error';
+  reason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'abort' | 'error' | 'tool_use';
   totalDurationMs: number;
   totalInputTokens: number;
   totalOutputTokens: number;

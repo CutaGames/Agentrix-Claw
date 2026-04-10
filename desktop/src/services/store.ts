@@ -191,8 +191,10 @@ export interface ChatAttachment {
   originalName: string;
   mimetype: string;
   size: number;
-  kind: 'image' | 'file';
+  kind: 'image' | 'audio' | 'video' | 'file';
   isImage: boolean;
+  isAudio: boolean;
+  isVideo: boolean;
 }
 
 export async function uploadChatAttachment(file: File, token: string): Promise<ChatAttachment> {
@@ -200,6 +202,8 @@ export async function uploadChatAttachment(file: File, token: string): Promise<C
   const mimeFromExt: Record<string, string> = {
     png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
     webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp',
+    mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg', aac: 'audio/aac',
+    mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', m4v: 'video/x-m4v',
     pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown',
     csv: 'text/csv', json: 'application/json',
     doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

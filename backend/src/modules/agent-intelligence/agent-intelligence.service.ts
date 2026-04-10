@@ -716,14 +716,17 @@ Execute this step now. Use the appropriate tool if specified. Report the result 
   /**
    * Load full session history for resume.
    */
-  async loadSessionForResume(sessionId: string): Promise<{
+  async loadSessionForResume(userId: string, sessionRef: string): Promise<{
     session: AgentSession;
     messages: AgentMessage[];
     memories: AgentMemory[];
     plan: AgentPlan | null;
   } | null> {
     const session = await this.sessionRepo.findOne({
-      where: { id: sessionId },
+      where: [
+        { id: sessionRef, userId },
+        { sessionId: sessionRef, userId },
+      ],
     });
     if (!session) return null;
 

@@ -1,6 +1,6 @@
 # OpenClaw 4.5 与 Agentrix 当前 Agent Framework 审计
 
-更新时间：2026-04-08
+更新时间：2026-04-10
 
 ## 1. 文档目的
 
@@ -13,13 +13,13 @@
 
 证据来源分为两类：
 
-- OpenClaw 部分：基于公开仓库 openclaw/openclaw 的 v2026.4.5 标签族与同期公开主线结构，重点参考 docs/plugins/architecture.md、docs/plugins/sdk-overview.md、src/plugins/loader.ts、src/gateway/server-channels.ts、extensions/memory-core、extensions/memory-wiki。
-- Agentrix 部分：基于 backend/src/app.module.ts 的真实模块接线、当前仓库中的模块实现、以及 2026-04-08 的后端运行态审计结果。
+- OpenClaw 部分：基于公开仓库 openclaw/openclaw 的 v2026.4.5 标签族与同期公开主线结构，重点参考 docs/plugins/architecture.md、docs/plugins/sdk-overview.md、src/plugins/loader.ts、src/gateway/server-channels.ts、extensions/memory-core、extensions/memory-wiki、docs/tools/media-overview.md、docs/tools/video-generation.md、src/agents/tools/video-generate-tool.ts、extensions/video-generation-core、extensions/alibaba、extensions/vydra、docs/providers/fal.md。
+- Agentrix 部分：基于 backend/src/app.module.ts 的真实模块接线、当前仓库中的模块实现、以及 2026-04-10 本轮代码补丁后的运行态复核结果。
 
 状态口径：
 
 - 已运行：已接入真实控制器、聊天热路径、定时/事件链路或生产可用 API。
-- 部分运行：已经接线并有实现，但不在主热路径，或关键链路尚未闭环。
+- 已投入运行，继续收敛：模块已进入真实链路，但还没有成为唯一核心，或仍需向单控制面继续收口。
 - 待补齐：代码中没有足够运行证据，或者只有概念占位。
 
 ## 2. 执行摘要
@@ -29,8 +29,10 @@
 - OpenClaw 4.5 的核心不是单个聊天接口，而是一个以 Gateway 为控制平面、以 Plugin 为扩展边界、以 Memory Slot 为长期记忆边界、以 Channel Runtime 为多入口边界的 agent framework。
 - Agentrix 当前已经不是“只有 UI 的 OpenClaw 外壳”，而是一个已经落地了平台托管、桌面协同、技能市场、支付商业域的产品化运行层。
 - Agentrix 当前已经把真实聊天运行时收口到 /openclaw/proxy；/claude/chat 仍保留，但只作为兼容壳转发到默认 OpenClaw runtime，不再单独维护第二套主执行链路。
-- 当前审计的 17 个核心 agent 模块里，9 个已运行，8 个部分运行，0 个可判定为纯占位模块。
-- 与 OpenClaw 4.5 相比，Agentrix 当前真正的强项不在 Plugin contract，而在多设备协同、平台托管和 commerce-first 产品域；真正的缺口在 plugin-owned runtime、统一 session control plane、memory slot 全量能力、ACP bridge 与 runtime compat。
+- 当前审计的 17 个核心 agent 模块里，16 个已运行，1 个已投入运行但仍待继续收敛，0 个可判定为纯占位模块。
+- 本轮已经补上桌面复杂任务提前结束的三个关键执行语义缺口：复杂任务工具轮次预算、`tool_use` 结束原因透传、桌面 Continue 续跑提示；同时把 llm-router 与 cost-tracker 接入了聊天热路径。
+- OpenClaw 4.5 公开能力里确实包含完整的视频创作/生成栈，而不只是媒体导入：它有 `video_generate` 工具、provider registry、异步任务回填和 text-to-video / image-to-video / video-to-video 三种模式。
+- 与 OpenClaw 4.5 相比，Agentrix 当前真正的强项不在 Plugin contract，而在多设备协同、平台托管和 commerce-first 产品域；当前最值得继续补齐的缺口已经收敛为复杂任务 UX、视频生成 contract、plugin-owned runtime、memory/ACP/runtime compat 四类。
 
 ## 3. OpenClaw 4.5 框架图
 
@@ -119,6 +121,20 @@ flowchart TB
 - 它是 gateway-centered，不是单 endpoint centered。真正的中心是 gateway registry，而不是某一个 REST 路径。
 - 它是 memory-slot based。记忆不是普通工具，而是带独占 slot、flush plan、prompt supplement、runtime 的框架级能力。
 - 它强调 lazy runtime。manifest、setup、light runtime、heavy runtime 被刻意分层，以控制启动成本和边界耦合。
+
+### 4.1 OpenClaw 4.5 内置视频创作 / 生成能力补充
+
+这部分在上一版附件里漏掉了，但从公开仓库看，OpenClaw 4.5 的视频能力已经是框架级内置能力，不是第三方示例脚本。
+
+| 能力层 | OpenClaw 4.5 证据 | 说明 |
+|---|---|---|
+| `video_generate` 内置工具 | docs/tools/video-generation.md、src/agents/tools/video-generate-tool.ts | 视频生成是官方内置 agent tool，只有在至少一个 provider 可用时才显示 |
+| 三种运行模式 | docs/tools/video-generation.md | 原生支持 `generate`、`imageToVideo`、`videoToVideo` 三种模式 |
+| provider 注册机制 | docs/plugins/architecture.md、extensions/video-generation-core、extensions/alibaba、extensions/vydra、docs/providers/fal.md | core 持有 typed capability contract，provider 插件通过 `registerVideoGenerationProvider(...)` 注册到 runtime |
+| 异步任务生命周期 | docs/tools/media-overview.md、docs/tools/video-generation.md | `queued / running / succeeded / failed` 四阶段；任务完成后会唤醒原 session 并把视频回帖到原对话 |
+| 控制参数与参考素材 | src/agents/tools/video-generate-tool.ts | 支持参考图片、参考视频、duration、aspectRatio、resolution、audio、watermark、filename 等参数 |
+
+结论：OpenClaw 4.5 的视频能力不是“能上传视频看看”，而是已经具备了从 capability contract、runtime helper、provider registry 到 async task wake-back 的完整产品级生成链路。
 
 ## 5. Agentrix 当前框架图
 
@@ -220,25 +236,25 @@ flowchart TB
 | tool-registry | 中心工具注册表与多模型 schema 适配层 | 通过装饰器自动发现工具，再统一生成 OpenAI、Bedrock、Claude 等不同 schema | 启动后自动建表，聊天时被用来生成 tool schemas 并驱动工具调用 | 已运行 |
 | agent-presence | 统一 agent 身份、timeline、channel binding、memory scope | 基于 UserAgent、ConversationEvent、AgentSharePolicy、AgentMemory 等实体统一管理 agent presence | 有完整 CRUD 与 timeline 查询接口，已被移动端和 Web 端身份层实际消费 | 已运行 |
 
-### 6.2 部分运行模块
+### 6.2 本轮纠偏后：已投入运行的原“部分运行”模块
 
-| 模块 | 功能 | 实现原理 | 运行机制 | 状态 |
+| 模块 | 当前判断 | 代码证据 | 本轮处理 / 验证 | 状态 |
 |---|---|---|---|---|
-| agent-team | 团队模板、角色定义、团队型 agent 预配置 | 根据 role definition 批量创建 AgentAccount 与账户侧实体 | 已能 provision 团队，但实例绑定仍延后到后续选择或融合流程 | 部分运行 |
-| unified-agent | 合并 OpenClawInstance、AgentAccount、UserAgent 的统一视图 | 在服务层手工 join 多张身份表，输出统一 agent 描述对象 | 已被内部消费，但没有独立 controller，且仍依赖 metadata 软连接 | 部分运行 |
-| agent-orchestration | 子代理生成、协调与 mailbox | 定义 SubAgentHandle、CoordinateConfig，并在 proxy 中作为内部编排助手被调用 | 已接入代理热路径，但没有完整 async worker 与独立操作面 | 部分运行 |
-| llm-router | 按任务复杂度在 LOCAL/LIGHT/MEDIUM/HEAVY/ULTRA 之间路由模型 | 维护 tier 判定与模型价格/能力元数据 | 逻辑已经实现，但聊天主链路尚未把它作为实际决策器 | 部分运行 |
-| query-engine | 状态化 query loop、工具执行、结构化 SSE | 定义 ConversationState、StreamEvent、ToolExecutor、compaction 等统一执行模型 | 核心逻辑存在，但当前主要热路径仍由 openclaw-proxy 主导，未完全替代为唯一核心 | 部分运行 |
-| cost-tracker | Token 使用成本估算与价格表 | 内置模型价格表并根据 token usage 计算费用 | 已可计算，但主聊天链路里尚未形成完整持久化记账闭环 | 部分运行 |
-| dreaming | 记忆整理、跨记忆模式发现、梦境式压缩 | 以 DreamingSession、MemorySlotService 等为基础组织后台整理过程 | 模块已接线，但当前没有足够证据表明生产中存在持续运行的后台 dreaming job | 部分运行 |
-| memory-wiki | 结构化 wiki 知识层与 wikilink 图谱 | 通过 WikiPage、wikilink 提取、图节点构造，建立可查询知识层 | 代码实现存在，但未见公共 controller 或主聊天热路径消费证据 | 部分运行 |
+| agent-team | 已具备完整团队模板、provision、我的团队、角色绑定实例控制面 | `agent-team.controller.ts` 已暴露 `GET templates`、`POST provision`、`GET my-teams`、`POST bind-instance` | 代码复核确认它不是“只有 service 没有入口”的半成品 | 已运行 |
+| unified-agent | 已具备统一 agent 查询与创建入口 | `unified-agent.controller.ts` 已暴露 `GET /agents/unified`、`GET /agents/unified/:id`、`POST /agents/create` | 代码复核后，不再应标记为“没有独立 controller” | 已运行 |
+| agent-orchestration | 已具备子代理 spawn、协调与 mailbox 三层能力 | `agent-orchestration.service.ts` 已实现 `spawn(...)`、`coordinate(...)`、`sendMessage(...)`，且被 `openclaw-proxy` 内部工具直接调用 | 运行态上属于真实热路径助手，而不是占位模块 | 已运行 |
+| llm-router | 既有公开分类接口，也已接入聊天热路径决策 | `llm-router.controller.ts` 已暴露 `tiers/classify`；本轮在 `openclaw-proxy.service.ts` 中新增 `resolveToolRoundBudget(...)` 并用于复杂任务轮次预算 | 已验证进入真实聊天热路径 | 已运行 |
+| query-engine | query-engine 模块的 runtime seam、结构化 StreamEvent 协议、tool executor 能力已被主链复用 | `openclaw-proxy` 继续注入 `RuntimeSeamService`，`shared/stream-parser.ts` 与 `query-engine/interfaces/stream-event.interface.ts` 已用于 desktop/mobile/voice 统一 SSE | 已投入运行，但 full conversation loop 仍待继续向单一 query-engine 收口 | 已投入运行，继续收敛 |
+| cost-tracker | 已从“可计算”升级为热路径记账与 usage 事件来源 | 本轮在 `openclaw-proxy.service.ts` 中把 `CostTrackerService.recordCost(...)` 接入聊天热路径，并向前端发送 `usage` 事件 | 已验证桌面端可直接消费 usage/cost 数据 | 已运行 |
+| dreaming | 已具备可调用的梦境整理 API 与异步处理流程 | `dreaming.controller.ts` 已暴露 `sessions/start/cancel/stats`，`DreamingService.startDream(...)` 会触发异步 dream cycle | 这已经属于真实运行模块，只是后续可继续补 cron/调度策略 | 已运行 |
+| memory-wiki | 已具备公共 controller、知识图谱接口与桌面 UI 消费面 | `memory-wiki.controller.ts` 已暴露 `pages/graph/resolve-links`，桌面端已有 `MemoryWikiPanel` | 代码复核确认它已经不是“无公共入口”状态 | 已运行 |
 
 ### 6.3 当前运行态汇总
 
 | 分类 | 数量 | 模块 |
 |---|---:|---|
-| 已运行 | 9 | openclaw-proxy、openclaw-bridge、openclaw-connection、desktop-sync、agent-intelligence、skill、ai-provider、tool-registry、agent-presence |
-| 部分运行 | 8 | agent-team、unified-agent、agent-orchestration、llm-router、query-engine、cost-tracker、dreaming、memory-wiki |
+| 已运行 | 16 | openclaw-proxy、openclaw-bridge、openclaw-connection、desktop-sync、agent-intelligence、skill、ai-provider、tool-registry、agent-presence、agent-team、unified-agent、agent-orchestration、llm-router、cost-tracker、dreaming、memory-wiki |
+| 已投入运行，继续收敛 | 1 | query-engine |
 | 待补齐 | 0 | 本次 17 个已审计核心模块中，没有可判定为纯占位但无任何实现的模块 |
 
 ## 7. Agentrix 当前运行机制解读
@@ -251,7 +267,7 @@ Agentrix 当前真正的框架中心不是单独的 UserAgent，也不是旧式�
 2. 无论入口来自哪里，真实执行都会先收口到 openclaw-proxy。
 3. openclaw-proxy 负责决定会话应走平台托管还是外部实例。
 4. 进入 agent-intelligence、tool-registry、skill、ai-provider 等子系统。
-5. 在需要时借助 query-engine 的事件/工具循环能力。
+5. 在需要时借助 query-engine 模块里的 runtime-seam、结构化 StreamEvent 协议和工具执行能力；full query loop 仍在继续向单一核心收口。
 6. 结果再通过 desktop-sync、approval、移动端或桌面端输出。
 
 这意味着 Agentrix 已经具备“框架化”的骨架，而且主聊天运行时已经开始向单控制平面收口；剩余工作更多是把外围兼容入口和 plugin/memory contract 继续压平。
@@ -274,28 +290,45 @@ Agentrix 当前真正的框架中心不是单独的 UserAgent，也不是旧式�
 | Plugin discovery + loader | skill + tool-registry + plugin 模块 | 有中心注册，但 plugin-owned runtime 还不完整 |
 | Channel plugin runtime | openclaw-connection + openclaw-bridge + desktop/mobile 接入 | 有跨设备接入，但不是统一 channel plugin contract |
 | Memory slot / memory-core | agent-context + agent_memory + agent-intelligence | 基础 recall 已有，但没有完整 slot + flush plan contract |
-| memory-wiki | memory-wiki 模块 | 已接线但未形成真实主路径 |
-| Dreaming | dreaming 模块 | 已接线但后台 job 运行证据不足 |
-| Shared message/tool host | tool-registry + skill executor + query-engine | 已具雏形，但目前仍由 openclaw-proxy 主控 |
+| memory-wiki | memory-wiki 模块 + 桌面 `MemoryWikiPanel` | 已进入真实 API 与桌面消费面 |
+| Dreaming | dreaming 模块 + 桌面 `DreamPanel` | 已具可调用 API 与异步处理流程，后续可继续补调度策略 |
+| Shared message/tool host | tool-registry + skill executor + query-engine + openclaw-proxy | 结构化 SSE/tool protocol 已投入运行，但最终仍由 openclaw-proxy 主控 |
 | Runtime config schema | Nest 模块装配 + 平台配置体系 | 有配置体系，但不是 OpenClaw 风格 manifest schema 汇总 |
 | ACP bridge | 当前缺少对应主模块 | 明显缺口 |
 | Runtime compat / doctor | 当前缺少对应主模块 | 明显缺口 |
 
 ## 9. 现阶段真正的差距在哪里
 
-不是所有差距都同等重要。当前最关键的差距只有四类：
+这一节需要按“已经补上的执行缺口”和“现在还真正没补上的 gap”重新看，而不是沿用上一版的静态判断。
 
-1. 控制平面还需要继续做“兼容面压平”，但主 runtime 已经统一。
-  现在 /claude/chat 已被降级为兼容入口，真实执行统一收口到 /openclaw/proxy；剩余差距主要在把更多外围入口、文档和 contract 表达彻底对齐到同一控制面。
+### 9.1 本轮已完成状态与验证
 
-2. Plugin contract 不够深。
-   Agentrix 已有 skill 和 tool registry，但插件还不能像 OpenClaw 4.5 一样自然拥有自己的 channel、tool、gateway method、memory capability、runtime seam。
+| 项目 | 完成状态 | 验证信息 |
+|---|---|---|
+| 桌面复杂任务执行语义修复 | 已完成 | `openclaw-proxy.service.ts` 本轮已增加复杂任务工具轮次预算、透传 `tool_use` 结束原因；`ChatPanel.tsx` 已在 `tool_use` 时给出 Continue 续跑提示 |
+| llm-router 热路径接线 | 已完成 | `llm-router` 不再只是独立 controller；其分类结果已用于主聊天热路径的复杂任务预算决策 |
+| cost-tracker 热路径接线 | 已完成 | `CostTrackerService.recordCost(...)` 已在主聊天热路径执行，并向前端发出 `usage` 事件 |
+| 视频 / 音频 / 文件统一附件表面 | 已完成 | `upload.service.ts` 统一返回 `image / audio / video / file`；桌面与移动端都已补 `mp4/webm/mov` MIME 推断、视频展示与生成视频链接识别 |
+| 审计文档遗漏的 OpenClaw 4.5 视频能力 | 已完成 | 本文第 4.1 节已补上 `video_generate`、provider registry、async task wake-back、三种模式与控制参数 |
+| `video_generate` 首条真实运行链路 | 已完成 | 后端已新增 `video_generation_tasks` 持久化表、FAL text-to-video provider runtime、后台轮询与完成回帖；`/openclaw/proxy/*` 与 `/claude/chat` 两条路径已同时暴露该工具 |
+| 桌面 Task Workbench | 已完成 | 桌面端新增独立 Task Workbench 面板，集中承载 plan approval、timeline、async wake-back 事件、checkpoint 与 resume；聊天流内只保留轻量入口横幅 |
+| checkpoint / resume 真实恢复链路 | 已完成 | `agent-intelligence` 的 resume 接口已修正为按用户作用域的 `sessionId` 或数据库 id 两种方式解析；桌面 Workbench 的 Resume 按钮已接入真实恢复而非仅做提示词续跑 |
+| 后端 build 脚本跨平台化 | 已完成 | `backend/package.json` 不再依赖 `sh build.sh`、`rm -rf`、`test -f`；已改为 `node ./scripts/build-backend.mjs` 的跨平台构建入口 |
+| 根目录 TypeScript 全量检查堆上限 | 已完成 | 根 `package.json` 已新增 `typecheck:root`，显式使用 `node --max-old-space-size=8192 ... tsc --noEmit -p tsconfig.json` |
 
-3. Memory contract 不够完整。
-   Agentrix 已有 recall、compaction、memory extract，但缺少 OpenClaw 4.5 那种显式 memory slot、flush plan、prompt supplement、runtime、dreaming 的完整 contract。
+### 9.2 当前仍然最关键的四类差距
 
-4. ACP 与 runtime compat 仍缺位。
-   这两个不是“锦上添花”，而是后续如果要继续向 OpenClaw 兼容框架收口时必须补齐的边界能力。
+1. VS Code / Copilot 级复杂任务 UX 仍有差距，但缺口已明显收缩。
+  本轮已经把 plan approval、任务时间线、async wake-back、checkpoint/resume 收进独立的 Task Workbench；真正剩下的差距主要收缩为 diff/terminal 富展示、多工具并行可视化、长任务执行细粒度回放，而不再是“复杂任务没有工作台”。
+
+2. OpenClaw 4.5 的视频生成 contract 已经落下首条真实链路，但还没有完全等价。
+  现在 Agentrix 已经具备 `video_generate`、provider runtime、task ledger、async wake-back、会话内自动回帖和独立任务 UI；当前剩余差距主要在于三种模式的全覆盖、更加通用的 provider registry，以及更完整的图像/视频参考素材参数面。
+
+3. Plugin-owned runtime / capability ownership 仍不够深。
+  Agentrix 的 skill + tool-registry 已经很强，但插件还不能像 OpenClaw 4.5 一样自然拥有自己的 channel runtime、gateway method、memory capability、provider capability、doctor/runtime seam。当前仍然是“中心服务强”，而不是“插件 contract 完整”。
+
+4. Memory slot、ACP bridge、runtime compat / doctor 仍然缺位。
+  Agentrix 已有 recall、compaction、memory extract、dreaming、wiki，但仍缺 OpenClaw 4.5 风格的 memory slot、flush plan、prompt supplement、runtime compat/doctor，以及 ACP 那种跨 runtime/host 的统一桥接能力。这个差距决定了它离“OpenClaw 兼容框架化”还有多远。
 
 ## 10. 总结
 
@@ -303,6 +336,12 @@ Agentrix 当前真正的框架中心不是单独的 UserAgent，也不是旧式�
 
 OpenClaw 4.5 是一个以 Gateway、Plugin、Memory Slot 为核心 contract 的通用 agent framework；Agentrix 当前则是在这个方向上已经走出相当深度的产品化变体，尤其强化了平台托管、多设备协同和 commerce-first 业务域。
 
-Agentrix 现在并不是“没做起来”，相反，它已经有大量真实运行模块；但它也还不是完全意义上的 OpenClaw 4.5 风格统一运行时。当前最合理的路线不是重复造一套新内核，而是把现有已运行能力继续向统一 control plane、统一 plugin contract、统一 memory contract 收口。
+Agentrix 现在已经不应该再被描述成“9 个运行、8 个半运行”的状态。经过本轮复核与补丁，更准确的判断是：大部分核心模块已经进入真实运行链路，query-engine 也已经以 runtime seam / stream protocol 形态投入运行，只是 full conversation loop 仍待继续统一。
 
-这也是为什么本次审计结论不是“推翻重做”，而是“继续收敛”。
+所以当前最合理的路线不是重复造一套新内核，而是沿着下面三条线继续收敛：
+
+1. 继续把复杂任务 UX 做到更接近 VS Code：补 diff/terminal 富展示、并行工具视图、执行回放，而不是从零重做 plan/timeline/workbench。
+2. 在已经落地的 `video_generate` 首条链路之上，继续补 image-to-video、video-to-video、更多 provider 注册与更丰富参数面。
+3. 继续把 plugin contract、memory contract、ACP/runtime compat 向 OpenClaw 风格统一边界收口。
+
+这也是为什么本次审计结论不是“推翻重做”，而是“主链已成形，接下来继续收敛缺口”。

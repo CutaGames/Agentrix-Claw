@@ -620,6 +620,7 @@ export class OpenAIIntegrationService {
       model?: string;
       temperature?: number;
       maxTokens?: number;
+      maxToolRounds?: number;
       context?: { userId?: string; sessionId?: string };
       userApiKey?: string; // 用户提供的 API Key（可选）
       userBaseURL?: string; // 用户提供的 baseURL（可选，如果不提供则使用系统配置的）
@@ -675,7 +676,7 @@ export class OpenAIIntegrationService {
         return await this.chatWithResponsesApi(openai, messages, tools, options);
       }
 
-      const completion = await this.streamOrComplete(openai, {
+      let completion = await this.streamOrComplete(openai, {
         model: options?.model || this.defaultModel,
         messages: messages.map((msg) => ({
           role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
@@ -688,7 +689,7 @@ export class OpenAIIntegrationService {
       }, options?.onChunk);
 
       // Multi-turn agent loop: keep calling LLM while it returns tool calls
-      const maxToolRounds = 5;
+      const maxToolRounds = options?.maxToolRounds ?? 5;
       let allToolCalls: any[] = [];
       let currentMessages = [...messages.map((msg) => ({
         role: msg.role === 'assistant' ? 'assistant' as const : msg.role === 'system' ? 'system' as const : 'user' as const,
@@ -696,16 +697,26 @@ export class OpenAIIntegrationService {
       }))];
       let message = completion.choices[0].message;
       let responseText = message.content || '';
+      let lastStopReason = completion.choices[0]?.finish_reason === 'length'
+        ? 'max_tokens'
+        : (message.tool_calls?.length ? 'tool_use' : 'end_turn');
 
       for (let round = 0; round <= maxToolRounds; round++) {
         const toolCalls = message.tool_calls;
+        lastStopReason = completion.choices[0]?.finish_reason === 'length'
+          ? 'max_tokens'
+          : (toolCalls?.length ? 'tool_use' : 'end_turn');
         if (!toolCalls || toolCalls.length === 0) {
-          return { text: responseText, functionCalls: allToolCalls.length > 0 ? allToolCalls : null };
+          return {
+            text: responseText,
+            functionCalls: allToolCalls.length > 0 ? allToolCalls : null,
+            stopReason: lastStopReason,
+          };
         }
 
         if (round === maxToolRounds) {
           this.logger.warn(`OpenAI agent loop: max ${maxToolRounds} tool rounds reached`);
-          return { text: responseText, functionCalls: allToolCalls };
+          return { text: responseText, functionCalls: allToolCalls, stopReason: lastStopReason };
         }
 
         this.logger.log(`OpenAI round ${round + 1}: ${toolCalls.length} tool call(s): ${toolCalls.map(tc => tc.type === 'function' ? tc.function.name : tc.type).join(', ')}`);
@@ -771,9 +782,14 @@ export class OpenAIIntegrationService {
 
         message = nextCompletion.choices[0].message;
         responseText = message.content || '';
+        completion = nextCompletion;
       }
 
-      return { text: responseText, functionCalls: allToolCalls.length > 0 ? allToolCalls : null };
+      return {
+        text: responseText,
+        functionCalls: allToolCalls.length > 0 ? allToolCalls : null,
+        stopReason: lastStopReason,
+      };
     } catch (error: any) {
       this.logger.error(`OpenAI API调用失败: ${error.message}`, error.stack);
       throw error;
@@ -872,7 +888,7 @@ export class OpenAIIntegrationService {
       content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
     }));
 
-    const maxToolRounds = 5;
+    const maxToolRounds = options?.maxToolRounds ?? 5;
     let allToolCalls: any[] = [];
 
     // Use raw fetch since openai SDK responses API may not be fully typed
@@ -948,13 +964,18 @@ export class OpenAIIntegrationService {
 
       // Check for function calls
       const functionCalls = outputItems.filter((item: any) => item.type === 'function_call');
+      const lastStopReason = functionCalls.length > 0 ? 'tool_use' : 'end_turn';
       if (functionCalls.length === 0) {
-        return { text: responseText, functionCalls: allToolCalls.length > 0 ? allToolCalls : null };
+        return {
+          text: responseText,
+          functionCalls: allToolCalls.length > 0 ? allToolCalls : null,
+          stopReason: lastStopReason,
+        };
       }
 
       if (round === maxToolRounds) {
         this.logger.warn(`Responses API agent loop: max ${maxToolRounds} tool rounds reached`);
-        return { text: responseText, functionCalls: allToolCalls };
+        return { text: responseText, functionCalls: allToolCalls, stopReason: lastStopReason };
       }
 
       this.logger.log(`Responses API round ${round + 1}: ${functionCalls.length} tool call(s): ${functionCalls.map((fc: any) => fc.name).join(', ')}`);
@@ -995,6 +1016,6 @@ export class OpenAIIntegrationService {
       currentInput = [...currentInput, ...outputItems, ...toolResults];
     }
 
-    return { text: '', functionCalls: allToolCalls.length > 0 ? allToolCalls : null };
+    return { text: '', functionCalls: allToolCalls.length > 0 ? allToolCalls : null, stopReason: 'end_turn' };
   }
 }

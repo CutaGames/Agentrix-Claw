@@ -60,9 +60,11 @@ import {
   getActivePlan,
   approvePlan as approvePlanApi,
   rejectPlan as rejectPlanApi,
+  resumeSession as resumeSessionApi,
   type AgentPlan,
 } from "../services/agentIntelligence";
 import PlanPanel from "./PlanPanel";
+import TaskWorkbenchPanel, { type TaskCheckpoint, type TaskWorkbenchEvent } from "./TaskWorkbenchPanel";
 import { ContextVisualizer } from "./ContextVisualizer";
 import CrossDevicePanel from "./CrossDevicePanel";
 import AgentEconomyPanel from "./AgentEconomyPanel";
@@ -92,10 +94,10 @@ import type { StreamEvent } from "../../../shared/stream-parser.ts";
 import {
   DESKTOP_LOCAL_MODEL_ID,
   DESKTOP_LOCAL_MODEL_LABEL,
+  ensureDesktopLocalSidecar,
   getDesktopLocalModelLabel,
   isDesktopLocalModelId,
   normalizeDesktopLocalModelId,
-  streamDesktopLocalChat,
   checkDesktopLocalModelReady,
 } from "../services/localChat";
 import { LocalLLMSidecar } from "../services/localLLM";
@@ -123,6 +125,97 @@ interface Props {
   onEnterProMode?: () => void;
 }
 
+const APPROX_CHARS_PER_TOKEN = 4;
+const LONG_LOCAL_PREFILL_TOKEN_THRESHOLD = 3000;
+const MANUAL_MODEL_SELECTION_GRACE_MS = 20_000;
+const STALE_DESKTOP_TASK_WINDOW_MS = 45_000;
+const RECENT_DESKTOP_FAILURE_WINDOW_MS = 15_000;
+const TASK_LIKE_PROMPT_PATTERN = /([a-z]:\\|\\|\/|\.tsx?\b|\.jsx?\b|\.json\b|\.md\b|package\.json|readme|src\/|backend\/|desktop\/|```|\n)|\b(search|find|install|run|execute|debug|fix|edit|write|read|open|grep|list|analy[sz]e|inspect|deploy|build|test|git|ssh|workspace|file|folder|directory|project|repo|code|patch|benchmark|profile|trace|continue|resume)\b|搜索|安装|运行|执行|修复|修改|查看|列出|分析|排查|部署|构建|测试|工作区|文件|目录|项目|仓库|代码/i;
+
+function estimateLocalPrefillTokens(messages: Array<{ content: string }>): number {
+  const totalChars = messages.reduce((sum, message) => sum + message.content.length, 0);
+  return Math.max(1, Math.round(totalChars / APPROX_CHARS_PER_TOKEN));
+}
+
+function getLocalPrefillFeedback(messages: Array<{ content: string }>): StreamFeedback {
+  const estimatedTokens = estimateLocalPrefillTokens(messages);
+  const isLongContext = estimatedTokens >= LONG_LOCAL_PREFILL_TOKEN_THRESHOLD;
+
+  return {
+    tone: "info",
+    label: isLongContext ? "长上下文预填充中" : "上下文预填充中",
+    detail: isLongContext
+      ? `本地模型已就绪，正在预处理约 ${estimatedTokens.toLocaleString()} tokens 的上下文`
+      : `本地模型已就绪，正在预处理约 ${estimatedTokens.toLocaleString()} tokens 的上下文`,
+  };
+}
+
+function getConversationModelLabel(
+  modelId: string,
+  models: Array<{ id: string; label?: string }>,
+  activeInstance?: OpenClawInstance,
+): string | null {
+  if (!modelId && activeInstance?.resolvedModelLabel) {
+    return activeInstance.resolvedModelLabel;
+  }
+
+  if (isDesktopLocalModelId(modelId)) {
+    return getDesktopLocalModelLabel(modelId);
+  }
+
+  const matchedModel = models.find((model) => model.id === modelId);
+  if (matchedModel?.label) {
+    return matchedModel.label;
+  }
+
+  if (activeInstance?.resolvedModel === modelId && activeInstance.resolvedModelLabel) {
+    return activeInstance.resolvedModelLabel;
+  }
+
+  return modelId || activeInstance?.resolvedModel || null;
+}
+
+function buildConversationSystemMessages(
+  activeAgent: DesktopAgent | null,
+  modelLabel: string | null,
+): Array<{ role: "system"; content: string }> {
+  const systemMessages: Array<{ role: "system"; content: string }> = [];
+
+  if (modelLabel) {
+    systemMessages.push({
+      role: "system",
+      content: `Current selected model for this conversation: "${modelLabel}". If the user asks which model is currently selected, answer with this exact label. Do not claim to be a different model.`,
+    });
+  }
+
+  const agentProfile = activeAgent?.description?.trim();
+  if (agentProfile) {
+    systemMessages.push({
+      role: "system",
+      content: `Agent profile: ${agentProfile}\nKeep replies aligned with this profile while preserving the user's intent.`,
+    });
+  }
+
+  return systemMessages;
+}
+
+function resolveEffectiveChatMode(
+  requestedMode: ChatMode,
+  text: string,
+  attachmentCount: number,
+  hasActivePlan: boolean,
+): ChatMode {
+  if (requestedMode !== "agent") {
+    return requestedMode;
+  }
+
+  if (attachmentCount > 0 || hasActivePlan) {
+    return "agent";
+  }
+
+  return TASK_LIKE_PROMPT_PATTERN.test(text.trim()) ? "agent" : "ask";
+}
+
 type BallState = "idle" | "recording" | "thinking" | "speaking";
 type ChatMode = "ask" | "agent" | "plan";
 
@@ -132,6 +225,8 @@ type SessionRuntimeState = {
   desktopTimelineEntries: TaskTimelineEntry[];
   pendingApproval: DesktopRemoteApproval | null;
   rememberApprovalForSession: boolean;
+  workbenchEvents: TaskWorkbenchEvent[];
+  lastCheckpointAt: number | null;
 };
 
 function createEmptySessionRuntimeState(): SessionRuntimeState {
@@ -141,6 +236,8 @@ function createEmptySessionRuntimeState(): SessionRuntimeState {
     desktopTimelineEntries: [],
     pendingApproval: null,
     rememberApprovalForSession: false,
+    workbenchEvents: [],
+    lastCheckpointAt: null,
   };
 }
 
@@ -209,6 +306,7 @@ export default function ChatPanel({
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [historyEntries, setHistoryEntries] = useState<SessionEntry[]>([]);
   const [crossDeviceOpen, setCrossDeviceOpen] = useState(false);
+  const [taskWorkbenchOpen, setTaskWorkbenchOpen] = useState(false);
   const [economyPanelOpen, setEconomyPanelOpen] = useState(false);
   const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
   const [dreamPanelOpen, setDreamPanelOpen] = useState(false);
@@ -219,7 +317,7 @@ export default function ChatPanel({
   const desktopDeviceId = useMemo(() => getDesktopDeviceId(), []);
   const [chatMode, setChatMode] = useState<ChatMode>(() => {
     const saved = localStorage.getItem("agentrix_chat_mode");
-    return saved === "ask" || saved === "plan" ? saved : "agent";
+    return saved === "ask" || saved === "plan" || saved === "agent" ? saved : "ask";
   });
   const activeAgent = useMemo<DesktopAgent | null>(
     () => agents.find((agent) => agent.id === activeAgentId) || null,
@@ -245,6 +343,11 @@ export default function ChatPanel({
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
   const sentenceAccRef = useRef<SentenceAccumulator | null>(null);
   const localSidecarRef = useRef<LocalLLMSidecar | null>(null);
+  const manualModelSelectionRef = useRef<{
+    modelId: string;
+    instanceId: string | null;
+    expiresAt: number;
+  } | null>(null);
   // Track whether the current send was voice-initiated for auto-TTS
   const voiceInitiatedRef = useRef(false);
   const activeRealtimeVoiceTurnRef = useRef<{ sessionId: string; assistantMessageId: string } | null>(null);
@@ -258,6 +361,8 @@ export default function ChatPanel({
   const desktopTimelineEntries = activeSessionRuntime.desktopTimelineEntries;
   const pendingApproval = activeSessionRuntime.pendingApproval;
   const rememberApprovalForSession = activeSessionRuntime.rememberApprovalForSession;
+  const workbenchEvents = activeSessionRuntime.workbenchEvents;
+  const lastCheckpointAt = activeSessionRuntime.lastCheckpointAt;
   const activePlan = sessionPlans[sessionIdRef.current] || null;
 
   // Token bar state — lightweight context usage for input area
@@ -328,6 +433,30 @@ export default function ChatPanel({
 
     return streamFeedback;
   }, [activeToolRun, feedbackElapsedSeconds, sendStartedAt, streamFeedback]);
+
+  const hasPendingManualModelSelection = useCallback((instanceId: string | null, resolvedModelId?: string | null) => {
+    const pendingSelection = manualModelSelectionRef.current;
+    if (!pendingSelection) {
+      return false;
+    }
+
+    if (pendingSelection.instanceId !== instanceId) {
+      return false;
+    }
+
+    if (pendingSelection.expiresAt <= Date.now()) {
+      manualModelSelectionRef.current = null;
+      return false;
+    }
+
+    if (resolvedModelId && normalizeDesktopLocalModelId(resolvedModelId) === pendingSelection.modelId) {
+      manualModelSelectionRef.current = null;
+      return false;
+    }
+
+    return true;
+  }, []);
+
   const fetchTokenUsage = useCallback(async () => {
     if (!token || !sessionIdRef.current) return;
     const stamp = ++tokenFetchRef.current;
@@ -459,7 +588,15 @@ export default function ChatPanel({
       ...prev,
       [sessionId]: plan,
     }));
-  }, []);
+    patchSessionRuntime(sessionId, { lastCheckpointAt: Date.now() });
+  }, [patchSessionRuntime]);
+
+  const pushWorkbenchEvent = useCallback((sessionId: string, event: TaskWorkbenchEvent) => {
+    patchSessionRuntime(sessionId, (current) => ({
+      workbenchEvents: [event, ...current.workbenchEvents.filter((entry) => entry.id !== event.id)].slice(0, 16),
+      lastCheckpointAt: Math.max(current.lastCheckpointAt || 0, event.createdAt),
+    }));
+  }, [patchSessionRuntime]);
 
   const persistMessagesForSession = useCallback(
     (sessionId: string, nextMessages: ChatMessage[]) => {
@@ -482,8 +619,9 @@ export default function ChatPanel({
       )));
 
       pushSessionSync(sessionId, nextMessages, title);
+      patchSessionRuntime(sessionId, { lastCheckpointAt: Date.now() });
     },
-    [refreshHistory],
+    [patchSessionRuntime, refreshHistory],
   );
 
   const updateSessionMessages = useCallback(
@@ -533,6 +671,33 @@ export default function ChatPanel({
     const tasks = Array.isArray(state?.tasks) ? state.tasks : [];
     const deviceTasks = tasks.filter((task: any) => task?.deviceId === desktopDeviceId);
     const approvals = Array.isArray(state?.approvals) ? state.approvals : [];
+    const now = Date.now();
+
+    const getTaskActivityTime = (task: any) => Number(
+      task?.finishedAt
+      || task?.startedAt
+      || Date.parse(task?.updatedAt || task?.requestedAt || "")
+      || 0,
+    );
+
+    const isVisibleTask = (task: any) => {
+      const status = (task?.status as TaskRunState) || "completed";
+      const ageMs = now - getTaskActivityTime(task);
+
+      if (status === "need-approve") {
+        return true;
+      }
+
+      if (status === "executing") {
+        return ageMs <= STALE_DESKTOP_TASK_WINDOW_MS;
+      }
+
+      if (status === "failed") {
+        return ageMs <= RECENT_DESKTOP_FAILURE_WINDOW_MS;
+      }
+
+      return false;
+    };
 
     const taskGroups = new Map<string, any[]>();
     const taskSessionMap = new Map<string, string>();
@@ -608,11 +773,12 @@ export default function ChatPanel({
       for (const sessionId of knownSessionIds) {
         const current = next[sessionId] || createEmptySessionRuntimeState();
         const sessionTasks = taskGroups.get(sessionId) || [];
+        const visibleSessionTasks = sessionTasks.filter(isVisibleTask);
         const approval = approvalBySession.get(sessionId) || null;
         next[sessionId] = {
           ...current,
-          desktopTaskStatus: sessionTasks.length > 0 ? deriveTaskStatus(sessionTasks) : "idle",
-          desktopTimelineEntries: sessionTasks.length > 0 ? buildTimelineEntries(sessionTasks) : [],
+          desktopTaskStatus: visibleSessionTasks.length > 0 ? deriveTaskStatus(visibleSessionTasks) : "idle",
+          desktopTimelineEntries: visibleSessionTasks.length > 0 ? buildTimelineEntries(visibleSessionTasks) : [],
           pendingApproval: approval,
           rememberApprovalForSession: approval ? current.rememberApprovalForSession : false,
         };
@@ -637,6 +803,22 @@ export default function ChatPanel({
     patchSessionRuntime(sessionIdRef.current, { rememberApprovalForSession: value });
   }, [patchSessionRuntime]);
 
+  const activeCheckpoint = useMemo<TaskCheckpoint | null>(() => {
+    if (!sessionIdRef.current) {
+      return null;
+    }
+
+    const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant" && message.content.trim().length > 0);
+    return {
+      sessionId: sessionIdRef.current,
+      updatedAt: lastCheckpointAt || messages[messages.length - 1]?.createdAt || Date.now(),
+      messageCount: messages.length,
+      lastAssistantPreview: lastAssistant?.content ? lastAssistant.content.slice(0, 220) : undefined,
+      planStatus: activePlan?.status || null,
+      taskStatus: desktopTaskStatus,
+    };
+  }, [activePlan?.status, desktopTaskStatus, lastCheckpointAt, messages]);
+
   // Load workspace directory
   useEffect(() => {
     getWorkspaceDir().then(setWorkspaceDirState).catch(() => {});
@@ -646,24 +828,19 @@ export default function ChatPanel({
   }, []);
 
   useEffect(() => {
-    if (token) {
-      fetchModels(token).then((m) => {
-        if (Array.isArray(m) && m.length) {
-          setModels(m);
-          // Use user's resolved model from any source (subscription, custom provider, agent-account)
-          const activeInst = instances.find((i) => i.id === activeInstanceId);
-          if (isDesktopLocalModelId(selectedModel)) {
-            return;
-          }
-          if (activeInst?.resolvedModel) {
-            setSelectedModel(normalizeDesktopLocalModelId(activeInst.resolvedModel));
-          } else {
-            setSelectedModel(m[0]?.id || "");
-          }
-        }
-      });
+    if (!token) {
+      setModels([]);
+      return;
     }
-  }, [token, instances, activeInstanceId, selectedModel]);
+
+    fetchModels(token)
+      .then((fetchedModels) => {
+        if (Array.isArray(fetchedModels)) {
+          setModels(fetchedModels);
+        }
+      })
+      .catch(() => {});
+  }, [token]);
 
   useEffect(() => {
     localStorage.setItem("agentrix_chat_mode", chatMode);
@@ -678,17 +855,67 @@ export default function ChatPanel({
     fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
   }, [token, activeTabId, applyDesktopSyncState]);
 
-  // Sync selected model when instances refresh (e.g., model changed from mobile)
   useEffect(() => {
     const activeInst = instances.find((i) => i.id === activeInstanceId);
-    if (
-      !isDesktopLocalModelId(selectedModel)
-      && activeInst?.resolvedModel
-      && activeInst.resolvedModel !== selectedModel
-    ) {
-      setSelectedModel(normalizeDesktopLocalModelId(activeInst.resolvedModel));
+    const normalizedResolvedModel = activeInst?.resolvedModel
+      ? normalizeDesktopLocalModelId(activeInst.resolvedModel)
+      : "";
+
+    if (hasPendingManualModelSelection(activeInstanceId || null, normalizedResolvedModel)) {
+      return;
     }
-  }, [instances, activeInstanceId, selectedModel]);
+
+    if (isDesktopLocalModelId(selectedModel)) {
+      return;
+    }
+
+    if (normalizedResolvedModel && normalizedResolvedModel !== selectedModel) {
+      setSelectedModel(normalizedResolvedModel);
+      try {
+        localStorage.setItem("agentrix_desktop_selected_model", normalizedResolvedModel);
+      } catch {}
+      return;
+    }
+
+    if (!selectedModel && models.length > 0) {
+      const fallbackModelId = models[0]?.id || "";
+      setSelectedModel(fallbackModelId);
+      try {
+        localStorage.setItem("agentrix_desktop_selected_model", fallbackModelId);
+      } catch {}
+    }
+  }, [instances, activeInstanceId, hasPendingManualModelSelection, models, selectedModel]);
+
+  useEffect(() => {
+    const pendingSelection = manualModelSelectionRef.current;
+    if (pendingSelection && pendingSelection.instanceId !== (activeInstanceId || null)) {
+      manualModelSelectionRef.current = null;
+    }
+  }, [activeInstanceId]);
+
+  useEffect(() => {
+    if (!isDesktopLocalModelId(selectedModel)) {
+      void localSidecarRef.current?.stop().catch(() => {});
+      return;
+    }
+
+    let cancelled = false;
+    const sidecar = localSidecarRef.current || new LocalLLMSidecar();
+    localSidecarRef.current = sidecar;
+
+    void (async () => {
+      const readiness = await checkDesktopLocalModelReady(selectedModel).catch(() => null);
+      if (cancelled || !readiness?.ready) {
+        return;
+      }
+
+      await ensureDesktopLocalSidecar(sidecar, selectedModel).catch(() => {});
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedModel]);
 
   useEffect(() => {
     return () => {
@@ -945,7 +1172,13 @@ export default function ChatPanel({
       let result = trimmed;
       if (attachments.length > 0) {
         const attachmentLines = attachments.map((attachment, index) => {
-          const label = attachment.kind === "image" ? "Image" : "File";
+          const label = attachment.kind === "image"
+            ? "Image"
+            : attachment.kind === "video"
+              ? "Video"
+              : attachment.kind === "audio"
+                ? "Audio"
+                : "File";
           return `${index + 1}. ${label}: ${attachment.originalName} (${attachment.mimetype}, ${formatBytes(attachment.size)})\nURL: ${attachment.publicUrl}`;
         });
         const prefix = trimmed ? `${trimmed}\n\n` : "";
@@ -1206,6 +1439,7 @@ export default function ChatPanel({
 
   const persistSelectedModel = useCallback(async (modelId: string, options?: { announce?: boolean }) => {
     const normalizedModelId = normalizeDesktopLocalModelId(modelId);
+    const previousModelId = selectedModel;
     setSelectedModel(normalizedModelId);
 
     try {
@@ -1213,6 +1447,7 @@ export default function ChatPanel({
     } catch {}
 
     if (isDesktopLocalModelId(normalizedModelId)) {
+      manualModelSelectionRef.current = null;
       if (options?.announce) {
         addSystemMessage(`✅ Switched to model: ${getDesktopLocalModelLabel(modelId)}`);
       }
@@ -1220,12 +1455,19 @@ export default function ChatPanel({
     }
 
     if (!activeInstanceId || !token) {
+      manualModelSelectionRef.current = null;
       if (options?.announce) {
         const label = models.find((model) => model.id === normalizedModelId)?.label || normalizedModelId;
         addSystemMessage(`✅ Switched to model: ${label}`);
       }
       return true;
     }
+
+    manualModelSelectionRef.current = {
+      modelId: normalizedModelId,
+      instanceId: activeInstanceId,
+      expiresAt: Date.now() + MANUAL_MODEL_SELECTION_GRACE_MS,
+    };
 
     try {
       const response = await apiFetch(`${API_BASE}/openclaw/instances/${activeInstanceId}/model`, {
@@ -1251,6 +1493,11 @@ export default function ChatPanel({
 
       return true;
     } catch (error: any) {
+      manualModelSelectionRef.current = null;
+      setSelectedModel(previousModelId);
+      try {
+        localStorage.setItem("agentrix_desktop_selected_model", previousModelId);
+      } catch {}
       if (options?.announce) {
         addSystemMessage(`❌ ${error?.message || error}`);
       }
@@ -1653,6 +1900,12 @@ export default function ChatPanel({
       }
 
       const outboundText = serializeMessageForModel(text, pendingAttachments);
+      const effectiveChatMode = resolveEffectiveChatMode(
+        chatMode,
+        text,
+        pendingAttachments.length,
+        Boolean(activePlan),
+      );
       const currentMessagesForSession = tabMessagesCache.current[targetSessionId] || messages;
 
       const userMsg: ChatMessage = {
@@ -1678,8 +1931,10 @@ export default function ChatPanel({
       setContinuePrompt(null);
       setStreamFeedback({
         tone: "info",
-        label: chatMode === "agent" ? "Agent 正在处理任务" : "正在生成回复",
-        detail: "等待首个响应分片",
+        label: effectiveChatMode === "agent" ? "Agent 正在处理任务" : "正在生成回复",
+        detail: effectiveChatMode === chatMode
+          ? "等待首个响应分片"
+          : "检测到普通对话，已跳过工具链",
       });
       patchSessionRuntime(targetSessionId, { sending: true });
       if (targetSessionId === sessionIdRef.current) {
@@ -1689,7 +1944,8 @@ export default function ChatPanel({
       trackEvent("chat_send", {
         hasAttachments: pendingAttachments.length > 0,
         model: selectedModel,
-        mode: chatMode,
+        mode: effectiveChatMode,
+        requestedMode: chatMode,
       });
 
       const shouldStreamTTS = ttsEnabled && token && voiceInitiatedRef.current;
@@ -1726,12 +1982,11 @@ export default function ChatPanel({
           role: message.role,
           content: serializeMessageForModel(message.content, message.attachments || []),
         }));
+        const currentModelLabel = getConversationModelLabel(selectedModel, models, activeInst);
+        const systemMessages = buildConversationSystemMessages(activeAgent, currentModelLabel);
 
-        if (activeAgent) {
-          history.unshift({
-            role: "system",
-            content: `You are responding as the desktop agent \"${activeAgent.name}\". Keep replies aligned with this agent identity while preserving the user's intent.`,
-          });
+        if (systemMessages.length > 0) {
+          history.unshift(...systemMessages);
         }
         history.push({ role: "user", content: outboundText });
 
@@ -1756,6 +2011,16 @@ export default function ChatPanel({
           updateSessionMessages(targetSessionId, (prev) =>
             prev.map((message) => message.id === assistantId ? { ...message, meta } : message),
           );
+          if (meta.resolvedModel && !useDesktopLocalModel) {
+            const normalizedResolvedModel = normalizeDesktopLocalModelId(meta.resolvedModel);
+            manualModelSelectionRef.current = null;
+            setSelectedModel((currentSelectedModel) => (
+              currentSelectedModel === normalizedResolvedModel ? currentSelectedModel : normalizedResolvedModel
+            ));
+            try {
+              localStorage.setItem("agentrix_desktop_selected_model", normalizedResolvedModel);
+            } catch {}
+          }
           if (meta.plan) {
             setPlanForSession(targetSessionId, meta.plan);
           }
@@ -1872,6 +2137,13 @@ export default function ChatPanel({
                 label: "输出达到长度上限",
                 detail: "点击 Continue 从中断位置续写",
               });
+            } else if (event.reason === "tool_use") {
+              setContinuePrompt(buildContinuePrompt());
+              setStreamFeedback({
+                tone: "warning",
+                label: "复杂任务尚未完成",
+                detail: "工具链达到当前执行预算，点击 Continue 继续未完成步骤",
+              });
             } else if (event.reason === "abort") {
               setStreamFeedback({
                 tone: "warning",
@@ -1974,7 +2246,7 @@ export default function ChatPanel({
           }
 
           // Pre-flight: check if local model + binary are available
-          const readiness = await checkDesktopLocalModelReady();
+          const readiness = await checkDesktopLocalModelReady(selectedModel);
           if (!readiness.ready) {
             // No local model available — skip local attempt, fall through to cloud
             shouldFallbackToCloud = Boolean(authToken);
@@ -2049,15 +2321,31 @@ export default function ChatPanel({
           try {
             const localSidecar = localSidecarRef.current || new LocalLLMSidecar();
             localSidecarRef.current = localSidecar;
-            setStreamFeedback({
-              tone: "info",
-              label: "正在启动本地模型",
-              detail: "Gemma Nano 2B 本地推理中",
-            });
+            const localModelLabel = getDesktopLocalModelLabel(selectedModel);
+            if (localSidecar.currentStatus !== "running") {
+              setStreamFeedback({
+                tone: "info",
+                label: "模型载入中",
+                detail: `${localModelLabel} 正在加载到本地内存`,
+              });
+            }
 
-            for await (const chunk of streamDesktopLocalChat(localSidecar, history)) {
+            await ensureDesktopLocalSidecar(localSidecar, selectedModel);
+            setStreamFeedback(getLocalPrefillFeedback(history));
+
+            let receivedFirstLocalChunk = false;
+
+            for await (const chunk of localSidecar.chatStream(history)) {
               if (controller.signal.aborted) {
                 break;
+              }
+              if (!receivedFirstLocalChunk) {
+                receivedFirstLocalChunk = true;
+                setStreamFeedback({
+                  tone: "info",
+                  label: "正在输出回复",
+                  detail: "内容持续生成中",
+                });
               }
               chunkHandler(chunk);
             }
@@ -2184,7 +2472,7 @@ export default function ChatPanel({
               sessionId: targetSessionId,
               token: authToken,
               model: useDesktopLocalModel ? fallbackCloudModel : selectedModel || undefined,
-              mode: chatMode,
+              mode: effectiveChatMode,
               onChunk: chunkHandler,
               onMeta: metaHandler,
               onEvent: eventHandler,
@@ -2198,7 +2486,7 @@ export default function ChatPanel({
               agentId: activeAgentId,
               token: authToken,
               model: useDesktopLocalModel ? fallbackCloudModel : selectedModel || undefined,
-              mode: chatMode,
+              mode: effectiveChatMode,
               onChunk: chunkHandler,
               onDone: doneHandler(resolve),
               onError: errorHandler(resolve),
@@ -2238,6 +2526,7 @@ export default function ChatPanel({
       uploadingAttachments,
       handleSlashCommand,
       chatMode,
+      activePlan,
       updateSessionMessages,
     ],
   );
@@ -2463,6 +2752,126 @@ export default function ChatPanel({
     };
   }, [applyDesktopSyncState, desktopDeviceId, token]);
 
+  useEffect(() => {
+    const handleSocketEvent = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { event?: string; data?: any } | undefined;
+      const eventName = detail?.event;
+      const data = detail?.data;
+      if (!eventName || !data) {
+        return;
+      }
+
+      const eventSessionId = typeof data.sessionId === "string" && data.sessionId
+        ? data.sessionId
+        : undefined;
+      const payload = data.payload || data;
+      const timestamp = typeof data.timestamp === "number" ? data.timestamp : Date.now();
+
+      if (eventName === "agent:plan_update" && eventSessionId && payload) {
+        setPlanForSession(eventSessionId, payload as AgentPlan);
+        pushWorkbenchEvent(eventSessionId, {
+          id: `plan-${eventSessionId}-${timestamp}`,
+          title: "Plan updated",
+          detail: typeof payload?.goal === "string" ? payload.goal : "The active plan changed.",
+          tone: payload?.status === "failed" ? "error" : payload?.status === "completed" ? "success" : "info",
+          createdAt: timestamp,
+        });
+        if (eventSessionId === sessionIdRef.current && (payload?.status === "awaiting_approval" || payload?.status === "executing")) {
+          setTaskWorkbenchOpen(true);
+        }
+        return;
+      }
+
+      if (eventName === "agent:subtask_update") {
+        const sessionId = eventSessionId || payload?.subtask?.parentSessionId || sessionIdRef.current;
+        if (!sessionId) {
+          return;
+        }
+        pushWorkbenchEvent(sessionId, {
+          id: `subtask-${payload?.subtask?.id || timestamp}`,
+          title: payload?.action === "created" ? "Subtask created" : "Subtask updated",
+          detail: payload?.subtask?.title || payload?.title || "A delegated subtask changed state.",
+          tone: "info",
+          createdAt: timestamp,
+        });
+        return;
+      }
+
+      if (eventName === "agent:session_update" && eventSessionId) {
+        if (payload?.type === "video_task_completed") {
+          pushWorkbenchEvent(eventSessionId, {
+            id: `video-complete-${payload.taskId || timestamp}`,
+            title: "Video task completed",
+            detail: payload?.outputUrl || "Background video generation finished.",
+            tone: "success",
+            createdAt: timestamp,
+          });
+          if (payload?.message && typeof payload.message.content === "string") {
+            updateSessionMessages(eventSessionId, (prev) => {
+              if (prev.some((message) => message.id === payload.message.id)) {
+                return prev;
+              }
+              return [
+                ...prev,
+                {
+                  id: payload.message.id || `video-task-${payload.taskId || timestamp}`,
+                  role: "assistant",
+                  content: payload.message.content,
+                  createdAt: payload.message.createdAt || timestamp,
+                },
+              ];
+            }, { persist: true, markUnread: eventSessionId !== sessionIdRef.current });
+          }
+          if (eventSessionId === sessionIdRef.current) {
+            setTaskWorkbenchOpen(true);
+          }
+          return;
+        }
+
+        if (payload?.type === "video_task_failed") {
+          pushWorkbenchEvent(eventSessionId, {
+            id: `video-failed-${payload.taskId || timestamp}`,
+            title: "Video task failed",
+            detail: payload?.error || "Background video generation failed.",
+            tone: "error",
+            createdAt: timestamp,
+          });
+          if (eventSessionId === sessionIdRef.current) {
+            setTaskWorkbenchOpen(true);
+          }
+          return;
+        }
+
+        if (payload?.type === "new_message") {
+          pushWorkbenchEvent(eventSessionId, {
+            id: `session-message-${eventSessionId}-${timestamp}`,
+            title: "Session updated",
+            detail: payload?.hasToolCalls ? "Assistant completed a tool-backed turn." : "Assistant completed a turn.",
+            tone: "info",
+            createdAt: timestamp,
+          });
+        }
+        return;
+      }
+
+      if (eventName === "agent:task-completed" && data?.sessionId) {
+        pushWorkbenchEvent(data.sessionId, {
+          id: `task-completed-${data.sessionId}-${timestamp}`,
+          title: "Background task completed",
+          detail: data.summary || "An agent task completed on another surface.",
+          tone: "success",
+          createdAt: timestamp,
+        });
+        if (data.sessionId === sessionIdRef.current) {
+          setTaskWorkbenchOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener("agentrix:socket-event", handleSocketEvent as EventListener);
+    return () => window.removeEventListener("agentrix:socket-event", handleSocketEvent as EventListener);
+  }, [pushWorkbenchEvent, setPlanForSession, updateSessionMessages]);
+
   // Listen for clipboard quick-action sends from FloatingBall
   useEffect(() => {
     const handler = (e: Event) => {
@@ -2683,6 +3092,9 @@ export default function ChatPanel({
         <button onClick={() => setCrossDeviceOpen(true)} style={iconBtnStyle} title="Cross-Device Hub">
           🔗
         </button>
+        <button onClick={() => setTaskWorkbenchOpen(true)} style={iconBtnStyle} title="Task Workbench">
+          🗂
+        </button>
         <button onClick={() => setEconomyPanelOpen(true)} style={iconBtnStyle} title="Agent Economy">
           💰
         </button>
@@ -2819,6 +3231,74 @@ export default function ChatPanel({
         sessionId={sessionIdRef.current}
       />
 
+      <TaskWorkbenchPanel
+        open={taskWorkbenchOpen}
+        onClose={() => setTaskWorkbenchOpen(false)}
+        plan={activePlan}
+        taskStatus={desktopTaskStatus}
+        timelineEntries={desktopTimelineEntries}
+        pendingApproval={pendingApproval}
+        events={workbenchEvents}
+        checkpoint={activeCheckpoint}
+        onApprovePlan={async () => {
+          if (!token) return;
+          const updated = await approvePlanApi(token, sessionIdRef.current);
+          if (updated) setPlanForSession(sessionIdRef.current, updated);
+          if (chatMode === "plan") setChatMode("agent");
+          handleSend("approve");
+        }}
+        onRejectPlan={async () => {
+          if (!token) return;
+          const updated = await rejectPlanApi(token, sessionIdRef.current, "rejected by user");
+          if (updated) setPlanForSession(sessionIdRef.current, updated);
+        }}
+        onOpenApprovals={() => {
+          setTaskWorkbenchOpen(false);
+          setCrossDeviceOpen(true);
+        }}
+        onResumeFromCheckpoint={() => {
+          if (!token) {
+            return;
+          }
+
+          void resumeSessionApi(token, sessionIdRef.current)
+            .then((data: any) => {
+              const resumedSessionId = data?.session?.sessionId || sessionIdRef.current;
+              const resumedMessages = Array.isArray(data?.messages)
+                ? data.messages.map((message: any) => ({
+                    id: String(message.id || `${resumedSessionId}-${message.sequenceNumber || Date.now()}`),
+                    role: message.role === "assistant" || message.role === "system" ? message.role : "user",
+                    content: String(message.content || ""),
+                    createdAt: Date.parse(message.createdAt || "") || Date.now(),
+                  }))
+                : [];
+
+              if (resumedMessages.length > 0) {
+                updateSessionMessages(resumedSessionId, () => resumedMessages, { persist: true });
+              }
+              if (data?.plan) {
+                setPlanForSession(resumedSessionId, data.plan);
+              }
+              pushWorkbenchEvent(resumedSessionId, {
+                id: `resume-${resumedSessionId}-${Date.now()}`,
+                title: "Checkpoint restored",
+                detail: `Loaded ${resumedMessages.length} messages and current plan state from the server.`,
+                tone: "success",
+                createdAt: Date.now(),
+              });
+              setTaskWorkbenchOpen(false);
+            })
+            .catch(() => {
+              setTaskWorkbenchOpen(false);
+              if (continuePrompt) {
+                handleContinue();
+                return;
+              }
+              handleSend("Continue from the latest checkpoint. Preserve the active plan, task progress, and any pending background results.");
+            });
+        }}
+      />
+
       {/* OpenClaw 4.5 panels */}
       <DreamPanel open={dreamPanelOpen} onClose={() => setDreamPanelOpen(false)} />
       <PluginPanel open={pluginPanelOpen} onClose={() => setPluginPanelOpen(false)} />
@@ -2892,8 +3372,24 @@ export default function ChatPanel({
         </div>
       )}
 
-      {(desktopTaskStatus !== "idle" || desktopTimelineEntries.length > 0) && (
-        <TaskTimeline status={desktopTaskStatus} entries={desktopTimelineEntries} />
+      {(desktopTaskStatus !== "idle" || activePlan || pendingApproval) && (
+        <div style={taskWorkbenchBannerStyle}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 11, color: "#7dd3fc", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>
+              Task Workbench
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>
+              {pendingApproval
+                ? `Approval pending · ${pendingApproval.title}`
+                : activePlan
+                  ? `Plan ${activePlan.status.replace(/_/g, " ")}`
+                  : `${desktopTimelineEntries.length} timeline step${desktopTimelineEntries.length === 1 ? "" : "s"} tracked`}
+            </div>
+          </div>
+          <button onClick={() => setTaskWorkbenchOpen(true)} style={taskWorkbenchBannerButtonStyle}>
+            Open
+          </button>
+        </div>
       )}
 
       {/* Cross-device handoff banner */}
@@ -3093,11 +3589,20 @@ export default function ChatPanel({
           </div>
           {pendingApproval && (
             <button
-              onClick={() => setCrossDeviceOpen(true)}
+              onClick={() => setTaskWorkbenchOpen(true)}
               style={pendingApprovalButtonStyle}
-              title="Review all pending approvals in the Cross-Device Hub"
+              title="Open the Task Workbench to review approvals"
             >
               Approval pending
+            </button>
+          )}
+          {(desktopTaskStatus !== "idle" || activePlan) && (
+            <button
+              onClick={() => setTaskWorkbenchOpen(true)}
+              style={taskWorkbenchPillStyle}
+              title="Open Task Workbench"
+            >
+              Workbench
             </button>
           )}
           {activePlan && chatMode === "plan" && (
@@ -3166,7 +3671,15 @@ export default function ChatPanel({
                   maxWidth: 260,
                 }}
               >
-                <span style={{ fontSize: 14 }}>{attachment.isImage ? "🖼️" : "📎"}</span>
+                <span style={{ fontSize: 14 }}>
+                  {attachment.kind === "image"
+                    ? "🖼️"
+                    : attachment.kind === "video"
+                      ? "🎬"
+                      : attachment.kind === "audio"
+                        ? "🎵"
+                        : "📎"}
+                </span>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {attachment.originalName}
@@ -3295,7 +3808,7 @@ function formatBytes(size: number) {
 }
 
 function buildContinuePrompt() {
-  return "Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting.";
+  return "Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting. If you were in the middle of a tool-driven task, resume the unfinished steps first and only summarize after the task is complete.";
 }
 
 function summarizeToolInput(input: unknown) {
@@ -3454,4 +3967,39 @@ const pendingApprovalButtonStyle: CSSProperties = {
   fontSize: 11,
   fontWeight: 600,
   padding: "6px 10px",
+};
+
+const taskWorkbenchPillStyle: CSSProperties = {
+  border: "1px solid rgba(125,211,252,0.32)",
+  borderRadius: 999,
+  background: "rgba(125,211,252,0.08)",
+  color: "#7dd3fc",
+  cursor: "pointer",
+  fontSize: 11,
+  fontWeight: 700,
+  padding: "6px 10px",
+};
+
+const taskWorkbenchBannerStyle: CSSProperties = {
+  margin: "8px 16px 0",
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px solid rgba(125,211,252,0.18)",
+  background: "linear-gradient(90deg, rgba(14,116,144,0.16), rgba(8,47,73,0.12))",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
+const taskWorkbenchBannerButtonStyle: CSSProperties = {
+  border: "none",
+  borderRadius: 999,
+  background: "#38bdf8",
+  color: "#082f49",
+  cursor: "pointer",
+  fontSize: 11,
+  fontWeight: 700,
+  padding: "7px 12px",
+  flexShrink: 0,
 };

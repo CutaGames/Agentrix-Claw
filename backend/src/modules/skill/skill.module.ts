@@ -47,6 +47,7 @@ import { A2AModule } from '../a2a/a2a.module';
 import { MerchantTaskModule } from '../merchant-task/merchant-task.module';
 import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integration.module';
 import { OpenClawBridgeModule } from '../openclaw-bridge/openclaw-bridge.module';
+import { VideoGenerationModule } from '../video-generation/video-generation.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { OpenClawBridgeModule } from '../openclaw-bridge/openclaw-bridge.module'
     forwardRef(() => MerchantTaskModule),
     forwardRef(() => ClaudeIntegrationModule),
     forwardRef(() => OpenClawBridgeModule),
+    VideoGenerationModule,
   ],
   controllers: [SkillController, SkillAdminController, DeveloperRevenueController, OnboardingController],
   providers: [

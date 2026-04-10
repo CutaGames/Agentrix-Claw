@@ -219,79 +219,105 @@ export default function MessageBubble({ message, onRetry }: Props) {
             gap: 8,
           }}
         >
-          {message.attachments.map((attachment) => (
-            <a
-              key={`${message.id}-${attachment.fileName}`}
-              href={attachment.publicUrl}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: 8,
-                borderRadius: 10,
-                border: "1px solid rgba(255,255,255,0.08)",
-                background: "rgba(255,255,255,0.04)",
-                color: "inherit",
-                textDecoration: "none",
-              }}
-            >
-              {attachment.isImage ? (
-                <img
-                  src={attachment.publicUrl}
-                  alt={attachment.originalName}
-                  style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: 8,
-                    objectFit: "cover",
-                    flexShrink: 0,
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: 8,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: "rgba(0,0,0,0.24)",
-                    flexShrink: 0,
-                    fontSize: 22,
-                  }}
-                >
-                  📎
-                </div>
-              )}
-              <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-                <span
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {attachment.originalName}
-                </span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: "var(--text-dim)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {attachment.mimetype} · {formatBytes(attachment.size)}
-                </span>
+          {message.attachments.map((attachment) => {
+            const preview = attachment.isImage ? (
+              <img
+                src={attachment.publicUrl}
+                alt={attachment.originalName}
+                style={{
+                  width: "100%",
+                  maxWidth: 280,
+                  maxHeight: 220,
+                  borderRadius: 8,
+                  objectFit: "cover",
+                }}
+              />
+            ) : attachment.isVideo ? (
+              <video
+                controls
+                preload="metadata"
+                style={{
+                  width: "100%",
+                  maxWidth: 320,
+                  borderRadius: 8,
+                  background: "rgba(0,0,0,0.32)",
+                }}
+              >
+                <source src={attachment.publicUrl} type={attachment.mimetype} />
+              </video>
+            ) : attachment.isAudio ? (
+              <audio controls preload="metadata" style={{ width: "100%", minWidth: 220 }}>
+                <source src={attachment.publicUrl} type={attachment.mimetype} />
+              </audio>
+            ) : (
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 8,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "rgba(0,0,0,0.24)",
+                  flexShrink: 0,
+                  fontSize: 22,
+                }}
+              >
+                📎
               </div>
-            </a>
-          ))}
+            );
+
+            return (
+              <div
+                key={`${message.id}-${attachment.fileName}`}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                  padding: 8,
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(255,255,255,0.04)",
+                }}
+              >
+                {preview}
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {attachment.originalName}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "var(--text-dim)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {attachment.mimetype} · {formatBytes(attachment.size)}
+                    </span>
+                  </div>
+                  <a
+                    href={attachment.publicUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: "var(--accent)", fontSize: 12, textDecoration: "none" }}
+                  >
+                    Open
+                  </a>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

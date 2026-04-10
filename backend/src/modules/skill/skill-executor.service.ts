@@ -25,6 +25,7 @@ import { TaskMarketplaceService } from '../merchant-task/task-marketplace.servic
 import { SkillCategory, SkillStatus } from '../../entities/skill.entity';
 import { OpenClawBridgeService } from '../openclaw-bridge/openclaw-bridge.service';
 import { OpenClawSkillHubService } from '../openclaw-bridge/openclaw-skill-hub.service';
+import { VideoGenerationService } from '../video-generation/video-generation.service';
 import axios from 'axios';
 
 export interface ExecutionContext {
@@ -79,6 +80,7 @@ export class SkillExecutorService {
     private readonly claudeIntegrationService: ClaudeIntegrationService,
     private readonly openClawBridgeService: OpenClawBridgeService,
     private readonly openClawSkillHubService: OpenClawSkillHubService,
+    private readonly videoGenerationService: VideoGenerationService,
   ) {
     this.registerDefaultHandlers();
   }
@@ -1680,6 +1682,13 @@ export class SkillExecutorService {
         title: title || url,
         message: `Opening ${title || url} in browser`,
       };
+    });
+
+    /**
+     * video_generate — Submit or query an asynchronous video generation task
+     */
+    this.registerHandler('video_generate', async (params, context) => {
+      return this.videoGenerationService.executeTool(params || {}, context);
     });
 
     /**

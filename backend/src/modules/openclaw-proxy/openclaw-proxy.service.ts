@@ -33,6 +33,8 @@ import { McpServerRegistryService } from '../mcp-registry/mcp-server-registry.se
 import { DesktopSyncService } from '../desktop-sync/desktop-sync.service';
 import { DesktopCommandStatus, DesktopCommandKind } from '../desktop-sync/dto/desktop-sync.dto';
 import { AgentOrchestrationService } from '../agent-orchestration/agent-orchestration.service';
+import { LlmRouterService } from '../llm-router/llm-router.service';
+import { CostTrackerService } from '../cost-tracker/cost-tracker.service';
 import { RuntimeSeamService } from '../query-engine/runtime-seam.service';
 
 export interface ChatMessageDto {
@@ -120,6 +122,8 @@ export class OpenClawProxyService {
     private readonly mcpRegistryService: McpServerRegistryService,
     private readonly desktopSyncService: DesktopSyncService,
     private readonly agentOrchestrationService: AgentOrchestrationService,
+    private readonly llmRouterService: LlmRouterService,
+    private readonly costTrackerService: CostTrackerService,
     @Inject(forwardRef(() => RuntimeSeamService))
     private readonly runtimeSeamService: RuntimeSeamService,
   ) {}
@@ -279,14 +283,18 @@ export class OpenClawProxyService {
   private messageNeedsTools(text: string): boolean {
     const lower = text.toLowerCase().trim();
     const pathLikePattern = /([a-z]:\\|\\|\/|\.tsx?\b|\.jsx?\b|\.json\b|\.md\b|package\.json|readme|src\/|backend\/|desktop\/)/i;
-    const actionWords = /search|find|buy|pay|install|execute|run|publish|balance|order|skill|product|task|agent|airdrop|token|wallet|price|send|transfer|discover|recommend|marketplace|read|write|edit|modify|change|fix|analy[sz]e|inspect|debug|list|open|grep|workspace|file|folder|directory|project|repo|code|patch|continue|resume|next|follow up|资金|余额|搜索|安装|执行|购买|支付|发布|查询|技能|商品|任务|继续|接着|下一步|修复|修改|查看|检查|分析|目录|文件夹|文件|代码|工作区|项目|仓库|编辑|列出|运行|命令/;
+    const actionWords = /search|find|buy|pay|install|execute|run|publish|balance|order|skill|product|task|airdrop|token|wallet|price|send|transfer|discover|recommend|marketplace|read|write|edit|modify|change|fix|analy[sz]e|inspect|debug|list|open|grep|workspace|file|folder|directory|project|repo|code|patch|continue|resume|benchmark|profile|trace|deploy|build|test|browser|terminal|git|ssh|资金|余额|搜索|安装|执行|购买|支付|发布|查询|技能|商品|任务|继续|接着|下一步|修复|修改|查看|检查|分析|目录|文件夹|文件|代码|工作区|项目|仓库|编辑|列出|运行|命令|部署|构建|测试|浏览器/;
+    const structuredTaskPattern = /```|\n\s*[-*\d]+\.|\b(step|steps|todo|plan|investigate|diagnose|implement|refactor|migrate|compare)\b|步骤|方案|计划|排查|定位|实现|重构|迁移|对比/i;
     if (pathLikePattern.test(text)) {
       return true;
     }
-    if (lower.length < 15 && !actionWords.test(lower)) {
+    if (actionWords.test(lower) || structuredTaskPattern.test(text)) {
+      return true;
+    }
+    if (lower.length <= 120) {
       return false;
     }
-    return true;
+    return /workspace|repository|codebase|instance|provider|deployment|session|memory|approval|desktop tool/i.test(lower);
   }
 
   private async getOrCreatePlatformHostedSession(
@@ -386,6 +394,73 @@ export class OpenClawProxyService {
         role: message.role as 'user' | 'assistant',
         content: message.content,
       }));
+  }
+
+  private estimateConversationInputTokens(
+    historyMessages: Array<{ role: 'user' | 'assistant'; content: string | any[] }>,
+    currentMessageText: string,
+  ): number {
+    const historyText = historyMessages
+      .map((message) => this.extractTextContent(message.content))
+      .filter((text) => text.length > 0)
+      .join('\n');
+    const promptText = historyText ? `${historyText}\n${currentMessageText}` : currentMessageText;
+    return estimateTokens(promptText);
+  }
+
+  private resolveToolRoundBudget(
+    dto: ChatMessageDto,
+    messageText: string,
+    needsTools: boolean,
+  ): { maxToolRounds: number; taskTier?: string; routingReason?: string } {
+    if (!needsTools) {
+      return { maxToolRounds: 5 };
+    }
+
+    let maxToolRounds = dto.mode === 'plan'
+      ? 12
+      : dto.mode === 'agent'
+        ? 10
+        : 6;
+
+    if (dto.platform === 'desktop') {
+      maxToolRounds += 2;
+    }
+
+    try {
+      const routing = this.llmRouterService.route(messageText, {
+        hasImageFrame: Array.isArray(dto.message) && dto.message.some((block: any) => (
+          block?.type === 'image' || block?.type === 'image_url'
+        )),
+        requiresCodeGen:
+          dto.platform === 'desktop'
+          || /(code|file|workspace|repo|directory|debug|fix|implement|refactor|patch|terminal|command)/i.test(messageText),
+        isA2AOrchestration: /(multi[- ]?agent|sub-?agent|orchestrat|coordinate|delegate)/i.test(messageText),
+      });
+
+      switch (routing.tier) {
+        case 'ultra':
+          maxToolRounds = Math.max(maxToolRounds, 16);
+          break;
+        case 'heavy':
+          maxToolRounds = Math.max(maxToolRounds, 14);
+          break;
+        case 'medium':
+          maxToolRounds = Math.max(maxToolRounds, 10);
+          break;
+        default:
+          break;
+      }
+
+      return {
+        maxToolRounds,
+        taskTier: routing.tier,
+        routingReason: routing.reason,
+      };
+    } catch (error: any) {
+      this.logger.warn(`Tool round budget routing failed: ${error.message}`);
+      return { maxToolRounds };
+    }
   }
 
   private async getPlatformHostedHistoryPayload(
@@ -595,6 +670,19 @@ export class OpenClawProxyService {
           title: { type: 'string', description: 'Optional display title for the link' },
         },
         required: ['url'],
+      },
+      video_generate: {
+        properties: {
+          prompt: { type: 'string', description: 'Text prompt describing the video to generate' },
+          taskId: { type: 'string', description: 'Existing async task id to query' },
+          provider: { type: 'string', description: 'Provider id, currently fal' },
+          model: { type: 'string', description: 'Provider model path override' },
+          duration: { type: 'string', enum: ['5', '10'], description: 'Approximate duration in seconds' },
+          aspectRatio: { type: 'string', enum: ['16:9', '9:16', '1:1'], description: 'Output aspect ratio' },
+          negativePrompt: { type: 'string', description: 'Things the model should avoid' },
+          cfgScale: { type: 'number', description: 'Guidance scale override' },
+          generateAudio: { type: 'boolean', description: 'Whether audio generation should be attempted' },
+        },
       },
       code_eval: {
         properties: {
@@ -1109,7 +1197,12 @@ export class OpenClawProxyService {
     };
   }
 
-  private async buildPlatformHostedTools(userId: string, instance: OpenClawInstance): Promise<{
+  private async buildPlatformHostedTools(
+    userId: string,
+    instance: OpenClawInstance,
+    sessionId?: string,
+    deviceId?: string,
+  ): Promise<{
     additionalTools: any[];
     onToolCall: (name: string, args: any) => Promise<any>;
   }> {
@@ -1235,12 +1328,13 @@ export class OpenClawProxyService {
         const preset = AGENT_PRESET_SKILLS.find((skill) => skill.handlerName === name);
         const ctx: ExecutionContext = {
           userId,
-          sessionId: undefined,
+          sessionId: args?.sessionId || sessionId,
           metadata: {
             instanceId: instance.id,
             source: 'platform-hosted-chat',
             agentAccountId: permissionProfile?.agentAccountId,
             permissionProfile,
+            deviceId: args?.deviceId || deviceId,
           },
         };
 
@@ -1628,7 +1722,7 @@ export class OpenClawProxyService {
       defaultConfig,
       persistedHistory,
     ] = await Promise.all([
-      this.buildPlatformHostedTools(userId, instance),
+      this.buildPlatformHostedTools(userId, instance, sessionId, dto.deviceId),
       this.resolveRuntimePermissionProfile(userId, instance),
       this.aiProviderService.getDefaultConfig(userId),
       dto.history?.length
@@ -1681,9 +1775,9 @@ export class OpenClawProxyService {
     const rawDtoModel = dto.model;
     const sanitizedDtoModel = rawDtoModel && !LOCAL_ONLY_MODELS.includes(rawDtoModel)
       ? rawDtoModel : undefined;
-    let resolvedModel = sanitizedPreferred
-      || sanitizedDtoModel
+    let resolvedModel = sanitizedDtoModel
       || (instanceModelPinned ? sanitizedInstanceActiveModel : undefined)
+      || sanitizedPreferred
       || defaultConfig?.selectedModel
       || sanitizedInstanceActiveModel
       || process.env.DEFAULT_MODEL
@@ -1846,6 +1940,8 @@ export class OpenClawProxyService {
 
     _lap(`pre-LLM (model=${executionModel}, provider=${resolvedProvider || 'platform'}, msgs=${messages.length})`);
 
+    const executionBudget = this.resolveToolRoundBudget(dto, messageText, needsTools);
+
     let result: any;
     if (resolvedProvider === 'gemini') {
       result = await this.geminiIntegrationService.chatWithFunctions(messages as Array<{ role: 'user' | 'assistant' | 'system'; content: string }>, {
@@ -1859,6 +1955,7 @@ export class OpenClawProxyService {
       result = await this.openAIIntegrationService.chatWithFunctions(messages, {
         model: executionModel,
         context: { userId, sessionId },
+        maxToolRounds: executionBudget.maxToolRounds,
         additionalTools: this.toOpenAITools(seamContext.effectiveTools),
         onToolCall: seamContext.effectiveOnToolCall,
         userApiKey: userCredentials?.apiKey,
@@ -1869,6 +1966,7 @@ export class OpenClawProxyService {
       result = await this.claudeIntegrationService.chatWithFunctions(messages, {
         model: executionModel,
         context: { userId, sessionId },
+        maxToolRounds: executionBudget.maxToolRounds,
         additionalTools: seamContext.effectiveTools,
         onToolCall: seamContext.effectiveOnToolCall,
         userCredentials: userCredentials
@@ -1880,8 +1978,25 @@ export class OpenClawProxyService {
 
     _lap(`LLM done (toolCalls=${result?.toolCalls?.length || 0})`);
     const text = result?.text || '';
-    const inputTokens = estimateTokens(messageText);
+    const inputTokens = this.estimateConversationInputTokens(historyMessages, messageText);
     const outputTokens = estimateTokens(text);
+    const usageRecord = this.costTrackerService.recordCost(
+      sessionId,
+      executionModel,
+      inputTokens,
+      outputTokens,
+    );
+    try {
+      streamingCallbacks?.onEvent?.({
+        type: 'usage',
+        inputTokens,
+        outputTokens,
+        totalCostUsd: usageRecord.costUsd,
+        model: executionModel,
+      });
+    } catch (error: any) {
+      this.logger.warn(`Usage event emit failed: ${error.message}`);
+    }
     this.tokenQuotaService.deductTokens(userId, inputTokens, outputTokens).catch(
       (err) => this.logger.warn(`Token deduct failed: ${err.message}`),
     );
@@ -1944,6 +2059,14 @@ export class OpenClawProxyService {
       sessionId,
       resolvedModel: executionModel,
       resolvedModelLabel,
+      taskTier: executionBudget.taskTier,
+      routingReason: executionBudget.routingReason,
+      toolBudget: executionBudget.maxToolRounds,
+      usage: {
+        inputTokens,
+        outputTokens,
+        totalCostUsd: usageRecord.costUsd,
+      },
       reply: {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
@@ -2028,7 +2151,14 @@ export class OpenClawProxyService {
       // Send model meta after call completes
       const resultAny = result as any;
       if (resultAny?.resolvedModel && !res.writableEnded) {
-        res.write(`data: ${JSON.stringify({ meta: { resolvedModel: resultAny.resolvedModel, resolvedModelLabel: resultAny.resolvedModelLabel } })}\n\n`);
+        res.write(`data: ${JSON.stringify({ meta: {
+          resolvedModel: resultAny.resolvedModel,
+          resolvedModelLabel: resultAny.resolvedModelLabel,
+          plan: resultAny.plan,
+          taskTier: resultAny.taskTier,
+          routingReason: resultAny.routingReason,
+          toolBudget: resultAny.toolBudget,
+        } })}\n\n`);
         if ((res as any).flush) (res as any).flush();
       }
 
@@ -2051,6 +2181,7 @@ export class OpenClawProxyService {
         || resultAny?.stopReason === 'stop_sequence'
         || resultAny?.stopReason === 'abort'
         || resultAny?.stopReason === 'error'
+        || resultAny?.stopReason === 'tool_use'
         || resultAny?.stopReason === 'end_turn'
           ? resultAny.stopReason
           : 'end_turn';
@@ -2059,8 +2190,9 @@ export class OpenClawProxyService {
         type: 'done',
         reason: doneReason,
         totalDurationMs: Date.now() - startMs,
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
+        totalInputTokens: resultAny?.usage?.inputTokens || 0,
+        totalOutputTokens: resultAny?.usage?.outputTokens || 0,
+        totalCostUsd: resultAny?.usage?.totalCostUsd,
       });
 
       if (!res.writableEnded) {
@@ -2101,6 +2233,10 @@ export class OpenClawProxyService {
       await callbacks.onMeta({
         resolvedModel: resultAny.resolvedModel,
         resolvedModelLabel: resultAny.resolvedModelLabel,
+        plan: resultAny.plan,
+        taskTier: resultAny.taskTier,
+        routingReason: resultAny.routingReason,
+        toolBudget: resultAny.toolBudget,
       });
     }
 
@@ -2657,7 +2793,11 @@ export class OpenClawProxyService {
     const context: ExecutionContext = {
       userId,
       sessionId: params._sessionId,
-      metadata: { instanceId, source: 'openclaw-proxy' },
+      metadata: {
+        instanceId,
+        source: 'openclaw-proxy',
+        deviceId: params.deviceId,
+      },
     };
 
     const startTime = Date.now();
