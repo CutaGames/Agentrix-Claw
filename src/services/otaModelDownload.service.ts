@@ -24,28 +24,57 @@ export interface OtaModelEntry {
   sizeLabel: string;
   /** CDN base URL — full URL is `${cdnBase}/${filename}` */
   cdnBase: string;
+  multimodalProjector?: OtaModelArtifact;
+  vocoder?: OtaModelArtifact;
+}
+
+export interface OtaModelArtifact {
+  kind: 'model' | 'mmproj' | 'vocoder';
+  filename: string;
+  sizeBytes: number;
+  sizeLabel: string;
+  cdnBase?: string;
+}
+
+type OtaModelArtifactKey = 'model' | 'multimodalProjector' | 'vocoder';
+
+interface ResolvedOtaModelArtifact {
+  key: OtaModelArtifactKey;
+  artifact: OtaModelArtifact;
 }
 
 /**
  * Available models for OTA download.
- * CDN hosted on Hugging Face (public weights, no auth required).
+ * CDN hosted on HF Mirror (public weights, no auth required).
  */
 const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
   'gemma-4-2b': {
     id: 'gemma-4-2b',
-    name: 'Gemma 4 2B (Q4_K_M)',
-    filename: 'gemma-2-2b-it-Q4_K_M.gguf',
-    sizeBytes: 1_500_000_000,
-    sizeLabel: '1.5 GB',
-    cdnBase: 'https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main',
+    name: 'Gemma 4 E2B (Q4_K_M)',
+    filename: 'gemma-4-E2B-it-Q4_K_M.gguf',
+    sizeBytes: 3_110_000_000,
+    sizeLabel: '3.1 GB',
+    cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E2B-it-GGUF/resolve/main',
+    multimodalProjector: {
+      kind: 'mmproj',
+      filename: 'mmproj-F16.gguf',
+      sizeBytes: 986_000_000,
+      sizeLabel: '986 MB',
+    },
   },
   'gemma-4-4b': {
     id: 'gemma-4-4b',
-    name: 'Gemma 4 4B (Q4_K_M)',
-    filename: 'gemma-2-4b-it-Q4_K_M.gguf',
-    sizeBytes: 2_800_000_000,
-    sizeLabel: '2.8 GB',
-    cdnBase: 'https://huggingface.co/bartowski/gemma-2-4b-it-GGUF/resolve/main',
+    name: 'Gemma 4 E4B (Q4_K_M)',
+    filename: 'gemma-4-E4B-it-Q4_K_M.gguf',
+    sizeBytes: 4_980_000_000,
+    sizeLabel: '5.0 GB',
+    cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E4B-it-GGUF/resolve/main',
+    multimodalProjector: {
+      kind: 'mmproj',
+      filename: 'mmproj-F16.gguf',
+      sizeBytes: 990_000_000,
+      sizeLabel: '990 MB',
+    },
   },
 };
 
@@ -92,6 +121,63 @@ function getModelFile(filename: string): ExpoFile {
   return new ExpoFile(getModelsDir(), filename);
 }
 
+function formatSize(bytes: number): string {
+  if (bytes >= 1_000_000_000) {
+    return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+  }
+  if (bytes >= 1_000_000) {
+    return `${Math.round(bytes / 1_000_000)} MB`;
+  }
+  if (bytes >= 1_000) {
+    return `${Math.round(bytes / 1_000)} KB`;
+  }
+  return `${bytes} B`;
+}
+
+function getPrimaryArtifact(entry: OtaModelEntry): OtaModelArtifact {
+  return {
+    kind: 'model',
+    filename: entry.filename,
+    sizeBytes: entry.sizeBytes,
+    sizeLabel: entry.sizeLabel,
+    cdnBase: entry.cdnBase,
+  };
+}
+
+function resolveArtifacts(entry: OtaModelEntry): ResolvedOtaModelArtifact[] {
+  const artifacts: ResolvedOtaModelArtifact[] = [
+    { key: 'model', artifact: getPrimaryArtifact(entry) },
+  ];
+
+  if (entry.multimodalProjector) {
+    artifacts.push({ key: 'multimodalProjector', artifact: entry.multimodalProjector });
+  }
+
+  if (entry.vocoder) {
+    artifacts.push({ key: 'vocoder', artifact: entry.vocoder });
+  }
+
+  return artifacts;
+}
+
+function isArtifactDownloaded(artifact: OtaModelArtifact | null | undefined): boolean {
+  if (!artifact) {
+    return false;
+  }
+
+  const file = getModelFile(artifact.filename);
+  return file.exists && file.size > artifact.sizeBytes * 0.95;
+}
+
+function getArtifactPath(artifact: OtaModelArtifact | null | undefined): string | null {
+  if (!artifact) {
+    return null;
+  }
+
+  const file = getModelFile(artifact.filename);
+  return file.exists ? file.uri : null;
+}
+
 // ── Service ────────────────────────────────────────────
 
 export class OtaModelDownloadService {
@@ -106,6 +192,16 @@ export class OtaModelDownloadService {
     return MODEL_REGISTRY[modelId] ?? null;
   }
 
+  static getPackageSizeBytes(modelId: string): number {
+    const entry = MODEL_REGISTRY[modelId];
+    if (!entry) return 0;
+    return resolveArtifacts(entry).reduce((sum, item) => sum + item.artifact.sizeBytes, 0);
+  }
+
+  static getPackageSizeLabel(modelId: string): string {
+    return formatSize(this.getPackageSizeBytes(modelId));
+  }
+
   /**
    * Check if a model is already downloaded and available locally.
    */
@@ -113,11 +209,25 @@ export class OtaModelDownloadService {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry) return false;
 
-    const file = getModelFile(entry.filename);
-    if (!file.exists) return false;
+    return isArtifactDownloaded(getPrimaryArtifact(entry));
+  }
 
-    // Basic size check — allow 1% tolerance for filesystem padding
-    return file.size > entry.sizeBytes * 0.95;
+  static isMultimodalProjectorDownloaded(modelId: string): boolean {
+    const entry = MODEL_REGISTRY[modelId];
+    if (!entry?.multimodalProjector) return false;
+    return isArtifactDownloaded(entry.multimodalProjector);
+  }
+
+  static isVocoderDownloaded(modelId: string): boolean {
+    const entry = MODEL_REGISTRY[modelId];
+    if (!entry?.vocoder) return false;
+    return isArtifactDownloaded(entry.vocoder);
+  }
+
+  static areRequiredArtifactsDownloaded(modelId: string): boolean {
+    const entry = MODEL_REGISTRY[modelId];
+    if (!entry) return false;
+    return resolveArtifacts(entry).every((item) => isArtifactDownloaded(item.artifact));
   }
 
   /**
@@ -126,8 +236,25 @@ export class OtaModelDownloadService {
   static getLocalPath(modelId: string): string | null {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry) return null;
-    const file = getModelFile(entry.filename);
-    return file.exists ? file.uri : null;
+    return getArtifactPath(getPrimaryArtifact(entry));
+  }
+
+  static getMultimodalProjectorPath(modelId: string): string | null {
+    const entry = MODEL_REGISTRY[modelId];
+    return getArtifactPath(entry?.multimodalProjector);
+  }
+
+  static getVocoderPath(modelId: string): string | null {
+    const entry = MODEL_REGISTRY[modelId];
+    return getArtifactPath(entry?.vocoder);
+  }
+
+  static hasMultimodalAssets(modelId: string): boolean {
+    return this.isMultimodalProjectorDownloaded(modelId);
+  }
+
+  static hasVocoderAssets(modelId: string): boolean {
+    return this.isVocoderDownloaded(modelId);
   }
 
   /**
@@ -165,85 +292,100 @@ export class OtaModelDownloadService {
       modelsDir.create({ intermediates: true });
     }
 
+    const artifacts = resolveArtifacts(entry);
+    const totalBytes = artifacts.reduce((sum, item) => sum + item.artifact.sizeBytes, 0);
+    const alreadyDownloadedBytes = artifacts.reduce(
+      (sum, item) => sum + (isArtifactDownloaded(item.artifact) ? item.artifact.sizeBytes : 0),
+      0,
+    );
+    const missingBytes = Math.max(totalBytes - alreadyDownloadedBytes, 0);
+
     // Check disk space
     const freeSpace = this.getFreeDiskSpace();
-    if (freeSpace < entry.sizeBytes * 1.1) {
-      const needed = Math.ceil(entry.sizeBytes / (1024 * 1024 * 1024) * 10) / 10;
+    if (freeSpace < missingBytes * 1.1) {
+      const needed = Math.ceil(missingBytes / (1024 * 1024 * 1024) * 10) / 10;
       callbacks.onError?.(`Insufficient disk space. Need ${needed} GB free.`);
       return;
     }
 
-    const downloadUrl = `${entry.cdnBase}/${entry.filename}`;
-    const destFile = getModelFile(entry.filename);
-
     // If already fully downloaded, skip
-    if (destFile.exists && destFile.size > entry.sizeBytes * 0.95) {
-      this.emitProgress('complete', 100, entry.sizeBytes, entry.sizeBytes);
-      callbacks.onComplete?.(destFile.uri);
+    if (alreadyDownloadedBytes >= totalBytes * 0.95) {
+      const localPath = this.getLocalPath(modelId);
+      this.emitProgress('complete', 100, totalBytes, totalBytes);
+      callbacks.onComplete?.(localPath || getModelFile(entry.filename).uri);
       return;
     }
 
-    this.emitProgress('checking', 0, 0, entry.sizeBytes);
+    this.emitProgress('checking', Math.round((alreadyDownloadedBytes / totalBytes) * 100), alreadyDownloadedBytes, totalBytes);
 
     try {
-      this.emitProgress('downloading', 1, 0, entry.sizeBytes);
+      let confirmedBytes = alreadyDownloadedBytes;
+      this.emitProgress('downloading', Math.max(1, Math.round((confirmedBytes / totalBytes) * 100)), confirmedBytes, totalBytes);
 
-      // Use polled progress: start download, poll file size
-      const progressInterval = setInterval(() => {
-        if (this.aborted) {
-          clearInterval(progressInterval);
-          return;
+      for (const item of artifacts) {
+        const { artifact } = item;
+        if (isArtifactDownloaded(artifact)) {
+          continue;
         }
-        try {
-          const tempFile = getModelFile(entry.filename);
-          if (tempFile.exists) {
-            const currentSize = tempFile.size;
-            const percent = Math.min(Math.round((currentSize / entry.sizeBytes) * 100), 99);
+
+        const downloadUrl = `${artifact.cdnBase || entry.cdnBase}/${artifact.filename}`;
+        const progressInterval = setInterval(() => {
+          if (this.aborted) {
+            clearInterval(progressInterval);
+            return;
+          }
+
+          try {
+            const tempFile = getModelFile(artifact.filename);
+            const currentSize = tempFile.exists ? tempFile.size : 0;
+            const bytesDownloaded = Math.min(confirmedBytes + currentSize, totalBytes);
+            const percent = Math.min(Math.round((bytesDownloaded / totalBytes) * 100), 99);
             const elapsedMs = Date.now() - this.downloadStartTime;
-            const speedBps = elapsedMs > 0 ? (currentSize / elapsedMs) * 1000 : 0;
-            const remainingBytes = entry.sizeBytes - currentSize;
+            const speedBps = elapsedMs > 0 ? (bytesDownloaded / elapsedMs) * 1000 : 0;
+            const remainingBytes = totalBytes - bytesDownloaded;
             const etaSeconds = speedBps > 0 ? Math.ceil(remainingBytes / speedBps) : 0;
 
-            this.emitProgress('downloading', percent, currentSize, entry.sizeBytes, speedBps, etaSeconds);
+            this.emitProgress('downloading', percent, bytesDownloaded, totalBytes, speedBps, etaSeconds);
+          } catch {
+            // File may not exist yet during initial download phase
           }
-        } catch {
-          // File may not exist yet during initial download phase
+        }, 1000);
+
+        const result = await ExpoFile.downloadFileAsync(
+          downloadUrl,
+          modelsDir,
+          {
+            headers: { 'User-Agent': `AgentrixApp/${Platform.OS}` },
+            idempotent: true,
+          },
+        );
+
+        clearInterval(progressInterval);
+
+        if (this.aborted) return;
+
+        if (!result.exists) {
+          throw new Error(`Downloaded file not found after downloading ${artifact.filename}.`);
         }
-      }, 1000);
 
-      // Perform the actual download
-      const result = await ExpoFile.downloadFileAsync(
-        downloadUrl,
-        modelsDir,
-        {
-          headers: { 'User-Agent': `AgentrixApp/${Platform.OS}` },
-          idempotent: true,
-        },
-      );
+        if (result.size < artifact.sizeBytes * 0.95) {
+          result.delete();
+          throw new Error(`Download incomplete for ${artifact.filename}: got ${result.size} bytes, expected ~${artifact.sizeBytes}`);
+        }
 
-      clearInterval(progressInterval);
+        confirmedBytes += artifact.sizeBytes;
+      }
 
       if (this.aborted) return;
 
-      // Verify result
-      this.emitProgress('verifying', 99, entry.sizeBytes, entry.sizeBytes);
-
-      if (!result.exists) {
-        throw new Error('Downloaded file not found after download completed.');
-      }
-
-      if (result.size < entry.sizeBytes * 0.5) {
-        result.delete();
-        throw new Error(`Download incomplete: got ${result.size} bytes, expected ~${entry.sizeBytes}`);
-      }
-
-      this.emitProgress('complete', 100, entry.sizeBytes, entry.sizeBytes);
-      callbacks.onComplete?.(result.uri);
+      this.emitProgress('verifying', 99, totalBytes, totalBytes);
+      this.emitProgress('complete', 100, totalBytes, totalBytes);
+      callbacks.onComplete?.(getModelFile(entry.filename).uri);
 
     } catch (error) {
       if (this.aborted) return;
       const msg = error instanceof Error ? error.message : String(error);
-      this.emitProgress('error', 0, 0, entry.sizeBytes, 0, 0, msg);
+      this.emitProgress('error', 0, 0, totalBytes, 0, 0, msg);
       callbacks.onError?.(msg);
     }
   }
@@ -280,10 +422,12 @@ export class OtaModelDownloadService {
     if (modelId) {
       const entry = MODEL_REGISTRY[modelId];
       if (entry) {
-        try {
-          const file = getModelFile(entry.filename);
-          if (file.exists) file.delete();
-        } catch { /* ignore */ }
+        for (const item of resolveArtifacts(entry)) {
+          try {
+            const file = getModelFile(item.artifact.filename);
+            if (file.exists) file.delete();
+          } catch { /* ignore */ }
+        }
       }
     }
 
@@ -298,9 +442,11 @@ export class OtaModelDownloadService {
     if (!entry) return false;
 
     try {
-      const file = getModelFile(entry.filename);
-      if (file.exists) {
-        file.delete();
+      for (const item of resolveArtifacts(entry)) {
+        const file = getModelFile(item.artifact.filename);
+        if (file.exists) {
+          file.delete();
+        }
       }
       return true;
     } catch {
@@ -315,9 +461,13 @@ export class OtaModelDownloadService {
     const results: Array<{ modelId: string; path: string; sizeBytes: number }> = [];
 
     for (const [id, entry] of Object.entries(MODEL_REGISTRY)) {
-      const file = getModelFile(entry.filename);
-      if (file.exists) {
-        results.push({ modelId: id, path: file.uri, sizeBytes: file.size });
+      const path = this.getLocalPath(id);
+      if (path) {
+        const sizeBytes = resolveArtifacts(entry).reduce((sum, item) => {
+          const file = getModelFile(item.artifact.filename);
+          return sum + (file.exists ? file.size : 0);
+        }, 0);
+        results.push({ modelId: id, path, sizeBytes });
       }
     }
     return results;

@@ -34,7 +34,7 @@ export interface ModelOption {
 
 /** Hardcoded fallback models — used only when backend is unreachable */
 export const SUPPORTED_MODELS: ModelOption[] = [
-  { id: 'gemma-4-2b',       label: 'Gemma 4 2B (端侧本地)',          provider: 'On-device',         icon: '📱', badge: 'Local', availability: 'available', costTier: 'free' },
+  { id: 'gemma-4-2b',       label: 'Gemma 4 E2B (端侧本地)',         provider: 'On-device',         icon: '📱', badge: 'Local', availability: 'available', costTier: 'free' },
   { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (平台默认 API)',    provider: 'Agentrix Platform', icon: '🤖', badge: 'Default', availability: 'available', costTier: 'free_trial' },
 ];
 
@@ -62,6 +62,8 @@ interface SettingsState {
   wakeWordConfig: WakeWordSettings;
 
   // Voice / TTS settings
+  /** Prefer on-device speech recognition / playback when possible */
+  preferOnDeviceVoice: boolean;
   /** TTS playback speed multiplier (0.8 - 1.5, default 1.0) */
   speechRate: number;
   /** VAD silence timeout in ms before auto-send (800 - 3000, default 1800) */
@@ -87,6 +89,7 @@ interface SettingsState {
   setUiComplexity: (level: UiComplexity) => void;
   setWakeWordConfig: (patch: Partial<WakeWordSettings>) => void;
   resetWakeWordConfig: () => void;
+  setPreferOnDeviceVoice: (enabled: boolean) => void;
   setSpeechRate: (rate: number) => void;
   setSilenceTimeoutMs: (ms: number) => void;
   toggleNotifications: (enabled: boolean) => void;
@@ -142,6 +145,7 @@ export const useSettingsStore = create<SettingsState>()(
       uiComplexity: 'beginner' as UiComplexity,
       wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG,
 
+      preferOnDeviceVoice: true,
       speechRate: 1.0,
       silenceTimeoutMs: 1800,
       
@@ -177,6 +181,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       resetWakeWordConfig: () => set({ wakeWordConfig: DEFAULT_WAKE_WORD_CONFIG }),
 
+      setPreferOnDeviceVoice: (enabled) => set({ preferOnDeviceVoice: enabled }),
       setSpeechRate: (rate) => set({ speechRate: Math.max(0.8, Math.min(1.5, rate)) }),
       setSilenceTimeoutMs: (ms) => set({ silenceTimeoutMs: Math.max(800, Math.min(3000, ms)) }),
 
@@ -192,23 +197,36 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'agentrix-settings-storage',
       storage: createJSONStorage(() => mmkvStorage),
-      version: 3,
+      version: 4,
       migrate: (persistedState: any, version) => {
-        if (!persistedState || version >= 3) {
+        if (!persistedState || version >= 4) {
           return persistedState;
         }
 
-        return {
-          ...persistedState,
-          notificationsEnabled: false,
-          airdropNotifications: false,
-          earningsNotifications: false,
-          paymentNotifications: false,
-          wakeWordConfig: {
-            ...DEFAULT_WAKE_WORD_CONFIG,
-            ...(persistedState.wakeWordConfig || {}),
-          },
-        };
+        let nextState = { ...persistedState };
+
+        if (version < 3) {
+          nextState = {
+            ...nextState,
+            notificationsEnabled: false,
+            airdropNotifications: false,
+            earningsNotifications: false,
+            paymentNotifications: false,
+            wakeWordConfig: {
+              ...DEFAULT_WAKE_WORD_CONFIG,
+              ...(persistedState.wakeWordConfig || {}),
+            },
+          };
+        }
+
+        if (version < 4) {
+          nextState = {
+            ...nextState,
+            preferOnDeviceVoice: true,
+          };
+        }
+
+        return nextState;
       },
     }
   )

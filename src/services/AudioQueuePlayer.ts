@@ -2,9 +2,11 @@ import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 
 interface QueueItem {
-  uri: string;
+  uri?: string;
   fallbackText?: string;
   language?: string;
+  rate?: number;
+  mode: 'remote' | 'local';
 }
 
 export interface InterruptionInfo {
@@ -43,11 +45,57 @@ export class AudioQueuePlayer {
     return this._destroyed;
   }
 
-  enqueue(uri: string, fallbackText?: string, language?: string) {
+  enqueue(uri: string, fallbackText?: string, language?: string, rate?: number) {
     if (this._destroyed) return;
-    this.queue.push({ uri, fallbackText, language });
+    this.queue.push({ uri, fallbackText, language, rate, mode: 'remote' });
     this.totalEnqueued++;
     if (!this.isPlaying) {
+      this.playNext();
+    }
+  }
+
+  enqueueLocal(text: string, language?: string, rate?: number) {
+    if (this._destroyed || !text.trim()) return;
+    this.queue.push({ fallbackText: text, language, rate, mode: 'local' });
+    this.totalEnqueued++;
+    if (!this.isPlaying) {
+      this.playNext();
+    }
+  }
+
+  private playViaDeviceSpeech(item: QueueItem) {
+    if (!item.fallbackText) {
+      this.currentItem = null;
+      this.currentSound = null;
+      this.playNext();
+      return;
+    }
+
+    try {
+      Speech.speak(item.fallbackText, {
+        language: item.language,
+        rate: typeof item.rate === 'number' ? Math.max(0.1, Math.min(1.0, item.rate)) : undefined,
+        onDone: () => {
+          this.playedCount++;
+          this.currentItem = null;
+          this.currentSound = null;
+          this.playNext();
+        },
+        onStopped: () => {
+          this.currentItem = null;
+          this.currentSound = null;
+          this.playNext();
+        },
+        onError: () => {
+          this.currentItem = null;
+          this.currentSound = null;
+          this.playNext();
+        },
+      });
+    } catch (speechError) {
+      console.error('AudioQueuePlayer speech fallback error:', speechError);
+      this.currentItem = null;
+      this.currentSound = null;
       this.playNext();
     }
   }
@@ -76,6 +124,11 @@ export class AudioQueuePlayer {
 
     this.currentItem = nextItem;
 
+    if (nextItem.mode === 'local' || !nextItem.uri) {
+      this.playViaDeviceSpeech(nextItem);
+      return;
+    }
+
     try {
       const { sound } = await Audio.Sound.createAsync(
         { uri: nextItem.uri },
@@ -95,30 +148,8 @@ export class AudioQueuePlayer {
     } catch (e) {
       console.error('AudioQueuePlayer play error:', e);
       if (nextItem.fallbackText) {
-        try {
-          Speech.speak(nextItem.fallbackText, {
-            language: nextItem.language,
-            onDone: () => {
-              this.playedCount++;
-              this.currentItem = null;
-              this.currentSound = null;
-              this.playNext();
-            },
-            onStopped: () => {
-              this.currentItem = null;
-              this.currentSound = null;
-              this.playNext();
-            },
-            onError: () => {
-              this.currentItem = null;
-              this.currentSound = null;
-              this.playNext();
-            },
-          });
-          return;
-        } catch (speechError) {
-          console.error('AudioQueuePlayer speech fallback error:', speechError);
-        }
+        this.playViaDeviceSpeech(nextItem);
+        return;
       }
       this.playNext();
     }

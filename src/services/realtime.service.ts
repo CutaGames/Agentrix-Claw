@@ -10,6 +10,8 @@ import { API_BASE } from '../config/env';
 import { useNotificationStore } from '../stores/notificationStore';
 import { AgentrixStreamParser, type StreamEvent } from '../../shared/stream-parser';
 
+type DoneReason = Extract<StreamEvent, { type: 'done' }>['reason'];
+
 type ChunkCallback = (chunk: string) => void;
 type DoneCallback = () => void;
 type ErrorCallback = (err: string) => void;
@@ -34,6 +36,17 @@ interface StreamCallbacks {
   onError: ErrorCallback;
   onMeta?: (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => void;
   onEvent?: (event: StreamEvent) => void;
+}
+
+function normalizeDoneReason(reason?: string): DoneReason {
+  return reason === 'max_tokens'
+    || reason === 'stop_sequence'
+    || reason === 'abort'
+    || reason === 'error'
+    || reason === 'tool_use'
+    || reason === 'end_turn'
+    ? reason
+    : 'end_turn';
 }
 
 function createStreamConsumer(callbacks: StreamCallbacks) {
@@ -339,7 +352,7 @@ function buildDirectClaudePayload(opts: DirectClaudeOptions, stream = false) {
 /**
  * Call the default OpenClaw proxy chat endpoint on the main backend.
  */
-export async function directClaudeChat(opts: DirectClaudeOptions): Promise<string> {
+export async function directClaudeChat(opts: DirectClaudeOptions): Promise<{ content: string; stopReason?: DoneReason }> {
   const _ac = new AbortController();
   const _t = setTimeout(() => _ac.abort(), 45_000);
   let resp: Response;
@@ -373,14 +386,17 @@ export async function directClaudeChat(opts: DirectClaudeOptions): Promise<strin
     null;
 
   if (!content) throw new Error('Empty response from AI service');
-  return typeof content === 'string' ? content : JSON.stringify(content);
+  return {
+    content: typeof content === 'string' ? content : JSON.stringify(content),
+    stopReason: normalizeDoneReason(data?.stopReason),
+  };
 }
 
 /**
  * Fake-stream a directClaudeChat response word-by-word so the UI shows streaming effect.
  */
 export function streamDirectClaude(
-  opts: DirectClaudeOptions & { onChunk: ChunkCallback; onDone: DoneCallback; onError: ErrorCallback }
+  opts: DirectClaudeOptions & { onChunk: ChunkCallback; onDone: DoneCallback; onError: ErrorCallback; onEvent?: (event: StreamEvent) => void }
 ): AbortController {
   const ac = new AbortController();
   (async () => {
@@ -394,6 +410,7 @@ export function streamDirectClaude(
           onChunk: opts.onChunk,
           onDone: opts.onDone,
           onError: opts.onError,
+          onEvent: opts.onEvent,
         },
       });
     } catch (err: any) {
@@ -402,12 +419,19 @@ export function streamDirectClaude(
       try {
         const reply = await directClaudeChat(opts);
         if (ac.signal.aborted) return;
-        const words = reply.split(' ');
+        const words = reply.content.split(' ');
         for (let i = 0; i < words.length; i++) {
           if (ac.signal.aborted) return;
           opts.onChunk((i === 0 ? '' : ' ') + words[i]);
           if (i < 30) await new Promise(r => setTimeout(r, 18));
         }
+        opts.onEvent?.({
+          type: 'done',
+          reason: reply.stopReason || 'end_turn',
+          totalDurationMs: 0,
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+        });
         opts.onDone();
       } catch (fallbackErr: any) {
         if (ac.signal.aborted) return;

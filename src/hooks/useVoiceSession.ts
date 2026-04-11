@@ -69,6 +69,10 @@ export interface UseVoiceSessionOptions {
   /** Use WebSocket realtime voice channel in duplex mode (lower latency) */
   useRealtimeChannel?: boolean;
   realtimeModelId?: string;
+  /** Prefer on-device speech recognition before cloud transcription when feasible */
+  preferLocalSpeechRecognition?: boolean;
+  /** Prefer on-device text-to-speech playback when feasible */
+  preferLocalTextToSpeech?: boolean;
   /** TTS speech rate multiplier (0.8 - 1.5, default 1.0) */
   speechRate?: number;
   /** Called to send a transcript (and optional audio attachment) as a message */
@@ -118,6 +122,7 @@ export interface UseVoiceSessionReturn {
   enqueueStreamedSpeech: (chunk: string, flush?: boolean) => void;
   resetVoicePhaseAfterResponse: () => void;
   resumeLiveSpeech: () => void;
+  sendRealtimeImageFrame: (frameBase64: string, mimeType?: string) => boolean;
   speakingMessageId: string | null;
   setVoicePhase: (phase: VoicePhase) => void;
   setTranscriptPreview: (text: string) => void;
@@ -146,6 +151,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     t,
     useRealtimeChannel,
     realtimeModelId,
+    preferLocalSpeechRecognition,
+    preferLocalTextToSpeech,
     speechRate,
   } = options;
   const isVoiceUiE2E = isVoiceUiE2EEnabled();
@@ -170,6 +177,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const recordingRef = useRef<any>(null);
   const isRecordingRef = useRef(false);
   const liveSpeechRef = useRef<LiveSpeechController | null>(null);
+  const localHoldSpeechRef = useRef<LiveSpeechController | null>(null);
+  const localHoldTranscriptRef = useRef('');
   const liveSpeechManualStopRef = useRef(false);
   const lastLiveFinalTranscriptRef = useRef('');
   const lastRealtimeFinalTranscriptRef = useRef('');
@@ -228,6 +237,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
 
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const voiceLanguageHint = language === 'zh' ? 'zh' : 'en';
+  const voiceLanguageCode = voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US';
 
   // Refs for values used inside the realtime connection but that should NOT
   // tear down the socket when they change (e.g., voice ID settling from undefined).
@@ -288,6 +298,20 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     }
     if (realtimeMicrophone) {
       void realtimeMicrophone.stop();
+    }
+    if (!ctrl) return;
+    try {
+      if (abort) ctrl.abort(); else ctrl.stop();
+    } catch {}
+  }, []);
+
+  const stopLocalHoldSpeech = useCallback((abort = false) => {
+    const ctrl = localHoldSpeechRef.current;
+    localHoldSpeechRef.current = null;
+    localHoldTranscriptRef.current = '';
+    if (isMountedRef.current) {
+      setLiveListening(false);
+      setLiveVoiceVolume(-2);
     }
     if (!ctrl) return;
     try {
@@ -584,9 +608,10 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     }
     return () => {
       try { audioPlayerRef.current?.destroy(); } catch {}
+      stopLocalHoldSpeech(true);
       stopLiveSpeech(true, true);
     };
-  }, [stopLiveSpeech]);
+  }, [stopLiveSpeech, stopLocalHoldSpeech]);
 
   // voiceModeRequested sync
   useEffect(() => {
@@ -604,9 +629,10 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       setVoicePhase('idle');
       setIsRecording(false);
       isRecordingRef.current = false;
+      stopLocalHoldSpeech(true);
       stopLiveSpeech(true, true);
     }
-  }, [stopLiveSpeech, voiceMode]);
+  }, [stopLiveSpeech, stopLocalHoldSpeech, voiceMode]);
 
   // duplexMode → enable voiceMode, autoSpeak, tap mode
   useEffect(() => {
@@ -631,6 +657,20 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     }
   }, [duplexMode, isRecording, isSpeaking, liveListening, voiceMode]);
 
+  const enqueueSpeechSegment = useCallback((segment: string) => {
+    const trimmed = segment.trim();
+    if (!trimmed || trimmed.length < 2) return;
+
+    if (preferLocalTextToSpeech) {
+      audioPlayerRef.current?.enqueueLocal(trimmed, voiceLanguageCode, speechRate);
+      return;
+    }
+
+    const rateParam = speechRate && speechRate !== 1.0 ? `&rate=${speechRate}` : '';
+    const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(trimmed)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}${rateParam}`;
+    audioPlayerRef.current?.enqueue(url, trimmed, voiceLanguageCode, speechRate);
+  }, [agentVoiceId, preferLocalTextToSpeech, speechRate, voiceLanguageCode]);
+
   const speakText = useCallback((text: string) => {
     if (!text || text.startsWith('⚠️') || text.startsWith('Error:')) return;
     if (duplexModeRef.current) {
@@ -649,15 +689,10 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     setIsSpeaking(true);
     setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
     const sentences = cleanText.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [cleanText];
-    const rateParam = speechRate && speechRate !== 1.0 ? `&rate=${speechRate}` : '';
     for (const s of sentences) {
-      const trimmed = s.trim();
-      if (!trimmed || trimmed.length < 2) continue;
-      const encoded = encodeURIComponent(trimmed);
-      const url = `${API_BASE}/voice/tts?text=${encoded}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}${rateParam}`;
-      audioPlayerRef.current?.enqueue(url, trimmed, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
+      enqueueSpeechSegment(s);
     }
-  }, [agentVoiceId, speechRate, stopLiveSpeech, voiceLanguageHint]);
+  }, [enqueueSpeechSegment, stopLiveSpeech]);
 
   const stopSpeaking = useCallback(() => {
     audioPlayerRef.current?.stopAll();
@@ -675,6 +710,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           setDuplexMode(false);
           setVoiceMode(false);
           stopSpeaking();
+          stopLocalHoldSpeech(true);
           stopLiveSpeech(true, true);
         },
       });
@@ -686,7 +722,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     } catch (err) {
       console.warn('[useVoiceSession] BackgroundVoiceService init failed:', err);
     }
-  }, [stopLiveSpeech, stopSpeaking]);
+  }, [stopLiveSpeech, stopLocalHoldSpeech, stopSpeaking]);
 
   const handleSpeakMessage = useCallback((text: string, messageId?: string) => {
     if (!text) return;
@@ -724,15 +760,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       }
     }
 
-    const rateParam = speechRate && speechRate !== 1.0 ? `&rate=${speechRate}` : '';
-
     if (segmentsToSpeak.length > 0) {
       setIsSpeaking(true);
       setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
       streamedTtsStartedRef.current = true;
       for (const sentence of segmentsToSpeak) {
-        const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(sentence)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}${rateParam}`;
-        audioPlayerRef.current?.enqueue(url, sentence, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
+        enqueueSpeechSegment(sentence);
       }
       if (!shouldEarlyFlush) {
         pendingTtsSentenceRef.current = pendingTtsSentenceRef.current.slice(matches.join('').length);
@@ -745,12 +778,11 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         setIsSpeaking(true);
         setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'speaking'));
         streamedTtsStartedRef.current = true;
-        const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(remainder)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}${rateParam}`;
-        audioPlayerRef.current?.enqueue(url, remainder, voiceLanguageHint === 'zh' ? 'zh-CN' : 'en-US');
+        enqueueSpeechSegment(remainder);
       }
       pendingTtsSentenceRef.current = '';
     }
-  }, [autoSpeak, agentVoiceId, speechRate, stopLiveSpeech, voiceLanguageHint]);
+  }, [autoSpeak, enqueueSpeechSegment, stopLiveSpeech]);
 
   const resetVoicePhaseAfterResponse = useCallback(() => {
     setVoicePhase((prev) => (prev === 'recording' || prev === 'transcribing' ? prev : 'idle'));
@@ -1131,7 +1163,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   }, []);
 
   const startVoiceRecording = useCallback(async () => {
-    if (!Audio) {
+    if (!Audio && !(preferLocalSpeechRecognition && (isVoiceUiE2E || isLiveSpeechRecognitionAvailable()))) {
       Alert.alert(t({ en: 'Voice Unavailable', zh: '语音不可用' }), t({ en: 'Audio module not available.', zh: '当前音频模块不可用。' }));
       return;
     }
@@ -1149,6 +1181,73 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         onStopCurrentResponseRef.current?.(true);
         setVoicePhase('recording');
         setTranscriptPreview('');
+
+        const canUseLocalSpeechForHold = !duplexModeRef.current
+          && preferLocalSpeechRecognition
+          && (isVoiceUiE2E || isLiveSpeechRecognitionAvailable());
+
+        if (canUseLocalSpeechForHold) {
+          const permission = await requestLiveSpeechPermissions();
+          if (!permission?.granted) {
+            setLiveSpeechPermissionState('denied');
+            isRecordingRef.current = false;
+            setVoicePhase('idle');
+            Alert.alert(
+              t({ en: 'Speech Permission', zh: '语音权限' }),
+              t({ en: 'Please enable microphone and speech recognition access.', zh: '请开启麦克风和语音识别权限。' }),
+            );
+            return;
+          }
+
+          setLiveSpeechPermissionState('granted');
+          localHoldTranscriptRef.current = '';
+          localHoldSpeechRef.current = startLiveSpeechRecognition(
+            voiceLanguageHint,
+            {
+              onStart: () => {
+                if (!isMountedRef.current) return;
+                addVoiceDiagnostic('voice-session', 'hold-local-speech-started');
+                setLiveListening(true);
+                setIsRecording(true);
+                setVoicePhase('recording');
+                setTranscriptPreview('');
+              },
+              onEnd: () => {
+                if (!isMountedRef.current) return;
+                setLiveListening(false);
+                setLiveVoiceVolume(-2);
+              },
+              onInterimResult: (transcript) => {
+                const normalized = transcript.trim();
+                if (!normalized) return;
+                localHoldTranscriptRef.current = normalized;
+                setTranscriptPreview(normalized);
+              },
+              onFinalResult: (transcript) => {
+                const normalized = transcript.trim();
+                if (!normalized) return;
+                localHoldTranscriptRef.current = normalized;
+                setTranscriptPreview(normalized);
+              },
+              onError: (error) => {
+                if (!isMountedRef.current) return;
+                if (error?.error === 'aborted' || error?.error === 'no-speech') return;
+                addVoiceDiagnostic('voice-session', 'hold-local-speech-error', error);
+                setLiveListening(false);
+                setLiveVoiceVolume(-2);
+              },
+              onVolumeChange: (value) => {
+                if (!isMountedRef.current) return;
+                setLiveVoiceVolume(value);
+              },
+            },
+            [instanceName || '', agentVoiceId || '', 'Agentrix'],
+          );
+          setIsRecording(true);
+          if (Haptics) await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          return;
+        }
+
         const permResult = await Audio.requestPermissionsAsync();
         if (!permResult.granted) {
           setLiveSpeechPermissionState('denied');
@@ -1198,11 +1297,51 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       setVoicePhase('idle');
       Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), e?.message || 'Unknown error');
     }
-  }, [isSpeaking, t, voicePhase, voiceRecordingOptions]);
+  }, [
+    agentVoiceId,
+    instanceName,
+    isSpeaking,
+    isVoiceUiE2E,
+    preferLocalSpeechRecognition,
+    t,
+    voiceLanguageHint,
+    voicePhase,
+    voiceRecordingOptions,
+  ]);
 
   const stopVoiceRecording = useCallback(async () => {
-    if (!Audio || !isRecordingRef.current) return;
+    if (!isRecordingRef.current) return;
     try {
+      if (localHoldSpeechRef.current) {
+        const controller = localHoldSpeechRef.current;
+        localHoldSpeechRef.current = null;
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        setLiveListening(false);
+        setLiveVoiceVolume(-2);
+        setVoicePhase('transcribing');
+        if (Haptics) await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        try {
+          controller.stop();
+        } catch {}
+
+        const transcript = localHoldTranscriptRef.current.trim();
+        localHoldTranscriptRef.current = '';
+        if (transcript) {
+          setTranscriptPreview(transcript);
+          setVoicePhase('thinking');
+          setTimeout(() => onSendMessageRef.current(transcript), 80);
+        } else {
+          setVoicePhase('idle');
+          Alert.alert(t({ en: 'No Speech', zh: '未检测到语音' }), t({ en: 'No speech detected.', zh: '未检测到有效语音。' }));
+        }
+        return;
+      }
+
+      if (!Audio) {
+        return;
+      }
+
       // Stop VAD monitoring
       vadRef.current?.stop();
       isRecordingRef.current = false;
@@ -1313,6 +1452,15 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     void startLiveSpeechInternal();
   }, [startLiveSpeechInternal]);
 
+  const sendRealtimeImageFrame = useCallback((frameBase64: string, mimeType = 'image/jpeg') => {
+    if (!frameBase64 || !realtimeVoiceRef.current?.isConnected) {
+      return false;
+    }
+
+    realtimeVoiceRef.current.sendImageFrame(frameBase64, mimeType);
+    return true;
+  }, []);
+
   return {
     // State
     voiceMode,
@@ -1351,5 +1499,6 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     enqueueStreamedSpeech,
     resetVoicePhaseAfterResponse,
     resumeLiveSpeech,
+    sendRealtimeImageFrame,
   };
 }

@@ -2,9 +2,41 @@ import { NativeModules } from 'react-native';
 
 export type MobileLocalChatRole = 'system' | 'user' | 'assistant';
 
+export type MobileLocalChatContentPart =
+  | {
+      type: 'text';
+      text: string;
+    }
+  | {
+      type: 'image_url';
+      image_url: {
+        url: string;
+      };
+    }
+  | {
+      type: 'input_audio';
+      input_audio: {
+        format: 'wav' | 'mp3';
+        url?: string;
+        data?: string;
+      };
+    };
+
+export type MobileLocalChatContent = string | MobileLocalChatContentPart[];
+
 export interface MobileLocalChatMessage {
   role: MobileLocalChatRole;
-  content: string;
+  content: MobileLocalChatContent;
+}
+
+export interface MobileLocalRuntimeCapabilities {
+  available: boolean;
+  runtimeSource: 'unavailable' | 'native' | 'global';
+  supportsTextGeneration: boolean;
+  supportsStreaming: boolean;
+  supportsVisionInput: boolean;
+  supportsAudioInput: boolean;
+  supportsAudioOutput: boolean;
 }
 
 type LocalBridgeGenerateResult =
@@ -16,7 +48,8 @@ type LocalBridgeGenerateResult =
     };
 
 type LocalBridge = {
-  isAvailable?: () => boolean | Promise<boolean>;
+  isAvailable?: (options?: { model?: string }) => boolean | Promise<boolean>;
+  getCapabilities?: (options?: { model?: string }) => Partial<MobileLocalRuntimeCapabilities> | Promise<Partial<MobileLocalRuntimeCapabilities>>;
   generate?: (payload: {
     model?: string;
     messages: MobileLocalChatMessage[];
@@ -28,20 +61,103 @@ type LocalBridge = {
     messages: MobileLocalChatMessage[];
     temperature?: number;
     maxTokens?: number;
+    onToken?: (chunk: string) => void;
   }) => Promise<string[] | LocalBridgeGenerateResult>;
 };
 
-const DEFAULT_MODEL_ID = 'gemma-4-2b';
-const DEFAULT_MODEL_LABEL = 'Gemma 4 2B (Local)';
+type ResolvedLocalBridge = {
+  bridge: LocalBridge;
+  source: 'native' | 'global';
+};
 
-function resolveBridge(): LocalBridge | null {
+const DEFAULT_MODEL_ID = 'gemma-4-2b';
+const DEFAULT_MODEL_LABEL = 'Gemma 4 E2B (Local)';
+const DEFAULT_RUNTIME_CAPABILITIES: MobileLocalRuntimeCapabilities = {
+  available: false,
+  runtimeSource: 'unavailable',
+  supportsTextGeneration: false,
+  supportsStreaming: false,
+  supportsVisionInput: false,
+  supportsAudioInput: false,
+  supportsAudioOutput: false,
+};
+
+function resolveBridge(): ResolvedLocalBridge | null {
   const nativeBridge = (NativeModules as Record<string, unknown>)?.AgentrixLocalLLM as LocalBridge | undefined;
   if (nativeBridge) {
-    return nativeBridge;
+    return { bridge: nativeBridge, source: 'native' };
   }
 
   const globalBridge = (globalThis as { __AGENTRIX_LOCAL_LLM__?: LocalBridge }).__AGENTRIX_LOCAL_LLM__;
-  return globalBridge || null;
+  return globalBridge ? { bridge: globalBridge, source: 'global' } : null;
+}
+
+function buildDeclaredCapabilities(
+  resolvedBridge: ResolvedLocalBridge | null,
+  options?: { model?: string },
+): MobileLocalRuntimeCapabilities {
+  if (!resolvedBridge) {
+    return DEFAULT_RUNTIME_CAPABILITIES;
+  }
+
+  const { bridge, source } = resolvedBridge;
+  const supportsTextGeneration = typeof bridge.generate === 'function' || typeof bridge.generateStream === 'function';
+  const supportsStreaming = typeof bridge.generateStream === 'function';
+  let available = supportsTextGeneration || supportsStreaming;
+
+  if (typeof bridge.isAvailable === 'function') {
+    try {
+      const immediateAvailability = bridge.isAvailable(options);
+      if (typeof immediateAvailability === 'boolean') {
+        available = immediateAvailability;
+      }
+    } catch {
+      available = false;
+    }
+  }
+
+  return {
+    available,
+    runtimeSource: source,
+    supportsTextGeneration,
+    supportsStreaming,
+    supportsVisionInput: false,
+    supportsAudioInput: false,
+    supportsAudioOutput: false,
+  };
+}
+
+function mergeCapabilities(
+  declared: MobileLocalRuntimeCapabilities,
+  override: Partial<MobileLocalRuntimeCapabilities> | null | undefined,
+): MobileLocalRuntimeCapabilities {
+  if (!override) {
+    return declared;
+  }
+
+  return {
+    available: typeof override.available === 'boolean' ? override.available : declared.available,
+    runtimeSource: override.runtimeSource || declared.runtimeSource,
+    supportsTextGeneration: typeof override.supportsTextGeneration === 'boolean'
+      ? override.supportsTextGeneration
+      : declared.supportsTextGeneration,
+    supportsStreaming: typeof override.supportsStreaming === 'boolean'
+      ? override.supportsStreaming
+      : declared.supportsStreaming,
+    supportsVisionInput: typeof override.supportsVisionInput === 'boolean'
+      ? override.supportsVisionInput
+      : declared.supportsVisionInput,
+    supportsAudioInput: typeof override.supportsAudioInput === 'boolean'
+      ? override.supportsAudioInput
+      : declared.supportsAudioInput,
+    supportsAudioOutput: typeof override.supportsAudioOutput === 'boolean'
+      ? override.supportsAudioOutput
+      : declared.supportsAudioOutput,
+  };
+}
+
+function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
+  return !!value && typeof value === 'object' && typeof (value as Promise<T>).then === 'function';
 }
 
 function extractText(result: LocalBridgeGenerateResult | null | undefined): string {
@@ -96,15 +212,56 @@ export class MobileLocalInferenceService {
   static readonly modelId = DEFAULT_MODEL_ID;
   static readonly modelLabel = DEFAULT_MODEL_LABEL;
 
-  static async isAvailable(): Promise<boolean> {
-    const bridge = resolveBridge();
-    if (!bridge) {
+  static getDeclaredCapabilities(options?: { model?: string }): MobileLocalRuntimeCapabilities {
+    const resolvedBridge = resolveBridge();
+    const declared = buildDeclaredCapabilities(resolvedBridge, options);
+    const capabilityOverride = resolvedBridge?.bridge.getCapabilities?.(options);
+
+    if (!capabilityOverride || isPromiseLike(capabilityOverride)) {
+      return declared;
+    }
+
+    return mergeCapabilities(declared, capabilityOverride);
+  }
+
+  static async getCapabilities(options?: { model?: string }): Promise<MobileLocalRuntimeCapabilities> {
+    const resolvedBridge = resolveBridge();
+    const declared = buildDeclaredCapabilities(resolvedBridge, options);
+    if (!resolvedBridge) {
+      return declared;
+    }
+
+    let merged = declared;
+    if (typeof resolvedBridge.bridge.getCapabilities === 'function') {
+      try {
+        const capabilityOverride = await resolvedBridge.bridge.getCapabilities(options);
+        merged = mergeCapabilities(declared, capabilityOverride);
+      } catch {
+        merged = declared;
+      }
+    }
+
+    try {
+      const available = await this.isAvailable(options?.model);
+      return {
+        ...merged,
+        available,
+      };
+    } catch {
+      return merged;
+    }
+  }
+
+  static async isAvailable(model?: string): Promise<boolean> {
+    const resolvedBridge = resolveBridge();
+    if (!resolvedBridge) {
       return false;
     }
+    const { bridge } = resolvedBridge;
 
     if (typeof bridge.isAvailable === 'function') {
       try {
-        return await bridge.isAvailable();
+        return await bridge.isAvailable(model ? { model } : undefined);
       } catch {
         return false;
       }
@@ -114,10 +271,11 @@ export class MobileLocalInferenceService {
   }
 
   static async generate(messages: MobileLocalChatMessage[], options?: { model?: string; temperature?: number; maxTokens?: number }): Promise<string> {
-    const bridge = resolveBridge();
-    if (!bridge) {
+    const resolvedBridge = resolveBridge();
+    if (!resolvedBridge) {
       throw new Error('Local mobile inference bridge is not available on this device.');
     }
+    const { bridge } = resolvedBridge;
 
     if (typeof bridge.generate === 'function') {
       const result = await bridge.generate({
@@ -151,31 +309,98 @@ export class MobileLocalInferenceService {
     messages: MobileLocalChatMessage[],
     options?: { model?: string; temperature?: number; maxTokens?: number },
   ): AsyncGenerator<string> {
-    const bridge = resolveBridge();
-    if (!bridge) {
+    const resolvedBridge = resolveBridge();
+    if (!resolvedBridge) {
       throw new Error('Local mobile inference bridge is not available on this device.');
     }
+    const { bridge, source } = resolvedBridge;
 
     if (typeof bridge.generateStream === 'function') {
-      const streamed = await bridge.generateStream({
+      const queuedChunks: string[] = [];
+      let streamCompleted = false;
+      let streamError: unknown;
+      let receivedIncrementalChunk = false;
+      let wakeConsumer: (() => void) | null = null;
+      const waitForChunk = () => new Promise<void>((resolve) => {
+        wakeConsumer = resolve;
+      });
+
+      const pushChunk = (chunk: string) => {
+        if (!chunk) {
+          return;
+        }
+
+        queuedChunks.push(chunk);
+        if (wakeConsumer) {
+          const resolve = wakeConsumer;
+          wakeConsumer = null;
+          resolve();
+        }
+      };
+
+      const handleIncrementalChunk = (chunk: string) => {
+        if (!chunk) {
+          return;
+        }
+
+        receivedIncrementalChunk = true;
+        pushChunk(chunk);
+      };
+
+      const streamPromise = bridge.generateStream({
         model: options?.model || DEFAULT_MODEL_ID,
         messages,
         temperature: options?.temperature,
         maxTokens: options?.maxTokens,
+        ...(source === 'global' ? { onToken: handleIncrementalChunk } : {}),
+      }).then((streamed) => {
+        if (!receivedIncrementalChunk) {
+          if (Array.isArray(streamed)) {
+            const normalized = normalizeLocalOutput(streamed.join(''));
+            for (const chunk of chunkText(normalized)) {
+              pushChunk(chunk);
+            }
+          } else {
+            const text = normalizeLocalOutput(extractText(streamed));
+            if (text) {
+              pushChunk(text);
+            }
+          }
+        }
+
+        streamCompleted = true;
+        if (wakeConsumer) {
+          const resolve = wakeConsumer;
+          wakeConsumer = null;
+          resolve();
+        }
+      }).catch((error) => {
+        streamError = error;
+        streamCompleted = true;
+        if (wakeConsumer) {
+          const resolve = wakeConsumer;
+          wakeConsumer = null;
+          resolve();
+        }
       });
 
-      if (Array.isArray(streamed)) {
-        const normalized = normalizeLocalOutput(streamed.join(''));
-        for (const chunk of chunkText(normalized)) {
-          yield chunk;
+      while (!streamCompleted || queuedChunks.length > 0) {
+        if (queuedChunks.length === 0) {
+          await waitForChunk();
+          continue;
         }
-        return;
+
+        const nextChunk = queuedChunks.shift();
+        if (nextChunk) {
+          yield nextChunk;
+        }
       }
 
-      const text = normalizeLocalOutput(extractText(streamed));
-      for (const chunk of chunkText(text)) {
-        yield chunk;
+      await streamPromise;
+      if (streamError) {
+        throw streamError;
       }
+
       return;
     }
 

@@ -32,6 +32,12 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
 import { getVoiceDiagnosticsText, clearVoiceDiagnostics } from '../../services/voiceDiagnostics';
 import { MobileLocalInferenceService } from '../../services/mobileLocalInference.service';
+import { planLocalVoiceCapabilitySplit } from '../../services/localVoiceCapabilityPlanner.service';
+import {
+  buildLocalUserContent,
+  shouldEscalateLocalTurnToCloud as shouldEscalateLocalMultimodalTurnToCloud,
+} from '../../services/mobileLocalMultimodalRouting.service';
+import type { StreamEvent } from '../../../shared/stream-parser';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -60,6 +66,8 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
   'gemma-nano-2b',
   'gemma-nano-2b-local',
 ]);
+const MOBILE_AUTO_CONTINUE_LIMIT = 3;
+const MOBILE_CONTINUE_PROMPT = 'Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting. If you were in the middle of a tool-driven task, resume the unfinished steps first and only summarize after the task is complete.';
 
 function isLocalOnlyModelId(modelId?: string | null) {
   return !!modelId && LOCAL_ONLY_MODEL_IDS.has(modelId);
@@ -68,14 +76,14 @@ function isLocalOnlyModelId(modelId?: string | null) {
 function getLocalModelLabel(modelId: string) {
   switch (modelId) {
     case 'gemma-4-4b':
-      return 'Gemma 4 4B (Local)';
+      return 'Gemma 4 E4B (Local)';
     case 'gemma-nano-2b-local':
       return 'Gemma Nano 2B (Local)';
     case 'gemma-nano-2b':
       return 'Gemma Nano 2B (Local)';
     case 'gemma-4-2b':
     default:
-      return 'Gemma 4 2B (Local)';
+      return 'Gemma 4 E2B (Local)';
   }
 }
 
@@ -633,6 +641,8 @@ export function AgentChatScreen() {
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
   const localAiStatus = useSettingsStore((s) => s.localAiStatus);
   const localAiModelId = useSettingsStore((s) => s.localAiModelId);
+  const preferOnDeviceVoice = useSettingsStore((s) => s.preferOnDeviceVoice);
+  const setPreferOnDeviceVoice = useSettingsStore((s) => s.setPreferOnDeviceVoice);
   const speechRate = useSettingsStore((s) => s.speechRate);
   const setSpeechRate = useSettingsStore((s) => s.setSpeechRate);
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
@@ -648,7 +658,13 @@ export function AgentChatScreen() {
   const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
   const [agentVoiceId, setAgentVoiceId] = useState<string | null>(null);
   const isLocalModelSelected = isLocalOnlyModelId(selectedModelId);
-  const duplexUsesRealtimeChannel = !isLocalModelSelected;
+  const localVoicePlan = planLocalVoiceCapabilitySplit({
+    localModelSelected: isLocalModelSelected,
+    preferOnDeviceVoice,
+    selectedVoiceId: agentVoiceId,
+    runtimeCapabilities: MobileLocalInferenceService.getDeclaredCapabilities({ model: localAiModelId }),
+  });
+  const duplexUsesRealtimeChannel = localVoicePlan.useRealtimeVoiceChannel;
   const remoteResolvedModelId = (!isLocalOnlyModelId(agentPreferredModel) ? agentPreferredModel : null)
     || (!isLocalOnlyModelId(activeInstance?.resolvedModel) ? activeInstance?.resolvedModel : null)
     || (!isLocalOnlyModelId(selectedModelId) ? selectedModelId : null)
@@ -662,6 +678,11 @@ export function AgentChatScreen() {
   const storageKey = `chat_hist_${instanceId}`;
   const draftStorageKey = `chat_draft_${instanceId}`;
   const streamAbortRef = useRef<AbortController | null>(null);
+  const autoContinueCountRef = useRef(0);
+  const pendingAutoContinuePromptRef = useRef<string | null>(null);
+  const pendingAutoContinueReasonRef = useRef<'max_tokens' | 'tool_use' | null>(null);
+  const pendingAutoContinueSessionIdRef = useRef<string | null>(null);
+  const autoContinueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Multi-session state
   const [chatSessions, setChatSessions] = useState<ChatSession[]>(() => {
@@ -842,7 +863,11 @@ export function AgentChatScreen() {
   useEffect(() => {
     setAgentPreferredModel(null);
     setAgentVoiceId(null);
-    setResolvedModelLabel(activeInstance?.resolvedModelLabel || null);
+    setResolvedModelLabel(
+      isLocalModelSelected
+        ? getLocalModelLabel(selectedModelId)
+        : activeInstance?.resolvedModelLabel || null,
+    );
     (async () => {
       try {
         const models = await apiFetch<Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }>>('/ai-providers/available-models');
@@ -887,7 +912,16 @@ export function AgentChatScreen() {
         }
       } catch {}
     })();
-  }, [instanceId, activeInstance?.id, activeInstance?.metadata?.agentAccountId, activeInstance?.resolvedModelLabel, localAiModelId, localAiStatus]);
+  }, [
+    instanceId,
+    activeInstance?.id,
+    activeInstance?.metadata?.agentAccountId,
+    activeInstance?.resolvedModelLabel,
+    isLocalModelSelected,
+    localAiModelId,
+    localAiStatus,
+    selectedModelId,
+  ]);
 
   // All messages (persisted) and visible slice for lazy rendering
   const allMessagesRef = useRef<Message[]>([]);
@@ -1028,6 +1062,13 @@ export function AgentChatScreen() {
 
   const stopCurrentResponse = useCallback((showInterruptedHint = false) => {
     responseInterruptedRef.current = true;
+    if (autoContinueTimerRef.current) {
+      clearTimeout(autoContinueTimerRef.current);
+      autoContinueTimerRef.current = null;
+    }
+    pendingAutoContinuePromptRef.current = null;
+    pendingAutoContinueReasonRef.current = null;
+    pendingAutoContinueSessionIdRef.current = null;
     streamAbortRef.current?.abort();
     streamAbortRef.current = null;
     setSending(false);
@@ -1050,6 +1091,40 @@ export function AgentChatScreen() {
 
     activeAssistantMessageIdRef.current = null;
   }, [t]);
+
+  const clearAutoContinueTimer = useCallback(() => {
+    if (autoContinueTimerRef.current) {
+      clearTimeout(autoContinueTimerRef.current);
+      autoContinueTimerRef.current = null;
+    }
+  }, []);
+
+  const clearPendingAutoContinue = useCallback(() => {
+    pendingAutoContinuePromptRef.current = null;
+    pendingAutoContinueReasonRef.current = null;
+    pendingAutoContinueSessionIdRef.current = null;
+  }, []);
+
+  const markAutoContinueNeeded = useCallback((reason: 'max_tokens' | 'tool_use') => {
+    pendingAutoContinuePromptRef.current = MOBILE_CONTINUE_PROMPT;
+    pendingAutoContinueReasonRef.current = reason;
+    pendingAutoContinueSessionIdRef.current = sessionIdRef.current;
+  }, []);
+
+  const handleStructuredStreamEvent = useCallback((event: StreamEvent) => {
+    if (event.type !== 'done') {
+      return;
+    }
+
+    if (event.reason === 'max_tokens' || event.reason === 'tool_use') {
+      markAutoContinueNeeded(event.reason);
+      return;
+    }
+
+    clearPendingAutoContinue();
+  }, [clearPendingAutoContinue, markAutoContinueNeeded]);
+
+  useEffect(() => () => clearAutoContinueTimer(), [clearAutoContinueTimer]);
 
   const appendToStreamingMessage = useCallback((msgId: string, chunk: string) => {
     setMessages((prev) =>
@@ -1163,6 +1238,7 @@ export function AgentChatScreen() {
     enqueueStreamedSpeech,
     resetVoicePhaseAfterResponse,
     resumeLiveSpeech,
+    sendRealtimeImageFrame,
   } = useVoiceSession({
     token,
     language,
@@ -1174,6 +1250,8 @@ export function AgentChatScreen() {
     isSending: sending,
     useRealtimeChannel: duplexUsesRealtimeChannel,
     realtimeModelId: remoteResolvedModelId,
+    preferLocalSpeechRecognition: localVoicePlan.preferLocalSpeechRecognition,
+    preferLocalTextToSpeech: localVoicePlan.preferLocalTextToSpeech,
     speechRate,
     onSendMessage: (text, attachments) => {
       void handleSendRef.current(text, attachments);
@@ -1297,13 +1375,23 @@ export function AgentChatScreen() {
     const rawText = typeof overrideText === 'string' ? overrideText : input;
     const text = rawText.trim();
     const attachments = overrideAttachments ?? pendingAttachments;
+    const isSyntheticContinueTurn = text === MOBILE_CONTINUE_PROMPT;
+    const shouldDisplayUserTurn = !isSyntheticContinueTurn;
     if ((!text && attachments.length === 0) || sending || uploadingAttachment) return;
+
+    clearAutoContinueTimer();
+    clearPendingAutoContinue();
+    if (!isSyntheticContinueTurn) {
+      autoContinueCountRef.current = 0;
+    }
 
     // Offline: queue the message instead of streaming
     if (isOffline) {
       offlineQueueRef.current.push({ text, attachments });
       const queueMsg: Message = { id: `user-${Date.now()}`, role: 'user', content: text, attachments, createdAt: Date.now() };
-      setMessages((prev) => [...prev, queueMsg]);
+      if (shouldDisplayUserTurn) {
+        setMessages((prev) => [...prev, queueMsg]);
+      }
       setInput('');
       setPendingAttachments([]);
       return;
@@ -1336,7 +1424,7 @@ export function AgentChatScreen() {
     const currentMsgs = messages;
     responseInterruptedRef.current = false;
     activeAssistantMessageIdRef.current = assistantMsgId;
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setMessages((prev) => [...prev, ...(shouldDisplayUserTurn ? [userMsg] : []), assistantMsg]);
     setInput('');
     setPendingAttachments([]);
     try { mmkv.delete(draftStorageKey); } catch {}
@@ -1345,7 +1433,7 @@ export function AgentChatScreen() {
     streamAbortRef.current?.abort();
 
     // Auto-label session from first user message
-    if (text) {
+    if (text && shouldDisplayUserTurn) {
       setChatSessions((prev) => {
         const idx = prev.findIndex(s => s.id === activeSessionId);
         if (idx >= 0 && (prev[idx].label === t({ en: 'New Chat', zh: '新对话' }) || prev[idx].label === 'New Chat' || prev[idx].label === '新对话')) {
@@ -1363,34 +1451,57 @@ export function AgentChatScreen() {
 
       let streamSucceeded = false;
       let proxyFailureMessage: string | null = null;
+      const localRuntimeCapabilities = isLocalOnlyModelId(effectiveModelId)
+        ? await MobileLocalInferenceService.getCapabilities({ model: effectiveModelId }).catch(() => (
+          MobileLocalInferenceService.getDeclaredCapabilities({ model: effectiveModelId })
+        ))
+        : null;
+      const shouldEscalateToCloud = isLocalOnlyModelId(effectiveModelId)
+        && shouldEscalateLocalMultimodalTurnToCloud(
+          text,
+          attachments,
+          localRuntimeCapabilities || MobileLocalInferenceService.getDeclaredCapabilities({ model: effectiveModelId }),
+        );
 
       const shouldTryLocalNano = (
         isLocalOnlyModelId(effectiveModelId)
-        && attachments.length === 0
+        && !!localRuntimeCapabilities?.available
+        && !shouldEscalateToCloud
       );
 
+      if (shouldEscalateToCloud) {
+        setResolvedModelLabel(
+          t({ en: 'Hybrid cloud orchestration', zh: '混合云端编排' })
+          + ` (${remoteResolvedModelId || 'claude-haiku-4-5'})`
+        );
+      }
+
       // When local model selected but bridge unavailable, notify user and fall through to cloud
-      if (shouldTryLocalNano && !(await MobileLocalInferenceService.isAvailable())) {
+      if (isLocalOnlyModelId(effectiveModelId) && !shouldEscalateToCloud && !localRuntimeCapabilities?.available) {
         setResolvedModelLabel(
           t({ en: 'Cloud fallback', zh: '云端回退' })
           + ` (${remoteResolvedModelId || 'claude-haiku-4-5'})`
         );
       }
 
-      if (shouldTryLocalNano && await MobileLocalInferenceService.isAvailable()) {
+      if (shouldTryLocalNano) {
         const localAbort = new AbortController();
         streamAbortRef.current = localAbort;
         const localModelLabel = effectiveModelId === MobileLocalInferenceService.modelId
           ? MobileLocalInferenceService.modelLabel
           : getLocalModelLabel(effectiveModelId);
         setResolvedModelLabel(localModelLabel);
+        let localAssistantText = '';
+        const localUserContent = buildLocalUserContent(text, attachments);
 
         const localHistory = currentMsgs
           .filter((message) => (message.role === 'user' || message.role === 'assistant') && message.content.trim())
           .slice(-12)
           .map((message) => ({
             role: message.role as 'user' | 'assistant',
-            content: message.content,
+            content: message.role === 'user'
+              ? buildLocalUserContent(message.content, message.attachments || [])
+              : message.content,
           }));
 
         resetVoicePhaseAfterResponse();
@@ -1400,7 +1511,7 @@ export function AgentChatScreen() {
           for await (const chunk of MobileLocalInferenceService.generateTextStream([
             { role: 'system', content: `You are ${instanceName}. Keep responses concise, practical, and conversational. Never reveal chain-of-thought or thinking traces. Reply with the final answer directly.` },
             ...localHistory,
-            { role: 'user', content: text },
+            { role: 'user', content: localUserContent },
           ], { model: effectiveModelId })) {
             if (localAbort.signal.aborted || responseInterruptedRef.current) {
               break;
@@ -1412,12 +1523,13 @@ export function AgentChatScreen() {
 
             localProducedOutput = true;
             streamSucceeded = true;
+            localAssistantText += chunk;
             appendToStreamingMessage(assistantMsgId, chunk);
             enqueueStreamedSpeech(chunk);
           }
           enqueueStreamedSpeech('', true);
 
-          const finalAssistant = (allMessagesRef.current || []).find((message) => message.id === assistantMsgId)?.content?.trim();
+          const finalAssistant = localAssistantText.trim();
           if (!localProducedOutput || !finalAssistant) {
             streamSucceeded = false;
             proxyFailureMessage = t({ en: 'Local model returned an empty response.', zh: '本地模型返回了空响应。' });
@@ -1454,6 +1566,7 @@ export function AgentChatScreen() {
             token,
             model: proxyModelId,
             voiceId: agentVoiceId || undefined,
+            onEvent: handleStructuredStreamEvent,
             onMeta: (meta) => {
               if (meta.resolvedModelLabel) setResolvedModelLabel(meta.resolvedModelLabel);
             },
@@ -1488,6 +1601,9 @@ export function AgentChatScreen() {
               resetVoicePhaseAfterResponse();
               appendToStreamingMessage(assistantMsgId, proxyReply);
               enqueueStreamedSpeech(proxyReply, true);
+              if (proxyResult?.stopReason === 'max_tokens' || proxyResult?.stopReason === 'tool_use') {
+                markAutoContinueNeeded(proxyResult.stopReason);
+              }
             }
           } catch (error: any) {
             proxyFailureMessage = error?.message || proxyFailureMessage || t({ en: 'OpenClaw agent is unavailable right now.', zh: 'OpenClaw 智能体当前不可用。' });
@@ -1505,13 +1621,17 @@ export function AgentChatScreen() {
           resetVoicePhaseAfterResponse();
           appendToStreamingMessage(assistantMsgId, `⚠️ ${message}`);
         } else {
-          const history = buildHistory(currentMsgs, outgoingText);
+          const history = buildHistory(
+            currentMsgs,
+            typeof outgoingText === 'string' ? outgoingText : serializeMessageForModel(userMsg),
+          );
           await new Promise<void>((resolve) => {
             const ac = streamDirectClaude({
               messages: history,
               token,
               model: proxyModelId,
               sessionId: sessionIdRef.current,
+              onEvent: handleStructuredStreamEvent,
               onChunk: (chunk) => {
                 streamSucceeded = true;
                 resetVoicePhaseAfterResponse();
@@ -1575,6 +1695,47 @@ export function AgentChatScreen() {
       resetVoicePhaseAfterResponse();
       setSending(false);
       streamAbortRef.current = null;
+
+      const autoContinuePrompt = pendingAutoContinuePromptRef.current;
+      const autoContinueReason = pendingAutoContinueReasonRef.current;
+      const autoContinueSessionId = pendingAutoContinueSessionIdRef.current;
+      if (
+        !responseInterruptedRef.current
+        && autoContinuePrompt
+        && autoContinueReason
+        && autoContinueSessionId === sessionIdRef.current
+        && autoContinueCountRef.current < MOBILE_AUTO_CONTINUE_LIMIT
+      ) {
+        const scheduledSessionId = autoContinueSessionId;
+        autoContinueCountRef.current += 1;
+        clearPendingAutoContinue();
+        autoContinueTimerRef.current = setTimeout(() => {
+          autoContinueTimerRef.current = null;
+          if (responseInterruptedRef.current || sessionIdRef.current !== scheduledSessionId) {
+            return;
+          }
+          void handleSendRef.current(autoContinuePrompt, []);
+        }, 180);
+      } else if (
+        autoContinuePrompt
+        && autoContinueReason
+        && autoContinueSessionId === sessionIdRef.current
+        && autoContinueCountRef.current >= MOBILE_AUTO_CONTINUE_LIMIT
+      ) {
+        clearPendingAutoContinue();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `assistant-${Date.now()}-continue-hint`,
+            role: 'assistant',
+            content: autoContinueReason === 'tool_use'
+              ? t({ en: '⚠️ The task paused before finishing. Send "Continue" to resume the remaining steps.', zh: '⚠️ 任务在完成前暂停了，发送“继续”即可接着执行剩余步骤。' })
+              : t({ en: '⚠️ The reply is still incomplete. Send "Continue" to keep generating.', zh: '⚠️ 回复仍未完成，发送“继续”即可继续生成。' }),
+            createdAt: Date.now(),
+          },
+        ]);
+      }
+
       resumeLiveSpeech();
     }
   };
@@ -1625,12 +1786,17 @@ export function AgentChatScreen() {
       setCapturingPhoto(true);
       const captured = await cameraRef.current.takePictureAsync({
         quality: 0.8,
+        base64: localVoicePlan.relayCameraFramesToRealtime && duplexSessionConnected,
         exif: false,
         skipProcessing: false,
       });
 
       if (!captured?.uri) {
         return;
+      }
+
+      if (captured.base64 && localVoicePlan.relayCameraFramesToRealtime) {
+        sendRealtimeImageFrame(captured.base64, 'image/jpeg');
       }
 
       await enqueueAttachment({
@@ -1645,7 +1811,14 @@ export function AgentChatScreen() {
     } finally {
       setCapturingPhoto(false);
     }
-  }, [capturingPhoto, enqueueAttachment, t]);
+  }, [
+    capturingPhoto,
+    duplexSessionConnected,
+    enqueueAttachment,
+    localVoicePlan.relayCameraFramesToRealtime,
+    sendRealtimeImageFrame,
+    t,
+  ]);
 
   const handleAttachCamera = async () => {
     await openInAppCamera();
@@ -2402,6 +2575,18 @@ export function AgentChatScreen() {
               </TouchableOpacity>
             </View>
 
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>{t({ en: 'On-device Voice First', zh: '端侧语音优先' })}</Text>
+              <TouchableOpacity
+                onPress={() => setPreferOnDeviceVoice(!preferOnDeviceVoice)}
+                style={[styles.sheetToggle, preferOnDeviceVoice && styles.sheetToggleActive]}
+              >
+                <Text style={[styles.sheetToggleText, preferOnDeviceVoice && { color: colors.accent }]}>
+                  {preferOnDeviceVoice ? t({ en: 'On', zh: '开' }) : t({ en: 'Off', zh: '关' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             {/* Auto-speak toggle */}
             <View style={styles.sheetRow}>
               <Text style={styles.sheetRowLabel}>{t({ en: 'Auto Read Aloud', zh: '自动朗读' })}</Text>
@@ -2532,10 +2717,11 @@ export function AgentChatScreen() {
                       isActive && styles.modelOptionActive,
                     ]}
                     onPress={async () => {
+                      const isLocalTargetModel = isLocalOnlyModelId(m.id);
                       setSelectedModel(m.id);
-                      setResolvedModelLabel(m.label);
+                      setResolvedModelLabel(isLocalTargetModel ? getLocalModelLabel(m.id) : m.label);
                       setShowModelPicker(false);
-                      if (instanceId) {
+                      if (instanceId && !isLocalTargetModel) {
                         updateInstance(instanceId, {
                           capabilities: {
                             ...(activeInstance?.capabilities || {}),

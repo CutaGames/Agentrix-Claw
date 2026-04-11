@@ -20,6 +20,12 @@ import { useI18n } from '../../stores/i18nStore';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentConsole'>;
 
+const LOCAL_ONLY_MODEL_IDS = new Set(['gemma-4-2b', 'gemma-4-4b', 'gemma-nano-2b', 'gemma-nano-2b-local']);
+
+function isLocalOnlyModelId(modelId?: string | null) {
+  return !!modelId && LOCAL_ONLY_MODEL_IDS.has(modelId);
+}
+
 const STATUS_COLOR: Record<string, string> = {
   active: colors.success,
   disconnected: colors.textMuted,
@@ -63,7 +69,9 @@ export function AgentConsoleScreen() {
     })();
   }, []);
 
-  const currentEngineId = activeInstance?.resolvedModel || selectedModelId;
+  const currentEngineId = isLocalOnlyModelId(selectedModelId)
+    ? selectedModelId
+    : activeInstance?.resolvedModel || selectedModelId;
   const selectedModelLabel = dynamicModels.find((m) => m.id === currentEngineId)?.label
     ?? SUPPORTED_MODELS.find((m) => m.id === currentEngineId)?.label
     ?? currentEngineId;
@@ -495,7 +503,7 @@ export function AgentConsoleScreen() {
         selectedModelId={currentEngineId}
         onSelect={async (id) => {
           setSelectedModel(id);
-          if (activeInstance?.id) {
+          if (activeInstance?.id && !isLocalOnlyModelId(id)) {
             const nextLabel = dynamicModels.find((model) => model.id === id)?.label
               ?? SUPPORTED_MODELS.find((model) => model.id === id)?.label
               ?? id;

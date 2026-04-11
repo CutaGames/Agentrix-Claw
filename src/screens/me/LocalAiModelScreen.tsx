@@ -12,14 +12,17 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { LocalAiStatus } from '../../stores/settingsStore';
-import { MobileLocalInferenceService } from '../../services/mobileLocalInference.service';
+import {
+  MobileLocalInferenceService,
+  type MobileLocalRuntimeCapabilities,
+} from '../../services/mobileLocalInference.service';
 import { OtaModelDownloadService, type DownloadProgress } from '../../services/otaModelDownload.service';
 
 interface LocalModelInfo {
   id: string;
   name: string;
-  size: string;
-  description: string;
+  descriptionEn: string;
+  descriptionZh: string;
   tier: string;
   recommended?: boolean;
 }
@@ -27,17 +30,17 @@ interface LocalModelInfo {
 const AVAILABLE_MODELS: LocalModelInfo[] = [
   {
     id: 'gemma-4-2b',
-    name: 'Gemma 4 2B',
-    size: '1.5 GB',
-    description: 'Fast on-device model for wake word, intent routing, simple queries, and privacy filtering.',
+    name: 'Gemma 4 E2B',
+    descriptionEn: 'Base 3.1 GB model plus a 986 MB multimodal projector. Full package enables local text and image turns; local audio file input only turns on when the runtime reports wav/mp3 support.',
+    descriptionZh: '3.1 GB 基础模型外加 986 MB 多模态投影器。完整包下载后可在端侧处理文本和图片轮次；音频文件输入仅在运行时确认支持 wav/mp3 时启用。',
     tier: 'LOCAL',
     recommended: true,
   },
   {
     id: 'gemma-4-4b',
-    name: 'Gemma 4 4B',
-    size: '2.8 GB',
-    description: 'Higher quality local model with better reasoning. Requires 6GB+ RAM.',
+    name: 'Gemma 4 E4B',
+    descriptionEn: 'Higher quality local Gemma package with the same multimodal projector bundle. Better reasoning, but it needs more RAM and still keeps heavy tool orchestration in the cloud path.',
+    descriptionZh: '更高质量的本地 Gemma 包，包含同样的多模态投影器。推理更强，但更吃内存，重工具编排仍保留云端路径。',
     tier: 'LOCAL',
   },
 ];
@@ -73,12 +76,32 @@ export function LocalAiModelScreen() {
   const selectedModelId = useSettingsStore((s) => s.selectedModelId);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
   const [bridgeAvailable, setBridgeAvailable] = useState<boolean | null>(null);
+  const [runtimeCapabilities, setRuntimeCapabilities] = useState<MobileLocalRuntimeCapabilities | null>(null);
   const [downloadSpeed, setDownloadSpeed] = useState('');
   const [downloadEta, setDownloadEta] = useState('');
   const pauseStateRef = useRef<string | null>(null);
 
   useEffect(() => {
-    void MobileLocalInferenceService.isAvailable().then(setBridgeAvailable);
+    let cancelled = false;
+
+    void MobileLocalInferenceService.isAvailable(localAiModelId).then((available) => {
+      if (!cancelled) {
+        setBridgeAvailable(available);
+      }
+    });
+
+    void MobileLocalInferenceService.getCapabilities({ model: localAiModelId })
+      .then((capabilities) => {
+        if (!cancelled) {
+          setRuntimeCapabilities(capabilities);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRuntimeCapabilities(MobileLocalInferenceService.getDeclaredCapabilities({ model: localAiModelId }));
+        }
+      });
+
     // Check if model already downloaded on mount
     const downloaded = OtaModelDownloadService.isModelDownloaded(localAiModelId);
     if (downloaded && localAiStatus !== 'ready') {
@@ -86,6 +109,10 @@ export function LocalAiModelScreen() {
       setLocalAiEnabled(true);
       setLocalAiProgress(100);
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [localAiModelId, localAiStatus, setLocalAiEnabled, setLocalAiProgress, setLocalAiStatus]);
 
   const formatSpeed = (bps: number): string => {
@@ -129,7 +156,7 @@ export function LocalAiModelScreen() {
         setDownloadEta('');
         Alert.alert(
           t({ en: 'Download Complete', zh: '下载完成' }),
-          t({ en: 'Local AI model is ready. Simple queries will now be processed on-device.', zh: '本地 AI 模型已就绪。简单查询将在设备端处理。' }),
+          t({ en: 'Local AI package is ready. Text and supported image turns can stay on-device; audio file input enables automatically if the runtime exposes wav/mp3 support.', zh: '本地 AI 完整包已就绪。文本和受支持的图片轮次可留在端侧；若运行时暴露 wav/mp3 支持，音频文件输入也会自动启用。' }),
         );
       },
       onError: (error: string) => {
@@ -197,6 +224,9 @@ export function LocalAiModelScreen() {
   }, [localAiModelId, setLocalAiEnabled, setLocalAiProgress, setLocalAiStatus, t]);
 
   const currentModel = AVAILABLE_MODELS.find((m) => m.id === localAiModelId) ?? AVAILABLE_MODELS[0];
+  const currentPackageReady = OtaModelDownloadService.areRequiredArtifactsDownloaded(localAiModelId);
+  const currentModelEntry = OtaModelDownloadService.getModelEntry(localAiModelId);
+  const currentPackageSize = OtaModelDownloadService.getPackageSizeLabel(localAiModelId);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -267,10 +297,15 @@ export function LocalAiModelScreen() {
             <Text style={styles.readyModel}>{currentModel.name}</Text>
             <Text style={styles.readyDesc}>
               {t({
-                en: 'On-device inference active. Wake word, intent routing, and simple queries run locally.',
-                zh: '端侧推理已激活。唤醒词、意图路由和简单查询在本地运行。',
+                en: currentPackageReady
+                  ? 'On-device package is active. Text is local, image turns stay local when runtime vision is enabled, and speech playback still uses the local TTS path until a vocoder package exists.'
+                  : 'Base text model is active, but the multimodal projector add-on is still missing. Tap upgrade to finish the local image package.',
+                zh: currentPackageReady
+                  ? '端侧完整包已激活。文本可本地处理，图片轮次会在运行时视觉能力开启后留在端侧；语音播报暂时仍走本地 TTS 路径，等待后续 vocoder 包。'
+                  : '基础文本模型已激活，但多模态投影器附件还未补齐。点击升级即可补完本地图片能力。',
               })}
             </Text>
+            <Text style={styles.readyMeta}>{t({ en: `Full package size: ${currentPackageSize}`, zh: `完整包大小：${currentPackageSize}` })}</Text>
           </View>
         )}
 
@@ -284,57 +319,112 @@ export function LocalAiModelScreen() {
         )}
       </View>
 
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>{t({ en: 'Local Multimodal Surface', zh: '本地多模态能力面' })}</Text>
+        <View style={styles.routeRow}>
+          <Text style={styles.routeLabel}>{t({ en: 'Image input', zh: '图片输入' })}</Text>
+          <Text style={styles.routeValue}>
+            {runtimeCapabilities?.supportsVisionInput
+              ? t({ en: '📷 Local ready', zh: '📷 端侧可用' })
+              : currentModelEntry?.multimodalProjector
+                ? (currentPackageReady
+                  ? t({ en: '⏳ Runtime not exposing vision yet', zh: '⏳ 运行时暂未暴露视觉能力' })
+                  : t({ en: '⬇️ Download projector add-on', zh: '⬇️ 需下载投影器附件' }))
+                : t({ en: '—', zh: '—' })}
+          </Text>
+        </View>
+        <View style={styles.routeRow}>
+          <Text style={styles.routeLabel}>{t({ en: 'Audio file input', zh: '音频文件输入' })}</Text>
+          <Text style={styles.routeValue}>
+            {runtimeCapabilities?.supportsAudioInput
+              ? t({ en: '🎙️ Local ready (wav/mp3)', zh: '🎙️ 端侧可用（wav/mp3）' })
+              : t({ en: '☁️ Still falls back to cloud/STT path', zh: '☁️ 仍回退到云端/STT 路径' })}
+          </Text>
+        </View>
+        <View style={styles.routeRow}>
+          <Text style={styles.routeLabel}>{t({ en: 'Audio output surface', zh: '音频输出面' })}</Text>
+          <Text style={styles.routeValue}>
+            {runtimeCapabilities?.supportsAudioOutput
+              ? t({ en: '🔊 Model-native ready', zh: '🔊 模型原生可用' })
+              : t({ en: '🗣️ Local TTS playback for now', zh: '🗣️ 当前仍走本地 TTS 播放' })}
+          </Text>
+        </View>
+      </View>
+
       {/* Available models */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>{t({ en: 'Available Models', zh: '可用模型' })}</Text>
       </View>
 
-      {AVAILABLE_MODELS.map((model) => (
-        <View key={model.id} style={[styles.modelCard, localAiModelId === model.id && styles.modelCardSelected]}>
-          <View style={styles.modelHeader}>
-            <Text style={styles.modelName}>{model.name}</Text>
-            {model.recommended && (
-              <View style={styles.recommendBadge}>
-                <Text style={styles.recommendText}>{t({ en: 'Recommended', zh: '推荐' })}</Text>
+      {AVAILABLE_MODELS.map((model) => {
+        const packageReady = OtaModelDownloadService.areRequiredArtifactsDownloaded(model.id);
+        const modelDownloaded = OtaModelDownloadService.isModelDownloaded(model.id);
+        const packageSize = OtaModelDownloadService.getPackageSizeLabel(model.id);
+        const modelEntry = OtaModelDownloadService.getModelEntry(model.id);
+        const canUpgradePackage = modelDownloaded && !packageReady;
+
+        return (
+          <View key={model.id} style={[styles.modelCard, localAiModelId === model.id && styles.modelCardSelected]}>
+            <View style={styles.modelHeader}>
+              <Text style={styles.modelName}>{model.name}</Text>
+              {model.recommended && (
+                <View style={styles.recommendBadge}>
+                  <Text style={styles.recommendText}>{t({ en: 'Recommended', zh: '推荐' })}</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.modelDesc}>
+              {t({ en: model.descriptionEn, zh: model.descriptionZh })}
+            </Text>
+            <View style={styles.modelMeta}>
+              <Text style={styles.metaText}>📦 {packageSize}</Text>
+              <Text style={styles.metaText}>⚡ {model.tier}</Text>
+              <Text style={styles.metaText}>💰 {t({ en: 'Free', zh: '免费' })}</Text>
+              {modelEntry?.multimodalProjector ? <Text style={styles.metaText}>{t({ en: '🖼️ mmproj included', zh: '🖼️ 含 mmproj' })}</Text> : null}
+            </View>
+
+            {localAiModelId === model.id && localAiStatus === 'ready' && !canUpgradePackage ? (
+              <View style={styles.modelActions}>
+                <TouchableOpacity style={styles.activeBtn} disabled>
+                  <Text style={styles.activeBtnText}>✅ {t({ en: 'Active', zh: '已激活' })}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
+                  <Text style={styles.deleteBtnText}>{t({ en: 'Delete', zh: '删除' })}</Text>
+                </TouchableOpacity>
               </View>
+            ) : localAiModelId === model.id && localAiStatus === 'ready' && canUpgradePackage ? (
+              <View style={styles.modelActions}>
+                <TouchableOpacity style={styles.activeBtn} disabled>
+                  <Text style={styles.activeBtnText}>{t({ en: 'Text Ready', zh: '文本已就绪' })}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.downloadBtnCompact} onPress={() => handleDownload(model.id)}>
+                  <Text style={styles.downloadBtnText}>{t({ en: 'Upgrade to Full Package', zh: '升级到完整包' })}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
+                  <Text style={styles.deleteBtnText}>{t({ en: 'Delete', zh: '删除' })}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : localAiModelId === model.id && localAiStatus === 'downloading' ? (
+              <View style={styles.modelActions}>
+                <ActivityIndicator size="small" color="#3B82F6" />
+                <Text style={styles.downloadingText}>{t({ en: 'Downloading...', zh: '下载中...' })} {localAiProgress}%</Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.downloadBtn}
+                onPress={() => handleDownload(model.id)}
+                disabled={localAiStatus === 'downloading'}
+              >
+                <Text style={styles.downloadBtnText}>
+                  ⬇️ {canUpgradePackage
+                    ? t({ en: 'Upgrade to Full Package', zh: '升级到完整包' })
+                    : t({ en: `Download (${packageSize})`, zh: `下载 (${packageSize})` })}
+                </Text>
+              </TouchableOpacity>
             )}
           </View>
-          <Text style={styles.modelDesc}>
-            {t({ en: model.description, zh: model.description })}
-          </Text>
-          <View style={styles.modelMeta}>
-            <Text style={styles.metaText}>📦 {model.size}</Text>
-            <Text style={styles.metaText}>⚡ {model.tier}</Text>
-            <Text style={styles.metaText}>💰 {t({ en: 'Free', zh: '免费' })}</Text>
-          </View>
-
-          {localAiModelId === model.id && localAiStatus === 'ready' ? (
-            <View style={styles.modelActions}>
-              <TouchableOpacity style={styles.activeBtn} disabled>
-                <Text style={styles.activeBtnText}>✅ {t({ en: 'Active', zh: '已激活' })}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
-                <Text style={styles.deleteBtnText}>{t({ en: 'Delete', zh: '删除' })}</Text>
-              </TouchableOpacity>
-            </View>
-          ) : localAiModelId === model.id && localAiStatus === 'downloading' ? (
-            <View style={styles.modelActions}>
-              <ActivityIndicator size="small" color="#3B82F6" />
-              <Text style={styles.downloadingText}>{t({ en: 'Downloading...', zh: '下载中...' })} {localAiProgress}%</Text>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.downloadBtn}
-              onPress={() => handleDownload(model.id)}
-              disabled={localAiStatus === 'downloading'}
-            >
-              <Text style={styles.downloadBtnText}>
-                ⬇️ {t({ en: `Download (${model.size})`, zh: `下载 (${model.size})` })}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      ))}
+        );
+      })}
 
       {/* Current routing explanation */}
       <View style={styles.card}>
@@ -343,6 +433,22 @@ export function LocalAiModelScreen() {
           <Text style={styles.routeLabel}>{t({ en: 'Simple queries', zh: '简单查询' })}</Text>
           <Text style={styles.routeValue}>
             {localAiStatus === 'ready' ? `📱 ${currentModel.name}` : `☁️ ${selectedModelId}`}
+          </Text>
+        </View>
+        <View style={styles.routeRow}>
+          <Text style={styles.routeLabel}>{t({ en: 'Image turns', zh: '图片轮次' })}</Text>
+          <Text style={styles.routeValue}>
+            {runtimeCapabilities?.supportsVisionInput
+              ? `📱 ${currentModel.name}`
+              : t({ en: '☁️ Cloud / upgrade required', zh: '☁️ 云端 / 需升级完整包' })}
+          </Text>
+        </View>
+        <View style={styles.routeRow}>
+          <Text style={styles.routeLabel}>{t({ en: 'Audio file turns', zh: '音频文件轮次' })}</Text>
+          <Text style={styles.routeValue}>
+            {runtimeCapabilities?.supportsAudioInput
+              ? `📱 ${currentModel.name} (wav/mp3)`
+              : t({ en: '☁️ Cloud / STT path', zh: '☁️ 云端 / STT 路径' })}
           </Text>
         </View>
         <View style={styles.routeRow}>
@@ -391,6 +497,7 @@ const styles = StyleSheet.create({
   readyInfo: { gap: 4 },
   readyModel: { fontSize: 13, fontWeight: '600', color: '#10B981' },
   readyDesc: { fontSize: 11, color: colors.textMuted, lineHeight: 16 },
+  readyMeta: { fontSize: 11, color: colors.textMuted },
   warningText: { fontSize: 11, color: '#F59E0B', lineHeight: 16 },
   sectionHeader: { marginTop: 4 },
   sectionTitle: { fontSize: 12, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -432,6 +539,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(59,130,246,0.12)',
     alignItems: 'center',
     marginTop: 4,
+  },
+  downloadBtnCompact: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: 'rgba(59,130,246,0.12)',
+    alignItems: 'center',
   },
   downloadBtnText: { fontSize: 14, fontWeight: '700', color: '#3B82F6' },
   downloadingText: { fontSize: 13, color: '#3B82F6' },
