@@ -50,6 +50,11 @@ async fn desktop_bridge_snap_ball_to_edge(app: AppHandle) -> Result<(), String> 
 async fn desktop_bridge_resize_ball_window(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }));
+        // PRO mode (large window): make resizable and non-always-on-top
+        // Compact/ball mode (small window): keep pinned and non-resizable
+        let is_pro = width > 500.0 || height > 700.0;
+        let _ = win.set_resizable(is_pro);
+        let _ = win.set_always_on_top(!is_pro);
         Ok(())
     } else {
         Err("main window not found".into())

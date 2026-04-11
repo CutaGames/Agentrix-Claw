@@ -3160,6 +3160,23 @@ export default function ChatPanel({
         />
       )}
 
+      {/* Dedicated drag bar for PRO mode (titlebar is too packed with buttons) */}
+      {effectiveProMode && (
+        <div
+          data-tauri-drag-region
+          onMouseDown={handleTitleBarMouseDown}
+          onDoubleClick={handleTitleBarDoubleClick}
+          style={{
+            height: 8,
+            width: "100%",
+            cursor: "grab",
+            WebkitAppRegion: "drag",
+            background: "transparent",
+            flexShrink: 0,
+          }}
+        />
+      )}
+
       {/* Title bar */}
       <div
         style={{
@@ -3339,16 +3356,9 @@ export default function ChatPanel({
           <button
             onClick={() => void toggleWindowMaximize()}
             style={windowActionBtnStyle}
-            title={windowChromeState.maximized ? "Restore window" : "Maximize window"}
+            title={windowChromeState.maximized ? "Restore window" : "Maximize window (F11 for fullscreen)"}
           >
             {windowChromeState.maximized ? "Restore" : "Max"}
-          </button>
-          <button
-            onClick={() => void toggleWindowFullscreen()}
-            style={windowActionBtnStyle}
-            title={windowChromeState.fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-          >
-            {windowChromeState.fullscreen ? "Window" : "Full"}
           </button>
           {/* Sync status indicator */}
           <div
