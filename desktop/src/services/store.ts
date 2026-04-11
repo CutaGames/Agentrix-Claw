@@ -584,6 +584,7 @@ export function streamDirectChat(opts: {
   onChunk: (chunk: string) => void;
   onDone: () => void;
   onError: (err: string) => void;
+  onEvent?: (event: StreamEvent) => void;
 }): AbortController {
   const ac = new AbortController();
 
@@ -635,6 +636,7 @@ export function streamDirectChat(opts: {
       const reader = res.body.getReader();
       await consumeAgentrixSse(reader, {
         onChunk: opts.onChunk,
+        onEvent: opts.onEvent,
         onDone: opts.onDone,
         onError: opts.onError,
       });
