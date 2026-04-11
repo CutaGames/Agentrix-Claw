@@ -244,14 +244,13 @@ export default function App() {
       windowLabel === "floating-ball" ||
       !loggedIn ||
       !desktopWakeWordConfig.enabled ||
-      !desktopWakeWordConfig.accessKey ||
-      !DesktopWakeWordService.isAvailable()
+      !desktopWakeWordConfig.accessKey
     ) {
       return;
     }
 
-    const wakeWord = new DesktopWakeWordService();
     let disposed = false;
+    let wakeWord: DesktopWakeWordService | null = null;
 
     const triggerVoiceFlow = async () => {
       if (disposed) return;
@@ -269,19 +268,34 @@ export default function App() {
       }, 250);
     };
 
-    void wakeWord.init({
-      accessKey: desktopWakeWordConfig.accessKey,
-      builtInKeyword: desktopWakeWordConfig.customKeywordPath ? undefined : desktopWakeWordConfig.builtInKeyword,
-      customKeywordPath: desktopWakeWordConfig.customKeywordPath || undefined,
-      sensitivity: desktopWakeWordConfig.sensitivity,
-      onWakeWord: () => {
-        void triggerVoiceFlow();
-      },
-    }).then(() => wakeWord.start());
+    const startWakeWord = async () => {
+      if (!(await DesktopWakeWordService.isAvailable()) || disposed) {
+        return;
+      }
+
+      const service = new DesktopWakeWordService();
+      wakeWord = service;
+
+      await service.init({
+        accessKey: desktopWakeWordConfig.accessKey,
+        builtInKeyword: desktopWakeWordConfig.customKeywordPath ? undefined : desktopWakeWordConfig.builtInKeyword,
+        customKeywordPath: desktopWakeWordConfig.customKeywordPath || undefined,
+        sensitivity: desktopWakeWordConfig.sensitivity,
+        onWakeWord: () => {
+          void triggerVoiceFlow();
+        },
+      });
+
+      if (!disposed) {
+        await service.start();
+      }
+    };
+
+    void startWakeWord();
 
     return () => {
       disposed = true;
-      void wakeWord.release();
+      void wakeWord?.release();
     };
   }, [
     desktopWakeWordConfig.accessKey,

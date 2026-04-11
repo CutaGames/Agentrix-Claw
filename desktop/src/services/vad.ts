@@ -85,9 +85,9 @@ export class SileroVAD {
   /**
    * Check if ONNX Runtime Web is available.
    */
-  static isAvailable(): boolean {
+  static async isAvailable(): Promise<boolean> {
     try {
-      require('onnxruntime-web');
+      await import('onnxruntime-web' as any);
       return true;
     } catch {
       return false;

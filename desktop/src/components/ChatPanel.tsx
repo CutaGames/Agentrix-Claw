@@ -5,7 +5,7 @@ import {
   useCallback,
   useMemo,
   type CSSProperties,
-  type KeyboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ChangeEvent,
   type MouseEvent,
 } from "react";
@@ -130,6 +130,8 @@ const LONG_LOCAL_PREFILL_TOKEN_THRESHOLD = 3000;
 const MANUAL_MODEL_SELECTION_GRACE_MS = 20_000;
 const STALE_DESKTOP_TASK_WINDOW_MS = 45_000;
 const RECENT_DESKTOP_FAILURE_WINDOW_MS = 15_000;
+const CHAT_AUTO_CONTINUE_LIMIT = 3;
+const CHECKPOINT_CONTINUE_PROMPT = "Continue from the latest checkpoint. Preserve the active plan, task progress, and any pending background results.";
 const TASK_LIKE_PROMPT_PATTERN = /([a-z]:\\|\\|\/|\.tsx?\b|\.jsx?\b|\.json\b|\.md\b|package\.json|readme|src\/|backend\/|desktop\/|```|\n)|\b(search|find|install|run|execute|debug|fix|edit|write|read|open|grep|list|analy[sz]e|inspect|deploy|build|test|git|ssh|workspace|file|folder|directory|project|repo|code|patch|benchmark|profile|trace|continue|resume)\b|搜索|安装|运行|执行|修复|修改|查看|列出|分析|排查|部署|构建|测试|工作区|文件|目录|项目|仓库|代码/i;
 
 function estimateLocalPrefillTokens(messages: Array<{ content: string }>): number {
@@ -214,6 +216,10 @@ function resolveEffectiveChatMode(
   }
 
   return TASK_LIKE_PROMPT_PATTERN.test(text.trim()) ? "agent" : "ask";
+}
+
+function shouldEscalateDesktopLocalTurn(effectiveChatMode: ChatMode, hasCloudPath: boolean): boolean {
+  return hasCloudPath && effectiveChatMode === "agent";
 }
 
 type BallState = "idle" | "recording" | "thinking" | "speaking";
@@ -338,6 +344,7 @@ export default function ChatPanel({
   const sessionIdRef = useRef(defaultSessionId);
   const abortRef = useRef<AbortController | null>(null);
   const sessionAbortControllersRef = useRef<Record<string, AbortController | null>>({});
+  const responseInterruptedRef = useRef(false);
   const listEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
@@ -396,6 +403,11 @@ export default function ChatPanel({
     fullscreen: false,
   });
   const [feedbackNow, setFeedbackNow] = useState(Date.now());
+  const autoContinueCountRef = useRef(0);
+  const pendingAutoContinuePromptRef = useRef<string | null>(null);
+  const pendingAutoContinueReasonRef = useRef<"max_tokens" | "tool_use" | null>(null);
+  const pendingAutoContinueSessionIdRef = useRef<string | null>(null);
+  const autoContinueTimerRef = useRef<number | null>(null);
 
   const effectiveProMode =
     proMode ||
@@ -433,6 +445,39 @@ export default function ChatPanel({
 
     return streamFeedback;
   }, [activeToolRun, feedbackElapsedSeconds, sendStartedAt, streamFeedback]);
+
+  const compactTitleBar = !effectiveProMode && windowBounds.width < 760;
+  const activeHeaderInstance = useMemo(
+    () => (activeInstanceId ? instances.find((instance) => instance.id === activeInstanceId) : undefined),
+    [activeInstanceId, instances],
+  );
+  const compactHeaderTitle = activeHeaderInstance?.name || activeAgent?.name || "Agentrix";
+  const compactHeaderSubtitle = compactTitleBar
+    ? (windowChromeState.fullscreen
+      ? "F11 退出全屏"
+      : "拖动顶部移动窗口 · 双击放大 · F11 全屏")
+    : (getConversationModelLabel(selectedModel, models, activeHeaderInstance) || activeHeaderInstance?.resolvedModelLabel || "Ready");
+
+  const clearAutoContinueTimer = useCallback(() => {
+    if (autoContinueTimerRef.current !== null) {
+      window.clearTimeout(autoContinueTimerRef.current);
+      autoContinueTimerRef.current = null;
+    }
+  }, []);
+
+  const clearPendingAutoContinue = useCallback(() => {
+    pendingAutoContinuePromptRef.current = null;
+    pendingAutoContinueReasonRef.current = null;
+    pendingAutoContinueSessionIdRef.current = null;
+  }, []);
+
+  const queueAutoContinue = useCallback((sessionId: string, reason: "max_tokens" | "tool_use") => {
+    const prompt = buildContinuePrompt();
+    pendingAutoContinuePromptRef.current = prompt;
+    pendingAutoContinueReasonRef.current = reason;
+    pendingAutoContinueSessionIdRef.current = sessionId;
+    setContinuePrompt(prompt);
+  }, []);
 
   const hasPendingManualModelSelection = useCallback((instanceId: string | null, resolvedModelId?: string | null) => {
     const pendingSelection = manualModelSelectionRef.current;
@@ -509,6 +554,8 @@ export default function ChatPanel({
     return () => window.clearInterval(timer);
   }, [activeToolRun, sendStartedAt]);
 
+  useEffect(() => () => clearAutoContinueTimer(), [clearAutoContinueTimer]);
+
   const enterWindowProMode = useCallback(async () => {
     if (onEnterProMode) {
       onEnterProMode();
@@ -552,6 +599,18 @@ export default function ChatPanel({
       await refreshWindowChromeState();
     } catch {}
   }, [refreshWindowChromeState]);
+
+  useEffect(() => {
+    const handleWindowChromeShortcut = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "F11") {
+        event.preventDefault();
+        void toggleWindowFullscreen();
+      }
+    };
+
+    window.addEventListener("keydown", handleWindowChromeShortcut);
+    return () => window.removeEventListener("keydown", handleWindowChromeShortcut);
+  }, [toggleWindowFullscreen]);
 
   const refreshHistory = useCallback(async () => {
     setHistoryEntries(await listSessionEntries());
@@ -658,6 +717,14 @@ export default function ChatPanel({
   const abortSession = useCallback((sessionId: string) => {
     const controller = sessionAbortControllersRef.current[sessionId];
     if (controller) {
+      responseInterruptedRef.current = true;
+      if (autoContinueTimerRef.current !== null) {
+        window.clearTimeout(autoContinueTimerRef.current);
+        autoContinueTimerRef.current = null;
+      }
+      pendingAutoContinuePromptRef.current = null;
+      pendingAutoContinueReasonRef.current = null;
+      pendingAutoContinueSessionIdRef.current = null;
       controller.abort();
       sessionAbortControllersRef.current[sessionId] = null;
     }
@@ -1876,6 +1943,7 @@ export default function ChatPanel({
       const text = (overrideText || input).trim();
       const targetSessionId = sessionIdRef.current;
       const targetRuntime = sessionRuntimeRef.current[targetSessionId] || createEmptySessionRuntimeState();
+      const isSyntheticContinueTurn = isSyntheticContinuePrompt(text);
       const useDesktopLocalModel = isDesktopLocalModelId(selectedModel);
       const activeInst = activeInstanceId
         ? instances.find((instance) => instance.id === activeInstanceId)
@@ -1886,6 +1954,12 @@ export default function ChatPanel({
 
       if ((!text && pendingAttachments.length === 0) || targetRuntime.sending || uploadingAttachments) {
         return;
+      }
+
+      clearAutoContinueTimer();
+      clearPendingAutoContinue();
+      if (!isSyntheticContinueTurn) {
+        autoContinueCountRef.current = 0;
       }
 
       if (!overrideText) {
@@ -1906,6 +1980,8 @@ export default function ChatPanel({
         pendingAttachments.length,
         Boolean(activePlan),
       );
+      const shouldEscalateLocalTurn = useDesktopLocalModel
+        && shouldEscalateDesktopLocalTurn(effectiveChatMode, Boolean(token));
       const currentMessagesForSession = tabMessagesCache.current[targetSessionId] || messages;
 
       const userMsg: ChatMessage = {
@@ -1924,7 +2000,12 @@ export default function ChatPanel({
         createdAt: Date.now(),
       };
 
-      updateSessionMessages(targetSessionId, (prev) => [...prev, userMsg, assistantMsg], { persist: true });
+      updateSessionMessages(
+        targetSessionId,
+        (prev) => [...prev, ...(isSyntheticContinueTurn ? [] : [userMsg]), assistantMsg],
+        { persist: true },
+      );
+      responseInterruptedRef.current = false;
       setPendingAttachments([]);
       setSendStartedAt(Date.now());
       setActiveToolRun(null);
@@ -2131,14 +2212,14 @@ export default function ChatPanel({
           } else if (event.type === "done") {
             setActiveToolRun(null);
             if (event.reason === "max_tokens") {
-              setContinuePrompt(buildContinuePrompt());
+              queueAutoContinue(targetSessionId, "max_tokens");
               setStreamFeedback({
                 tone: "warning",
                 label: "输出达到长度上限",
                 detail: "点击 Continue 从中断位置续写",
               });
             } else if (event.reason === "tool_use") {
-              setContinuePrompt(buildContinuePrompt());
+              queueAutoContinue(targetSessionId, "tool_use");
               setStreamFeedback({
                 tone: "warning",
                 label: "复杂任务尚未完成",
@@ -2245,193 +2326,216 @@ export default function ChatPanel({
             abortRef.current = controller;
           }
 
-          // Pre-flight: check if local model + binary are available
-          const readiness = await checkDesktopLocalModelReady();
-          if (!readiness.ready) {
-            // No local model available — skip local attempt, fall through to cloud
-            shouldFallbackToCloud = Boolean(authToken);
-            if (!shouldFallbackToCloud) {
-              updateSessionMessages(
-                targetSessionId,
-                (prev) => prev.map((existing) => (
-                  existing.id === assistantId
-                    ? {
-                        ...existing,
-                        content: `⚠️ ${readiness.message || '本地模型不可用'}`,
-                        error: true,
-                        streaming: false,
-                      }
-                    : existing
-                )),
-                { persist: true, markUnread: true },
-              );
-              setStreamFeedback({
-                tone: "error",
-                label: "本地模型不可用",
-                detail: readiness.message || "请在设置中下载本地模型",
-              });
-            } else {
-              updateSessionMessages(
-                targetSessionId,
-                (prev) => prev.map((existing) => (
-                  existing.id === assistantId
-                    ? { ...existing, content: "", error: false, streaming: true, meta: undefined }
-                    : existing
-                )),
-              );
-              setStreamFeedback({
-                tone: "warning",
-                label: "本地模型不可用，切换云端",
-                detail: readiness.message || "请在设置中下载本地模型",
-              });
-            }
-
-            if (!shouldFallbackToCloud) {
-              sessionAbortControllersRef.current[targetSessionId] = null;
-              if (targetSessionId === sessionIdRef.current) {
-                abortRef.current = null;
-              }
-              patchSessionRuntime(targetSessionId, { sending: false });
-              setSendStartedAt(null);
-              setActiveToolRun(null);
-              voiceInitiatedRef.current = false;
-              if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
-                setBallState("idle");
-              }
-              return;
-            }
-          }
-
-          if (readiness.ready) {
-          updateSessionMessages(
-            targetSessionId,
-            (prev) => prev.map((message) => (
-              message.id === assistantId
-                ? {
-                    ...message,
-                    meta: {
-                      resolvedModel: normalizeDesktopLocalModelId(selectedModel),
-                      resolvedModelLabel: getDesktopLocalModelLabel(selectedModel),
-                    },
-                  }
-                : message
-            )),
-          );
-
-          try {
-            const localSidecar = localSidecarRef.current || new LocalLLMSidecar();
-            localSidecarRef.current = localSidecar;
-            const localModelLabel = getDesktopLocalModelLabel(selectedModel);
-            if (localSidecar.currentStatus !== "running") {
-              setStreamFeedback({
-                tone: "info",
-                label: "模型载入中",
-                detail: `${localModelLabel} 正在加载到本地内存`,
-              });
-            }
-
-            await ensureDesktopLocalSidecar(localSidecar);
-            setStreamFeedback(getLocalPrefillFeedback(history));
-
-            let receivedFirstLocalChunk = false;
-
-            for await (const chunk of localSidecar.chatStream(history)) {
-              if (controller.signal.aborted) {
-                break;
-              }
-              if (!receivedFirstLocalChunk) {
-                receivedFirstLocalChunk = true;
+          if (shouldEscalateLocalTurn) {
+            shouldFallbackToCloud = true;
+            updateSessionMessages(
+              targetSessionId,
+              (prev) => prev.map((message) => (
+                message.id === assistantId
+                  ? {
+                      ...message,
+                      meta: {
+                        resolvedModel: fallbackCloudModel || selectedModel,
+                        resolvedModelLabel: fallbackCloudModel
+                          ? getConversationModelLabel(fallbackCloudModel, models, activeInst) || undefined
+                          : "Cloud Tool Orchestration",
+                      },
+                    }
+                  : message
+              )),
+            );
+            setStreamFeedback({
+              tone: "info",
+              label: "混合模式已切换云端编排",
+              detail: "当前请求需要工具链或更长执行预算，已跳过本地直答",
+            });
+          } else {
+            // Pre-flight: check if local model + binary are available
+            const readiness = await checkDesktopLocalModelReady();
+            if (!readiness.ready) {
+              // No local model available — skip local attempt, fall through to cloud
+              shouldFallbackToCloud = Boolean(authToken);
+              if (!shouldFallbackToCloud) {
+                updateSessionMessages(
+                  targetSessionId,
+                  (prev) => prev.map((existing) => (
+                    existing.id === assistantId
+                      ? {
+                          ...existing,
+                          content: `⚠️ ${readiness.message || '本地模型不可用'}`,
+                          error: true,
+                          streaming: false,
+                        }
+                      : existing
+                  )),
+                  { persist: true, markUnread: true },
+                );
                 setStreamFeedback({
-                  tone: "info",
-                  label: "正在输出回复",
-                  detail: "内容持续生成中",
+                  tone: "error",
+                  label: "本地模型不可用",
+                  detail: readiness.message || "请在设置中下载本地模型",
+                });
+              } else {
+                updateSessionMessages(
+                  targetSessionId,
+                  (prev) => prev.map((existing) => (
+                    existing.id === assistantId
+                      ? { ...existing, content: "", error: false, streaming: true, meta: undefined }
+                      : existing
+                  )),
+                );
+                setStreamFeedback({
+                  tone: "warning",
+                  label: "本地模型不可用，切换云端",
+                  detail: readiness.message || "请在设置中下载本地模型",
                 });
               }
-              chunkHandler(chunk);
+
+              if (!shouldFallbackToCloud) {
+                sessionAbortControllersRef.current[targetSessionId] = null;
+                if (targetSessionId === sessionIdRef.current) {
+                  abortRef.current = null;
+                }
+                patchSessionRuntime(targetSessionId, { sending: false });
+                setSendStartedAt(null);
+                setActiveToolRun(null);
+                voiceInitiatedRef.current = false;
+                if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
+                  setBallState("idle");
+                }
+                return;
+              }
             }
 
-            if (!controller.signal.aborted) {
-              finalizeMessage(targetSessionId, assistantId);
-              sentenceAcc?.flush();
-              setStreamFeedback(null);
+            if (readiness.ready) {
+              updateSessionMessages(
+                targetSessionId,
+                (prev) => prev.map((message) => (
+                  message.id === assistantId
+                    ? {
+                        ...message,
+                        meta: {
+                          resolvedModel: normalizeDesktopLocalModelId(selectedModel),
+                          resolvedModelLabel: getDesktopLocalModelLabel(selectedModel),
+                        },
+                      }
+                    : message
+                )),
+              );
 
-              // Sync local conversation to backend for memory persistence
-              if (authToken) {
-                // Read latest messages via updater to get current state
-                let syncMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
-                syncMessages.push({ role: 'user', content: outboundText });
-                updateSessionMessages(targetSessionId, (prev) => {
-                  const aMsg = prev.find((m) => m.id === assistantId);
-                  if (aMsg?.content?.trim()) {
-                    syncMessages.push({ role: 'assistant', content: aMsg.content });
+              try {
+                const localSidecar = localSidecarRef.current || new LocalLLMSidecar();
+                localSidecarRef.current = localSidecar;
+                const localModelLabel = getDesktopLocalModelLabel(selectedModel);
+                if (localSidecar.currentStatus !== "running") {
+                  setStreamFeedback({
+                    tone: "info",
+                    label: "模型载入中",
+                    detail: `${localModelLabel} 正在加载到本地内存`,
+                  });
+                }
+
+                await ensureDesktopLocalSidecar(localSidecar);
+                setStreamFeedback(getLocalPrefillFeedback(history));
+
+                let receivedFirstLocalChunk = false;
+
+                for await (const chunk of localSidecar.chatStream(history)) {
+                  if (controller.signal.aborted) {
+                    break;
                   }
-                  return prev; // no mutation
-                });
-                if (syncMessages.length > 1) {
-                  void syncLocalConversation(authToken, targetSessionId, syncMessages, normalizeDesktopLocalModelId(selectedModel));
+                  if (!receivedFirstLocalChunk) {
+                    receivedFirstLocalChunk = true;
+                    setStreamFeedback({
+                      tone: "info",
+                      label: "正在输出回复",
+                      detail: "内容持续生成中",
+                    });
+                  }
+                  chunkHandler(chunk);
+                }
+
+                if (!controller.signal.aborted) {
+                  finalizeMessage(targetSessionId, assistantId);
+                  sentenceAcc?.flush();
+                  setStreamFeedback(null);
+
+                  if (authToken) {
+                    let syncMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+                    syncMessages.push({ role: 'user', content: outboundText });
+                    updateSessionMessages(targetSessionId, (prev) => {
+                      const aMsg = prev.find((m) => m.id === assistantId);
+                      if (aMsg?.content?.trim()) {
+                        syncMessages.push({ role: 'assistant', content: aMsg.content });
+                      }
+                      return prev;
+                    });
+                    if (syncMessages.length > 1) {
+                      void syncLocalConversation(authToken, targetSessionId, syncMessages, normalizeDesktopLocalModelId(selectedModel));
+                    }
+                  }
+                }
+              } catch (error: any) {
+                const message = error?.message || String(error);
+                shouldFallbackToCloud = Boolean(authToken);
+                if (!shouldFallbackToCloud) {
+                  updateSessionMessages(
+                    targetSessionId,
+                    (prev) => prev.map((existing) => (
+                      existing.id === assistantId
+                        ? {
+                            ...existing,
+                            content: existing.content.trim().length > 0 ? existing.content : `Error: ${message}`,
+                            error: true,
+                            streaming: false,
+                          }
+                        : existing
+                    )),
+                    { persist: true, markUnread: true },
+                  );
+                  setStreamFeedback({
+                    tone: "error",
+                    label: "本地模型执行失败",
+                    detail: message,
+                  });
+                } else {
+                  updateSessionMessages(
+                    targetSessionId,
+                    (prev) => prev.map((existing) => (
+                      existing.id === assistantId
+                        ? {
+                            ...existing,
+                            content: "",
+                            error: false,
+                            streaming: true,
+                            meta: undefined,
+                          }
+                        : existing
+                    )),
+                  );
+                  setStreamFeedback({
+                    tone: "warning",
+                    label: "本地模型不可用，切换云端",
+                    detail: message,
+                  });
+                }
+              } finally {
+                sessionAbortControllersRef.current[targetSessionId] = null;
+                if (targetSessionId === sessionIdRef.current) {
+                  abortRef.current = null;
+                }
+                if (!shouldFallbackToCloud) {
+                  patchSessionRuntime(targetSessionId, { sending: false });
+                  setSendStartedAt(null);
+                  setActiveToolRun(null);
+                  voiceInitiatedRef.current = false;
+                  if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
+                    setBallState("idle");
+                  }
                 }
               }
             }
-          } catch (error: any) {
-            const message = error?.message || String(error);
-            shouldFallbackToCloud = Boolean(authToken);
-            if (!shouldFallbackToCloud) {
-              updateSessionMessages(
-                targetSessionId,
-                (prev) => prev.map((existing) => (
-                  existing.id === assistantId
-                    ? {
-                        ...existing,
-                        content: existing.content.trim().length > 0 ? existing.content : `Error: ${message}`,
-                        error: true,
-                        streaming: false,
-                      }
-                    : existing
-                )),
-                { persist: true, markUnread: true },
-              );
-              setStreamFeedback({
-                tone: "error",
-                label: "本地模型执行失败",
-                detail: message,
-              });
-            } else {
-              updateSessionMessages(
-                targetSessionId,
-                (prev) => prev.map((existing) => (
-                  existing.id === assistantId
-                    ? {
-                        ...existing,
-                        content: "",
-                        error: false,
-                        streaming: true,
-                        meta: undefined,
-                      }
-                    : existing
-                )),
-              );
-              setStreamFeedback({
-                tone: "warning",
-                label: "本地模型不可用，切换云端",
-                detail: message,
-              });
-            }
-          } finally {
-            sessionAbortControllersRef.current[targetSessionId] = null;
-            if (targetSessionId === sessionIdRef.current) {
-              abortRef.current = null;
-            }
-            if (!shouldFallbackToCloud) {
-              patchSessionRuntime(targetSessionId, { sending: false });
-              setSendStartedAt(null);
-              setActiveToolRun(null);
-              voiceInitiatedRef.current = false;
-              if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
-                setBallState("idle");
-              }
-            }
           }
-          } // end if (readiness.ready)
 
           if (!shouldFallbackToCloud) {
             return;
@@ -2488,6 +2592,7 @@ export default function ChatPanel({
               model: useDesktopLocalModel ? fallbackCloudModel : selectedModel || undefined,
               mode: effectiveChatMode,
               onChunk: chunkHandler,
+              onEvent: eventHandler,
               onDone: doneHandler(resolve),
               onError: errorHandler(resolve),
             });
@@ -2502,6 +2607,46 @@ export default function ChatPanel({
 
       patchSessionRuntime(targetSessionId, { sending: false });
       setSendStartedAt(null);
+
+      const autoContinuePrompt = pendingAutoContinuePromptRef.current;
+      const autoContinueReason = pendingAutoContinueReasonRef.current;
+      const autoContinueSessionId = pendingAutoContinueSessionIdRef.current;
+      if (
+        !responseInterruptedRef.current
+        && autoContinuePrompt
+        && autoContinueReason
+        && autoContinueSessionId === targetSessionId
+        && autoContinueCountRef.current < CHAT_AUTO_CONTINUE_LIMIT
+      ) {
+        autoContinueCountRef.current += 1;
+        clearPendingAutoContinue();
+        setStreamFeedback({
+          tone: "warning",
+          label: autoContinueReason === "tool_use" ? "自动继续任务" : "自动续写中",
+          detail: autoContinueReason === "tool_use"
+            ? "继续未完成的步骤，避免任务中断"
+            : "继续补全被长度上限截断的回复",
+        });
+        autoContinueTimerRef.current = window.setTimeout(() => {
+          autoContinueTimerRef.current = null;
+          if (sessionIdRef.current !== targetSessionId) {
+            return;
+          }
+          void handleSend(autoContinuePrompt);
+        }, 180);
+      } else if (
+        autoContinuePrompt
+        && autoContinueReason
+        && autoContinueSessionId === targetSessionId
+        && autoContinueCountRef.current >= CHAT_AUTO_CONTINUE_LIMIT
+      ) {
+        setStreamFeedback({
+          tone: "warning",
+          label: autoContinueReason === "tool_use" ? "任务仍可继续" : "回复仍可继续",
+          detail: "自动续写达到当前上限，可点击 Continue 继续",
+        });
+      }
+
       voiceInitiatedRef.current = false;
       if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
         setBallState("idle");
@@ -2518,6 +2663,8 @@ export default function ChatPanel({
       messages,
       pendingAttachments,
       appendChunk,
+      clearAutoContinueTimer,
+      clearPendingAutoContinue,
       finalizeMessage,
       patchSessionRuntime,
       setPlanForSession,
@@ -2528,13 +2675,17 @@ export default function ChatPanel({
       chatMode,
       activePlan,
       updateSessionMessages,
+      queueAutoContinue,
     ],
   );
 
   const handleContinue = useCallback(() => {
     if (!continuePrompt || sending) return;
+    autoContinueCountRef.current = 0;
+    clearAutoContinueTimer();
+    clearPendingAutoContinue();
     void handleSend(continuePrompt);
-  }, [continuePrompt, handleSend, sending]);
+  }, [clearAutoContinueTimer, clearPendingAutoContinue, continuePrompt, handleSend, sending]);
 
   const pendingAttachmentSummary = useMemo(
     () => pendingAttachments.map((attachment) => attachment.originalName).join(", "),
@@ -2637,7 +2788,7 @@ export default function ChatPanel({
     [applyDesktopSyncState, pendingApproval, rememberApprovalForSession, token],
   );
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -2943,6 +3094,16 @@ export default function ChatPanel({
     }
   }, []);
 
+  const handleTitleBarDoubleClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("[data-no-drag='true'], button, select, input, textarea, a")) {
+      return;
+    }
+
+    event.preventDefault();
+    void toggleWindowMaximize();
+  }, [toggleWindowMaximize]);
+
   const panel: CSSProperties = {
     position: "relative",
     width: "100%",
@@ -3010,146 +3171,201 @@ export default function ChatPanel({
           WebkitAppRegion: "drag",
         }}
         onMouseDown={handleTitleBarMouseDown}
+        onDoubleClick={handleTitleBarDoubleClick}
         data-tauri-drag-region
       >
         <div data-no-drag="true" style={{ display: "flex", WebkitAppRegion: "no-drag" }}>
           <FloatingBall onTap={onClose} state={ballState} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Instance selector (synced from mobile OpenClaw instances) */}
-          <select
-            value={activeInstanceId || ""}
-            onChange={(e) => setActiveInstance(e.target.value)}
+          {compactTitleBar ? (
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "var(--text)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {compactHeaderTitle}
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--text-dim)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {compactHeaderSubtitle}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Instance selector (synced from mobile OpenClaw instances) */}
+              <select
+                value={activeInstanceId || ""}
+                onChange={(e) => setActiveInstance(e.target.value)}
+                data-no-drag="true"
+                style={{
+                  background: "transparent",
+                  color: "var(--text)",
+                  border: "none",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  maxWidth: 220,
+                  WebkitAppRegion: "no-drag",
+                }}
+              >
+                {instances.length === 0 && <option value="">No agent selected</option>}
+                {instances.map((inst) => {
+                  const label = inst.resolvedModelLabel || inst.resolvedModel || inst.capabilities?.activeModel || "";
+                  const provider = inst.resolvedProvider || inst.capabilities?.llmProvider || "";
+                  const suffix = label ? ` — ${label}${provider ? ` (${provider})` : ""}` : "";
+                  return (
+                    <option key={inst.id} value={inst.id}>
+                      {inst.name}{suffix}
+                    </option>
+                  );
+                })}
+              </select>
+              {/* Model selector — always visible so user can switch between custom and platform models */}
+              <select
+                value={selectedModel}
+                onChange={(e) => { void persistSelectedModel(e.target.value); }}
+                data-no-drag="true"
+                style={{
+                  background: "transparent",
+                  color: "var(--text-dim)",
+                  border: "none",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  marginLeft: 8,
+                  maxWidth: 180,
+                  WebkitAppRegion: "no-drag",
+                }}
+              >
+                {/* If user has a custom provider model not in platform list, show it as first option */}
+                {(() => {
+                  const userModel = activeHeaderInstance?.resolvedModel;
+                  const userLabel = activeHeaderInstance?.resolvedModelLabel;
+                  if (userModel && !models.some((m: any) => m.id === userModel) && !isDesktopLocalModelId(userModel)) {
+                    return <option key={userModel} value={userModel}>{userLabel || userModel}</option>;
+                  }
+                  return null;
+                })()}
+                <option value={DESKTOP_LOCAL_MODEL_ID}>{DESKTOP_LOCAL_MODEL_LABEL}</option>
+                {models.map((m: any) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label || m.id}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+        </div>
+        {!compactTitleBar && (
+          <div
             data-no-drag="true"
             style={{
-              background: "transparent",
-              color: "var(--text)",
-              border: "none",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-              maxWidth: 200,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              minWidth: 0,
               WebkitAppRegion: "no-drag",
             }}
           >
-            {instances.length === 0 && <option value="">No agent selected</option>}
-            {instances.map((inst) => {
-              const label = inst.resolvedModelLabel || inst.resolvedModel || inst.capabilities?.activeModel || "";
-              const provider = inst.resolvedProvider || inst.capabilities?.llmProvider || "";
-              const suffix = label ? ` — ${label}${provider ? ` (${provider})` : ""}` : "";
-              return (
-                <option key={inst.id} value={inst.id}>
-                  {inst.name}{suffix}
-                </option>
-              );
-            })}
-          </select>
-          {/* Model selector — always visible so user can switch between custom and platform models */}
-          <select
-            value={selectedModel}
-            onChange={(e) => { void persistSelectedModel(e.target.value); }}
-            data-no-drag="true"
-            style={{
-              background: "transparent",
-              color: "var(--text-dim)",
-              border: "none",
-              fontSize: 11,
-              cursor: "pointer",
-              marginLeft: 8,
-              WebkitAppRegion: "no-drag",
-            }}
-          >
-            {/* If user has a custom provider model not in platform list, show it as first option */}
-            {(() => {
-              const activeInst = instances.find((i) => i.id === activeInstanceId);
-              const userModel = activeInst?.resolvedModel;
-              const userLabel = activeInst?.resolvedModelLabel;
-              if (userModel && !models.some((m: any) => m.id === userModel) && !isDesktopLocalModelId(userModel)) {
-                return <option key={userModel} value={userModel}>{userLabel || userModel}</option>;
-              }
-              return null;
-            })()}
-            <option value={DESKTOP_LOCAL_MODEL_ID}>{DESKTOP_LOCAL_MODEL_LABEL}</option>
-            {models.map((m: any) => (
-              <option key={m.id} value={m.id}>
-                {m.label || m.id}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button onClick={handleNewChat} style={iconBtnStyle} title="New Chat">
-          ＋
-        </button>
-        <button onClick={() => { setFileTreeOpen(!fileTreeOpen); setHistoryOpen(false); }} style={iconBtnStyle} title="Workspace Files">
-          📁
-        </button>
-        <button onClick={() => { setHistoryOpen(!historyOpen); setFileTreeOpen(false); }} style={iconBtnStyle} title="Chat History">
-          📋
-        </button>
-        <div data-no-drag="true" style={{ display: "flex", WebkitAppRegion: "no-drag" }}>
-          <NotificationBadge count={unreadNotifCount} onClick={() => { setNotifOpen(!notifOpen); setHistoryOpen(false); setFileTreeOpen(false); }} />
-        </div>
-        <button onClick={() => setCrossDeviceOpen(true)} style={iconBtnStyle} title="Cross-Device Hub">
-          🔗
-        </button>
-        <button onClick={() => setTaskWorkbenchOpen(true)} style={iconBtnStyle} title="Task Workbench">
-          🗂
-        </button>
-        <button onClick={() => setEconomyPanelOpen(true)} style={iconBtnStyle} title="Agent Economy">
-          💰
-        </button>
-        <button onClick={() => setMemoryPanelOpen(true)} style={iconBtnStyle} title="Memory">
-          🧠
-        </button>
-        <button onClick={() => setDreamPanelOpen(true)} style={iconBtnStyle} title="Dreaming">
-          💤
-        </button>
-        <button onClick={() => setPluginPanelOpen(true)} style={iconBtnStyle} title="Plugin Hub">
-          🧩
-        </button>
-        <button onClick={() => setWikiPanelOpen(true)} style={iconBtnStyle} title="Memory Wiki">
-          📝
-        </button>
-        <button onClick={() => setMcpPanelOpen(true)} style={iconBtnStyle} title="MCP Manager">
-          🔌
-        </button>
-        <button onClick={() => setSettingsOpen(true)} style={iconBtnStyle} title="Settings">
-          ⚙
-        </button>
-        {!effectiveProMode && (
-          <button onClick={() => void enterWindowProMode()} style={windowActionBtnStyle} title="Enter Pro mode">
-            Pro
-          </button>
+            <button onClick={handleNewChat} style={iconBtnStyle} title="New Chat">
+              ＋
+            </button>
+            <button onClick={() => { setFileTreeOpen(!fileTreeOpen); setHistoryOpen(false); }} style={iconBtnStyle} title="Workspace Files">
+              📁
+            </button>
+            <button onClick={() => { setHistoryOpen(!historyOpen); setFileTreeOpen(false); }} style={iconBtnStyle} title="Chat History">
+              📋
+            </button>
+            <div data-no-drag="true" style={{ display: "flex", WebkitAppRegion: "no-drag" }}>
+              <NotificationBadge count={unreadNotifCount} onClick={() => { setNotifOpen(!notifOpen); setHistoryOpen(false); setFileTreeOpen(false); }} />
+            </div>
+            <button onClick={() => setCrossDeviceOpen(true)} style={iconBtnStyle} title="Cross-Device Hub">
+              🔗
+            </button>
+            <button onClick={() => setTaskWorkbenchOpen(true)} style={iconBtnStyle} title="Task Workbench">
+              🗂
+            </button>
+            <button onClick={() => setEconomyPanelOpen(true)} style={iconBtnStyle} title="Agent Economy">
+              💰
+            </button>
+            <button onClick={() => setMemoryPanelOpen(true)} style={iconBtnStyle} title="Memory">
+              🧠
+            </button>
+            <button onClick={() => setDreamPanelOpen(true)} style={iconBtnStyle} title="Dreaming">
+              💤
+            </button>
+            <button onClick={() => setPluginPanelOpen(true)} style={iconBtnStyle} title="Plugin Hub">
+              🧩
+            </button>
+            <button onClick={() => setWikiPanelOpen(true)} style={iconBtnStyle} title="Memory Wiki">
+              📝
+            </button>
+            <button onClick={() => setMcpPanelOpen(true)} style={iconBtnStyle} title="MCP Manager">
+              🔌
+            </button>
+          </div>
         )}
-        <button
-          onClick={() => void toggleWindowMaximize()}
-          style={windowActionBtnStyle}
-          title={windowChromeState.maximized ? "Restore window" : "Maximize window"}
-        >
-          {windowChromeState.maximized ? "Restore" : "Max"}
-        </button>
-        <button
-          onClick={() => void toggleWindowFullscreen()}
-          style={windowActionBtnStyle}
-          title={windowChromeState.fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-        >
-          {windowChromeState.fullscreen ? "Window" : "Full"}
-        </button>
-        {/* Sync status indicator */}
         <div
+          data-no-drag="true"
           style={{
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: syncConnected ? "#00D2D3" : "var(--text-dim)",
-            opacity: syncConnected ? 1 : 0.3,
-            transition: "background 0.3s, opacity 0.3s",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            flexShrink: 0,
+            WebkitAppRegion: "no-drag",
           }}
-          title={syncConnected ? "Synced across devices" : "Sync disconnected"}
-        />
-        <button onClick={onClose} style={iconBtnStyle} title="Close (Esc)">
-          ✕
-        </button>
+        >
+          <button onClick={() => setSettingsOpen(true)} style={iconBtnStyle} title="Settings">
+            ⚙
+          </button>
+          {!effectiveProMode && (
+            <button onClick={() => void enterWindowProMode()} style={windowActionBtnStyle} title="Enter Pro mode">
+              Pro
+            </button>
+          )}
+          <button
+            onClick={() => void toggleWindowMaximize()}
+            style={windowActionBtnStyle}
+            title={windowChromeState.maximized ? "Restore window" : "Maximize window"}
+          >
+            {windowChromeState.maximized ? "Restore" : "Max"}
+          </button>
+          <button
+            onClick={() => void toggleWindowFullscreen()}
+            style={windowActionBtnStyle}
+            title={windowChromeState.fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          >
+            {windowChromeState.fullscreen ? "Window" : "Full"}
+          </button>
+          {/* Sync status indicator */}
+          <div
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: syncConnected ? "#00D2D3" : "var(--text-dim)",
+              opacity: syncConnected ? 1 : 0.3,
+              transition: "background 0.3s, opacity 0.3s",
+            }}
+            title={syncConnected ? "Synced across devices" : "Sync disconnected"}
+          />
+          <button onClick={onClose} style={iconBtnStyle} title="Close (Esc)">
+            ✕
+          </button>
+        </div>
       </div>
 
       {/* Offline / degraded banner */}
@@ -3294,7 +3510,7 @@ export default function ChatPanel({
                 handleContinue();
                 return;
               }
-              handleSend("Continue from the latest checkpoint. Preserve the active plan, task progress, and any pending background results.");
+              handleSend(CHECKPOINT_CONTINUE_PROMPT);
             });
         }}
       />
@@ -3809,6 +4025,10 @@ function formatBytes(size: number) {
 
 function buildContinuePrompt() {
   return "Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting. If you were in the middle of a tool-driven task, resume the unfinished steps first and only summarize after the task is complete.";
+}
+
+function isSyntheticContinuePrompt(value: string) {
+  return value === buildContinuePrompt() || value === CHECKPOINT_CONTINUE_PROMPT;
 }
 
 function summarizeToolInput(input: unknown) {

@@ -57,10 +57,12 @@ export class DesktopWakeWordService {
   /**
    * Check if Porcupine Web SDK is available.
    */
-  static isAvailable(): boolean {
+  static async isAvailable(): Promise<boolean> {
     try {
-      require('@picovoice/porcupine-web');
-      require('@picovoice/web-voice-processor');
+      await Promise.all([
+        import('@picovoice/porcupine-web' as any),
+        import('@picovoice/web-voice-processor' as any),
+      ]);
       return true;
     } catch {
       return false;
@@ -73,7 +75,7 @@ export class DesktopWakeWordService {
   async init(config: DesktopWakeWordConfig): Promise<void> {
     this.config = config;
 
-    if (!DesktopWakeWordService.isAvailable()) {
+    if (!(await DesktopWakeWordService.isAvailable())) {
       console.warn('[WakeWord] Porcupine Web SDK not installed.');
       return;
     }
