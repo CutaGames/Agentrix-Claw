@@ -491,6 +491,7 @@ export class ClaudeIntegrationController {
         || result?.stopReason === 'stop_sequence'
         || result?.stopReason === 'abort'
         || result?.stopReason === 'error'
+        || result?.stopReason === 'tool_use'
         || result?.stopReason === 'end_turn'
           ? result.stopReason
           : 'end_turn';

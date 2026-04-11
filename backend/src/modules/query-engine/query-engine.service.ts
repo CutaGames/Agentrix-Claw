@@ -286,7 +286,7 @@ export class QueryEngineService {
         type: 'done',
         reason: abortSignal?.aborted
           ? 'abort'
-          : finalStopReason === 'max_tokens' || finalStopReason === 'stop_sequence'
+          : finalStopReason === 'max_tokens' || finalStopReason === 'stop_sequence' || finalStopReason === 'tool_use'
             ? finalStopReason
             : 'end_turn',
         totalDurationMs,

@@ -1,7 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 export interface FalVideoGenerationInput {
-  prompt: string;
+  prompt?: string;
+  image_url?: string;
+  tail_image_url?: string;
+  video_url?: string;
+  keep_original_sound?: boolean;
+  character_orientation?: 'image' | 'video';
   negative_prompt?: string;
   duration?: '5' | '10';
   aspect_ratio?: '16:9' | '9:16' | '1:1';

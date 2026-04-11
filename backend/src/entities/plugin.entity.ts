@@ -85,10 +85,14 @@ export class Plugin {
     tools?: Array<{ name: string; description: string; inputSchema: Record<string, any> }>;
     permissions?: string[];
     /** P2: Plugin-owned resources — what this plugin registers into the runtime */
-    ownedTools?: string[];      // tool names this plugin exclusively owns
-    ownedHooks?: string[];      // hook event types this plugin registers
-    ownedChannels?: string[];   // channel types (e.g. 'wechat', 'telegram')
-    ownedServices?: string[];   // service identifiers
+    ownedTools?: Array<string | { name: string; description?: string; [key: string]: any }>;
+    ownedHooks?: Array<string | { event?: string; name?: string; description?: string; [key: string]: any }>;
+    ownedChannels?: Array<string | { name: string; description?: string; [key: string]: any }>;
+    ownedServices?: Array<string | { name: string; description?: string; [key: string]: any }>;
+    ownedMemorySlots?: Array<string | { name: string; scope?: string; description?: string; [key: string]: any }>;
+    ownedProtocols?: Array<string | { name: string; protocol?: string; endpoint?: string; description?: string; [key: string]: any }>;
+    ownedDoctors?: Array<string | { name: string; domain?: string; description?: string; [key: string]: any }>;
+    ownedRuntimeCompat?: Array<string | { name: string; target?: string; surface?: string; description?: string; [key: string]: any }>;
   };
 
   // P2: Plugin-first contract — permissions and sandbox

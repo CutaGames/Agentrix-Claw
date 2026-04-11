@@ -177,19 +177,25 @@ export class ClaudeIntegrationService {
       },
       {
         name: 'video_generate',
-        description: 'Generate a video asynchronously from a text prompt. Returns quickly with a taskId, and can be called again later with that taskId to fetch status or the final video URL.',
+        description: 'Generate a video asynchronously from text, an image reference, or a reference video. Returns quickly with a taskId, and can be called again later with that taskId to fetch status or the final video URL.',
         input_schema: {
           type: 'object',
           properties: {
-            prompt: { type: 'string', description: 'Text prompt describing the video to generate' },
+            mode: { type: 'string', enum: ['text_to_video', 'image_to_video', 'video_to_video'], description: 'Generation mode. Use image_to_video for animating a still image, or video_to_video for reference-driven motion transfer.' },
+            prompt: { type: 'string', description: 'Prompt or edit instruction for the generated video. Optional for reference-driven modes when the reference media already implies the motion/style goal.' },
             taskId: { type: 'string', description: 'Existing async task id to query instead of creating a new task' },
             provider: { type: 'string', description: 'Provider id, currently fal' },
             model: { type: 'string', description: 'Provider model path override' },
             duration: { type: 'string', enum: ['5', '10'], description: 'Approximate output duration in seconds' },
-            aspectRatio: { type: 'string', enum: ['16:9', '9:16', '1:1'], description: 'Aspect ratio for the generated video' },
+            aspectRatio: { type: 'string', enum: ['16:9', '9:16', '1:1'], description: 'Aspect ratio for text-to-video and provider-supported image-to-video models' },
             negativePrompt: { type: 'string', description: 'Things the model should avoid generating' },
             cfgScale: { type: 'number', description: 'Guidance scale override' },
             generateAudio: { type: 'boolean', description: 'Whether the provider should try to generate audio as well' },
+            referenceImageUrl: { type: 'string', description: 'Reference image URL. Required for image_to_video and video_to_video.' },
+            endImageUrl: { type: 'string', description: 'Optional ending-frame image URL for image_to_video.' },
+            referenceVideoUrl: { type: 'string', description: 'Reference video URL. Required for video_to_video.' },
+            keepOriginalSound: { type: 'boolean', description: 'When using video_to_video, keep the original sound from the reference video if the provider supports it.' },
+            characterOrientation: { type: 'string', enum: ['image', 'video'], description: 'For video_to_video, choose whether subject orientation should follow the reference image or the reference video.' },
           },
         },
       },
@@ -930,7 +936,9 @@ export class ClaudeIntegrationService {
     const _t0 = Date.now();
     const _lap = (label: string) => this.logger.log(`⏱ BR ${label}: ${Date.now() - _t0}ms`);
     const modelId = options.model || 'claude-haiku-4-5';
-    const maxToolRounds = options.maxToolRounds ?? 5;
+    const maxToolRounds = options.maxToolRounds ?? 8;
+    const initialMaxTokens = options.maxTokens || 3072;
+    const continuationMaxTokens = Math.max(initialMaxTokens, 6144);
     this.logger.log(`Bedrock chat: ${modelId}, tools=${mergedTools.length}, userCreds=${!!userCredentials}, maxToolRounds=${maxToolRounds}`);
 
     const bedrockTools = mergedTools.map(t => ({
@@ -950,7 +958,7 @@ export class ClaudeIntegrationService {
         tools: bedrockTools,
         userCredentials,
         onChunk: options?.onChunk,
-        ...(round > 0 ? { maxTokens: 4096 } : {}),
+        maxTokens: round > 0 ? continuationMaxTokens : initialMaxTokens,
       });
       _lap(`LLM call #${round + 1} (toolCalls=${llmResult.functionCalls?.length || 0})`);
 
@@ -1334,7 +1342,7 @@ export class ClaudeIntegrationService {
       // 调用 Claude API — streaming mode when onChunk provided
       const apiParams: Record<string, any> = {
         model: selectedModel,
-        max_tokens: options?.maxTokens || 2048,
+        max_tokens: options?.maxTokens || 3072,
         temperature: options?.temperature || 0.7,
         system: systemPrompt || undefined,
         messages: conversationMessages,
@@ -1377,7 +1385,8 @@ export class ClaudeIntegrationService {
       }
 
       // Multi-turn agent loop for Anthropic direct API
-      const maxToolRounds = options?.maxToolRounds ?? 5;
+      const maxToolRounds = options?.maxToolRounds ?? 8;
+      const continuationMaxTokens = Math.max(options?.maxTokens || 3072, 6144);
       let allToolCalls: any[] = [];
       let currentConversationMessages = [...conversationMessages];
       let lastStopReason = response?.stop_reason || 'end_turn';
@@ -1446,7 +1455,7 @@ export class ClaudeIntegrationService {
 
         const nextParams = {
           model: selectedModel,
-          max_tokens: options?.maxTokens || 4096,
+          max_tokens: continuationMaxTokens,
           temperature: options?.temperature || 0.7,
           system: systemPrompt || undefined,
           tools: hasFunctionCalling ? apiParams.tools : undefined,

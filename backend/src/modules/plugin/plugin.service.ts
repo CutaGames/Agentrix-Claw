@@ -308,13 +308,27 @@ export class PluginService {
       agents: Array.isArray(manifest.agents) ? manifest.agents : undefined,
       tools: Array.isArray(manifest.tools) ? manifest.tools : undefined,
       permissions: Array.isArray(manifest.permissions) ? manifest.permissions : undefined,
+      ownedTools: Array.isArray(manifest.ownedTools) ? manifest.ownedTools : undefined,
+      ownedHooks: Array.isArray(manifest.ownedHooks) ? manifest.ownedHooks : undefined,
+      ownedChannels: Array.isArray(manifest.ownedChannels) ? manifest.ownedChannels : undefined,
+      ownedServices: Array.isArray(manifest.ownedServices) ? manifest.ownedServices : undefined,
+      ownedMemorySlots: Array.isArray(manifest.ownedMemorySlots) ? manifest.ownedMemorySlots : undefined,
+      ownedProtocols: Array.isArray(manifest.ownedProtocols) ? manifest.ownedProtocols : undefined,
+      ownedDoctors: Array.isArray(manifest.ownedDoctors) ? manifest.ownedDoctors : undefined,
+      ownedRuntimeCompat: Array.isArray(manifest.ownedRuntimeCompat) ? manifest.ownedRuntimeCompat : undefined,
     };
   }
 
   /**
    * Get all active plugins with their manifests for a user.
    */
-  async getActivePluginManifests(userId: string): Promise<Array<{ pluginId: string; name: string; manifest: Plugin['manifest'] }>> {
+  async getActivePluginManifests(userId: string): Promise<Array<{
+    pluginId: string;
+    name: string;
+    manifest: Plugin['manifest'];
+    capabilities?: string[];
+    description?: string;
+  }>> {
     const userPlugins = await this.userPluginRepository.find({
       where: { userId, isActive: true },
       relations: ['plugin'],
@@ -325,6 +339,8 @@ export class PluginService {
         pluginId: up.pluginId,
         name: up.plugin.name,
         manifest: up.plugin.manifest,
+        capabilities: up.plugin.capabilities,
+        description: up.plugin.description,
       }));
   }
 

@@ -18,10 +18,16 @@ import { AgentMessage, MessageRole, MessageType } from '../../entities/agent-mes
 import { emitAgentSyncEvent } from '../agent-intelligence/agent-sync.events';
 import type { ExecutionContext } from '../skill/skill-executor.service';
 
-const DEFAULT_VIDEO_MODEL = 'fal-ai/kling-video/v1/standard/text-to-video';
+const DEFAULT_TEXT_TO_VIDEO_MODEL = 'fal-ai/kling-video/v1/standard/text-to-video';
+const DEFAULT_IMAGE_TO_VIDEO_MODEL = 'fal-ai/kling-video/v2.1/master/image-to-video';
+const DEFAULT_VIDEO_TO_VIDEO_MODEL = 'fal-ai/kling-video/v2.1/master/motion-control';
+const DEFAULT_VIDEO_MODE = 'text_to_video';
 const POLL_INTERVAL_MS = 15_000;
 
+type VideoGenerationMode = 'text_to_video' | 'image_to_video' | 'video_to_video';
+
 type VideoGenerateParams = {
+  mode?: VideoGenerationMode;
   prompt?: string;
   taskId?: string;
   provider?: string;
@@ -31,6 +37,14 @@ type VideoGenerateParams = {
   negativePrompt?: string;
   cfgScale?: number;
   generateAudio?: boolean;
+  referenceImageUrl?: string;
+  imageUrl?: string;
+  endImageUrl?: string;
+  tailImageUrl?: string;
+  referenceVideoUrl?: string;
+  videoUrl?: string;
+  keepOriginalSound?: boolean;
+  characterOrientation?: 'image' | 'video';
 };
 
 @Injectable()
@@ -62,9 +76,10 @@ export class VideoGenerationService {
       return this.formatTaskResult(task);
     }
 
-    const prompt = String(params.prompt || '').trim();
+    const mode = this.resolveMode(params.mode);
+    const prompt = this.resolvePrompt(params, mode);
     if (!prompt) {
-      throw new Error('video_generate requires a prompt or an existing taskId');
+      throw new Error('video_generate requires a prompt or an existing taskId. Reference-driven modes also require their source media URLs.');
     }
 
     const provider = String(params.provider || 'fal').trim().toLowerCase();
@@ -72,7 +87,7 @@ export class VideoGenerationService {
       throw new Error(`Unsupported video provider: ${provider}`);
     }
 
-    const inputPayload = (this.buildInput(params, prompt) as unknown) as Record<string, unknown>;
+    const inputPayload = (this.buildInput(mode, params, prompt) as unknown) as Record<string, unknown>;
 
     const task = this.taskRepo.create({
       userId,
@@ -80,15 +95,19 @@ export class VideoGenerationService {
       sessionId: context.sessionId,
       deviceId: this.extractDeviceId(context),
       provider,
-      model: this.resolveModel(params.model),
-      title: this.buildTitle(prompt),
+      model: this.resolveModel(mode, params.model),
+      title: this.buildTitle(prompt, mode),
       prompt,
       negativePrompt: params.negativePrompt?.trim() || undefined,
       status: VideoGenerationStatusEnum.QUEUED,
-      input: inputPayload,
+      input: {
+        mode,
+        ...inputPayload,
+      },
       metadata: {
         platform: context.platform,
         source: context.metadata?.source,
+        mode,
       },
       startedAt: new Date(),
     });
@@ -101,6 +120,7 @@ export class VideoGenerationService {
       return {
         accepted: true,
         async: true,
+        mode,
         provider: submitted.provider,
         model: submitted.model,
         taskId: submitted.taskId,
@@ -358,7 +378,7 @@ export class VideoGenerationService {
       {
         id: `${task.taskId}:submit`,
         title: 'Submit video job',
-        detail: `${task.provider} · ${task.model}`,
+        detail: `${this.formatModeLabel(this.getTaskMode(task))} · ${task.provider} · ${task.model}`,
         kind: 'video-generate',
         riskLevel: DesktopApprovalRiskLevel.L0,
         status: task.providerRequestId ? DesktopTimelineStatus.COMPLETED : DesktopTimelineStatus.RUNNING,
@@ -384,10 +404,10 @@ export class VideoGenerationService {
       taskId: task.taskId,
       title: task.title,
       summary: task.status === VideoGenerationStatusEnum.COMPLETED
-        ? 'Video ready'
+        ? `${this.formatModeLabel(this.getTaskMode(task))} ready`
         : task.status === VideoGenerationStatusEnum.FAILED
-          ? 'Video generation failed'
-          : 'Generating video in background',
+          ? `${this.formatModeLabel(this.getTaskMode(task))} failed`
+          : `Generating ${this.formatModeLabel(this.getTaskMode(task)).toLowerCase()} in background`,
       sessionId: task.sessionId,
       status,
       startedAt,
@@ -401,36 +421,91 @@ export class VideoGenerationService {
         outputUrl: task.outputUrl,
         thumbnailUrl: task.thumbnailUrl,
         prompt: task.prompt,
+        mode: this.getTaskMode(task),
         provider: task.provider,
         providerStatus: task.providerStatus,
+        referenceImageUrl: this.readInputUrl(task, 'image_url', 'start_image_url'),
+        referenceVideoUrl: this.readInputUrl(task, 'video_url'),
+        endImageUrl: this.readInputUrl(task, 'tail_image_url', 'end_image_url'),
         error: task.error,
       } as any,
     });
   }
 
-  private buildInput(params: VideoGenerateParams, prompt: string): FalVideoGenerationInput {
+  private buildInput(mode: VideoGenerationMode, params: VideoGenerateParams, prompt: string): FalVideoGenerationInput {
+    const duration = String(params.duration || '5') === '10' ? '10' : '5';
+    const negativePrompt = params.negativePrompt?.trim() || undefined;
+    const cfgScale = typeof params.cfgScale === 'number' ? params.cfgScale : 0.5;
+
+    if (mode === 'image_to_video') {
+      const referenceImageUrl = this.resolveReferenceImageUrl(params);
+      if (!referenceImageUrl) {
+        throw new Error('image_to_video requires referenceImageUrl (or imageUrl).');
+      }
+
+      return {
+        prompt,
+        image_url: referenceImageUrl,
+        tail_image_url: this.resolveEndImageUrl(params),
+        duration,
+        negative_prompt: negativePrompt,
+        cfg_scale: cfgScale,
+      };
+    }
+
+    if (mode === 'video_to_video') {
+      const referenceImageUrl = this.resolveReferenceImageUrl(params);
+      const referenceVideoUrl = this.resolveReferenceVideoUrl(params);
+      if (!referenceImageUrl) {
+        throw new Error('video_to_video requires referenceImageUrl (or imageUrl) to preserve the target subject.');
+      }
+      if (!referenceVideoUrl) {
+        throw new Error('video_to_video requires referenceVideoUrl (or videoUrl).');
+      }
+
+      return {
+        prompt,
+        image_url: referenceImageUrl,
+        video_url: referenceVideoUrl,
+        keep_original_sound: params.keepOriginalSound ?? true,
+        character_orientation: params.characterOrientation === 'image' ? 'image' : 'video',
+      };
+    }
+
     return {
       prompt,
-      negative_prompt: params.negativePrompt?.trim() || undefined,
-      duration: String(params.duration || '5') === '10' ? '10' : '5',
+      negative_prompt: negativePrompt,
+      duration,
       aspect_ratio: params.aspectRatio === '9:16' || params.aspectRatio === '1:1'
         ? params.aspectRatio
         : '16:9',
-      cfg_scale: typeof params.cfgScale === 'number' ? params.cfgScale : 0.5,
+      cfg_scale: cfgScale,
       generate_audio: Boolean(params.generateAudio),
     };
   }
 
-  private resolveModel(model?: string): string {
+  private resolveModel(mode: VideoGenerationMode, model?: string): string {
     if (!model) {
-      return DEFAULT_VIDEO_MODEL;
+      if (mode === 'image_to_video') {
+        return this.configService.get<string>('VIDEO_FAL_IMAGE_MODEL') || DEFAULT_IMAGE_TO_VIDEO_MODEL;
+      }
+      if (mode === 'video_to_video') {
+        return this.configService.get<string>('VIDEO_FAL_VIDEO_TO_VIDEO_MODEL') || DEFAULT_VIDEO_TO_VIDEO_MODEL;
+      }
+      return this.configService.get<string>('VIDEO_FAL_TEXT_MODEL') || DEFAULT_TEXT_TO_VIDEO_MODEL;
     }
-    return model.includes('/') ? model : DEFAULT_VIDEO_MODEL;
+    return model.includes('/') ? model : DEFAULT_TEXT_TO_VIDEO_MODEL;
   }
 
-  private buildTitle(prompt: string): string {
+  private buildTitle(prompt: string, mode: VideoGenerationMode): string {
     const normalized = prompt.replace(/\s+/g, ' ').trim();
-    return normalized.length > 72 ? `${normalized.slice(0, 69)}...` : normalized;
+    const prefix = mode === 'image_to_video'
+      ? '[I2V] '
+      : mode === 'video_to_video'
+        ? '[V2V] '
+        : '';
+    const titled = `${prefix}${normalized}`;
+    return titled.length > 72 ? `${titled.slice(0, 69)}...` : titled;
   }
 
   private extractDeviceId(context: ExecutionContext): string | undefined {
@@ -488,22 +563,27 @@ export class VideoGenerationService {
   }
 
   private formatTaskResult(task: VideoGenerationTask): Record<string, unknown> {
+    const mode = this.getTaskMode(task);
     return {
       taskId: task.taskId,
+      mode,
       provider: task.provider,
       model: task.model,
       status: task.status,
       providerStatus: task.providerStatus,
       prompt: task.prompt,
+      referenceImageUrl: this.readInputUrl(task, 'image_url', 'start_image_url'),
+      referenceVideoUrl: this.readInputUrl(task, 'video_url'),
+      endImageUrl: this.readInputUrl(task, 'tail_image_url', 'end_image_url'),
       outputUrl: task.outputUrl,
       thumbnailUrl: task.thumbnailUrl,
       error: task.error,
       ready: task.status === VideoGenerationStatusEnum.COMPLETED,
       message: task.status === VideoGenerationStatusEnum.COMPLETED
-        ? 'Video generation is complete. The outputUrl contains the final video.'
+        ? `${this.formatModeLabel(mode)} is complete. The outputUrl contains the final video.`
         : task.status === VideoGenerationStatusEnum.FAILED
-          ? `Video generation failed: ${task.error || 'Unknown provider error'}`
-          : 'Video generation is still running in the background.',
+          ? `${this.formatModeLabel(mode)} failed: ${task.error || 'Unknown provider error'}`
+          : `${this.formatModeLabel(mode)} is still running in the background.`,
       video: task.outputUrl
         ? {
             url: task.outputUrl,
@@ -511,5 +591,70 @@ export class VideoGenerationService {
           }
         : undefined,
     };
+  }
+
+  private resolveMode(mode?: string): VideoGenerationMode {
+    if (mode === 'image_to_video' || mode === 'video_to_video') {
+      return mode;
+    }
+    return DEFAULT_VIDEO_MODE;
+  }
+
+  private resolvePrompt(params: VideoGenerateParams, mode: VideoGenerationMode): string {
+    const explicitPrompt = String(params.prompt || '').trim();
+    if (explicitPrompt) {
+      return explicitPrompt;
+    }
+
+    if (mode === 'image_to_video' && this.resolveReferenceImageUrl(params)) {
+      return 'Animate the provided reference image with cinematic motion while preserving the subject identity, composition, and overall style.';
+    }
+
+    if (mode === 'video_to_video' && this.resolveReferenceImageUrl(params) && this.resolveReferenceVideoUrl(params)) {
+      return 'Follow the motion, pacing, and action cues from the reference video while preserving the subject and visual identity from the reference image.';
+    }
+
+    return '';
+  }
+
+  private resolveReferenceImageUrl(params: VideoGenerateParams): string | undefined {
+    const candidate = params.referenceImageUrl || params.imageUrl;
+    return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : undefined;
+  }
+
+  private resolveEndImageUrl(params: VideoGenerateParams): string | undefined {
+    const candidate = params.endImageUrl || params.tailImageUrl;
+    return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : undefined;
+  }
+
+  private resolveReferenceVideoUrl(params: VideoGenerateParams): string | undefined {
+    const candidate = params.referenceVideoUrl || params.videoUrl;
+    return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : undefined;
+  }
+
+  private getTaskMode(task: VideoGenerationTask): VideoGenerationMode {
+    const inputMode = typeof task.input?.mode === 'string' ? task.input.mode : undefined;
+    return this.resolveMode(inputMode);
+  }
+
+  private formatModeLabel(mode: VideoGenerationMode): string {
+    switch (mode) {
+      case 'image_to_video':
+        return 'Image-to-video';
+      case 'video_to_video':
+        return 'Video-to-video';
+      default:
+        return 'Text-to-video';
+    }
+  }
+
+  private readInputUrl(task: VideoGenerationTask, ...keys: string[]): string | undefined {
+    for (const key of keys) {
+      const value = task.input?.[key];
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+    return undefined;
   }
 }

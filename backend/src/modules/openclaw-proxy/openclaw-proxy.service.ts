@@ -412,19 +412,28 @@ export class OpenClawProxyService {
     dto: ChatMessageDto,
     messageText: string,
     needsTools: boolean,
-  ): { maxToolRounds: number; taskTier?: string; routingReason?: string } {
+  ): { maxToolRounds: number; maxTokens: number; taskTier?: string; routingReason?: string } {
     if (!needsTools) {
-      return { maxToolRounds: 5 };
+      return {
+        maxToolRounds: dto.platform === 'desktop' ? 6 : 5,
+        maxTokens: dto.platform === 'desktop' ? 4096 : 3072,
+      };
     }
 
     let maxToolRounds = dto.mode === 'plan'
-      ? 12
+      ? 14
       : dto.mode === 'agent'
-        ? 10
-        : 6;
+        ? 12
+        : 8;
+    let maxTokens = dto.mode === 'plan'
+      ? 6144
+      : dto.mode === 'agent'
+        ? 5120
+        : 4096;
 
     if (dto.platform === 'desktop') {
-      maxToolRounds += 2;
+      maxToolRounds += 4;
+      maxTokens = Math.max(maxTokens, 6144);
     }
 
     try {
@@ -440,13 +449,16 @@ export class OpenClawProxyService {
 
       switch (routing.tier) {
         case 'ultra':
-          maxToolRounds = Math.max(maxToolRounds, 16);
+          maxToolRounds = Math.max(maxToolRounds, 22);
+          maxTokens = Math.max(maxTokens, 8192);
           break;
         case 'heavy':
-          maxToolRounds = Math.max(maxToolRounds, 14);
+          maxToolRounds = Math.max(maxToolRounds, 18);
+          maxTokens = Math.max(maxTokens, 7168);
           break;
         case 'medium':
-          maxToolRounds = Math.max(maxToolRounds, 10);
+          maxToolRounds = Math.max(maxToolRounds, 12);
+          maxTokens = Math.max(maxTokens, 5120);
           break;
         default:
           break;
@@ -454,12 +466,13 @@ export class OpenClawProxyService {
 
       return {
         maxToolRounds,
+        maxTokens,
         taskTier: routing.tier,
         routingReason: routing.reason,
       };
     } catch (error: any) {
       this.logger.warn(`Tool round budget routing failed: ${error.message}`);
-      return { maxToolRounds };
+      return { maxToolRounds, maxTokens };
     }
   }
 
@@ -673,15 +686,21 @@ export class OpenClawProxyService {
       },
       video_generate: {
         properties: {
-          prompt: { type: 'string', description: 'Text prompt describing the video to generate' },
+          mode: { type: 'string', enum: ['text_to_video', 'image_to_video', 'video_to_video'], description: 'Generation mode. Use image_to_video for animating a still image, or video_to_video for reference-driven motion transfer.' },
+          prompt: { type: 'string', description: 'Prompt or edit instruction for the generated video. Optional for reference-driven modes when the reference media already implies the motion/style goal.' },
           taskId: { type: 'string', description: 'Existing async task id to query' },
           provider: { type: 'string', description: 'Provider id, currently fal' },
           model: { type: 'string', description: 'Provider model path override' },
           duration: { type: 'string', enum: ['5', '10'], description: 'Approximate duration in seconds' },
-          aspectRatio: { type: 'string', enum: ['16:9', '9:16', '1:1'], description: 'Output aspect ratio' },
+          aspectRatio: { type: 'string', enum: ['16:9', '9:16', '1:1'], description: 'Output aspect ratio for text-to-video and provider-supported image-to-video models' },
           negativePrompt: { type: 'string', description: 'Things the model should avoid' },
           cfgScale: { type: 'number', description: 'Guidance scale override' },
           generateAudio: { type: 'boolean', description: 'Whether audio generation should be attempted' },
+          referenceImageUrl: { type: 'string', description: 'Reference image URL. Required for image_to_video and video_to_video.' },
+          endImageUrl: { type: 'string', description: 'Optional ending-frame image URL for image_to_video.' },
+          referenceVideoUrl: { type: 'string', description: 'Reference video URL. Required for video_to_video.' },
+          keepOriginalSound: { type: 'boolean', description: 'When using video_to_video, keep the original sound from the reference video if the provider supports it.' },
+          characterOrientation: { type: 'string', enum: ['image', 'video'], description: 'For video_to_video, choose whether subject orientation should follow the reference image or the reference video.' },
         },
       },
       code_eval: {
@@ -1947,6 +1966,7 @@ export class OpenClawProxyService {
       result = await this.geminiIntegrationService.chatWithFunctions(messages as Array<{ role: 'user' | 'assistant' | 'system'; content: string }>, {
         model: executionModel,
         context: { userId, sessionId },
+        maxTokens: executionBudget.maxTokens,
         additionalTools: seamContext.effectiveTools,
         onToolCall: seamContext.effectiveOnToolCall,
         userApiKey: userCredentials?.apiKey,
@@ -1955,6 +1975,7 @@ export class OpenClawProxyService {
       result = await this.openAIIntegrationService.chatWithFunctions(messages, {
         model: executionModel,
         context: { userId, sessionId },
+        maxTokens: executionBudget.maxTokens,
         maxToolRounds: executionBudget.maxToolRounds,
         additionalTools: this.toOpenAITools(seamContext.effectiveTools),
         onToolCall: seamContext.effectiveOnToolCall,
@@ -1966,6 +1987,7 @@ export class OpenClawProxyService {
       result = await this.claudeIntegrationService.chatWithFunctions(messages, {
         model: executionModel,
         context: { userId, sessionId },
+        maxTokens: executionBudget.maxTokens,
         maxToolRounds: executionBudget.maxToolRounds,
         additionalTools: seamContext.effectiveTools,
         onToolCall: seamContext.effectiveOnToolCall,
@@ -2062,6 +2084,7 @@ export class OpenClawProxyService {
       taskTier: executionBudget.taskTier,
       routingReason: executionBudget.routingReason,
       toolBudget: executionBudget.maxToolRounds,
+      tokenBudget: executionBudget.maxTokens,
       usage: {
         inputTokens,
         outputTokens,
@@ -2158,6 +2181,7 @@ export class OpenClawProxyService {
           taskTier: resultAny.taskTier,
           routingReason: resultAny.routingReason,
           toolBudget: resultAny.toolBudget,
+          tokenBudget: resultAny.tokenBudget,
         } })}\n\n`);
         if ((res as any).flush) (res as any).flush();
       }

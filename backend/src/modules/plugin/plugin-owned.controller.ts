@@ -31,7 +31,7 @@ export class PluginOwnedController {
   @ApiOperation({ summary: 'List owned capabilities by type' })
   async listCapabilities(
     @Request() req: any,
-    @Query('type') type?: 'tool' | 'hook' | 'channel' | 'service',
+    @Query('type') type?: 'tool' | 'hook' | 'channel' | 'service' | 'memory' | 'protocol' | 'doctor' | 'runtime',
   ) {
     return this.pluginOwnedRuntime.listCapabilities(req.user.id, type);
   }
@@ -42,11 +42,6 @@ export class PluginOwnedController {
   async rebuild(@Request() req: any) {
     this.pluginOwnedRuntime.invalidate(req.user.id);
     const snap = await this.pluginOwnedRuntime.buildSnapshot(req.user.id);
-    return {
-      tools: snap.tools.length,
-      hooks: snap.hooks.length,
-      channels: snap.channels.length,
-      services: snap.services.length,
-    };
+    return snap.summary;
   }
 }

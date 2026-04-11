@@ -266,4 +266,39 @@ describe('QueryEngine integration', () => {
     expect(events.some((event) => event.type === 'approval_required' && (event as any).toolName === 'create_order')).toBe(true);
     expect(events.filter((event) => event.type === 'text_delta').map((event) => (event as any).text).join('')).toContain('needs your approval');
   });
+
+  it('preserves tool_use in the done event when the turn budget is exhausted mid-task', async () => {
+    const state = queryEngine.createState('You are a helpful assistant.', {
+      userId: 'user-1',
+      sessionId: 'session-4',
+    });
+    const events: StreamEvent[] = [];
+
+    const callLLM = jest.fn().mockResolvedValue({
+      content: '',
+      toolCalls: [{ id: 'tool-call-3', name: 'search_products', input: { query: 'camera' } }],
+      stopReason: 'tool_use',
+      usage: { inputTokens: 48, outputTokens: 12 },
+      model: 'claude-sonnet-4-20250514',
+    });
+
+    await queryEngine.submitMessage(
+      state,
+      'Keep researching camera options',
+      {
+        provider: 'claude',
+        model: 'claude-sonnet-4-20250514',
+        autoCompact: false,
+        maxTurns: 1,
+      },
+      (event) => events.push(event),
+      callLLM,
+    );
+
+    expect(productService.getProducts).toHaveBeenCalledWith('camera');
+    expect(events.find((event) => event.type === 'done')).toMatchObject({
+      type: 'done',
+      reason: 'tool_use',
+    });
+  });
 });
