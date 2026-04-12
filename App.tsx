@@ -26,6 +26,7 @@ import {
   syncAndroidBackgroundWakeWordConfig,
 } from './src/services/androidBackgroundWakeWord.service';
 import { initLlamaBridge } from './src/services/llamaRnBridge';
+import { OtaModelDownloadService } from './src/services/otaModelDownload.service';
 
 // Register llama.rn bridge for on-device LLM inference
 initLlamaBridge();
@@ -91,6 +92,30 @@ function AppNavigator() {
     activeInstanceName: null as string | null,
     model: null as typeof wakeWordConfig.localModel,
   });
+
+  const reconcileStartupLocalPackages = () => {
+    const migrationResult = OtaModelDownloadService.runStartupPackageMigration();
+    if (migrationResult.invalidatedModelIds.length === 0) {
+      return;
+    }
+
+    const settingsState = useSettingsStore.getState();
+    const activeLocalModelWasInvalidated = migrationResult.invalidatedModelIds.includes(settingsState.localAiModelId)
+      || migrationResult.invalidatedModelIds.includes(settingsState.selectedModelId);
+
+    if (activeLocalModelWasInvalidated) {
+      useSettingsStore.setState({
+        localAiEnabled: false,
+        localAiStatus: 'not_downloaded',
+        localAiProgress: 0,
+      });
+    }
+
+    console.warn(
+      'Invalidated stale on-device model packages during startup migration:',
+      migrationResult.invalidatedModelIds.join(', '),
+    );
+  };
 
   useEffect(() => {
     backgroundWakeWordConfigRef.current = {
@@ -160,6 +185,7 @@ function AppNavigator() {
       try {
         // Migrate AsyncStorage data to MMKV (one-time, on first launch after update)
         await migrateFromAsyncStorage();
+        reconcileStartupLocalPackages();
 
         // Load token from SecureStore (key: 'clawlink_token')
         const token = await loadTokenFromStorage();

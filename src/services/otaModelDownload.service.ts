@@ -64,6 +64,11 @@ export interface StartDownloadOptions {
   forceRedownload?: boolean;
 }
 
+export interface StartupPackageMigrationResult {
+  invalidatedModelIds: string[];
+  removedArtifacts: string[];
+}
+
 const INSTALL_MANIFEST_FILENAME = '.agentrix-model-install-manifest.json';
 
 /**
@@ -421,6 +426,7 @@ export class OtaModelDownloadService {
   private static callbacks: DownloadCallbacks = {};
   private static downloadStartTime = 0;
   private static aborted = false;
+  private static startupMigrationResult: StartupPackageMigrationResult | null = null;
 
   /**
    * Get the model entry from the registry.
@@ -457,6 +463,62 @@ export class OtaModelDownloadService {
 
   static getPackageSizeLabel(modelId: string): string {
     return formatSize(this.getPackageSizeBytes(modelId));
+  }
+
+  static runStartupPackageMigration(): StartupPackageMigrationResult {
+    if (this.startupMigrationResult) {
+      return this.startupMigrationResult;
+    }
+
+    const result: StartupPackageMigrationResult = {
+      invalidatedModelIds: [],
+      removedArtifacts: [],
+    };
+
+    if (!supportsNativeModelStorage()) {
+      this.startupMigrationResult = result;
+      return result;
+    }
+
+    const manifest = readInstallManifest();
+
+    for (const entry of Object.values(MODEL_REGISTRY)) {
+      if (!requiresInstallManifest(entry)) {
+        continue;
+      }
+
+      const artifacts = resolveArtifacts(entry);
+      const hasAnyArtifactFiles = artifacts.some((item) => isArtifactFilePresent(item.artifact));
+
+      if (!hasAnyArtifactFiles) {
+        if (manifest[entry.id]) {
+          clearInstallRecord(entry.id);
+        }
+        continue;
+      }
+
+      const hasValidInstall = artifacts.every((item) => (
+        isArtifactDownloaded(entry, item.key, item.artifact, manifest)
+      ));
+
+      if (hasValidInstall) {
+        continue;
+      }
+
+      for (const item of artifacts) {
+        const file = getModelFile(item.artifact.filename);
+        if (file?.exists) {
+          file.delete();
+          result.removedArtifacts.push(item.artifact.filename);
+        }
+      }
+
+      clearInstallRecord(entry.id);
+      result.invalidatedModelIds.push(entry.id);
+    }
+
+    this.startupMigrationResult = result;
+    return result;
   }
 
   /**
