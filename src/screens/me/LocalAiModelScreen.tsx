@@ -67,7 +67,7 @@ function statusLabel(status: LocalAiStatus, t: ReturnType<typeof useI18n>['t']):
   switch (status) {
     case 'ready': return t({ en: 'Ready', zh: '已就绪' });
     case 'downloading': return t({ en: 'Downloading...', zh: '下载中...' });
-    case 'error': return t({ en: 'Error', zh: '出错' });
+    case 'error': return t({ en: 'Runtime Blocked', zh: '运行时阻断' });
     default: return t({ en: 'Not Downloaded', zh: '未下载' });
   }
 }
@@ -92,35 +92,59 @@ export function LocalAiModelScreen() {
   useEffect(() => {
     let cancelled = false;
 
-    void MobileLocalInferenceService.isAvailable(localAiModelId).then((available) => {
+    void (async () => {
+      const downloaded = OtaModelDownloadService.isModelDownloaded(localAiModelId);
+      const available = downloaded
+        ? await MobileLocalInferenceService.isAvailable(localAiModelId).catch(() => false)
+        : false;
+
       if (!cancelled) {
         setBridgeAvailable(available);
       }
-    });
 
-    void MobileLocalInferenceService.getCapabilities({ model: localAiModelId })
-      .then((capabilities) => {
-        if (!cancelled) {
-          setRuntimeCapabilities(capabilities);
+      void MobileLocalInferenceService.getCapabilities({ model: localAiModelId })
+        .then((capabilities) => {
+          if (!cancelled) {
+            setRuntimeCapabilities(capabilities);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setRuntimeCapabilities(MobileLocalInferenceService.getDeclaredCapabilities({ model: localAiModelId }));
+          }
+        });
+
+      if (cancelled || localAiStatus === 'downloading') {
+        return;
+      }
+
+      if (!downloaded) {
+        if (localAiStatus !== 'not_downloaded') {
+          setLocalAiStatus('not_downloaded');
         }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setRuntimeCapabilities(MobileLocalInferenceService.getDeclaredCapabilities({ model: localAiModelId }));
+        setLocalAiEnabled(false);
+        return;
+      }
+
+      if (available) {
+        if (localAiStatus !== 'ready') {
+          setLocalAiStatus('ready');
         }
-      });
+        setLocalAiEnabled(true);
+        setLocalAiProgress(100);
+        return;
+      }
+
+      if (localAiStatus !== 'error') {
+        setLocalAiStatus('error');
+      }
+      setLocalAiEnabled(false);
+      setLocalAiProgress(100);
+    })();
 
     setLiveVoiceInputAvailable(
       RealtimeMicrophoneService.isAvailable() || isLiveSpeechRecognitionAvailable(),
     );
-
-    // Check if model already downloaded on mount
-    const downloaded = OtaModelDownloadService.isModelDownloaded(localAiModelId);
-    if (downloaded && localAiStatus !== 'ready') {
-      setLocalAiStatus('ready');
-      setLocalAiEnabled(true);
-      setLocalAiProgress(100);
-    }
 
     return () => {
       cancelled = true;
@@ -169,19 +193,36 @@ export function LocalAiModelScreen() {
       onComplete: () => {
         const declaredCapabilities = OtaModelDownloadService.getDeclaredCapabilities(modelId);
         setLocalAiProgress(100);
-        setLocalAiStatus('ready');
-        setLocalAiEnabled(true);
-        setSelectedModel(modelId);
         setDownloadSpeed('');
         setDownloadEta('');
-        Alert.alert(
-          t({ en: 'Download Complete', zh: '下载完成' }),
-          declaredCapabilities.audioInput && declaredCapabilities.onDeviceAudioOutput
-            ? t({ en: 'Local AI package is ready. Text, images, wav/mp3 audio turns, and on-device speech output can now stay on-device when this runtime path is selected.', zh: '本地 AI 完整包已就绪。选择这条端侧路径后，文本、图片、wav/mp3 音频轮次，以及端侧语音输出都可以留在本机。' })
-            : declaredCapabilities.audioInput
-              ? t({ en: 'Local AI package is ready. Text, images, and supported wav/mp3 audio turns can stay on-device once this runtime exposes the audio path.', zh: '本地 AI 完整包已就绪。待当前运行时暴露音频链路后，文本、图片和受支持的 wav/mp3 音频轮次都可留在端侧。' })
-              : t({ en: 'Local AI package is ready. Text and supported image turns can stay on-device; on-device speech output only appears after you install a speech-capable local package.', zh: '本地 AI 完整包已就绪。文本和受支持的图片轮次可留在端侧；端侧语音输出则需要额外安装带语音包的本地模型。' }),
-        );
+        void MobileLocalInferenceService.isAvailable(modelId)
+          .then((available) => {
+            if (available) {
+              setLocalAiStatus('ready');
+              setLocalAiEnabled(true);
+              setSelectedModel(modelId);
+              Alert.alert(
+                t({ en: 'Download Complete', zh: '下载完成' }),
+                declaredCapabilities.audioInput && declaredCapabilities.onDeviceAudioOutput
+                  ? t({ en: 'Local AI package is ready. Text, images, wav/mp3 audio turns, and on-device speech output can now stay on-device when this runtime path is selected.', zh: '本地 AI 完整包已就绪。选择这条端侧路径后，文本、图片、wav/mp3 音频轮次，以及端侧语音输出都可以留在本机。' })
+                  : declaredCapabilities.audioInput
+                    ? t({ en: 'Local AI package is ready. Text, images, and supported wav/mp3 audio turns can stay on-device once this runtime exposes the audio path.', zh: '本地 AI 完整包已就绪。待当前运行时暴露音频链路后，文本、图片和受支持的 wav/mp3 音频轮次都可留在端侧。' })
+                    : t({ en: 'Local AI package is ready. Text and supported image turns can stay on-device; on-device speech output only appears after you install a speech-capable local package.', zh: '本地 AI 完整包已就绪。文本和受支持的图片轮次可留在端侧；端侧语音输出则需要额外安装带语音包的本地模型。' }),
+              );
+              return;
+            }
+
+            setLocalAiStatus('error');
+            setLocalAiEnabled(false);
+            Alert.alert(
+              t({ en: 'Runtime Self-Check Failed', zh: '运行时自检失败' }),
+              t({ en: 'The package finished downloading, but this device could not initialize the on-device text runtime. Local chat stays blocked until the package/runtime issue is fixed. Retry the local package, or switch models manually.', zh: '模型包已经下载完成，但这台设备未能初始化端侧文本运行时。在修复模型包或运行时之前，本地聊天会保持拦截。请重试本地模型包，或手动切换模型。' }),
+            );
+          })
+          .catch(() => {
+            setLocalAiStatus('error');
+            setLocalAiEnabled(false);
+          });
       },
       onError: (error: string) => {
         setLocalAiStatus('error');
@@ -218,6 +259,7 @@ export function LocalAiModelScreen() {
 
   const currentModel = AVAILABLE_MODELS.find((m) => m.id === localAiModelId) ?? AVAILABLE_MODELS[0];
   const currentPackageReady = OtaModelDownloadService.areRequiredArtifactsDownloaded(localAiModelId);
+  const currentModelDownloaded = OtaModelDownloadService.isModelDownloaded(localAiModelId);
   const currentModelEntry = OtaModelDownloadService.getModelEntry(localAiModelId);
   const currentDeclaredCapabilities = OtaModelDownloadService.getDeclaredCapabilities(localAiModelId);
   const currentPackageSize = OtaModelDownloadService.getPackageSizeLabel(localAiModelId);
@@ -253,6 +295,7 @@ export function LocalAiModelScreen() {
       : null,
   ].filter(Boolean).join('、');
   const canUpgradeCurrentPackage = localAiStatus === 'ready' && !currentPackageReady && missingAddOnBytes > 0;
+  const runtimeUnavailableWithDownloadedModel = currentModelDownloaded && bridgeUnavailable;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -348,6 +391,15 @@ export function LocalAiModelScreen() {
               zh: localAiStatus === 'ready'
                 ? '模型包已经下载到本机，但这台设备暂时还没有暴露原生推理桥。本地聊天轮次会被直接拦截，不会再偷偷回退到云端。'
                 : '当前设备暂时还没有暴露原生推理桥。你仍可先下载模型包，但在桥接可用前，本地聊天会保持拦截状态。',
+            })}
+          </Text>
+        )}
+
+        {localAiStatus === 'error' && runtimeUnavailableWithDownloadedModel && (
+          <Text style={styles.warningText}>
+            {t({
+              en: 'The package is on disk, but the device failed the on-device text runtime self-check. Plain local text turns stay blocked until the model package/runtime issue is fixed.',
+              zh: '模型包虽然已经在本机，但端侧文本运行时自检失败。修复模型包或运行时之前，普通本地文字轮次会继续被直接拦截。',
             })}
           </Text>
         )}

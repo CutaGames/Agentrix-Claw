@@ -32,6 +32,7 @@ let activeContextProfile: ContextProfile | null = null;
 let loadingContextProfile: ContextProfile | null = null;
 let activeMultimodalInitialized = false;
 let activeRuntimeCapabilities: MobileLocalRuntimeCapabilities | null = null;
+let lastContextInitError: string | null = null;
 
 const STOP_TOKENS = [
   '<end_of_turn>',
@@ -205,6 +206,7 @@ async function getOrLoadContext(modelId: string, profile: ContextProfile = 'text
   activeModelId = modelId;
   loadingContextProfile = profile;
   loadingPromise = initializeContext(modelPath, profile).catch((err) => {
+    lastContextInitError = formatUnknownError(err) || 'unknown runtime error';
     activeModelId = null;
     loadingPromise = null;
     loadingContextProfile = null;
@@ -218,6 +220,7 @@ async function getOrLoadContext(modelId: string, profile: ContextProfile = 'text
   loadingContextProfile = null;
   activeMultimodalInitialized = false;
   activeRuntimeCapabilities = null;
+  lastContextInitError = null;
   return ctx;
 }
 
@@ -510,11 +513,20 @@ function getBridgeCapabilities(options?: { model?: string }): Partial<MobileLoca
 }
 
 const bridge = {
-  isAvailable(options?: { model?: string }): boolean {
+  async isAvailable(options?: { model?: string }): Promise<boolean> {
     const modelId = resolveCapabilityModelId(options?.model);
-    return modelId
-      ? OtaModelDownloadService.isModelDownloaded(modelId)
-      : KNOWN_MODEL_IDS.some((id) => OtaModelDownloadService.isModelDownloaded(id));
+    if (!modelId || !OtaModelDownloadService.isModelDownloaded(modelId)) {
+      return false;
+    }
+
+    try {
+      await getOrLoadContext(modelId, 'text');
+      lastContextInitError = null;
+      return true;
+    } catch (error) {
+      lastContextInitError = formatUnknownError(error) || lastContextInitError || 'unknown runtime error';
+      return false;
+    }
   },
 
   async getCapabilities(options?: { model?: string }): Promise<Partial<MobileLocalRuntimeCapabilities>> {

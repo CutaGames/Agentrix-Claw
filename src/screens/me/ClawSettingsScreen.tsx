@@ -246,6 +246,8 @@ export function ClawSettingsScreen() {
             ? t({ en: 'Ready', zh: '已就绪' })
             : localAiStatus === 'downloading'
             ? `${localAiProgress}%`
+            : localAiStatus === 'error'
+            ? t({ en: 'Runtime blocked', zh: '运行时阻断' })
             : t({ en: 'Not downloaded', zh: '未下载' }),
         },
         {
