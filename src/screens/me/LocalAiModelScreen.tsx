@@ -29,6 +29,10 @@ interface LocalModelInfo {
   recommended?: boolean;
 }
 
+interface DownloadRequestOptions {
+  repair?: boolean;
+}
+
 const AVAILABLE_MODELS: LocalModelInfo[] = [
   {
     id: 'gemma-4-2b',
@@ -170,7 +174,9 @@ export function LocalAiModelScreen() {
     return `${bytes} B`;
   };
 
-  const handleDownload = useCallback((modelId: string) => {
+  const handleDownload = useCallback((modelId: string, options: DownloadRequestOptions = {}) => {
+    const repairRequested = !!options.repair;
+
     setLocalAiModelId(modelId);
     setLocalAiStatus('downloading');
     setLocalAiProgress(0);
@@ -197,12 +203,16 @@ export function LocalAiModelScreen() {
         setDownloadEta('');
         void MobileLocalInferenceService.isAvailable(modelId)
           .then((available) => {
+            setBridgeAvailable(available);
+
             if (available) {
               setLocalAiStatus('ready');
               setLocalAiEnabled(true);
               setSelectedModel(modelId);
               Alert.alert(
-                t({ en: 'Download Complete', zh: '下载完成' }),
+                repairRequested
+                  ? t({ en: 'Repair Complete', zh: '修复完成' })
+                  : t({ en: 'Download Complete', zh: '下载完成' }),
                 declaredCapabilities.audioInput && declaredCapabilities.onDeviceAudioOutput
                   ? t({ en: 'Local AI package is ready. Text, images, wav/mp3 audio turns, and on-device speech output can now stay on-device when this runtime path is selected.', zh: '本地 AI 完整包已就绪。选择这条端侧路径后，文本、图片、wav/mp3 音频轮次，以及端侧语音输出都可以留在本机。' })
                   : declaredCapabilities.audioInput
@@ -216,7 +226,9 @@ export function LocalAiModelScreen() {
             setLocalAiEnabled(false);
             Alert.alert(
               t({ en: 'Runtime Self-Check Failed', zh: '运行时自检失败' }),
-              t({ en: 'The package finished downloading, but this device could not initialize the on-device text runtime. Local chat stays blocked until the package/runtime issue is fixed. Retry the local package, or switch models manually.', zh: '模型包已经下载完成，但这台设备未能初始化端侧文本运行时。在修复模型包或运行时之前，本地聊天会保持拦截。请重试本地模型包，或手动切换模型。' }),
+              repairRequested
+                ? t({ en: 'The local package has been refreshed, but this device still could not initialize the on-device text runtime. The package path is now clean; the remaining blocker is the runtime/model compatibility on this device.', zh: '本地模型包已经重新刷新，但这台设备依然无法初始化端侧文本运行时。现在包路径已经清理干净，剩余阻塞点是当前设备上的运行时/模型兼容性。' })
+                : t({ en: 'The package finished downloading, but this device could not initialize the on-device text runtime. Local chat stays blocked until the package/runtime issue is fixed. Retry the local package, or switch models manually.', zh: '模型包已经下载完成，但这台设备未能初始化端侧文本运行时。在修复模型包或运行时之前，本地聊天会保持拦截。请重试本地模型包，或手动切换模型。' }),
             );
           })
           .catch(() => {
@@ -230,10 +242,14 @@ export function LocalAiModelScreen() {
         setDownloadSpeed('');
         setDownloadEta('');
         Alert.alert(
-          t({ en: 'Download Failed', zh: '下载失败' }),
+          repairRequested
+            ? t({ en: 'Repair Download Failed', zh: '修复下载失败' })
+            : t({ en: 'Download Failed', zh: '下载失败' }),
           error,
         );
       },
+    }, {
+      forceRedownload: repairRequested,
     });
   }, [setLocalAiEnabled, setLocalAiModelId, setLocalAiProgress, setLocalAiStatus, setSelectedModel, t]);
 
@@ -296,6 +312,7 @@ export function LocalAiModelScreen() {
   ].filter(Boolean).join('、');
   const canUpgradeCurrentPackage = localAiStatus === 'ready' && !currentPackageReady && missingAddOnBytes > 0;
   const runtimeUnavailableWithDownloadedModel = currentModelDownloaded && bridgeUnavailable;
+  const canRepairCurrentPackage = localAiStatus === 'error' && currentModelDownloaded;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -398,12 +415,27 @@ export function LocalAiModelScreen() {
         {localAiStatus === 'error' && runtimeUnavailableWithDownloadedModel && (
           <Text style={styles.warningText}>
             {t({
-              en: 'The package is on disk, but the device failed the on-device text runtime self-check. Plain local text turns stay blocked until the model package/runtime issue is fixed.',
-              zh: '模型包虽然已经在本机，但端侧文本运行时自检失败。修复模型包或运行时之前，普通本地文字轮次会继续被直接拦截。',
+              en: 'The package is on disk, but the device failed the on-device text runtime self-check. Use repair to wipe the old on-device package, fetch the fresh package revision, and re-run the runtime probe.',
+              zh: '模型包虽然已经在本机，但端侧文本运行时自检失败。请使用“修复并重下”先清掉旧包、拉取新的包版本，再重新执行运行时探测。',
             })}
           </Text>
         )}
       </View>
+
+      {canRepairCurrentPackage && (
+        <View style={styles.upgradeCard}>
+          <Text style={styles.upgradeTitle}>{t({ en: 'Repair the on-device package', zh: '修复端侧模型包' })}</Text>
+          <Text style={styles.upgradeDesc}>
+            {t({
+              en: 'This device still has an old or broken on-device package. Repair will delete the current local Gemma files, download the fresh package revision into the app document models folder, and then run the runtime self-check again.',
+              zh: '当前设备里还留着旧的或损坏的端侧模型包。执行修复会先删除本地 Gemma 文件，再把新的包版本重新下载到应用 document/models 目录，并重新跑一次运行时自检。',
+            })}
+          </Text>
+          <TouchableOpacity style={styles.upgradePrimaryBtn} onPress={() => handleDownload(localAiModelId, { repair: true })}>
+            <Text style={styles.upgradePrimaryBtnText}>{t({ en: `Repair and Re-download (${currentPackageSize})`, zh: `修复并重下（${currentPackageSize}）` })}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {canUpgradeCurrentPackage && (
         <View style={styles.upgradeCard}>
@@ -523,6 +555,15 @@ export function LocalAiModelScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.downloadBtnCompact} onPress={() => handleDownload(model.id)}>
                   <Text style={styles.downloadBtnText}>{t({ en: 'Upgrade to Full Package', zh: '升级到完整包' })}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
+                  <Text style={styles.deleteBtnText}>{t({ en: 'Delete', zh: '删除' })}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : localAiModelId === model.id && localAiStatus === 'error' ? (
+              <View style={styles.modelActions}>
+                <TouchableOpacity style={styles.downloadBtnCompact} onPress={() => handleDownload(model.id, { repair: true })}>
+                  <Text style={styles.downloadBtnText}>{t({ en: 'Repair and Re-download', zh: '修复并重下' })}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
                   <Text style={styles.deleteBtnText}>{t({ en: 'Delete', zh: '删除' })}</Text>

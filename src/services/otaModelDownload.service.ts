@@ -18,6 +18,7 @@ export interface OtaModelEntry {
   id: string;
   name: string;
   filename: string;
+  packageRevision?: string;
   /** Download size in bytes */
   sizeBytes: number;
   /** Human-readable size */
@@ -51,6 +52,20 @@ interface ResolvedOtaModelArtifact {
   artifact: OtaModelArtifact;
 }
 
+interface OtaInstallManifestRecord {
+  packageRevision: string;
+  installedAt: number;
+  artifacts: Partial<Record<OtaModelArtifactKey, string>>;
+}
+
+type OtaInstallManifest = Record<string, OtaInstallManifestRecord>;
+
+export interface StartDownloadOptions {
+  forceRedownload?: boolean;
+}
+
+const INSTALL_MANIFEST_FILENAME = '.agentrix-model-install-manifest.json';
+
 /**
  * Available models for OTA download.
  * CDN hosted on HF Mirror (public weights, no auth required).
@@ -60,6 +75,7 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     id: 'gemma-4-2b',
     name: 'Gemma 4 E2B (Q4_K_M)',
     filename: 'gemma-4-E2B-it-Q4_K_M.gguf',
+    packageRevision: '2026-04-12-gemma4-e2b-r1',
     sizeBytes: 3_110_000_000,
     sizeLabel: '3.1 GB',
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E2B-it-GGUF/resolve/main',
@@ -79,6 +95,7 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     id: 'gemma-4-4b',
     name: 'Gemma 4 E4B (Q4_K_M)',
     filename: 'gemma-4-E4B-it-Q4_K_M.gguf',
+    packageRevision: '2026-04-12-gemma4-e4b-r1',
     sizeBytes: 4_980_000_000,
     sizeLabel: '5.0 GB',
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E4B-it-GGUF/resolve/main',
@@ -191,6 +208,15 @@ function getModelFile(filename: string): ExpoFile | null {
   return new ExpoFile(modelsDir, filename);
 }
 
+function getInstallManifestFile(): ExpoFile | null {
+  const modelsDir = getModelsDir();
+  if (!modelsDir) {
+    return null;
+  }
+
+  return new ExpoFile(modelsDir, INSTALL_MANIFEST_FILENAME);
+}
+
 function formatSize(bytes: number): string {
   if (bytes >= 1_000_000_000) {
     return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
@@ -234,7 +260,7 @@ function resolveArtifacts(entry: OtaModelEntry): ResolvedOtaModelArtifact[] {
   return artifacts;
 }
 
-function isArtifactDownloaded(artifact: OtaModelArtifact | null | undefined): boolean {
+function isArtifactFilePresent(artifact: OtaModelArtifact | null | undefined): boolean {
   if (!artifact) {
     return false;
   }
@@ -243,8 +269,145 @@ function isArtifactDownloaded(artifact: OtaModelArtifact | null | undefined): bo
   return !!file && file.exists && file.size > artifact.sizeBytes * 0.95;
 }
 
-function getArtifactPath(artifact: OtaModelArtifact | null | undefined): string | null {
+function getExpectedPackageRevision(entry: OtaModelEntry): string {
+  if (entry.packageRevision) {
+    return entry.packageRevision;
+  }
+
+  return resolveArtifacts(entry)
+    .map((item) => `${item.key}:${item.artifact.filename}:${item.artifact.sizeBytes}`)
+    .join('|');
+}
+
+function requiresInstallManifest(entry: OtaModelEntry): boolean {
+  return !!entry.packageRevision;
+}
+
+function readInstallManifest(): OtaInstallManifest {
+  const manifestFile = getInstallManifestFile();
+  if (!manifestFile?.exists) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(manifestFile.textSync());
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return parsed as OtaInstallManifest;
+  } catch {
+    return {};
+  }
+}
+
+function writeInstallManifest(manifest: OtaInstallManifest): void {
+  const modelsDir = getModelsDir();
+  const manifestFile = getInstallManifestFile();
+  if (!modelsDir || !manifestFile) {
+    return;
+  }
+
+  if (!modelsDir.exists) {
+    modelsDir.create({ idempotent: true, intermediates: true });
+  }
+
+  if (!manifestFile.exists) {
+    manifestFile.create({ intermediates: true, overwrite: true });
+  }
+
+  manifestFile.write(JSON.stringify(manifest));
+}
+
+function clearInstallRecord(modelId: string): void {
+  const manifest = readInstallManifest();
+  if (!manifest[modelId]) {
+    return;
+  }
+
+  delete manifest[modelId];
+
+  if (Object.keys(manifest).length === 0) {
+    const manifestFile = getInstallManifestFile();
+    if (manifestFile?.exists) {
+      manifestFile.delete();
+    }
+    return;
+  }
+
+  writeInstallManifest(manifest);
+}
+
+function recordInstalledArtifacts(entry: OtaModelEntry): void {
+  const manifest = readInstallManifest();
+  const artifacts = resolveArtifacts(entry).reduce<Partial<Record<OtaModelArtifactKey, string>>>(
+    (acc, item) => {
+      acc[item.key] = item.artifact.filename;
+      return acc;
+    },
+    {},
+  );
+
+  manifest[entry.id] = {
+    packageRevision: getExpectedPackageRevision(entry),
+    installedAt: Date.now(),
+    artifacts,
+  };
+
+  writeInstallManifest(manifest);
+}
+
+function isArtifactDownloaded(
+  entry: OtaModelEntry,
+  key: OtaModelArtifactKey,
+  artifact: OtaModelArtifact | null | undefined,
+  manifest = readInstallManifest(),
+): boolean {
+  if (!artifact || !isArtifactFilePresent(artifact)) {
+    return false;
+  }
+
+  if (!requiresInstallManifest(entry)) {
+    return true;
+  }
+
+  const installRecord = manifest[entry.id];
+  return !!installRecord
+    && installRecord.packageRevision === getExpectedPackageRevision(entry)
+    && installRecord.artifacts[key] === artifact.filename;
+}
+
+function purgeInvalidArtifacts(entry: OtaModelEntry, forceRedownload = false): void {
+  const manifest = readInstallManifest();
+  let deletedAny = false;
+
+  for (const item of resolveArtifacts(entry)) {
+    const file = getModelFile(item.artifact.filename);
+    if (!file?.exists) {
+      continue;
+    }
+
+    if (forceRedownload || !isArtifactDownloaded(entry, item.key, item.artifact, manifest)) {
+      file.delete();
+      deletedAny = true;
+    }
+  }
+
+  if (forceRedownload || deletedAny) {
+    clearInstallRecord(entry.id);
+  }
+}
+
+function getArtifactPath(
+  entry: OtaModelEntry,
+  key: OtaModelArtifactKey,
+  artifact: OtaModelArtifact | null | undefined,
+): string | null {
   if (!artifact) {
+    return null;
+  }
+
+  if (!isArtifactDownloaded(entry, key, artifact)) {
     return null;
   }
 
@@ -303,31 +466,32 @@ export class OtaModelDownloadService {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry) return false;
 
-    return isArtifactDownloaded(getPrimaryArtifact(entry));
+    return isArtifactDownloaded(entry, 'model', getPrimaryArtifact(entry));
   }
 
   static isMultimodalProjectorDownloaded(modelId: string): boolean {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry?.multimodalProjector) return false;
-    return isArtifactDownloaded(entry.multimodalProjector);
+    return isArtifactDownloaded(entry, 'multimodalProjector', entry.multimodalProjector);
   }
 
   static isVocoderDownloaded(modelId: string): boolean {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry?.vocoder) return false;
-    return isArtifactDownloaded(entry.vocoder);
+    return isArtifactDownloaded(entry, 'vocoder', entry.vocoder);
   }
 
   static isAudioOutputModelDownloaded(modelId: string): boolean {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry?.audioOutputModel) return false;
-    return isArtifactDownloaded(entry.audioOutputModel);
+    return isArtifactDownloaded(entry, 'audioOutputModel', entry.audioOutputModel);
   }
 
   static hasOnDeviceAudioOutputAssets(modelId: string): boolean {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry?.audioOutputModel || !entry.vocoder) return false;
-    return isArtifactDownloaded(entry.audioOutputModel) && isArtifactDownloaded(entry.vocoder);
+    return isArtifactDownloaded(entry, 'audioOutputModel', entry.audioOutputModel)
+      && isArtifactDownloaded(entry, 'vocoder', entry.vocoder);
   }
 
   static findDownloadedOnDeviceAudioOutputModelId(preferredModelId?: string | null): string | null {
@@ -348,7 +512,11 @@ export class OtaModelDownloadService {
   static areRequiredArtifactsDownloaded(modelId: string): boolean {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry) return false;
-    return resolveArtifacts(entry).every((item) => isArtifactDownloaded(item.artifact));
+
+    const manifest = readInstallManifest();
+    return resolveArtifacts(entry).every((item) => (
+      isArtifactDownloaded(entry, item.key, item.artifact, manifest)
+    ));
   }
 
   /**
@@ -357,22 +525,22 @@ export class OtaModelDownloadService {
   static getLocalPath(modelId: string): string | null {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry) return null;
-    return getArtifactPath(getPrimaryArtifact(entry));
+    return getArtifactPath(entry, 'model', getPrimaryArtifact(entry));
   }
 
   static getMultimodalProjectorPath(modelId: string): string | null {
     const entry = MODEL_REGISTRY[modelId];
-    return getArtifactPath(entry?.multimodalProjector);
+    return entry ? getArtifactPath(entry, 'multimodalProjector', entry.multimodalProjector) : null;
   }
 
   static getVocoderPath(modelId: string): string | null {
     const entry = MODEL_REGISTRY[modelId];
-    return getArtifactPath(entry?.vocoder);
+    return entry ? getArtifactPath(entry, 'vocoder', entry.vocoder) : null;
   }
 
   static getAudioOutputModelPath(modelId: string): string | null {
     const entry = MODEL_REGISTRY[modelId];
-    return getArtifactPath(entry?.audioOutputModel);
+    return entry ? getArtifactPath(entry, 'audioOutputModel', entry.audioOutputModel) : null;
   }
 
   static hasMultimodalAssets(modelId: string): boolean {
@@ -409,6 +577,7 @@ export class OtaModelDownloadService {
   static async startDownload(
     modelId: string,
     callbacks: DownloadCallbacks = {},
+    options: StartDownloadOptions = {},
   ): Promise<void> {
     if (!supportsNativeModelStorage()) {
       callbacks.onError?.('On-device model downloads are unavailable on web.');
@@ -433,13 +602,20 @@ export class OtaModelDownloadService {
     }
 
     if (!modelsDir.exists) {
-      modelsDir.create({ intermediates: true });
+      modelsDir.create({ idempotent: true, intermediates: true });
     }
 
     const artifacts = resolveArtifacts(entry);
+    purgeInvalidArtifacts(entry, !!options.forceRedownload);
+
     const totalBytes = artifacts.reduce((sum, item) => sum + item.artifact.sizeBytes, 0);
+    const manifest = readInstallManifest();
     const alreadyDownloadedBytes = artifacts.reduce(
-      (sum, item) => sum + (isArtifactDownloaded(item.artifact) ? item.artifact.sizeBytes : 0),
+      (sum, item) => sum + (
+        isArtifactDownloaded(entry, item.key, item.artifact, manifest)
+          ? item.artifact.sizeBytes
+          : 0
+      ),
       0,
     );
     const missingBytes = Math.max(totalBytes - alreadyDownloadedBytes, 0);
@@ -453,7 +629,7 @@ export class OtaModelDownloadService {
     }
 
     // If already fully downloaded, skip
-    if (alreadyDownloadedBytes >= totalBytes * 0.95) {
+    if (alreadyDownloadedBytes >= totalBytes * 0.95 && this.areRequiredArtifactsDownloaded(modelId)) {
       const localPath = this.getLocalPath(modelId);
       this.emitProgress('complete', 100, totalBytes, totalBytes);
       callbacks.onComplete?.(localPath || getModelFile(entry.filename)?.uri || '');
@@ -468,7 +644,7 @@ export class OtaModelDownloadService {
 
       for (const item of artifacts) {
         const { artifact } = item;
-        if (isArtifactDownloaded(artifact)) {
+        if (isArtifactDownloaded(entry, item.key, artifact)) {
           continue;
         }
 
@@ -523,8 +699,9 @@ export class OtaModelDownloadService {
       if (this.aborted) return;
 
       this.emitProgress('verifying', 99, totalBytes, totalBytes);
+      recordInstalledArtifacts(entry);
       this.emitProgress('complete', 100, totalBytes, totalBytes);
-  callbacks.onComplete?.(getModelFile(entry.filename)?.uri || '');
+      callbacks.onComplete?.(getModelFile(entry.filename)?.uri || '');
 
     } catch (error) {
       if (this.aborted) return;
@@ -572,6 +749,7 @@ export class OtaModelDownloadService {
             if (file?.exists) file.delete();
           } catch { /* ignore */ }
         }
+        clearInstallRecord(modelId);
       }
     }
 
@@ -592,6 +770,7 @@ export class OtaModelDownloadService {
           file.delete();
         }
       }
+      clearInstallRecord(modelId);
       return true;
     } catch {
       return false;
