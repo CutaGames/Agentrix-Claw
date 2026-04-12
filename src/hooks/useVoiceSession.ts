@@ -32,6 +32,12 @@ import { WearableAudioRelay } from '../services/wearables/wearableAudioRelay.ser
 import { WearableImageRelay } from '../services/wearables/wearableImageRelay.service';
 import { GlassAuthInterceptor } from '../services/wearables/glassAuthInterceptor.service';
 import type { PairedWearableRecord } from '../services/wearables/wearableTypes';
+import {
+  concatPcmChunks,
+  encodePcm16ToWav,
+  estimatePcmDurationMs,
+} from '../services/localPcmWav.service';
+import { LocalSpeechOutputService } from '../services/localSpeechOutput.service';
 
 // Lazy import to avoid circular dependency TDZ during module initialization.
 // testing/e2e.ts imports Zustand stores at top-level, which can cause
@@ -53,6 +59,15 @@ try { Audio = require('expo-av').Audio; } catch (_) {}
 let Haptics: any = null;
 try { Haptics = require('expo-haptics'); } catch (_) {}
 
+function triggerHapticImpact(style: any): void {
+  try {
+    const pendingImpact = Haptics?.impactAsync?.(style);
+    if (pendingImpact && typeof pendingImpact.catch === 'function') {
+      void pendingImpact.catch(() => undefined);
+    }
+  } catch {}
+}
+
 // ── Types ──────────────────────────────────────────────────
 
 export type VoicePhase = 'idle' | 'recording' | 'transcribing' | 'thinking' | 'speaking';
@@ -73,6 +88,12 @@ export interface UseVoiceSessionOptions {
   preferLocalSpeechRecognition?: boolean;
   /** Prefer on-device text-to-speech playback when feasible */
   preferLocalTextToSpeech?: boolean;
+  /** Whether a local-only model is currently selected for chat turns */
+  localModelSelected?: boolean;
+  /** Selected on-device model id when a local-only model is active */
+  localModelId?: string;
+  /** Whether the selected on-device model currently exposes audio-file input */
+  localAudioInputAvailable?: boolean;
   /** TTS speech rate multiplier (0.8 - 1.5, default 1.0) */
   speechRate?: number;
   /** Called to send a transcript (and optional audio attachment) as a message */
@@ -128,7 +149,43 @@ export interface UseVoiceSessionReturn {
   setTranscriptPreview: (text: string) => void;
 }
 
+type LocalDirectAudioCaptureState = {
+  microphone: RealtimeMicrophoneService;
+  pcmChunks: ArrayBuffer[];
+};
+
 const REALTIME_FINAL_TRANSCRIPT_DEDUPE_WINDOW_MS = 750;
+
+function detectRecordedAudioExtension(uri: string): string {
+  const normalized = uri.split('?')[0]?.toLowerCase() || '';
+  if (normalized.endsWith('.mp3')) return 'mp3';
+  if (normalized.endsWith('.wav')) return 'wav';
+  if (normalized.endsWith('.m4a')) return 'm4a';
+  if (normalized.endsWith('.aac')) return 'aac';
+  if (normalized.endsWith('.caf')) return 'caf';
+  return 'bin';
+}
+
+function isSupportedLocalAudioRecordingUri(uri: string): boolean {
+  const extension = detectRecordedAudioExtension(uri);
+  return extension === 'mp3' || extension === 'wav';
+}
+
+function inferRecordedAudioMimeType(uri: string): string {
+  switch (detectRecordedAudioExtension(uri)) {
+    case 'mp3':
+      return 'audio/mpeg';
+    case 'wav':
+      return 'audio/wav';
+    case 'aac':
+      return 'audio/aac';
+    case 'caf':
+      return 'audio/x-caf';
+    case 'm4a':
+    default:
+      return 'audio/m4a';
+  }
+}
 
 // ── Hook ───────────────────────────────────────────────────
 
@@ -153,6 +210,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     realtimeModelId,
     preferLocalSpeechRecognition,
     preferLocalTextToSpeech,
+    localModelSelected,
+    localModelId,
+    localAudioInputAvailable,
     speechRate,
   } = options;
   const isVoiceUiE2E = isVoiceUiE2EEnabled();
@@ -206,6 +266,9 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const liveSpeechStartingRef = useRef(false);
   const realtimeAudioSequenceRef = useRef(0);
   const realtimeMicrophoneRef = useRef<RealtimeMicrophoneService | null>(null);
+  const localDirectAudioCaptureRef = useRef<LocalDirectAudioCaptureState | null>(null);
+  const localSpeechPlaybackQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const localSpeechGenerationRef = useRef(0);
   const onSendMessageRef = useRef(onSendMessage);
   const onRealtimeUserMessageRef = useRef(onRealtimeUserMessage);
   const onRealtimeAssistantChunkRef = useRef(onRealtimeAssistantChunk);
@@ -261,6 +324,8 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   useEffect(() => { onStopCurrentResponseRef.current = onStopCurrentResponse; }, [onStopCurrentResponse]);
 
   // ── Recording options ──
+  const iosMp3RecordingFormat = Audio ? (Audio as any).RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEGLAYER3 : undefined;
+  const canRecordSupportedLocalAudioFormat = Platform.OS === 'ios' && !!iosMp3RecordingFormat;
   const voiceRecordingOptions = Audio ? {
     android: {
       extension: '.m4a',
@@ -271,8 +336,10 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       bitRate: 32000,
     },
     ios: {
-      extension: '.m4a',
-      outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
+      extension: canRecordSupportedLocalAudioFormat ? '.mp3' : '.m4a',
+      outputFormat: canRecordSupportedLocalAudioFormat
+        ? iosMp3RecordingFormat
+        : Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
       audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
       sampleRate: 16000,
       numberOfChannels: 1,
@@ -283,6 +350,77 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     },
     web: {},
   } : null;
+
+  const buildLocalRecordedAudioAttachment = useCallback(async (uri: string): Promise<UploadedChatAttachment> => {
+    const extension = detectRecordedAudioExtension(uri);
+    const mimeType = inferRecordedAudioMimeType(uri);
+    const inferredName = uri.split('/').pop()?.split('?')[0] || `voice-${Date.now()}.${extension}`;
+
+    let size = 0;
+    try {
+      const getInfoAsync = (FileSystem as any).getInfoAsync;
+      if (typeof getInfoAsync === 'function') {
+        const info = await getInfoAsync(uri);
+        if (info && typeof info.size === 'number') {
+          size = info.size;
+        }
+      }
+    } catch {}
+
+    return {
+      url: uri,
+      publicUrl: uri,
+      localUri: uri,
+      fileName: inferredName,
+      originalName: inferredName,
+      mimetype: mimeType,
+      size,
+      kind: 'audio',
+      isImage: false,
+      isAudio: true,
+      isVideo: false,
+    };
+  }, []);
+
+  const persistDirectLocalAudioCaptureAsWav = useCallback(async (pcmChunks: ArrayBuffer[]): Promise<string> => {
+    const pcmBuffer = concatPcmChunks(pcmChunks);
+    const wavBuffer = encodePcm16ToWav(pcmBuffer);
+    const directory = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+    if (!directory) {
+      return `data:audio/wav;base64,${wavBuffer.toString('base64')}`;
+    }
+
+    const fileUri = `${directory}local-direct-voice-${Date.now()}.wav`;
+    await FileSystem.writeAsStringAsync(fileUri, wavBuffer.toString('base64'), {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return fileUri;
+  }, []);
+
+  const showLocalVoicePathBlockedAlert = useCallback((reason: 'audio-input-unavailable' | 'recording-format-unsupported') => {
+    if (reason === 'audio-input-unavailable') {
+      Alert.alert(
+        t({ en: 'Local Audio Unavailable', zh: '本地音频不可用' }),
+        t({
+          en: 'The selected local model does not expose on-device audio input on this device yet. Agentrix will not send this recording to cloud transcription. Use the on-device live speech path when available, attach a wav/mp3 file manually, or switch models yourself.',
+          zh: '当前选中的本地模型在这台设备上暂时还没有暴露端侧音频输入能力。Agentrix 不会再把这段录音偷偷送去云端转写。请优先使用端侧实时语音链路、手动附加 wav/mp3 文件，或自行切换模型。',
+        }),
+      );
+      return;
+    }
+
+    Alert.alert(
+      t({ en: 'Recording Format Blocked', zh: '录音格式受限' }),
+      t({
+        en: Platform.OS === 'android'
+          ? 'This device does not currently expose a direct local microphone path that the on-device audio model can consume. Agentrix will not upload this recording for cloud transcription. Use on-device live speech recognition when available, or attach a wav/mp3 file manually until this build exposes direct PCM or wav/mp3 capture.'
+          : 'This device did not produce a local microphone capture that the on-device audio model can consume. Agentrix will not upload this recording for cloud transcription. Use on-device live speech recognition when available, or attach a wav/mp3 file manually until direct local capture is available.',
+        zh: Platform.OS === 'android'
+          ? '当前设备暂时还没有暴露可被端侧音频模型直接消费的本地麦克风链路。Agentrix 不会再把这段录音上传到云端转写。请优先使用端侧实时语音识别，或在当前构建补齐直出 PCM / wav/mp3 前手动附加 wav/mp3 文件。'
+          : '当前设备没有产出端侧音频模型可直接消费的本地麦克风录音。Agentrix 不会再把这段录音上传到云端转写。请优先使用端侧实时语音识别，或在直连本地采集可用前手动附加 wav/mp3 文件。',
+      }),
+    );
+  }, [t]);
 
   // ── Live Speech stop (declared early so realtime useEffect can reference it) ──
 
@@ -301,7 +439,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     }
     if (!ctrl) return;
     try {
-      if (abort) ctrl.abort(); else ctrl.stop();
+      if (abort) ctrl.abort(); else void ctrl.stop();
     } catch {}
   }, []);
 
@@ -315,18 +453,22 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     }
     if (!ctrl) return;
     try {
-      if (abort) ctrl.abort(); else ctrl.stop();
+      if (abort) ctrl.abort(); else void ctrl.stop();
     } catch {}
   }, []);
 
   // ── Check live speech availability ──
   useEffect(() => {
+    const supportsRealtimeMicrophone = RealtimeMicrophoneService.isAvailable();
+    const supportsLocalDuplexAudio = !!localModelSelected && !!localAudioInputAvailable && supportsRealtimeMicrophone;
     const available = isVoiceUiE2E
       ? true
-      : (useRealtimeChannel ? RealtimeMicrophoneService.isAvailable() || isLiveSpeechRecognitionAvailable() : isLiveSpeechRecognitionAvailable());
+      : ((useRealtimeChannel || supportsLocalDuplexAudio)
+        ? supportsRealtimeMicrophone || isLiveSpeechRecognitionAvailable()
+        : isLiveSpeechRecognitionAvailable());
     liveVoiceAvailableRef.current = available;
     setLiveVoiceAvailable(available);
-  }, [isVoiceUiE2E, useRealtimeChannel]);
+  }, [isVoiceUiE2E, localAudioInputAvailable, localModelSelected, useRealtimeChannel]);
 
   // ── Realtime WebSocket Voice Channel ──
   // When useRealtimeChannel is true and duplex mode is active,
@@ -581,6 +723,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     // Will be called after TTS finishes; startLiveSpeech defined below
   }, []);
 
+  const cancelPendingLocalSpeechOutput = useCallback(() => {
+    localSpeechGenerationRef.current += 1;
+    localSpeechPlaybackQueueRef.current = Promise.resolve();
+    void LocalSpeechOutputService.cancelActiveSynthesis();
+  }, []);
+
   // Init AudioQueuePlayer
   useEffect(() => {
     try {
@@ -607,11 +755,13 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       console.warn('[useVoiceSession] AudioQueuePlayer init failed:', err);
     }
     return () => {
+      cancelPendingLocalSpeechOutput();
+      void LocalSpeechOutputService.release();
       try { audioPlayerRef.current?.destroy(); } catch {}
       stopLocalHoldSpeech(true);
       stopLiveSpeech(true, true);
     };
-  }, [stopLiveSpeech, stopLocalHoldSpeech]);
+  }, [cancelPendingLocalSpeechOutput, stopLiveSpeech, stopLocalHoldSpeech]);
 
   // voiceModeRequested sync
   useEffect(() => {
@@ -629,10 +779,14 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       setVoicePhase('idle');
       setIsRecording(false);
       isRecordingRef.current = false;
+      cancelPendingLocalSpeechOutput();
+      audioPlayerRef.current?.stopAll();
+      setIsSpeaking(false);
+      setSpeakingMessageId(null);
       stopLocalHoldSpeech(true);
       stopLiveSpeech(true, true);
     }
-  }, [stopLiveSpeech, stopLocalHoldSpeech, voiceMode]);
+  }, [cancelPendingLocalSpeechOutput, stopLiveSpeech, stopLocalHoldSpeech, voiceMode]);
 
   // duplexMode → enable voiceMode, autoSpeak, tap mode
   useEffect(() => {
@@ -662,14 +816,56 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     if (!trimmed || trimmed.length < 2) return;
 
     if (preferLocalTextToSpeech) {
-      audioPlayerRef.current?.enqueueLocal(trimmed, voiceLanguageCode, speechRate);
+      if (!LocalSpeechOutputService.hasOnDeviceSpeechPack(localModelId)) {
+        audioPlayerRef.current?.enqueueLocal(trimmed, voiceLanguageCode, speechRate);
+        return;
+      }
+
+      const generation = localSpeechGenerationRef.current;
+      localSpeechPlaybackQueueRef.current = localSpeechPlaybackQueueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          if (generation !== localSpeechGenerationRef.current) {
+            return;
+          }
+
+          try {
+            const synthesized = await LocalSpeechOutputService.synthesizeToFile({
+              modelId: localModelId,
+              text: trimmed,
+            });
+            if (generation !== localSpeechGenerationRef.current || audioPlayerRef.current?.destroyed) {
+              return;
+            }
+
+            audioPlayerRef.current?.enqueueGeneratedAudio(
+              synthesized.fileUri,
+              trimmed,
+              voiceLanguageCode,
+              speechRate,
+            );
+            return;
+          } catch (error) {
+            if (LocalSpeechOutputService.isCancellationError(error)) {
+              return;
+            }
+
+            console.warn('[useVoiceSession] Local speech synthesis failed, falling back to device speech:', error);
+          }
+
+          if (generation !== localSpeechGenerationRef.current || audioPlayerRef.current?.destroyed) {
+            return;
+          }
+
+          audioPlayerRef.current?.enqueueLocal(trimmed, voiceLanguageCode, speechRate);
+        });
       return;
     }
 
     const rateParam = speechRate && speechRate !== 1.0 ? `&rate=${speechRate}` : '';
     const url = `${API_BASE}/voice/tts?text=${encodeURIComponent(trimmed)}${agentVoiceId ? `&voice=${agentVoiceId}` : ''}${rateParam}`;
     audioPlayerRef.current?.enqueue(url, trimmed, voiceLanguageCode, speechRate);
-  }, [agentVoiceId, preferLocalTextToSpeech, speechRate, voiceLanguageCode]);
+  }, [agentVoiceId, localModelId, preferLocalTextToSpeech, speechRate, voiceLanguageCode]);
 
   const speakText = useCallback((text: string) => {
     if (!text || text.startsWith('⚠️') || text.startsWith('Error:')) return;
@@ -695,11 +891,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   }, [enqueueSpeechSegment, stopLiveSpeech]);
 
   const stopSpeaking = useCallback(() => {
+    cancelPendingLocalSpeechOutput();
     audioPlayerRef.current?.stopAll();
     setIsSpeaking(false);
     setVoicePhase((prev) => (prev === 'speaking' ? 'idle' : prev));
     setSpeakingMessageId(null);
-  }, []);
+  }, [cancelPendingLocalSpeechOutput]);
 
   useEffect(() => {
     try {
@@ -798,6 +995,128 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
 
     if (
       !isVoiceUiE2E
+      && !useRealtimeChannel
+      && duplexModeRef.current
+      && voiceModeRef.current
+      && !!localModelSelected
+      && !!localAudioInputAvailable
+      && RealtimeMicrophoneService.isAvailable()
+    ) {
+      if (realtimeMicrophoneRef.current || liveSpeechStartingRef.current) {
+        return;
+      }
+
+      liveSpeechStartingRef.current = true;
+      addVoiceDiagnostic('voice-session', 'local-duplex-audio-start-request', {
+        model: localModelId || 'local-model',
+      });
+
+      try {
+        const pcmChunks: ArrayBuffer[] = [];
+        const realtimeMicrophone = new RealtimeMicrophoneService({
+          onFrame: (audioChunk) => {
+            pcmChunks.push(audioChunk);
+          },
+          onVolumeChange: (value) => {
+            if (!isMountedRef.current) return;
+            setLiveVoiceVolume(value * 100 - 2);
+          },
+          onSpeechStart: () => {
+            if (!isMountedRef.current) return;
+            setLiveListening(true);
+            setVoicePhase('recording');
+            setTranscriptPreview('');
+          },
+          onSpeechEnd: () => {
+            const capturedChunks = pcmChunks.splice(0, pcmChunks.length);
+            const activeMicrophone = realtimeMicrophoneRef.current;
+            realtimeMicrophoneRef.current = null;
+
+            if (isMountedRef.current) {
+              setLiveListening(false);
+              setLiveVoiceVolume(-2);
+              setVoicePhase('transcribing');
+            }
+
+            void (async () => {
+              try {
+                await activeMicrophone?.stop();
+              } catch {}
+
+              const pcmBuffer = concatPcmChunks(capturedChunks);
+              if (pcmBuffer.length === 0) {
+                addVoiceDiagnostic('voice-session', 'local-duplex-audio-empty', {
+                  model: localModelId || 'local-model',
+                });
+                if (!isMountedRef.current) return;
+                setVoicePhase('idle');
+                if (duplexModeRef.current && voiceModeRef.current && !sendingRef.current) {
+                  void startLiveSpeechInternalRef.current?.();
+                }
+                return;
+              }
+
+              const durationMs = Math.round(estimatePcmDurationMs(pcmBuffer.length));
+              addVoiceDiagnostic('voice-session', 'local-duplex-audio-stop', {
+                model: localModelId || 'local-model',
+                pcmBytes: pcmBuffer.length,
+                durationMs,
+              });
+
+              const wavUri = await persistDirectLocalAudioCaptureAsWav(capturedChunks);
+              const localAudioAttachment = await buildLocalRecordedAudioAttachment(wavUri);
+              if (!isMountedRef.current) return;
+              setTranscriptPreview(t({ en: '[Local voice message]', zh: '[本地语音消息]' }));
+              setVoicePhase('thinking');
+              setTimeout(() => onSendMessageRef.current('', [localAudioAttachment]), 60);
+            })();
+          },
+          onError: (error) => {
+            if (!isMountedRef.current) return;
+            const message = error?.message || 'Local duplex audio error';
+            if (/permission denied/i.test(message)) {
+              setLiveSpeechPermissionState('denied');
+            }
+            addVoiceDiagnostic('voice-session', 'local-duplex-audio-error', {
+              message,
+              model: localModelId || 'local-model',
+            });
+            realtimeMicrophoneRef.current = null;
+            setLiveListening(false);
+            setLiveVoiceVolume(-2);
+            setVoicePhase('idle');
+            setTranscriptPreview('');
+          },
+        });
+
+        await realtimeMicrophone.start();
+        realtimeMicrophoneRef.current = realtimeMicrophone;
+        liveSpeechManualStopRef.current = false;
+        setLiveSpeechPermissionState('granted');
+        setLiveListening(true);
+        setVoicePhase('recording');
+        setTranscriptPreview('');
+        addVoiceDiagnostic('voice-session', 'local-duplex-audio-started', {
+          model: localModelId || 'local-model',
+        });
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (/permission denied/i.test(message)) {
+          setLiveSpeechPermissionState('denied');
+        }
+        addVoiceDiagnostic('voice-session', 'local-duplex-audio-start-failed', {
+          message,
+          model: localModelId || 'local-model',
+        });
+        console.warn('Local duplex audio start failed:', error);
+      } finally {
+        liveSpeechStartingRef.current = false;
+      }
+    }
+
+    if (
+      !isVoiceUiE2E
       && useRealtimeChannel
       && duplexModeRef.current
       && voiceModeRef.current
@@ -828,6 +1147,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
             if (!isMountedRef.current) return;
             // User spoke over agent — interrupt playback and resume mic
             addVoiceDiagnostic('voice-session', 'barge-in');
+            cancelPendingLocalSpeechOutput();
             audioPlayerRef.current?.stopAll();
             setIsSpeaking(false);
             isSpeakingRef.current = false;
@@ -873,33 +1193,6 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       } finally {
         liveSpeechStartingRef.current = false;
       }
-    }
-
-    if (isVoiceUiE2E) {
-      if (!duplexModeRef.current || liveSpeechRef.current || liveSpeechStartingRef.current || !voiceModeRef.current) {
-        return;
-      }
-
-      const permission = await requestLiveSpeechPermissions();
-      if (!permission?.granted) {
-        setLiveSpeechPermissionState('denied');
-        setLiveListening(false);
-        setVoicePhase('idle');
-        setTranscriptPreview('');
-        addVoiceDiagnostic('voice-session', 'live-speech-permission-denied');
-        return;
-      }
-
-      liveSpeechManualStopRef.current = false;
-      liveSpeechRef.current = {
-        stop: () => {},
-        abort: () => {},
-      };
-      setLiveSpeechPermissionState('granted');
-      setLiveListening(true);
-      setVoicePhase('recording');
-      setTranscriptPreview('E2E live voice ready');
-      return;
     }
 
     const skipReasons = [
@@ -1048,6 +1341,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         },
       },
       [instanceName || '', agentVoiceId || '', 'Agentrix'],
+      { mode: 'duplex' },
     );
     } catch (err) {
       addVoiceDiagnostic('voice-session', 'live-speech-start-failed', err);
@@ -1060,7 +1354,13 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     }
   }, [
     agentVoiceId,
+    buildLocalRecordedAudioAttachment,
+    cancelPendingLocalSpeechOutput,
     instanceName,
+    localAudioInputAvailable,
+    localModelId,
+    localModelSelected,
+    persistDirectLocalAudioCaptureAsWav,
     stopLiveSpeech,
     stopSpeaking,
     t,
@@ -1163,7 +1463,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   }, []);
 
   const startVoiceRecording = useCallback(async () => {
-    if (!Audio && !(preferLocalSpeechRecognition && (isVoiceUiE2E || isLiveSpeechRecognitionAvailable()))) {
+    const canUseRealtimePcmForHold = !duplexModeRef.current
+      && !!localModelSelected
+      && !!localAudioInputAvailable
+      && RealtimeMicrophoneService.isAvailable();
+
+    if (!Audio && !canUseRealtimePcmForHold && !(preferLocalSpeechRecognition && (isVoiceUiE2E || isLiveSpeechRecognitionAvailable()))) {
       Alert.alert(t({ en: 'Voice Unavailable', zh: '语音不可用' }), t({ en: 'Audio module not available.', zh: '当前音频模块不可用。' }));
       return;
     }
@@ -1175,6 +1480,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       if (!isRecordingRef.current) {
         isRecordingRef.current = true;
         if (isSpeaking) {
+          cancelPendingLocalSpeechOutput();
           await audioPlayerRef.current?.stopAll();
           setIsSpeaking(false);
         }
@@ -1182,9 +1488,97 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         setVoicePhase('recording');
         setTranscriptPreview('');
 
+        const shouldPreferDirectLocalAudioForHold = canUseRealtimePcmForHold || (
+          !duplexModeRef.current
+          && !!localModelSelected
+          && !!localAudioInputAvailable
+          && canRecordSupportedLocalAudioFormat
+        );
         const canUseLocalSpeechForHold = !duplexModeRef.current
+          && !shouldPreferDirectLocalAudioForHold
           && preferLocalSpeechRecognition
           && (isVoiceUiE2E || isLiveSpeechRecognitionAvailable());
+
+        const shouldBlockLocalRecordingStart = !duplexModeRef.current
+          && !!localModelSelected
+          && !canUseLocalSpeechForHold
+          && !canUseRealtimePcmForHold
+          && (!localAudioInputAvailable || !canRecordSupportedLocalAudioFormat);
+
+        if (shouldBlockLocalRecordingStart) {
+          isRecordingRef.current = false;
+          setVoicePhase('idle');
+          showLocalVoicePathBlockedAlert(
+            localAudioInputAvailable ? 'recording-format-unsupported' : 'audio-input-unavailable',
+          );
+          return;
+        }
+
+        if (canUseRealtimePcmForHold) {
+          addVoiceDiagnostic('voice-session', 'hold-local-audio-start-request', {
+            model: localModelId || 'local-model',
+          });
+
+          const pcmChunks: ArrayBuffer[] = [];
+          const realtimeMicrophone = new RealtimeMicrophoneService({
+            onFrame: (audioChunk) => {
+              pcmChunks.push(audioChunk);
+            },
+            onVolumeChange: (value) => {
+              if (!isMountedRef.current) return;
+              setLiveVoiceVolume(value * 100 - 2);
+            },
+            onSpeechStart: () => {
+              if (!isMountedRef.current) return;
+              setVoicePhase('recording');
+            },
+            onError: (error) => {
+              if (!isMountedRef.current) return;
+              const message = error?.message || 'Local audio capture error';
+              if (/permission denied/i.test(message)) {
+                setLiveSpeechPermissionState('denied');
+              }
+              addVoiceDiagnostic('voice-session', 'hold-local-audio-error', {
+                message,
+                model: localModelId || 'local-model',
+              });
+              localDirectAudioCaptureRef.current = null;
+              isRecordingRef.current = false;
+              setIsRecording(false);
+              setLiveVoiceVolume(-2);
+              setVoicePhase('idle');
+              Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), message);
+            },
+          });
+
+          localDirectAudioCaptureRef.current = {
+            microphone: realtimeMicrophone,
+            pcmChunks,
+          };
+
+          try {
+            await realtimeMicrophone.start();
+            setLiveSpeechPermissionState('granted');
+            setIsRecording(true);
+            setLiveListening(false);
+            addVoiceDiagnostic('voice-session', 'hold-local-audio-started', {
+              model: localModelId || 'local-model',
+            });
+            triggerHapticImpact(Haptics?.ImpactFeedbackStyle?.Medium);
+            return;
+          } catch (error) {
+            localDirectAudioCaptureRef.current = null;
+            const message = error instanceof Error ? error.message : String(error);
+            if (/permission denied/i.test(message)) {
+              setLiveSpeechPermissionState('denied');
+            }
+            addVoiceDiagnostic('voice-session', 'hold-local-audio-start-failed', {
+              message,
+              model: localModelId || 'local-model',
+            });
+            throw error;
+          }
+        }
 
         if (canUseLocalSpeechForHold) {
           const permission = await requestLiveSpeechPermissions();
@@ -1242,9 +1636,10 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
               },
             },
             [instanceName || '', agentVoiceId || '', 'Agentrix'],
+            { mode: 'hold' },
           );
           setIsRecording(true);
-          if (Haptics) await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          triggerHapticImpact(Haptics?.ImpactFeedbackStyle?.Medium);
           return;
         }
 
@@ -1271,7 +1666,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         );
         recordingRef.current = recording;
         setIsRecording(true);
-        if (Haptics) await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        triggerHapticImpact(Haptics?.ImpactFeedbackStyle?.Medium);
 
         // Start VAD monitoring on the recording for volume feedback
         try {
@@ -1299,10 +1694,16 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     }
   }, [
     agentVoiceId,
+    cancelPendingLocalSpeechOutput,
+    canRecordSupportedLocalAudioFormat,
     instanceName,
     isSpeaking,
     isVoiceUiE2E,
+    localAudioInputAvailable,
+    localModelId,
+    localModelSelected,
     preferLocalSpeechRecognition,
+    showLocalVoicePathBlockedAlert,
     t,
     voiceLanguageHint,
     voicePhase,
@@ -1310,8 +1711,54 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   ]);
 
   const stopVoiceRecording = useCallback(async () => {
-    if (!isRecordingRef.current) return;
+    if (
+      !isRecordingRef.current
+      && !localDirectAudioCaptureRef.current
+      && !localHoldSpeechRef.current
+      && !recordingRef.current
+    ) {
+      return;
+    }
+
     try {
+      if (localDirectAudioCaptureRef.current) {
+        const directCapture = localDirectAudioCaptureRef.current;
+        localDirectAudioCaptureRef.current = null;
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        setLiveVoiceVolume(-2);
+        setVoicePhase('transcribing');
+        triggerHapticImpact(Haptics?.ImpactFeedbackStyle?.Light);
+
+        try {
+          await directCapture.microphone.stop();
+        } catch {}
+
+        const pcmBuffer = concatPcmChunks(directCapture.pcmChunks);
+        if (pcmBuffer.length === 0) {
+          addVoiceDiagnostic('voice-session', 'hold-local-audio-empty', {
+            model: localModelId || 'local-model',
+          });
+          setVoicePhase('idle');
+          Alert.alert(t({ en: 'No Speech', zh: '未检测到语音' }), t({ en: 'No speech detected.', zh: '未检测到有效语音。' }));
+          return;
+        }
+
+        const durationMs = Math.round(estimatePcmDurationMs(pcmBuffer.length));
+        addVoiceDiagnostic('voice-session', 'hold-local-audio-stop', {
+          model: localModelId || 'local-model',
+          pcmBytes: pcmBuffer.length,
+          durationMs,
+        });
+
+        const wavUri = await persistDirectLocalAudioCaptureAsWav(directCapture.pcmChunks);
+        const localAudioAttachment = await buildLocalRecordedAudioAttachment(wavUri);
+        setTranscriptPreview(t({ en: '[Local voice message]', zh: '[本地语音消息]' }));
+        setVoicePhase('thinking');
+        setTimeout(() => onSendMessageRef.current('', [localAudioAttachment]), 80);
+        return;
+      }
+
       if (localHoldSpeechRef.current) {
         const controller = localHoldSpeechRef.current;
         localHoldSpeechRef.current = null;
@@ -1320,17 +1767,21 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         setLiveListening(false);
         setLiveVoiceVolume(-2);
         setVoicePhase('transcribing');
-        if (Haptics) await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        triggerHapticImpact(Haptics?.ImpactFeedbackStyle?.Light);
+        let stopResultTranscript = '';
         try {
-          controller.stop();
+          const stopResult = await controller.stop();
+          stopResultTranscript = stopResult?.transcript?.trim() || '';
         } catch {}
 
-        const transcript = localHoldTranscriptRef.current.trim();
+        const transcript = stopResultTranscript || localHoldTranscriptRef.current.trim();
         localHoldTranscriptRef.current = '';
         if (transcript) {
           setTranscriptPreview(transcript);
           setVoicePhase('thinking');
-          setTimeout(() => onSendMessageRef.current(transcript), 80);
+          setTimeout(() => {
+            onSendMessageRef.current(transcript);
+          }, 80);
         } else {
           setVoicePhase('idle');
           Alert.alert(t({ en: 'No Speech', zh: '未检测到语音' }), t({ en: 'No speech detected.', zh: '未检测到有效语音。' }));
@@ -1347,13 +1798,29 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       isRecordingRef.current = false;
       setIsRecording(false);
       setVoicePhase('transcribing');
-      if (Haptics) await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      triggerHapticImpact(Haptics?.ImpactFeedbackStyle?.Light);
 
       if (recordingRef.current) {
         await recordingRef.current.stopAndUnloadAsync();
         const uri = recordingRef.current.getURI();
         recordingRef.current = null;
         if (uri) {
+          if (localModelSelected) {
+            if (localAudioInputAvailable && isSupportedLocalAudioRecordingUri(uri)) {
+              const localAudioAttachment = await buildLocalRecordedAudioAttachment(uri);
+              setTranscriptPreview(t({ en: '[Local voice message]', zh: '[本地语音消息]' }));
+              setVoicePhase('thinking');
+              setTimeout(() => onSendMessageRef.current('', [localAudioAttachment]), 80);
+              return;
+            }
+
+            setVoicePhase('idle');
+            showLocalVoicePathBlockedAlert(
+              localAudioInputAvailable ? 'recording-format-unsupported' : 'audio-input-unavailable',
+            );
+            return;
+          }
+
           let transcript = '';
           const formData = new FormData();
           formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
@@ -1413,7 +1880,39 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     } finally {
       await resetAudioModeAfterRecording();
     }
-  }, [resetAudioModeAfterRecording, t, token, voiceLanguageHint]);
+  }, [
+    buildLocalRecordedAudioAttachment,
+    localModelId,
+    localAudioInputAvailable,
+    localModelSelected,
+    persistDirectLocalAudioCaptureAsWav,
+    resetAudioModeAfterRecording,
+    showLocalVoicePathBlockedAlert,
+    t,
+    token,
+    voiceLanguageHint,
+  ]);
+
+  useEffect(() => {
+    if (!isVoiceUiE2E || typeof window === 'undefined') {
+      return;
+    }
+
+    (window as any).__AGENTRIX_VOICE_UI_E2E_HOLD_TO_TALK_BRIDGE__ = {
+      start: async () => {
+        await startVoiceRecording();
+      },
+      stop: async () => {
+        await stopVoiceRecording();
+      },
+    };
+
+    return () => {
+      if ((window as any).__AGENTRIX_VOICE_UI_E2E_HOLD_TO_TALK_BRIDGE__) {
+        (window as any).__AGENTRIX_VOICE_UI_E2E_HOLD_TO_TALK_BRIDGE__ = null;
+      }
+    };
+  }, [isVoiceUiE2E, startVoiceRecording, stopVoiceRecording]);
 
   // ── Interaction wrappers ──
 
@@ -1429,7 +1928,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
 
   const handleVoiceTapToggle = useCallback(async () => {
     if (duplexMode) {
-      if (liveSpeechRef.current) {
+      if (liveSpeechRef.current || realtimeMicrophoneRef.current) {
         stopLiveSpeech(true, true);
         setVoicePhase('idle');
         setTranscriptPreview('');

@@ -1312,7 +1312,7 @@ export class AuthController {
       openClawInstances: instances.map(i => {
         const acctId = i.agentAccountId || (i.metadata as any)?.agentAccountId;
         const acct = acctId ? accountMap.get(acctId) : undefined;
-        const LOCAL_ONLY_MODELS = ['gemma-nano-2b', 'gemma-4-2b', 'gemma-4-4b', 'gemma-nano-2b-local'];
+        const LOCAL_ONLY_MODELS = ['gemma-nano-2b', 'gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b', 'gemma-nano-2b-local'];
         const instanceActiveModel = (i.capabilities as any)?.activeModel;
         const sanitizedInstanceActiveModel = instanceActiveModel && !LOCAL_ONLY_MODELS.includes(instanceActiveModel)
           ? instanceActiveModel

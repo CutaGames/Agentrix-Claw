@@ -9,18 +9,28 @@
  * document directory under models/.
  */
 
-import { initLlama, type LlamaContext } from 'llama.rn';
-import { AppState, type AppStateStatus } from 'react-native';
+import { File as ExpoFile } from 'expo-file-system';
+import type { LlamaContext } from 'llama.rn';
+import { AppState, Platform, type AppStateStatus } from 'react-native';
 import { OtaModelDownloadService } from './otaModelDownload.service';
-import type { MobileLocalChatMessage, MobileLocalRuntimeCapabilities } from './mobileLocalInference.service';
+import {
+  getLocalLlamaModelPathCandidates,
+  resolveLocalLlamaContextInitOptions,
+} from './llamaContextConfig.service';
+import type {
+  MobileLocalChatContentPart,
+  MobileLocalChatMessage,
+  MobileLocalRuntimeCapabilities,
+} from './mobileLocalInference.service';
 
 // ── Context Pool ───────────────────────────────────────
 
 let activeContext: LlamaContext | null = null;
 let activeModelId: string | null = null;
 let loadingPromise: Promise<LlamaContext | null> | null = null;
+let activeContextProfile: ContextProfile | null = null;
+let loadingContextProfile: ContextProfile | null = null;
 let activeMultimodalInitialized = false;
-let activeVocoderInitialized = false;
 let activeRuntimeCapabilities: MobileLocalRuntimeCapabilities | null = null;
 
 const STOP_TOKENS = [
@@ -39,6 +49,8 @@ type MultimodalSupport = {
   vision: boolean;
   audio: boolean;
 };
+
+type ContextProfile = 'text' | 'multimodal';
 
 type MessageRequirements = {
   needsVision: boolean;
@@ -59,13 +71,23 @@ type LlamaContextWithExtras = LlamaContext & {
   }) => Promise<boolean>;
   getMultimodalSupport: () => Promise<MultimodalSupport>;
   releaseMultimodal: () => Promise<void>;
-  initVocoder: (options: {
-    path: string;
-    n_batch?: number;
-  }) => Promise<boolean>;
-  isVocoderEnabled: () => Promise<boolean>;
-  releaseVocoder: () => Promise<void>;
 };
+
+type LlamaRnModule = Pick<typeof import('llama.rn'), 'initLlama' | 'loadLlamaModelInfo'>;
+
+let cachedLlamaRnModule: LlamaRnModule | null = null;
+
+function getLlamaRnModule(): LlamaRnModule {
+  if (Platform.OS === 'web') {
+    throw new Error('llama.rn is unavailable on web.');
+  }
+
+  if (!cachedLlamaRnModule) {
+    cachedLlamaRnModule = require('llama.rn') as LlamaRnModule;
+  }
+
+  return cachedLlamaRnModule;
+}
 
 function shouldFlushStreamChunk(token: string, pendingChunk: string): boolean {
   if (!token || !pendingChunk) {
@@ -83,12 +105,89 @@ function shouldFlushStreamChunk(token: string, pendingChunk: string): boolean {
   return pendingChunk.length >= STREAM_SOFT_FLUSH_CHARS && /\s$/.test(token);
 }
 
-async function getOrLoadContext(modelId: string): Promise<LlamaContext> {
-  if (activeContext && activeModelId === modelId) {
+function resolveContextProfile(messages: MobileLocalChatMessage[]): ContextProfile {
+  const requirements = getMessageRequirements(messages);
+  return requirements.needsVision || requirements.needsAudioInput ? 'multimodal' : 'text';
+}
+
+function profileSatisfies(requested: ContextProfile, active: ContextProfile | null): boolean {
+  return active === requested || (requested === 'text' && active === 'multimodal');
+}
+
+function formatUnknownError(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  if (typeof error === 'string' && error.trim()) {
+    return error.trim();
+  }
+
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    for (const key of ['message', 'reason', 'error', 'detail', 'code']) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== '{}') {
+        return serialized;
+      }
+    } catch {}
+  }
+
+  return '';
+}
+
+async function initializeContext(modelPath: string, profile: ContextProfile): Promise<LlamaContext> {
+  const llamaRnModule = getLlamaRnModule();
+  const pathCandidates = getLocalLlamaModelPathCandidates(modelPath);
+  let lastPrimaryError: unknown = null;
+  let lastFallbackError: unknown = null;
+  let lastModelInfoError: unknown = null;
+
+  for (const candidate of pathCandidates) {
+    try {
+      await llamaRnModule.loadLlamaModelInfo(candidate);
+    } catch (error) {
+      lastModelInfoError = error;
+    }
+
+    try {
+      return await llamaRnModule.initLlama({
+        model: candidate,
+        ...resolveLocalLlamaContextInitOptions(profile, 'primary', Platform.OS),
+      });
+    } catch (primaryError) {
+      lastPrimaryError = primaryError;
+      try {
+        return await llamaRnModule.initLlama({
+          model: candidate,
+          ...resolveLocalLlamaContextInitOptions(profile, 'fallback', Platform.OS),
+        });
+      } catch (fallbackError) {
+        lastFallbackError = fallbackError;
+      }
+    }
+  }
+
+  const reason = formatUnknownError(lastFallbackError)
+    || formatUnknownError(lastPrimaryError)
+    || formatUnknownError(lastModelInfoError)
+    || 'unknown runtime error';
+  throw new Error(`Failed to initialize the on-device ${profile} runtime: ${reason}`);
+}
+
+async function getOrLoadContext(modelId: string, profile: ContextProfile = 'text'): Promise<LlamaContext> {
+  if (activeContext && activeModelId === modelId && profileSatisfies(profile, activeContextProfile)) {
     return activeContext;
   }
 
-  if (loadingPromise && activeModelId === modelId) {
+  if (loadingPromise && activeModelId === modelId && profileSatisfies(profile, loadingContextProfile)) {
     const ctx = await loadingPromise;
     if (ctx) return ctx;
   }
@@ -104,22 +203,20 @@ async function getOrLoadContext(modelId: string): Promise<LlamaContext> {
   }
 
   activeModelId = modelId;
-  loadingPromise = initLlama({
-    model: modelPath,
-    n_ctx: 2048,
-    n_gpu_layers: 99, // Metal on iOS, OpenCL on Android if available
-    use_mlock: true,
-  }).catch((err) => {
+  loadingContextProfile = profile;
+  loadingPromise = initializeContext(modelPath, profile).catch((err) => {
     activeModelId = null;
     loadingPromise = null;
+    loadingContextProfile = null;
     throw err;
   });
 
   const ctx = await loadingPromise;
   activeContext = ctx;
+  activeContextProfile = profile;
   loadingPromise = null;
+  loadingContextProfile = null;
   activeMultimodalInitialized = false;
-  activeVocoderInitialized = false;
   activeRuntimeCapabilities = null;
   return ctx;
 }
@@ -128,8 +225,9 @@ function resetRuntimeState() {
   activeContext = null;
   activeModelId = null;
   loadingPromise = null;
+  activeContextProfile = null;
+  loadingContextProfile = null;
   activeMultimodalInitialized = false;
-  activeVocoderInitialized = false;
   activeRuntimeCapabilities = null;
 }
 
@@ -145,12 +243,6 @@ async function releaseActiveContext(): Promise<void> {
 
   const context = activeContext;
   const extendedContext = withExtras(context);
-  try {
-    if (activeVocoderInitialized) {
-      await extendedContext.releaseVocoder();
-    }
-  } catch {}
-
   try {
     if (activeMultimodalInitialized) {
       await extendedContext.releaseMultimodal();
@@ -183,9 +275,15 @@ function buildStaticCapabilities(modelId?: string | null): MobileLocalRuntimeCap
       runtimeSource: 'global',
       supportsTextGeneration: true,
       supportsStreaming: true,
-      supportsVisionInput: KNOWN_MODEL_IDS.some((id) => OtaModelDownloadService.hasMultimodalAssets(id)),
-      supportsAudioInput: false,
-      supportsAudioOutput: KNOWN_MODEL_IDS.some((id) => OtaModelDownloadService.hasVocoderAssets(id)),
+      supportsVisionInput: KNOWN_MODEL_IDS.some((id) => (
+        OtaModelDownloadService.hasMultimodalAssets(id)
+        && OtaModelDownloadService.declaresVisionInput(id)
+      )),
+      supportsAudioInput: KNOWN_MODEL_IDS.some((id) => (
+        OtaModelDownloadService.hasMultimodalAssets(id)
+        && OtaModelDownloadService.declaresAudioInput(id)
+      )),
+      supportsAudioOutput: OtaModelDownloadService.hasAnyOnDeviceAudioOutputAssets(),
     };
   }
 
@@ -194,9 +292,11 @@ function buildStaticCapabilities(modelId?: string | null): MobileLocalRuntimeCap
     runtimeSource: 'global',
     supportsTextGeneration: true,
     supportsStreaming: true,
-    supportsVisionInput: OtaModelDownloadService.hasMultimodalAssets(modelId),
-    supportsAudioInput: false,
-    supportsAudioOutput: OtaModelDownloadService.hasVocoderAssets(modelId),
+    supportsVisionInput: OtaModelDownloadService.hasMultimodalAssets(modelId)
+      && OtaModelDownloadService.declaresVisionInput(modelId),
+    supportsAudioInput: OtaModelDownloadService.hasMultimodalAssets(modelId)
+      && OtaModelDownloadService.declaresAudioInput(modelId),
+    supportsAudioOutput: OtaModelDownloadService.hasAnyOnDeviceAudioOutputAssets(modelId),
   };
 }
 
@@ -241,11 +341,32 @@ async function ensureMultimodalSupport(
         return { vision: false, audio: false };
       }
 
-      activeMultimodalInitialized = await extendedContext.initMultimodal({
-        path: projectorPath,
-        use_gpu: true,
-        image_max_tokens: 512,
-      });
+      const projectorPathCandidates = getLocalLlamaModelPathCandidates(projectorPath);
+      const multimodalInitAttempts = Platform.OS === 'android'
+        ? [{ use_gpu: false }]
+        : [{ use_gpu: true }, { use_gpu: false }];
+
+      for (const candidate of projectorPathCandidates) {
+        for (const attempt of multimodalInitAttempts) {
+          try {
+            activeMultimodalInitialized = await extendedContext.initMultimodal({
+              path: candidate,
+              use_gpu: attempt.use_gpu,
+              image_max_tokens: 512,
+            });
+          } catch {
+            activeMultimodalInitialized = false;
+          }
+
+          if (activeMultimodalInitialized) {
+            break;
+          }
+        }
+
+        if (activeMultimodalInitialized) {
+          break;
+        }
+      }
     }
 
     if (!activeMultimodalInitialized) {
@@ -259,33 +380,6 @@ async function ensureMultimodalSupport(
   }
 }
 
-async function ensureVocoderSupport(
-  context: LlamaContext,
-  modelId: string,
-): Promise<boolean> {
-  const extendedContext = withExtras(context);
-
-  if (!OtaModelDownloadService.hasVocoderAssets(modelId)) {
-    return false;
-  }
-
-  try {
-    if (!activeVocoderInitialized) {
-      const vocoderPath = OtaModelDownloadService.getVocoderPath(modelId);
-      if (!vocoderPath) {
-        return false;
-      }
-
-      activeVocoderInitialized = await extendedContext.initVocoder({ path: vocoderPath });
-    }
-
-    return activeVocoderInitialized ? await extendedContext.isVocoderEnabled() : false;
-  } catch {
-    activeVocoderInitialized = false;
-    return false;
-  }
-}
-
 async function ensureRuntimeCapabilities(modelId: string): Promise<MobileLocalRuntimeCapabilities> {
   if (!OtaModelDownloadService.isModelDownloaded(modelId)) {
     return buildStaticCapabilities(modelId);
@@ -295,15 +389,13 @@ async function ensureRuntimeCapabilities(modelId: string): Promise<MobileLocalRu
     return activeRuntimeCapabilities;
   }
 
-  const context = await getOrLoadContext(modelId);
+  const context = await getOrLoadContext(modelId, 'multimodal');
   const multimodalSupport = await ensureMultimodalSupport(context, modelId);
-  const supportsAudioOutput = await ensureVocoderSupport(context, modelId);
 
   activeRuntimeCapabilities = {
     ...buildStaticCapabilities(modelId),
     supportsVisionInput: multimodalSupport.vision,
     supportsAudioInput: multimodalSupport.audio,
-    supportsAudioOutput,
   };
 
   return activeRuntimeCapabilities;
@@ -317,24 +409,100 @@ async function ensureMessageSupport(modelId: string, messages: MobileLocalChatMe
 
   const capabilities = await ensureRuntimeCapabilities(modelId);
   if (requirements.needsVision && !capabilities.supportsVisionInput) {
-    throw new Error('Local Gemma package is missing image support on this device.');
+    throw new Error('The selected local package is missing image support on this device.');
   }
 
   if (requirements.needsAudioInput && !capabilities.supportsAudioInput) {
-    throw new Error('Local Gemma audio input is not available for this model/runtime yet.');
+    throw new Error('The selected local model does not expose on-device audio input on this device yet.');
   }
 }
 
-function toCompletionMessages(messages: MobileLocalChatMessage[]): CompletionMessage[] {
-  return messages.map((message) => ({
-    role: message.role as 'system' | 'user' | 'assistant',
-    content: message.content as string | Array<Record<string, unknown>>,
+function inferMimeTypeFromUri(uri: string, fallback: string): string {
+  const normalized = uri.split('?')[0]?.toLowerCase() || '';
+  if (normalized.endsWith('.png')) return 'image/png';
+  if (normalized.endsWith('.gif')) return 'image/gif';
+  if (normalized.endsWith('.bmp')) return 'image/bmp';
+  if (normalized.endsWith('.webp')) return 'image/webp';
+  if (normalized.endsWith('.mp3')) return 'audio/mpeg';
+  if (normalized.endsWith('.wav')) return 'audio/wav';
+  if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg';
+  return fallback;
+}
+
+function audioMimeTypeFromFormat(format: string): string {
+  return format === 'mp3' ? 'audio/mpeg' : 'audio/wav';
+}
+
+async function readContentUriAsDataUrl(uri: string, mimeType: string): Promise<string> {
+  try {
+    const file = new ExpoFile(uri);
+    const resolvedMimeType = file.type || inferMimeTypeFromUri(uri, mimeType);
+    const base64 = await file.base64();
+    return `data:${resolvedMimeType};base64,${base64}`;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read local media attachment: ${reason}`);
+  }
+}
+
+async function normalizeContentPart(part: MobileLocalChatContentPart): Promise<Record<string, unknown>> {
+  if (part.type === 'text') {
+    return part;
+  }
+
+  if (part.type === 'image_url') {
+    const url = part.image_url.url;
+    if (!url.startsWith('content://')) {
+      return part;
+    }
+
+    return {
+      type: 'image_url',
+      image_url: {
+        url: await readContentUriAsDataUrl(url, 'image/jpeg'),
+      },
+    };
+  }
+
+  if (part.input_audio.data || !part.input_audio.url?.startsWith('content://')) {
+    return part;
+  }
+
+  const data = await readContentUriAsDataUrl(
+    part.input_audio.url,
+    audioMimeTypeFromFormat(part.input_audio.format),
+  );
+
+  return {
+    type: 'input_audio',
+    input_audio: {
+      format: part.input_audio.format,
+      data,
+    },
+  };
+}
+
+async function toNormalizedCompletionMessages(
+  messages: MobileLocalChatMessage[],
+): Promise<CompletionMessage[]> {
+  return Promise.all(messages.map(async (message) => {
+    if (!Array.isArray(message.content)) {
+      return {
+        role: message.role as 'system' | 'user' | 'assistant',
+        content: message.content,
+      };
+    }
+
+    return {
+      role: message.role as 'system' | 'user' | 'assistant',
+      content: await Promise.all(message.content.map((part) => normalizeContentPart(part))),
+    };
   }));
 }
 
 // ── Bridge Implementation ──────────────────────────────
 
-const KNOWN_MODEL_IDS = ['gemma-4-2b', 'gemma-4-4b'];
+const KNOWN_MODEL_IDS = ['gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b'];
 
 function getBridgeCapabilities(options?: { model?: string }): Partial<MobileLocalRuntimeCapabilities> {
   const modelId = resolveCapabilityModelId(options?.model);
@@ -369,11 +537,13 @@ const bridge = {
     maxTokens?: number;
   }): Promise<string> {
     const modelId = resolveModelId(payload.model);
+    const contextProfile = resolveContextProfile(payload.messages);
     await ensureMessageSupport(modelId, payload.messages);
-    const context = await getOrLoadContext(modelId);
+    const context = await getOrLoadContext(modelId, contextProfile);
+    const completionMessages = await toNormalizedCompletionMessages(payload.messages);
 
     const result = await context.completion({
-      messages: toCompletionMessages(payload.messages),
+      messages: completionMessages,
       n_predict: payload.maxTokens || 512,
       temperature: payload.temperature ?? 0.7,
       stop: STOP_TOKENS,
@@ -390,8 +560,10 @@ const bridge = {
     onToken?: (chunk: string) => void;
   }): Promise<string[]> {
     const modelId = resolveModelId(payload.model);
+    const contextProfile = resolveContextProfile(payload.messages);
     await ensureMessageSupport(modelId, payload.messages);
-    const context = await getOrLoadContext(modelId);
+    const context = await getOrLoadContext(modelId, contextProfile);
+    const completionMessages = await toNormalizedCompletionMessages(payload.messages);
 
     const chunks: string[] = [];
     let pendingChunk = '';
@@ -408,15 +580,16 @@ const bridge = {
 
     await context.completion(
       ({
-        messages: toCompletionMessages(payload.messages),
+        messages: completionMessages,
         n_predict: payload.maxTokens || 512,
         temperature: payload.temperature ?? 0.7,
         stop: STOP_TOKENS,
       } as any),
       (data) => {
-        if (data.token) {
-          pendingChunk += data.token;
-          if (shouldFlushStreamChunk(data.token, pendingChunk)) {
+        const tokenText = typeof data.token === 'string' ? data.token : '';
+        if (tokenText) {
+          pendingChunk += tokenText;
+          if (shouldFlushStreamChunk(tokenText, pendingChunk)) {
             flushPendingChunk();
           }
         }
@@ -458,6 +631,10 @@ function handleAppStateChange(state: AppStateStatus) {
 // ── Registration ───────────────────────────────────────
 
 export function initLlamaBridge(): void {
+  if (Platform.OS === 'web') {
+    return;
+  }
+
   (globalThis as { __AGENTRIX_LOCAL_LLM__?: typeof bridge }).__AGENTRIX_LOCAL_LLM__ = bridge;
   AppState.addEventListener('change', handleAppStateChange);
 }

@@ -6,6 +6,7 @@ interface QueueItem {
   fallbackText?: string;
   language?: string;
   rate?: number;
+  audioPlaybackRate?: number;
   mode: 'remote' | 'local';
 }
 
@@ -48,6 +49,21 @@ export class AudioQueuePlayer {
   enqueue(uri: string, fallbackText?: string, language?: string, rate?: number) {
     if (this._destroyed) return;
     this.queue.push({ uri, fallbackText, language, rate, mode: 'remote' });
+    this.totalEnqueued++;
+    if (!this.isPlaying) {
+      this.playNext();
+    }
+  }
+
+  enqueueGeneratedAudio(uri: string, fallbackText?: string, language?: string, playbackRate?: number) {
+    if (this._destroyed) return;
+    this.queue.push({
+      uri,
+      fallbackText,
+      language,
+      audioPlaybackRate: playbackRate,
+      mode: 'remote',
+    });
     this.totalEnqueued++;
     if (!this.isPlaying) {
       this.playNext();
@@ -132,7 +148,13 @@ export class AudioQueuePlayer {
     try {
       const { sound } = await Audio.Sound.createAsync(
         { uri: nextItem.uri },
-        { shouldPlay: true }
+        {
+          shouldPlay: true,
+          rate: typeof nextItem.audioPlaybackRate === 'number'
+            ? Math.max(0.5, Math.min(2.0, nextItem.audioPlaybackRate))
+            : 1.0,
+          shouldCorrectPitch: typeof nextItem.audioPlaybackRate === 'number',
+        }
       );
       this.currentSound = sound;
 

@@ -118,7 +118,7 @@ const PCM_SAMPLE_RATE = 16000;
 const PCM_CHANNEL_COUNT = 1;
 const PCM_BITS_PER_SAMPLE = 16;
 const STREAMING_FINALIZATION_TIMEOUT_MS = 2000;
-const LOCAL_ONLY_MODEL_IDS = new Set(['gemma-nano-2b', 'gemma-4-2b', 'gemma-4-4b', 'gemma-nano-2b-local']);
+const LOCAL_ONLY_MODEL_IDS = new Set(['gemma-nano-2b', 'gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b', 'gemma-nano-2b-local']);
 
 function sanitizeRealtimeModelId(modelId?: string | null): string | undefined {
   if (!modelId) {

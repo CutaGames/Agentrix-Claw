@@ -35,6 +35,7 @@ export interface ModelOption {
 /** Hardcoded fallback models — used only when backend is unreachable */
 export const SUPPORTED_MODELS: ModelOption[] = [
   { id: 'gemma-4-2b',       label: 'Gemma 4 E2B (端侧本地)',         provider: 'On-device',         icon: '📱', badge: 'Local', availability: 'available', costTier: 'free' },
+  { id: 'qwen2.5-omni-3b',  label: 'Qwen 2.5 Omni 3B (端侧音频)',   provider: 'On-device',         icon: '🎙️', badge: 'Local Audio', availability: 'available', costTier: 'free' },
   { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5 (平台默认 API)',    provider: 'Agentrix Platform', icon: '🤖', badge: 'Default', availability: 'available', costTier: 'free_trial' },
 ];
 

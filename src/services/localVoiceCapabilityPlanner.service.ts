@@ -14,6 +14,7 @@ export interface LocalVoiceCapabilityPlan {
   preferLocalSpeechRecognition: boolean;
   preferLocalTextToSpeech: boolean;
   relayCameraFramesToRealtime: boolean;
+  localAudioInputReady: boolean;
   localMultimodalReady: boolean;
   missingOnDeviceCapabilities: LocalVoiceCapabilityGap[];
 }
@@ -43,6 +44,7 @@ export function planLocalVoiceCapabilitySplit(
     preferLocalSpeechRecognition: localModelSelected || preferOnDeviceVoice,
     preferLocalTextToSpeech: localModelSelected || (preferOnDeviceVoice && !selectedVoiceId),
     relayCameraFramesToRealtime: !localModelSelected,
+    localAudioInputReady: runtimeCapabilities.supportsAudioInput,
     localMultimodalReady,
     missingOnDeviceCapabilities,
   };

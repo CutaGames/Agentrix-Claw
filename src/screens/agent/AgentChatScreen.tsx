@@ -35,7 +35,8 @@ import { MobileLocalInferenceService } from '../../services/mobileLocalInference
 import { planLocalVoiceCapabilitySplit } from '../../services/localVoiceCapabilityPlanner.service';
 import {
   buildLocalUserContent,
-  shouldEscalateLocalTurnToCloud as shouldEscalateLocalMultimodalTurnToCloud,
+  resolveLocalTurnExecution,
+  type LocalTurnExecutionDecision,
 } from '../../services/mobileLocalMultimodalRouting.service';
 import type { StreamEvent } from '../../../shared/stream-parser';
 
@@ -63,6 +64,7 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
   MobileLocalInferenceService.modelId,
   'gemma-4-2b',
   'gemma-4-4b',
+  'qwen2.5-omni-3b',
   'gemma-nano-2b',
   'gemma-nano-2b-local',
 ]);
@@ -75,6 +77,8 @@ function isLocalOnlyModelId(modelId?: string | null) {
 
 function getLocalModelLabel(modelId: string) {
   switch (modelId) {
+    case 'qwen2.5-omni-3b':
+      return 'Qwen 2.5 Omni 3B (Local)';
     case 'gemma-4-4b':
       return 'Gemma 4 E4B (Local)';
     case 'gemma-nano-2b-local':
@@ -84,6 +88,60 @@ function getLocalModelLabel(modelId: string) {
     case 'gemma-4-2b':
     default:
       return 'Gemma 4 E2B (Local)';
+  }
+}
+
+type TranslateFn = ReturnType<typeof useI18n>['t'];
+
+function formatLocalTurnBlockedMessage({
+  t,
+  modelLabel,
+  decision,
+}: {
+  t: TranslateFn;
+  modelLabel: string;
+  decision: Extract<LocalTurnExecutionDecision, { mode: 'blocked' }>;
+}) {
+  const attachmentName = decision.attachment?.originalName || t({ en: 'This attachment', zh: '这个附件' });
+
+  switch (decision.reason) {
+    case 'runtime-unavailable':
+    case 'text-generation-unavailable':
+      return t({
+        en: `${modelLabel} is selected, but on-device inference is not ready on this device. Agentrix will not silently fall back to the cloud. Finish the local runtime/package setup or switch to a cloud model manually.`,
+        zh: `当前已选 ${modelLabel}，但这台设备上的端侧推理还没有就绪。Agentrix 不会再偷偷回退到云端。请先确认本地运行时和模型包已准备好，或手动切换到云端模型。`,
+      });
+    case 'projector-required':
+      return t({
+        en: `${modelLabel} is still text-only on this device. Image turns need the multimodal projector add-on, and Agentrix will block them instead of auto-switching to the cloud. Open Local AI Models and finish the full package download first.`,
+        zh: `当前设备上的 ${modelLabel} 仍是纯文本模式。图片轮次需要先补齐多模态投影器，Agentrix 现在会直接拦截，而不是自动切到云端。请先到“本地 AI 模型”页补齐完整包。`,
+      });
+    case 'audio-input-unavailable':
+      return t({
+        en: `${modelLabel} does not expose on-device audio file input yet. This turn was blocked instead of falling back to the cloud. Use text input for the local model, or switch models manually.`,
+        zh: `当前 ${modelLabel} 还没有暴露端侧音频文件输入能力。本轮已被拦截，不会再自动回退到云端。请改用文本输入，或手动切换模型。`,
+      });
+    case 'audio-format-unsupported':
+      return t({
+        en: `${modelLabel} currently accepts local wav/mp3 audio files only. ${attachmentName} will not auto-fallback to the cloud. Re-upload it as wav/mp3, or switch models manually.`,
+        zh: `当前 ${modelLabel} 仅接受本地 wav/mp3 音频文件。${attachmentName} 不会自动回退到云端。请改传 wav/mp3，或手动切换模型。`,
+      });
+    case 'attachment-not-local':
+      return t({
+        en: `${attachmentName} is missing a device-local file path, so ${modelLabel} cannot read it. Agentrix will not silently send it to the cloud. Re-attach the original local file, or switch models manually.`,
+        zh: `${attachmentName} 缺少设备本地文件路径，${modelLabel} 无法读取，Agentrix 也不会再偷偷发到云端。请重新选择原始本地文件，或手动切换模型。`,
+      });
+    case 'attachment-unsupported':
+      return t({
+        en: `${modelLabel} currently supports short text plus supported local image/audio inputs. ${attachmentName} cannot run on-device and will not auto-fallback to the cloud. Switch to a cloud model for this turn.`,
+        zh: `${modelLabel} 当前只支持简短文本，以及受支持的本地图片和音频输入。${attachmentName} 这类内容暂不支持端侧处理，也不会自动回退到云端。请切到云端模型后再发送。`,
+      });
+    case 'complex-turn':
+    default:
+      return t({
+        en: `${modelLabel} is limited to short on-device turns. Long prompts, code/tool orchestration, and complex tasks are blocked instead of auto-falling back to the cloud. Switch to a cloud model to continue this request.`,
+        zh: `${modelLabel} 目前只处理简短端侧轮次。长文本、代码或工具编排、复杂任务都会被直接拦截，不再自动回退到云端。请切换到云端模型后再继续这次请求。`,
+      });
   }
 }
 
@@ -115,25 +173,27 @@ function buildOutgoingMessageContent(text: string, attachments: UploadedChatAtta
   }
 
   attachments.forEach((attachment, index) => {
+    const attachmentUrl = attachment.publicUrl || attachment.localUri || '';
+
     if (attachment.kind === 'image') {
       multimodalContent.push({
         type: 'image',
-        source: { type: 'url', url: attachment.publicUrl },
+        source: { type: 'url', url: attachmentUrl },
       });
     } else if (attachment.kind === 'video' || attachment.isVideo || attachment.mimetype?.startsWith('video/')) {
       multimodalContent.push({
         type: 'text',
-        text: `[Video Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachment.publicUrl}`,
+        text: `[Video Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachmentUrl}`,
       });
     } else if (attachment.mimetype?.startsWith('audio/') || attachment.originalName.match(/\.(mp3|wav|m4a|ogg)$/i)) {
       multimodalContent.push({
         type: 'input_audio',
-        input_audio: { url: attachment.publicUrl }
+        input_audio: { url: attachmentUrl }
       });
     } else {
       multimodalContent.push({
         type: 'text',
-        text: `[Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachment.publicUrl}`
+        text: `[Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachmentUrl}`
       });
     }
   });
@@ -167,7 +227,7 @@ function extractUrlsFromMessage(content: string) {
 }
 
 function getCopyableMessageText(message: Message) {
-  const attachmentLines = (message.attachments || []).map((attachment) => `${attachment.originalName}: ${attachment.publicUrl}`);
+  const attachmentLines = (message.attachments || []).map((attachment) => `${attachment.originalName}: ${attachment.publicUrl || attachment.localUri || ''}`);
   return [message.content.trim(), ...attachmentLines].filter(Boolean).join('\n');
 }
 
@@ -516,10 +576,18 @@ const MessageBubble = ({
                 key={`${item.id}-${attachment.fileName}`}
                 style={sf.mediaCard}
                 activeOpacity={0.8}
-                onPress={() => attachment.isImage ? onPreviewImage(attachment.publicUrl) : openExternalUrl(attachment.publicUrl)}
+                onPress={() => {
+                  const attachmentUri = attachment.localUri || attachment.publicUrl;
+                  if (!attachmentUri) return;
+                  if (attachment.isImage) {
+                    onPreviewImage(attachmentUri);
+                    return;
+                  }
+                  openExternalUrl(attachmentUri);
+                }}
               >
                 {attachment.isImage ? (
-                  <Image source={{ uri: attachment.publicUrl }} style={sf.mediaThumb} resizeMode="cover" />
+                  <Image source={{ uri: attachment.localUri || attachment.publicUrl }} style={sf.mediaThumb} resizeMode="cover" />
                 ) : attachment.isVideo ? (
                   <View style={sf.mediaFileIcon}><Text style={{ fontSize: 20 }}>🎬</Text></View>
                 ) : attachment.isAudio ? (
@@ -658,11 +726,13 @@ export function AgentChatScreen() {
   const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
   const [agentVoiceId, setAgentVoiceId] = useState<string | null>(null);
   const isLocalModelSelected = isLocalOnlyModelId(selectedModelId);
+  const localCapabilityModelId = isLocalModelSelected ? selectedModelId : localAiModelId;
+  const localVoiceRuntimeCapabilities = MobileLocalInferenceService.getDeclaredCapabilities({ model: localCapabilityModelId });
   const localVoicePlan = planLocalVoiceCapabilitySplit({
     localModelSelected: isLocalModelSelected,
     preferOnDeviceVoice,
     selectedVoiceId: agentVoiceId,
-    runtimeCapabilities: MobileLocalInferenceService.getDeclaredCapabilities({ model: localAiModelId }),
+    runtimeCapabilities: localVoiceRuntimeCapabilities,
   });
   const duplexUsesRealtimeChannel = localVoicePlan.useRealtimeVoiceChannel;
   const remoteResolvedModelId = (!isLocalOnlyModelId(agentPreferredModel) ? agentPreferredModel : null)
@@ -1252,6 +1322,9 @@ export function AgentChatScreen() {
     realtimeModelId: remoteResolvedModelId,
     preferLocalSpeechRecognition: localVoicePlan.preferLocalSpeechRecognition,
     preferLocalTextToSpeech: localVoicePlan.preferLocalTextToSpeech,
+    localModelSelected: isLocalModelSelected,
+    localModelId: isLocalModelSelected ? localCapabilityModelId : undefined,
+    localAudioInputAvailable: isLocalModelSelected && localVoiceRuntimeCapabilities.supportsAudioInput,
     speechRate,
     onSendMessage: (text, attachments) => {
       void handleSendRef.current(text, attachments);
@@ -1451,48 +1524,58 @@ export function AgentChatScreen() {
 
       let streamSucceeded = false;
       let proxyFailureMessage: string | null = null;
+      const finishAssistantWithError = (message: string) => {
+        resetVoicePhaseAfterResponse();
+        enqueueStreamedSpeech('', true);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, content: `⚠️ ${message}`, streaming: false, error: true }
+              : m
+          )
+        );
+      };
+      const localModelLabel = isLocalOnlyModelId(effectiveModelId)
+        ? (effectiveModelId === MobileLocalInferenceService.modelId
+          ? MobileLocalInferenceService.modelLabel
+          : getLocalModelLabel(effectiveModelId))
+        : null;
       const localRuntimeCapabilities = isLocalOnlyModelId(effectiveModelId)
         ? await MobileLocalInferenceService.getCapabilities({ model: effectiveModelId }).catch(() => (
           MobileLocalInferenceService.getDeclaredCapabilities({ model: effectiveModelId })
         ))
         : null;
-      const shouldEscalateToCloud = isLocalOnlyModelId(effectiveModelId)
-        && shouldEscalateLocalMultimodalTurnToCloud(
-          text,
-          attachments,
-          localRuntimeCapabilities || MobileLocalInferenceService.getDeclaredCapabilities({ model: effectiveModelId }),
-        );
+      const localRuntimeSnapshot = isLocalOnlyModelId(effectiveModelId)
+        ? (localRuntimeCapabilities || MobileLocalInferenceService.getDeclaredCapabilities({ model: effectiveModelId }))
+        : null;
+      const localTurnDecision = isLocalOnlyModelId(effectiveModelId) && localRuntimeSnapshot
+        ? resolveLocalTurnExecution(text, attachments, localRuntimeSnapshot)
+        : null;
+      const shouldTryLocalNano = isLocalOnlyModelId(effectiveModelId) && localTurnDecision?.mode === 'local';
 
-      const shouldTryLocalNano = (
-        isLocalOnlyModelId(effectiveModelId)
-        && !!localRuntimeCapabilities?.available
-        && !shouldEscalateToCloud
-      );
-
-      if (shouldEscalateToCloud) {
-        setResolvedModelLabel(
-          t({ en: 'Hybrid cloud orchestration', zh: '混合云端编排' })
-          + ` (${remoteResolvedModelId || 'claude-haiku-4-5'})`
-        );
-      }
-
-      // When local model selected but bridge unavailable, notify user and fall through to cloud
-      if (isLocalOnlyModelId(effectiveModelId) && !shouldEscalateToCloud && !localRuntimeCapabilities?.available) {
-        setResolvedModelLabel(
-          t({ en: 'Cloud fallback', zh: '云端回退' })
-          + ` (${remoteResolvedModelId || 'claude-haiku-4-5'})`
-        );
+      if (localTurnDecision?.mode === 'blocked' && localModelLabel) {
+        setResolvedModelLabel(`${localModelLabel} · ${t({ en: 'On-device only', zh: '仅端侧' })}`);
+        addVoiceDiagnostic('agent-chat', 'local-turn-blocked', {
+          model: effectiveModelId,
+          reason: localTurnDecision.reason,
+          attachment: localTurnDecision.attachment?.originalName || null,
+        });
+        finishAssistantWithError(formatLocalTurnBlockedMessage({
+          t,
+          modelLabel: localModelLabel,
+          decision: localTurnDecision,
+        }));
+        return;
       }
 
       if (shouldTryLocalNano) {
         const localAbort = new AbortController();
         streamAbortRef.current = localAbort;
-        const localModelLabel = effectiveModelId === MobileLocalInferenceService.modelId
-          ? MobileLocalInferenceService.modelLabel
-          : getLocalModelLabel(effectiveModelId);
-        setResolvedModelLabel(localModelLabel);
+        if (localModelLabel) {
+          setResolvedModelLabel(localModelLabel);
+        }
         let localAssistantText = '';
-        const localUserContent = buildLocalUserContent(text, attachments);
+        const localUserContent = buildLocalUserContent(text, attachments, localRuntimeSnapshot || undefined);
 
         const localHistory = currentMsgs
           .filter((message) => (message.role === 'user' || message.role === 'assistant') && message.content.trim())
@@ -1500,7 +1583,7 @@ export function AgentChatScreen() {
           .map((message) => ({
             role: message.role as 'user' | 'assistant',
             content: message.role === 'user'
-              ? buildLocalUserContent(message.content, message.attachments || [])
+              ? buildLocalUserContent(message.content, message.attachments || [], localRuntimeSnapshot || undefined)
               : message.content,
           }));
 
@@ -1529,10 +1612,20 @@ export function AgentChatScreen() {
           }
           enqueueStreamedSpeech('', true);
 
+          if (responseInterruptedRef.current || localAbort.signal.aborted) {
+            return;
+          }
+
           const finalAssistant = localAssistantText.trim();
           if (!localProducedOutput || !finalAssistant) {
-            streamSucceeded = false;
-            proxyFailureMessage = t({ en: 'Local model returned an empty response.', zh: '本地模型返回了空响应。' });
+            addVoiceDiagnostic('agent-chat', 'local-empty-response', {
+              model: effectiveModelId,
+            });
+            finishAssistantWithError(t({
+              en: 'The selected local model returned no text. Agentrix did not fall back to the cloud. Retry the local model, or switch models manually.',
+              zh: '当前选中的本地模型没有返回文本。Agentrix 没有回退到云端。请重试本地模型，或手动切换模型。',
+            }));
+            return;
           }
 
           if (token && finalAssistant) {
@@ -1547,13 +1640,24 @@ export function AgentChatScreen() {
             });
           }
         } catch (error: any) {
-          streamSucceeded = false;
-          proxyFailureMessage = error?.message || t({ en: 'Local model inference failed.', zh: '本地模型推理失败。' });
+          if (responseInterruptedRef.current || localAbort.signal.aborted) {
+            return;
+          }
+
+          const localErrorMessage = error?.message || t({ en: 'Local model inference failed.', zh: '本地模型推理失败。' });
+          addVoiceDiagnostic('agent-chat', 'local-inference-failed', {
+            model: effectiveModelId,
+            message: localErrorMessage,
+          });
+          finishAssistantWithError(t({
+            en: `On-device inference failed: ${localErrorMessage}. Agentrix did not fall back to the cloud. Check the local package/runtime and retry, or switch models manually.`,
+            zh: `端侧推理失败：${localErrorMessage}。Agentrix 没有回退到云端。请检查本地模型包和运行时后重试，或手动切换模型。`,
+          }));
+          return;
         }
       }
 
       // Try OpenClaw proxy first (requires active instance)
-      // If local model was selected but bridge unavailable, fall back to default cloud model
       const proxyModelId = isLocalOnlyModelId(effectiveModelId)
         ? remoteResolvedModelId
         : effectiveModelId;
@@ -2226,7 +2330,9 @@ export function AgentChatScreen() {
                       ? (realtimeConnected
                         ? t({ en: 'Realtime duplex is ready. Just speak naturally; no need to hold the button.', zh: '实时双工已就绪，直接说话即可，无需再按住按钮。' })
                         : t({ en: 'Voice session is ready. Listening will start automatically.', zh: '语音会话已就绪，正在连接实时通道并自动开始聆听。' }))
-                      : t({ en: 'Live voice is ready. Speak naturally to chat with the local model.', zh: '连续语音已就绪，直接说话即可与本地模型对话。' }))
+                      : (localVoicePlan.localAudioInputReady
+                        ? t({ en: 'Live local voice is ready. Supported short turns can stay on-device; unsupported turns are blocked instead of silently switching to the cloud.', zh: '连续本地语音已就绪。受支持的简短轮次会留在端侧；不支持的轮次会被直接拦截，不会再偷偷切到云端。' })
+                        : t({ en: 'Live voice is ready for the local text path. Unsupported multimodal turns will be blocked instead of silently switching to the cloud.', zh: '连续语音已就绪，可用于本地文本链路。不支持的多模态轮次会被直接拦截，不会再偷偷切到云端。' })))
                     : t({ en: 'Voice panel is open. Tap and hold or switch to live mode to start talking.', zh: '语音面板已打开。按住说话，或切到实时模式开始对话。' }))}
                   {voicePhase === 'recording' && (voiceInteractionMode === 'tap'
                     ? duplexMode
@@ -2427,6 +2533,8 @@ export function AgentChatScreen() {
         {/* Right: Send (when has text) or Mic toggle (when empty) */}
         {(input.trim().length > 0 || pendingAttachments.length > 0) && !voiceMode ? (
           <TouchableOpacity
+            testID="chat-send-button"
+            accessibilityLabel="chat-send-button"
             style={[styles.sendBtn, (sending || uploadingAttachment) && styles.sendBtnDisabled]}
             onPress={() => handleSend()}
             disabled={sending || uploadingAttachment}

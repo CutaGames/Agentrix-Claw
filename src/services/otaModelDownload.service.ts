@@ -1,7 +1,7 @@
 /**
  * OTA Model Download Service
  *
- * Real model download orchestration for on-device Gemma models.
+ * Real model download orchestration for on-device local models.
  * Handles: CDN URL resolution → download with expo-file-system →
  * integrity verification → storage management → cleanup.
  *
@@ -24,19 +24,27 @@ export interface OtaModelEntry {
   sizeLabel: string;
   /** CDN base URL — full URL is `${cdnBase}/${filename}` */
   cdnBase: string;
+  declaredCapabilities?: OtaModelDeclaredCapabilities;
   multimodalProjector?: OtaModelArtifact;
+  audioOutputModel?: OtaModelArtifact;
   vocoder?: OtaModelArtifact;
 }
 
+export interface OtaModelDeclaredCapabilities {
+  visionInput: boolean;
+  audioInput: boolean;
+  onDeviceAudioOutput: boolean;
+}
+
 export interface OtaModelArtifact {
-  kind: 'model' | 'mmproj' | 'vocoder';
+  kind: 'model' | 'mmproj' | 'tts-model' | 'vocoder';
   filename: string;
   sizeBytes: number;
   sizeLabel: string;
   cdnBase?: string;
 }
 
-type OtaModelArtifactKey = 'model' | 'multimodalProjector' | 'vocoder';
+type OtaModelArtifactKey = 'model' | 'multimodalProjector' | 'audioOutputModel' | 'vocoder';
 
 interface ResolvedOtaModelArtifact {
   key: OtaModelArtifactKey;
@@ -55,6 +63,11 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     sizeBytes: 3_110_000_000,
     sizeLabel: '3.1 GB',
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E2B-it-GGUF/resolve/main',
+    declaredCapabilities: {
+      visionInput: true,
+      audioInput: false,
+      onDeviceAudioOutput: false,
+    },
     multimodalProjector: {
       kind: 'mmproj',
       filename: 'mmproj-F16.gguf',
@@ -69,6 +82,11 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     sizeBytes: 4_980_000_000,
     sizeLabel: '5.0 GB',
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E4B-it-GGUF/resolve/main',
+    declaredCapabilities: {
+      visionInput: true,
+      audioInput: false,
+      onDeviceAudioOutput: false,
+    },
     multimodalProjector: {
       kind: 'mmproj',
       filename: 'mmproj-F16.gguf',
@@ -76,6 +94,45 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
       sizeLabel: '990 MB',
     },
   },
+  'qwen2.5-omni-3b': {
+    id: 'qwen2.5-omni-3b',
+    name: 'Qwen2.5 Omni 3B (Q4_K_M)',
+    filename: 'Qwen2.5-Omni-3B-Q4_K_M.gguf',
+    sizeBytes: 2_100_000_000,
+    sizeLabel: '2.1 GB',
+    cdnBase: 'https://hf-mirror.com/ggml-org/Qwen2.5-Omni-3B-GGUF/resolve/main',
+    declaredCapabilities: {
+      visionInput: true,
+      audioInput: true,
+      onDeviceAudioOutput: true,
+    },
+    multimodalProjector: {
+      kind: 'mmproj',
+      filename: 'mmproj-Qwen2.5-Omni-3B-Q8_0.gguf',
+      sizeBytes: 1_540_000_000,
+      sizeLabel: '1.5 GB',
+    },
+    audioOutputModel: {
+      kind: 'tts-model',
+      filename: 'OuteTTS-0.3-500M-Q4_K_M.gguf',
+      sizeBytes: 403_000_000,
+      sizeLabel: '403 MB',
+      cdnBase: 'https://hf-mirror.com/OuteAI/OuteTTS-0.3-500M-GGUF/resolve/main',
+    },
+    vocoder: {
+      kind: 'vocoder',
+      filename: 'WavTokenizer-Large-75-Q5_1.gguf',
+      sizeBytes: 73_300_000,
+      sizeLabel: '73 MB',
+      cdnBase: 'https://hf-mirror.com/ggml-org/WavTokenizer/resolve/main',
+    },
+  },
+};
+
+const DEFAULT_DECLARED_CAPABILITIES: OtaModelDeclaredCapabilities = {
+  visionInput: false,
+  audioInput: false,
+  onDeviceAudioOutput: false,
 };
 
 // ── Types ──────────────────────────────────────────────
@@ -113,12 +170,25 @@ export interface DownloadCallbacks {
 
 // ── Helpers ────────────────────────────────────────────
 
-function getModelsDir(): Directory {
+function supportsNativeModelStorage(): boolean {
+  return Platform.OS !== 'web';
+}
+
+function getModelsDir(): Directory | null {
+  if (!supportsNativeModelStorage()) {
+    return null;
+  }
+
   return new Directory(Paths.document, 'models');
 }
 
-function getModelFile(filename: string): ExpoFile {
-  return new ExpoFile(getModelsDir(), filename);
+function getModelFile(filename: string): ExpoFile | null {
+  const modelsDir = getModelsDir();
+  if (!modelsDir) {
+    return null;
+  }
+
+  return new ExpoFile(modelsDir, filename);
 }
 
 function formatSize(bytes: number): string {
@@ -153,6 +223,10 @@ function resolveArtifacts(entry: OtaModelEntry): ResolvedOtaModelArtifact[] {
     artifacts.push({ key: 'multimodalProjector', artifact: entry.multimodalProjector });
   }
 
+  if (entry.audioOutputModel) {
+    artifacts.push({ key: 'audioOutputModel', artifact: entry.audioOutputModel });
+  }
+
   if (entry.vocoder) {
     artifacts.push({ key: 'vocoder', artifact: entry.vocoder });
   }
@@ -166,7 +240,7 @@ function isArtifactDownloaded(artifact: OtaModelArtifact | null | undefined): bo
   }
 
   const file = getModelFile(artifact.filename);
-  return file.exists && file.size > artifact.sizeBytes * 0.95;
+  return !!file && file.exists && file.size > artifact.sizeBytes * 0.95;
 }
 
 function getArtifactPath(artifact: OtaModelArtifact | null | undefined): string | null {
@@ -175,7 +249,7 @@ function getArtifactPath(artifact: OtaModelArtifact | null | undefined): string 
   }
 
   const file = getModelFile(artifact.filename);
-  return file.exists ? file.uri : null;
+  return file?.exists ? file.uri : null;
 }
 
 // ── Service ────────────────────────────────────────────
@@ -190,6 +264,26 @@ export class OtaModelDownloadService {
    */
   static getModelEntry(modelId: string): OtaModelEntry | null {
     return MODEL_REGISTRY[modelId] ?? null;
+  }
+
+  static getDeclaredCapabilities(modelId?: string | null): OtaModelDeclaredCapabilities {
+    if (!modelId) {
+      return DEFAULT_DECLARED_CAPABILITIES;
+    }
+
+    return MODEL_REGISTRY[modelId]?.declaredCapabilities ?? DEFAULT_DECLARED_CAPABILITIES;
+  }
+
+  static declaresVisionInput(modelId?: string | null): boolean {
+    return this.getDeclaredCapabilities(modelId).visionInput;
+  }
+
+  static declaresAudioInput(modelId?: string | null): boolean {
+    return this.getDeclaredCapabilities(modelId).audioInput;
+  }
+
+  static declaresOnDeviceAudioOutput(modelId?: string | null): boolean {
+    return this.getDeclaredCapabilities(modelId).onDeviceAudioOutput;
   }
 
   static getPackageSizeBytes(modelId: string): number {
@@ -224,6 +318,33 @@ export class OtaModelDownloadService {
     return isArtifactDownloaded(entry.vocoder);
   }
 
+  static isAudioOutputModelDownloaded(modelId: string): boolean {
+    const entry = MODEL_REGISTRY[modelId];
+    if (!entry?.audioOutputModel) return false;
+    return isArtifactDownloaded(entry.audioOutputModel);
+  }
+
+  static hasOnDeviceAudioOutputAssets(modelId: string): boolean {
+    const entry = MODEL_REGISTRY[modelId];
+    if (!entry?.audioOutputModel || !entry.vocoder) return false;
+    return isArtifactDownloaded(entry.audioOutputModel) && isArtifactDownloaded(entry.vocoder);
+  }
+
+  static findDownloadedOnDeviceAudioOutputModelId(preferredModelId?: string | null): string | null {
+    if (
+      preferredModelId
+      && this.declaresOnDeviceAudioOutput(preferredModelId)
+      && this.hasOnDeviceAudioOutputAssets(preferredModelId)
+    ) {
+      return preferredModelId;
+    }
+
+    return Object.keys(MODEL_REGISTRY).find((modelId) => (
+      this.declaresOnDeviceAudioOutput(modelId)
+      && this.hasOnDeviceAudioOutputAssets(modelId)
+    )) || null;
+  }
+
   static areRequiredArtifactsDownloaded(modelId: string): boolean {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry) return false;
@@ -249,6 +370,11 @@ export class OtaModelDownloadService {
     return getArtifactPath(entry?.vocoder);
   }
 
+  static getAudioOutputModelPath(modelId: string): string | null {
+    const entry = MODEL_REGISTRY[modelId];
+    return getArtifactPath(entry?.audioOutputModel);
+  }
+
   static hasMultimodalAssets(modelId: string): boolean {
     return this.isMultimodalProjectorDownloaded(modelId);
   }
@@ -257,10 +383,18 @@ export class OtaModelDownloadService {
     return this.isVocoderDownloaded(modelId);
   }
 
+  static hasAnyOnDeviceAudioOutputAssets(preferredModelId?: string | null): boolean {
+    return !!this.findDownloadedOnDeviceAudioOutputModelId(preferredModelId);
+  }
+
   /**
    * Get available disk space in bytes.
    */
   static getFreeDiskSpace(): number {
+    if (!supportsNativeModelStorage()) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
     try {
       return Paths.availableDiskSpace;
     } catch {
@@ -276,6 +410,11 @@ export class OtaModelDownloadService {
     modelId: string,
     callbacks: DownloadCallbacks = {},
   ): Promise<void> {
+    if (!supportsNativeModelStorage()) {
+      callbacks.onError?.('On-device model downloads are unavailable on web.');
+      return;
+    }
+
     const entry = MODEL_REGISTRY[modelId];
     if (!entry) {
       callbacks.onError?.(`Unknown model: ${modelId}`);
@@ -288,6 +427,11 @@ export class OtaModelDownloadService {
 
     // Ensure models directory exists
     const modelsDir = getModelsDir();
+    if (!modelsDir) {
+      callbacks.onError?.('Native model storage is unavailable on this platform.');
+      return;
+    }
+
     if (!modelsDir.exists) {
       modelsDir.create({ intermediates: true });
     }
@@ -312,7 +456,7 @@ export class OtaModelDownloadService {
     if (alreadyDownloadedBytes >= totalBytes * 0.95) {
       const localPath = this.getLocalPath(modelId);
       this.emitProgress('complete', 100, totalBytes, totalBytes);
-      callbacks.onComplete?.(localPath || getModelFile(entry.filename).uri);
+      callbacks.onComplete?.(localPath || getModelFile(entry.filename)?.uri || '');
       return;
     }
 
@@ -337,7 +481,7 @@ export class OtaModelDownloadService {
 
           try {
             const tempFile = getModelFile(artifact.filename);
-            const currentSize = tempFile.exists ? tempFile.size : 0;
+            const currentSize = tempFile?.exists ? tempFile.size : 0;
             const bytesDownloaded = Math.min(confirmedBytes + currentSize, totalBytes);
             const percent = Math.min(Math.round((bytesDownloaded / totalBytes) * 100), 99);
             const elapsedMs = Date.now() - this.downloadStartTime;
@@ -380,7 +524,7 @@ export class OtaModelDownloadService {
 
       this.emitProgress('verifying', 99, totalBytes, totalBytes);
       this.emitProgress('complete', 100, totalBytes, totalBytes);
-      callbacks.onComplete?.(getModelFile(entry.filename).uri);
+  callbacks.onComplete?.(getModelFile(entry.filename)?.uri || '');
 
     } catch (error) {
       if (this.aborted) return;
@@ -425,7 +569,7 @@ export class OtaModelDownloadService {
         for (const item of resolveArtifacts(entry)) {
           try {
             const file = getModelFile(item.artifact.filename);
-            if (file.exists) file.delete();
+            if (file?.exists) file.delete();
           } catch { /* ignore */ }
         }
       }
@@ -444,7 +588,7 @@ export class OtaModelDownloadService {
     try {
       for (const item of resolveArtifacts(entry)) {
         const file = getModelFile(item.artifact.filename);
-        if (file.exists) {
+        if (file?.exists) {
           file.delete();
         }
       }
@@ -465,7 +609,7 @@ export class OtaModelDownloadService {
       if (path) {
         const sizeBytes = resolveArtifacts(entry).reduce((sum, item) => {
           const file = getModelFile(item.artifact.filename);
-          return sum + (file.exists ? file.size : 0);
+          return sum + (file?.exists ? file.size : 0);
         }, 0);
         results.push({ modelId: id, path, sizeBytes });
       }

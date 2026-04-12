@@ -1784,7 +1784,7 @@ export class OpenClawProxyService {
     const instanceActiveModel = (instance.capabilities as any)?.activeModel;
     const instanceModelPinned = (instance.capabilities as any)?.modelPinned === true;
     // Local-only model IDs that cannot be routed to any cloud provider
-    const LOCAL_ONLY_MODELS = ['gemma-nano-2b', 'gemma-4-2b', 'gemma-4-4b', 'gemma-nano-2b-local'];
+    const LOCAL_ONLY_MODELS = ['gemma-nano-2b', 'gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b', 'gemma-nano-2b-local'];
     const sanitizedInstanceActiveModel = instanceActiveModel && !LOCAL_ONLY_MODELS.includes(instanceActiveModel)
       ? instanceActiveModel
       : undefined;

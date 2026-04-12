@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { setApiConfig } from '../services/api';
 import type { AuthUser, OpenClawInstance } from '../stores/authStore';
+import type { MobileLocalChatMessage, MobileLocalRuntimeCapabilities } from '../services/mobileLocalInference.service';
 
 // Stores are imported lazily inside applyVoiceUiE2EBootstrap() to avoid
 // circular dependency TDZ errors during module initialization.
@@ -18,6 +19,35 @@ export interface VoiceUiE2ERealtimeBridge {
   onError: (message: string) => void;
 }
 
+export interface VoiceUiE2ELiveSpeechBridge {
+  onStart: () => void;
+  onSpeechStart: () => void;
+  onSpeechEnd: () => void;
+  onInterimResult: (text: string) => void;
+  onFinalResult: (text: string) => void;
+  onError: (message: string) => void;
+  onEnd: () => void;
+}
+
+export interface VoiceUiE2EHoldToTalkBridge {
+  start: () => Promise<void> | void;
+  stop: () => Promise<void> | void;
+}
+
+export interface VoiceUiE2ELocalBridgeCall {
+  model?: string;
+  userText: string;
+  messageCount: number;
+}
+
+interface VoiceUiE2ELocalModelState {
+  enabled: boolean;
+  modelId: string;
+  replyText: string;
+  capabilities: MobileLocalRuntimeCapabilities;
+  calls: VoiceUiE2ELocalBridgeCall[];
+}
+
 export interface VoiceUiE2ERuntime {
   liveSpeechPermission: VoiceUiE2ELiveSpeechPermission;
   setLiveSpeechPermission: (state: VoiceUiE2ELiveSpeechPermission) => void;
@@ -26,6 +56,21 @@ export interface VoiceUiE2ERuntime {
   emitRealtimeAssistantChunk: (chunk: string) => void;
   completeRealtimeAssistantResponse: () => void;
   emitRealtimeError: (message: string) => void;
+  emitLiveSpeechInterimTranscript: (text: string) => void;
+  emitLiveSpeechFinalTranscript: (text: string) => void;
+  emitLiveSpeechError: (message: string) => void;
+  completeLiveSpeechSession: () => void;
+  startHoldToTalk: () => Promise<void>;
+  stopHoldToTalk: () => Promise<void>;
+  configureLocalModelScenario: (config?: {
+    modelId?: string;
+    replyText?: string;
+    supportsVisionInput?: boolean;
+    supportsAudioInput?: boolean;
+    supportsAudioOutput?: boolean;
+  }) => void;
+  getLocalModelCalls: () => VoiceUiE2ELocalBridgeCall[];
+  clearLocalModelCalls: () => void;
 }
 
 declare global {
@@ -35,7 +80,120 @@ declare global {
     __AGENTRIX_VOICE_UI_E2E_RUNTIME__?: VoiceUiE2ERuntime;
     __AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_PERMISSION__?: VoiceUiE2ELiveSpeechPermission;
     __AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__?: VoiceUiE2ERealtimeBridge | null;
+    __AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_BRIDGE__?: VoiceUiE2ELiveSpeechBridge | null;
+    __AGENTRIX_VOICE_UI_E2E_HOLD_TO_TALK_BRIDGE__?: VoiceUiE2EHoldToTalkBridge | null;
+    __AGENTRIX_VOICE_UI_E2E_LOCAL_MODEL_STATE__?: VoiceUiE2ELocalModelState;
+    __AGENTRIX_LOCAL_LLM__?: {
+      isAvailable?: (options?: { model?: string }) => boolean;
+      getCapabilities?: (options?: { model?: string }) => Partial<MobileLocalRuntimeCapabilities>;
+      generate?: (payload: {
+        model?: string;
+        messages: MobileLocalChatMessage[];
+        temperature?: number;
+        maxTokens?: number;
+      }) => Promise<string>;
+      generateStream?: (payload: {
+        model?: string;
+        messages: MobileLocalChatMessage[];
+        temperature?: number;
+        maxTokens?: number;
+        onToken?: (chunk: string) => void;
+      }) => Promise<string[]>;
+    };
   }
+}
+
+function getDefaultLocalModelState(): VoiceUiE2ELocalModelState {
+  return {
+    enabled: false,
+    modelId: 'qwen2.5-omni-3b',
+    replyText: '本地模型回复：链路已接通。',
+    capabilities: {
+      available: true,
+      runtimeSource: 'global',
+      supportsTextGeneration: true,
+      supportsStreaming: true,
+      supportsVisionInput: true,
+      supportsAudioInput: true,
+      supportsAudioOutput: true,
+    },
+    calls: [],
+  };
+}
+
+function getLocalModelState(): VoiceUiE2ELocalModelState {
+  if (!window.__AGENTRIX_VOICE_UI_E2E_LOCAL_MODEL_STATE__) {
+    window.__AGENTRIX_VOICE_UI_E2E_LOCAL_MODEL_STATE__ = getDefaultLocalModelState();
+  }
+
+  return window.__AGENTRIX_VOICE_UI_E2E_LOCAL_MODEL_STATE__;
+}
+
+function serializeUserText(messages: MobileLocalChatMessage[]): string {
+  const userMessages = messages.filter((message) => message.role === 'user');
+  const lastUserMessage = userMessages[userMessages.length - 1];
+  if (!lastUserMessage) {
+    return '';
+  }
+
+  if (typeof lastUserMessage.content === 'string') {
+    return lastUserMessage.content;
+  }
+
+  return lastUserMessage.content
+    .map((part) => {
+      if (part.type === 'text') {
+        return part.text;
+      }
+      if (part.type === 'image_url') {
+        return '[image]';
+      }
+      return `[audio:${part.input_audio.format}]`;
+    })
+    .join(' ')
+    .trim();
+}
+
+function installVoiceUiE2ELocalBridge(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.__AGENTRIX_LOCAL_LLM__ = {
+    isAvailable: (options?: { model?: string }) => {
+      const state = getLocalModelState();
+      return state.enabled && (!options?.model || options.model === state.modelId);
+    },
+    getCapabilities: (options?: { model?: string }) => {
+      const state = getLocalModelState();
+      const supportedModel = !options?.model || options.model === state.modelId;
+      return {
+        ...state.capabilities,
+        available: state.enabled && supportedModel,
+      };
+    },
+    generate: async (payload) => {
+      const state = getLocalModelState();
+      state.calls.push({
+        model: payload.model,
+        userText: serializeUserText(payload.messages),
+        messageCount: payload.messages.length,
+      });
+      return state.replyText;
+    },
+    generateStream: async (payload) => {
+      const state = getLocalModelState();
+      state.calls.push({
+        model: payload.model,
+        userText: serializeUserText(payload.messages),
+        messageCount: payload.messages.length,
+      });
+      if (state.replyText) {
+        payload.onToken?.(state.replyText);
+      }
+      return state.replyText ? [state.replyText] : [];
+    },
+  };
 }
 
 function createVoiceUiE2ERuntime(): VoiceUiE2ERuntime {
@@ -63,6 +221,60 @@ function createVoiceUiE2ERuntime(): VoiceUiE2ERuntime {
     emitRealtimeError(message) {
       window.__AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__?.onError(message);
     },
+    emitLiveSpeechInterimTranscript(text) {
+      window.__AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_BRIDGE__?.onSpeechStart();
+      window.__AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_BRIDGE__?.onInterimResult(text);
+    },
+    emitLiveSpeechFinalTranscript(text) {
+      window.__AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_BRIDGE__?.onSpeechStart();
+      window.__AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_BRIDGE__?.onFinalResult(text);
+    },
+    emitLiveSpeechError(message) {
+      window.__AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_BRIDGE__?.onError(message);
+    },
+    completeLiveSpeechSession() {
+      window.__AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_BRIDGE__?.onSpeechEnd();
+      window.__AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_BRIDGE__?.onEnd();
+    },
+    async startHoldToTalk() {
+      await window.__AGENTRIX_VOICE_UI_E2E_HOLD_TO_TALK_BRIDGE__?.start?.();
+    },
+    async stopHoldToTalk() {
+      await window.__AGENTRIX_VOICE_UI_E2E_HOLD_TO_TALK_BRIDGE__?.stop?.();
+    },
+    configureLocalModelScenario(config) {
+      const nextModelId = config?.modelId || 'qwen2.5-omni-3b';
+      const state = getLocalModelState();
+      state.enabled = true;
+      state.modelId = nextModelId;
+      state.replyText = config?.replyText || '本地模型回复：链路已接通。';
+      state.capabilities = {
+        available: true,
+        runtimeSource: 'global',
+        supportsTextGeneration: true,
+        supportsStreaming: true,
+        supportsVisionInput: config?.supportsVisionInput ?? true,
+        supportsAudioInput: config?.supportsAudioInput ?? true,
+        supportsAudioOutput: config?.supportsAudioOutput ?? true,
+      };
+      state.calls = [];
+      installVoiceUiE2ELocalBridge();
+
+      const { useSettingsStore } = require('../stores/settingsStore');
+      useSettingsStore.setState({
+        localAiEnabled: true,
+        localAiStatus: 'ready',
+        localAiModelId: nextModelId,
+        selectedModelId: nextModelId,
+        preferOnDeviceVoice: true,
+      });
+    },
+    getLocalModelCalls() {
+      return [...getLocalModelState().calls];
+    },
+    clearLocalModelCalls() {
+      getLocalModelState().calls = [];
+    },
   };
 
   return runtime;
@@ -74,6 +286,14 @@ export function setVoiceUiE2ERealtimeBridge(bridge: VoiceUiE2ERealtimeBridge | n
   }
 
   window.__AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__ = bridge;
+}
+
+export function setVoiceUiE2ELiveSpeechBridge(bridge: VoiceUiE2ELiveSpeechBridge | null): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.__AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_BRIDGE__ = bridge;
 }
 
 function createJsonResponse(body: unknown, status = 200): Response {
@@ -353,6 +573,7 @@ export function applyVoiceUiE2EBootstrap(): boolean {
 
   setApiConfig({ token: 'e2e-token' });
   installVoiceUiE2EFetchMock();
+  installVoiceUiE2ELocalBridge();
   window.__AGENTRIX_VOICE_UI_E2E_RUNTIME__ = window.__AGENTRIX_VOICE_UI_E2E_RUNTIME__ || createVoiceUiE2ERuntime();
   window.__AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_PERMISSION__ = 'granted';
   window.__AGENTRIX_VOICE_UI_E2E_BOOTSTRAPPED__ = true;

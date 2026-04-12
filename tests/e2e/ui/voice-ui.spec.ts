@@ -1,5 +1,19 @@
 import { expect, test, type Page } from '@playwright/test';
 
+type LocalModelScenarioConfig = {
+  modelId?: string;
+  replyText?: string;
+  supportsVisionInput?: boolean;
+  supportsAudioInput?: boolean;
+  supportsAudioOutput?: boolean;
+};
+
+type LocalModelCall = {
+  model?: string;
+  userText: string;
+  messageCount: number;
+};
+
 function byTestId(page: Page, testId: string) {
   return page.locator(`[data-testid="${testId}"]`);
 }
@@ -36,11 +50,60 @@ async function emitRealtimeAssistantChunk(page: Page, chunk: string) {
   }, chunk);
 }
 
+async function emitLiveSpeechFinalTranscript(page: Page, text: string) {
+  await page.evaluate((nextText) => {
+    const runtime = (window as any).__AGENTRIX_VOICE_UI_E2E_RUNTIME__;
+    runtime?.emitLiveSpeechFinalTranscript(nextText);
+  }, text);
+}
+
+async function configureLocalModelScenario(page: Page, config: LocalModelScenarioConfig) {
+  await page.evaluate((nextConfig) => {
+    const runtime = (window as any).__AGENTRIX_VOICE_UI_E2E_RUNTIME__;
+    runtime?.configureLocalModelScenario(nextConfig);
+  }, config);
+}
+
+async function getLocalModelCalls(page: Page): Promise<LocalModelCall[]> {
+  return page.evaluate(() => {
+    const runtime = (window as any).__AGENTRIX_VOICE_UI_E2E_RUNTIME__;
+    return runtime?.getLocalModelCalls?.() ?? [];
+  });
+}
+
+async function startHoldToTalk(page: Page) {
+  await page.evaluate(async () => {
+    const runtime = (window as any).__AGENTRIX_VOICE_UI_E2E_RUNTIME__;
+    await runtime?.startHoldToTalk?.();
+  });
+}
+
+async function stopHoldToTalk(page: Page) {
+  await page.evaluate(async () => {
+    const runtime = (window as any).__AGENTRIX_VOICE_UI_E2E_RUNTIME__;
+    await runtime?.stopHoldToTalk?.();
+  });
+}
+
 async function completeRealtimeAssistantResponse(page: Page) {
   await page.evaluate(() => {
     const runtime = (window as any).__AGENTRIX_VOICE_UI_E2E_RUNTIME__;
     runtime?.completeRealtimeAssistantResponse();
   });
+}
+
+async function skipVoiceOnboardingIfPresent(page: Page) {
+  if (await byTestId(page, 'voice-onboarding-tooltip').count()) {
+    await activeByTestId(page, 'voice-onboarding-skip').click();
+    await expect(byTestId(page, 'voice-onboarding-tooltip')).toHaveCount(0);
+  }
+}
+
+async function holdToTalkWithTranscript(page: Page, transcript: string) {
+  await startHoldToTalk(page);
+  await expect.poll(async () => page.evaluate(() => !!(window as any).__AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_BRIDGE__)).toBeTruthy();
+  await emitLiveSpeechFinalTranscript(page, transcript);
+  await stopHoldToTalk(page);
 }
 
 async function openVoiceChat(page: Page) {
@@ -187,10 +250,7 @@ test.describe('voice ui regression', () => {
   test('realtime final transcript creates one user turn and receives assistant chunks', async ({ page }) => {
     await openVoiceChat(page);
 
-    if (await byTestId(page, 'voice-onboarding-tooltip').count()) {
-      await activeByTestId(page, 'voice-onboarding-skip').click();
-      await expect(byTestId(page, 'voice-onboarding-tooltip')).toHaveCount(0);
-    }
+    await skipVoiceOnboardingIfPresent(page);
 
     /* Enable duplex mode via settings sheet for realtime channel */
     await activeByTestId(page, 'agent-chat-settings-button').click();
@@ -227,5 +287,125 @@ test.describe('voice ui regression', () => {
     await completeRealtimeAssistantResponse(page);
 
     await expect(byTestId(page, 'chat-message-text-assistant').filter({ hasText: assistantReply })).toHaveCount(1);
+  });
+
+  test('local text chat routes through the on-device bridge and returns a local reply', async ({ page }) => {
+    const userText = '你好';
+    const assistantReply = '本地模型回复：Gemma 文字链路已接通。';
+
+    await page.goto('/?e2e=voice-ui');
+    await expect(activeByTestId(page, 'agent-chat-screen')).toBeAttached();
+    await configureLocalModelScenario(page, {
+      modelId: 'gemma-4-2b',
+      replyText: assistantReply,
+      supportsVisionInput: false,
+      supportsAudioInput: false,
+      supportsAudioOutput: false,
+    });
+
+    await activeByTestId(page, 'chat-text-input').fill(userText);
+    await activeByTestId(page, 'chat-send-button').click();
+
+    await expect
+      .poll(async () => byTestId(page, 'chat-message-text-user').filter({ hasText: userText }).count())
+      .toBe(1);
+    await expect(byTestId(page, 'chat-message-text-assistant').filter({ hasText: assistantReply })).toHaveCount(1);
+    await expect.poll(async () => (await getLocalModelCalls(page)).length).toBe(1);
+
+    const calls = await getLocalModelCalls(page);
+    expect(calls[0]).toMatchObject({
+      model: 'gemma-4-2b',
+      userText,
+    });
+    expect(calls[0]?.messageCount ?? 0).toBeGreaterThan(0);
+  });
+
+  test('local hold-to-talk speech routes into the on-device bridge and returns a local reply', async ({ page }) => {
+    const transcript = '你好';
+    const assistantReply = '本地模型回复：语音链路已接通。';
+
+    await page.goto('/?e2e=voice-ui');
+    await expect(activeByTestId(page, 'agent-chat-screen')).toBeAttached();
+    await configureLocalModelScenario(page, {
+      modelId: 'qwen2.5-omni-3b',
+      replyText: assistantReply,
+      supportsVisionInput: true,
+      supportsAudioInput: true,
+      supportsAudioOutput: true,
+    });
+
+    await activeByTestId(page, 'chat-voice-mode-toggle').click();
+    await expect(activeByTestId(page, 'voice-status-bar')).toBeVisible();
+    await skipVoiceOnboardingIfPresent(page);
+
+    await holdToTalkWithTranscript(page, transcript);
+
+    await expect
+      .poll(async () => byTestId(page, 'chat-message-text-user').filter({ hasText: transcript }).count())
+      .toBe(1);
+    await expect(byTestId(page, 'chat-message-text-assistant').filter({ hasText: assistantReply })).toHaveCount(1);
+    await expect.poll(async () => (await getLocalModelCalls(page)).length).toBe(1);
+
+    const calls = await getLocalModelCalls(page);
+    expect(calls[0]).toMatchObject({
+      model: 'qwen2.5-omni-3b',
+      userText: transcript,
+    });
+    expect(calls[0]?.messageCount ?? 0).toBeGreaterThan(0);
+  });
+
+  test('local duplex speech stays off the realtime bridge and returns a local reply', async ({ page }) => {
+    const transcript = '你好';
+    const assistantReply = '本地模型回复：实时语音链路已接通。';
+
+    await page.goto('/?e2e=voice-ui');
+    await expect(activeByTestId(page, 'agent-chat-screen')).toBeAttached();
+    await configureLocalModelScenario(page, {
+      modelId: 'qwen2.5-omni-3b',
+      replyText: assistantReply,
+      supportsVisionInput: true,
+      supportsAudioInput: true,
+      supportsAudioOutput: true,
+    });
+
+    await activeByTestId(page, 'chat-voice-mode-toggle').click();
+    await expect(activeByTestId(page, 'voice-status-bar')).toBeVisible();
+    await skipVoiceOnboardingIfPresent(page);
+
+    await activeByTestId(page, 'agent-chat-settings-button').click();
+    await expect(activeByTestId(page, 'chat-settings-sheet')).toBeVisible();
+    await activeByTestId(page, 'chat-duplex-toggle').click();
+    await page.keyboard.press('Escape');
+    await expect(byTestId(page, 'chat-settings-sheet')).toHaveCount(0, { timeout: 3000 });
+
+    await expect(activeByTestId(page, 'voice-session-state')).toHaveAttribute(
+      'aria-label',
+      /voice-session-state:.*:duplex:.*:connected/,
+      { timeout: 10000 },
+    );
+
+    await expect.poll(async () =>
+      page.evaluate(() => !!(window as any).__AGENTRIX_VOICE_UI_E2E_LIVE_SPEECH_BRIDGE__),
+      { timeout: 5000 },
+    ).toBeTruthy();
+
+    await expect.poll(async () =>
+      page.evaluate(() => !!(window as any).__AGENTRIX_VOICE_UI_E2E_REALTIME_BRIDGE__),
+    ).toBeFalsy();
+
+    await emitLiveSpeechFinalTranscript(page, transcript);
+
+    await expect
+      .poll(async () => byTestId(page, 'chat-message-text-user').filter({ hasText: transcript }).count())
+      .toBe(1);
+    await expect(byTestId(page, 'chat-message-text-assistant').filter({ hasText: assistantReply })).toHaveCount(1);
+    await expect.poll(async () => (await getLocalModelCalls(page)).length).toBe(1);
+
+    const calls = await getLocalModelCalls(page);
+    expect(calls[0]).toMatchObject({
+      model: 'qwen2.5-omni-3b',
+      userText: transcript,
+    });
+    expect(calls[0]?.messageCount ?? 0).toBeGreaterThan(0);
   });
 });

@@ -315,20 +315,64 @@ Agentrix 当前真正的框架中心不是单独的 UserAgent，也不是旧式�
 | checkpoint / resume 真实恢复链路 | 已完成 | `agent-intelligence` 的 resume 接口已修正为按用户作用域的 `sessionId` 或数据库 id 两种方式解析；桌面 Workbench 的 Resume 按钮已接入真实恢复而非仅做提示词续跑 |
 | 后端 build 脚本跨平台化 | 已完成 | `backend/package.json` 不再依赖 `sh build.sh`、`rm -rf`、`test -f`；已改为 `node ./scripts/build-backend.mjs` 的跨平台构建入口 |
 | 根目录 TypeScript 全量检查堆上限 | 已完成 | 根 `package.json` 已新增 `typecheck:root`，显式使用 `node --max-old-space-size=8192 ... tsc --noEmit -p tsconfig.json` |
+| 生产后端上线 | 已完成 | 新生产机 `47.130.176.148` 已更新到 `build138@ad09e2d3`，`/api/health` 返回 `200`，并已跑通视频任务相关迁移 |
+| 移动端公开构建 | 已完成 | 移动端公开触发链路以 `Agentrix-Claw` 仓库工作流为准；`Build → Test → Release APK` 最新成功 run 为 `24222804837`，已发布 `✅ ClawLink Build #167`，公开下载地址保持 `200` 可用 |
+| 桌面 Windows `.exe` 发布状态 | 本地当前代码已成功出包，GitHub Actions 仍未产出新 artifact | 当前代码已在本地成功生成 `desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Agentrix Desktop_0.1.1_x64-setup.exe`；修复 `build138@83842cc8` 已重新触发 Desktop workflow `24226508141`，Windows job 已越过 `Install frontend dependencies`，但仍失败在 `Build Tauri app`，所以 GitHub 侧暂时还没有新的 `.exe` artifact |
+
+### 9.1.1 本轮按端改动清单
+
+#### 桌面端
+
+- `desktop/src/components/TaskWorkbenchPanel.tsx`：新增独立 Task Workbench，统一承载 plan approval、execution timeline、recent events、checkpoint 与 resume。
+- `desktop/src/components/ChatPanel.tsx`：把 Task Workbench 接入主聊天流，补了 async wake-back、`tool_use` 续跑提示、审批态同步、checkpoint 记录与恢复入口。
+- `desktop/src/components/MessageBubble.tsx`：补齐视频链接与多媒体附件展示，桌面端现在能直接承接生成视频返回结果。
+- `desktop/src/services/store.ts`：补桌面任务状态、timeline 与 workbench 事件状态承载。
+
+#### 移动端前端
+
+- `src/screens/agent/AgentChatScreen.tsx`：统一多模态发消息内容构造，补视频/音频/文件附件的发送与展示识别，聊天内容里能正确提取 `mp4/webm/mov` 等视频链接。
+- `src/services/api.ts`：补聊天附件上传后的 API 表面适配，和新的附件类型保持一致。
+- `src/services/deviceBridging.service.ts`：补跨设备桥接时的消息/会话同步细节，保证移动端与平台托管会话、附件链路保持一致。
+
+#### 后端
+
+- 视频生成主链路：`backend/src/entities/video-generation-task.entity.ts`、`backend/src/migrations/1781100000000-CreateVideoGenerationTasks.ts`、`backend/src/modules/video-generation/*` 新增了 `video_generation_tasks` 持久化、FAL provider、后台轮询、完成回帖与状态同步。
+- 两条聊天入口一起补齐：`backend/src/modules/ai-integration/claude/claude-integration.service.ts`、`backend/src/modules/openclaw-proxy/openclaw-proxy.service.ts`、`backend/src/modules/skill/*` 已把 `video_generate` 同时接进 `/claude/chat` 和 `/openclaw/proxy/*`，并补了平台托管工具路由与 `tool_use` 停止原因透传。
+- 媒体表面统一：`backend/src/modules/upload/upload.service.ts` 统一返回 `image / audio / video / file`，前后端对同一附件类型的理解一致。
+- 恢复链路修正：`backend/src/modules/agent-intelligence/agent-intelligence.controller.ts` 与 `backend/src/modules/agent-intelligence/agent-intelligence.service.ts` 把 resume 修到可同时接受逻辑 `sessionId` 与数据库 id。
+- 模型优先级热修：`backend/src/modules/auth/auth.controller.ts` 改为显式 pinned instance model 优先于 preferred model，避免桌面/实例模型选择被用户默认偏好覆盖。
+- 构建与部署加固：`backend/scripts/build-backend.mjs`、`backend/package.json`、根 `package.json`、`.github/workflows/deploy-backend-prod.yml`、`backend/src/migrations/1781000000000-ExpandHookEventTypes.ts` 一起完成了跨平台构建、部署 host 参数化、自动 migration、旧库枚举迁移容错等收口。
 
 ### 9.2 当前仍然最关键的四类差距
 
-1. VS Code / Copilot 级复杂任务 UX 仍有差距，但缺口已明显收缩。
-  本轮已经把 plan approval、任务时间线、async wake-back、checkpoint/resume 收进独立的 Task Workbench；真正剩下的差距主要收缩为 diff/terminal 富展示、多工具并行可视化、长任务执行细粒度回放，而不再是“复杂任务没有工作台”。
+#### 9.2.1 这四类差距的最近完成进展
 
-2. OpenClaw 4.5 的视频生成 contract 已经落下首条真实链路，但还没有完全等价。
-  现在 Agentrix 已经具备 `video_generate`、provider runtime、task ledger、async wake-back、会话内自动回帖和独立任务 UI；当前剩余差距主要在于三种模式的全覆盖、更加通用的 provider registry，以及更完整的图像/视频参考素材参数面。
+1. VS Code / Copilot 级复杂任务 UX
+  最近已经补上的不是“表面 UI”，而是关键执行语义：桌面端现在有独立 `TaskWorkbenchPanel`，能承接 plan approval、任务时间线、async wake-back、checkpoint 与 resume；`openclaw-proxy` 也已经把复杂任务轮次预算、`tool_use` 停止原因、Continue 续跑提示接通了。最新进展是桌面当前代码已经能在本地重新打出 Windows 包，说明这套工作台链路不只是开发态拼装；但距离 VS Code / Copilot 级体验仍差 diff/terminal 富展示、多工具并行可视化、长任务回放。
 
-3. Plugin-owned runtime / capability ownership 仍不够深。
-  Agentrix 的 skill + tool-registry 已经很强，但插件还不能像 OpenClaw 4.5 一样自然拥有自己的 channel runtime、gateway method、memory capability、provider capability、doctor/runtime seam。当前仍然是“中心服务强”，而不是“插件 contract 完整”。
+2. OpenClaw 4.5 视频生成 contract
+  这块最近的实质进展最大：`video_generate` 已不是实验接口，而是已经上线生产的真实链路。生产机 `47.130.176.148` 已部署到包含视频任务运行时的版本，`video_generation_tasks` 迁移已执行，FAL text-to-video provider、后台轮询、会话内 wake-back、桌面 Task Workbench 展示、桌面/移动端视频附件识别都已经打通。当前没完成的部分也更明确了，主要还剩 image-to-video、video-to-video、更通用 provider registry，以及更完整的参考图/参考视频参数面。
 
-4. Memory slot、ACP bridge、runtime compat / doctor 仍然缺位。
-  Agentrix 已有 recall、compaction、memory extract、dreaming、wiki，但仍缺 OpenClaw 4.5 风格的 memory slot、flush plan、prompt supplement、runtime compat/doctor，以及 ACP 那种跨 runtime/host 的统一桥接能力。这个差距决定了它离“OpenClaw 兼容框架化”还有多远。
+3. Plugin-owned runtime / capability ownership
+  这块最近没有出现像视频链路那样的结构性突破。已有进展主要还是“中心能力更强了”：`skill`、`tool-registry`、`query-engine runtime seam`、`openclaw-proxy` 之间的真实运行链更顺了，但能力所有权依然集中在中心服务，没有真正把 channel runtime、gateway method、memory capability、provider capability 下放成插件天然拥有的 contract。也就是说，这一项目前仍属于“问题已经被看清，但最近没有本质收口”。
+
+4. Memory slot、ACP bridge、runtime compat / doctor
+  这块最近也有一些基础层进展，但还没有跨过框架边界那条线。近期落地的更多是记忆与运行时的工程化收口，比如生产库已跑过 `agent_memory` 相关迁移，`memory-wiki`、`dreaming`、`agent-intelligence` 继续处在真实运行链里，旧库上的 hook event type 迁移兼容性也已补上；但真正缺的 `memory slot / flush plan / prompt supplement` 框架 contract、ACP bridge、runtime compat/doctor 仍然没有主模块落地，所以这块仍是最典型的“已有能力很多，但框架级边界还没形成”。
+
+#### 9.2.2 Gemma 4 真端侧多模态的当前边界
+
+最近一轮移动端收口后，语音链路已经不再是“全靠云端”，而是明确拆成了端侧优先的三层：
+
+1. 已经可以稳定下放到端侧的部分
+  本地唤醒词、VAD、回声抑制、barge-in、iOS on-device live speech、持麦模式下的本地语音转文本、以及本地文本播报都已经有真实代码路径，移动端现在也新增了 `preferOnDeviceVoice` 开关和显式 capability planner，不再是隐式走云端默认值。
+
+2. 当前仍然必须保留云端的部分
+  真正的 Gemma 4 图像 token 输入、音频 token 输入、音频 token 输出还没有进入移动端 `llama.rn` bridge；所以实时图像理解、语音端到端多模态推理、复杂任务工具编排、长任务 continuation 预算，当前仍然必须保留云端路径。现阶段新增的相机帧接入只是把手机拍照帧送进现有 realtime session，便于云端多模态链路立即吃到视觉上下文，并不等于端侧 Gemma 已经能吃图吃音频。
+
+  这里需要额外区分两种“realtime 语音”。本地模型的 duplex 连续语音，当前已经可以走“端侧 live speech / 本地音频采集 -> 本地文本或本地音频轮次”，不能再笼统描述成“全部走云端”；但云端 realtime gateway 的 socket 会话建立、assistant 实时回复、barge-in 打断、相机帧随会话注入，仍然是另一条必须保留并单独验收的云端链路。最新真机验收脚本也已经按这两条路径拆开验收，而不再把它们混成一个“语音功能”。
+
+3. 这说明剩余硬差距已经被压缩到 native bridge 层
+  现在最关键的未完成项不再是 UI 或会话调度，而是移动端本地 runtime 本身还缺 vision/audio surface。等 `llama.rn` 或自有 native bridge 真正暴露 image/audio inputs 和 audio outputs 后，当前这套 planner、local-first STT/TTS、相机帧接入、混合编排边界就可以直接复用，而不需要再重写一整套语音会话框架。
 
 ## 10. 总结
 

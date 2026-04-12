@@ -1,4 +1,5 @@
 import { NativeModules } from 'react-native';
+import { OtaModelDownloadService } from './otaModelDownload.service';
 
 export type MobileLocalChatRole = 'system' | 'user' | 'assistant';
 
@@ -116,14 +117,26 @@ function buildDeclaredCapabilities(
     }
   }
 
+  const modelId = options?.model;
+  const staticLocalCapabilityOverride = modelId && OtaModelDownloadService.getModelEntry(modelId)
+    ? {
+        available: OtaModelDownloadService.isModelDownloaded(modelId),
+        supportsVisionInput: OtaModelDownloadService.hasMultimodalAssets(modelId)
+          && OtaModelDownloadService.declaresVisionInput(modelId),
+        supportsAudioInput: OtaModelDownloadService.hasMultimodalAssets(modelId)
+          && OtaModelDownloadService.declaresAudioInput(modelId),
+        supportsAudioOutput: OtaModelDownloadService.hasAnyOnDeviceAudioOutputAssets(modelId),
+      }
+    : null;
+
   return {
-    available,
+    available: staticLocalCapabilityOverride?.available ?? available,
     runtimeSource: source,
     supportsTextGeneration,
     supportsStreaming,
-    supportsVisionInput: false,
-    supportsAudioInput: false,
-    supportsAudioOutput: false,
+    supportsVisionInput: staticLocalCapabilityOverride?.supportsVisionInput ?? false,
+    supportsAudioInput: staticLocalCapabilityOverride?.supportsAudioInput ?? false,
+    supportsAudioOutput: staticLocalCapabilityOverride?.supportsAudioOutput ?? false,
   };
 }
 
@@ -170,6 +183,35 @@ function extractText(result: LocalBridgeGenerateResult | null | undefined): stri
   }
 
   return String(result.text || result.content || result.reply || '');
+}
+
+function extractErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  if (typeof error === 'string' && error.trim()) {
+    return error.trim();
+  }
+
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    for (const key of ['message', 'reason', 'error', 'detail', 'code']) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== '{}') {
+        return serialized;
+      }
+    } catch {}
+  }
+
+  return fallback;
 }
 
 function chunkText(text: string): string[] {
@@ -277,29 +319,33 @@ export class MobileLocalInferenceService {
     }
     const { bridge } = resolvedBridge;
 
-    if (typeof bridge.generate === 'function') {
-      const result = await bridge.generate({
-        model: options?.model || DEFAULT_MODEL_ID,
-        messages,
-        temperature: options?.temperature,
-        maxTokens: options?.maxTokens,
-      });
-      return normalizeLocalOutput(extractText(result));
-    }
-
-    if (typeof bridge.generateStream === 'function') {
-      const streamed = await bridge.generateStream({
-        model: options?.model || DEFAULT_MODEL_ID,
-        messages,
-        temperature: options?.temperature,
-        maxTokens: options?.maxTokens,
-      });
-
-      if (Array.isArray(streamed)) {
-        return normalizeLocalOutput(streamed.join(''));
+    try {
+      if (typeof bridge.generate === 'function') {
+        const result = await bridge.generate({
+          model: options?.model || DEFAULT_MODEL_ID,
+          messages,
+          temperature: options?.temperature,
+          maxTokens: options?.maxTokens,
+        });
+        return normalizeLocalOutput(extractText(result));
       }
 
-      return normalizeLocalOutput(extractText(streamed));
+      if (typeof bridge.generateStream === 'function') {
+        const streamed = await bridge.generateStream({
+          model: options?.model || DEFAULT_MODEL_ID,
+          messages,
+          temperature: options?.temperature,
+          maxTokens: options?.maxTokens,
+        });
+
+        if (Array.isArray(streamed)) {
+          return normalizeLocalOutput(streamed.join(''));
+        }
+
+        return normalizeLocalOutput(extractText(streamed));
+      }
+    } catch (error) {
+      throw new Error(extractErrorMessage(error, 'Local model inference failed.'));
     }
 
     throw new Error('Local mobile inference bridge does not implement a generate API.');
@@ -398,7 +444,7 @@ export class MobileLocalInferenceService {
 
       await streamPromise;
       if (streamError) {
-        throw streamError;
+        throw new Error(extractErrorMessage(streamError, 'Local model inference failed.'));
       }
 
       return;

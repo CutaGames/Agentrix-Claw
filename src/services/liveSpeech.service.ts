@@ -1,8 +1,15 @@
 import { Platform } from 'react-native';
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
-import { getVoiceUiE2ERuntime, isVoiceUiE2EEnabled } from '../testing/e2e';
-
-type SpeechSubscription = { remove: () => void };
+import {
+  getVoiceUiE2ERuntime,
+  isVoiceUiE2EEnabled,
+  setVoiceUiE2ELiveSpeechBridge,
+} from '../testing/e2e';
+import {
+  buildLiveSpeechStartOptions,
+  createSpeechRecognitionSessionController,
+  type LiveSpeechStopResult,
+} from './liveSpeechSession.service';
 
 export interface LiveSpeechCallbacks {
   onStart?: () => void;
@@ -16,12 +23,8 @@ export interface LiveSpeechCallbacks {
 }
 
 export interface LiveSpeechController {
-  stop: () => void;
+  stop: () => Promise<LiveSpeechStopResult>;
   abort: () => void;
-}
-
-function getTranscriptFromResults(results: Array<{ transcript?: string }> | undefined) {
-  return (results || []).map((item) => item?.transcript || '').join(' ').trim();
 }
 
 export function isLiveSpeechRecognitionAvailable() {
@@ -61,75 +64,80 @@ export function startLiveSpeechRecognition(
   lang: string,
   callbacks: LiveSpeechCallbacks,
   contextualStrings: string[] = [],
+  options?: { mode?: 'hold' | 'duplex' },
 ): LiveSpeechController {
-  const subscriptions: SpeechSubscription[] = [];
+  if (isVoiceUiE2EEnabled() && typeof window !== 'undefined') {
+    let latestTranscript = '';
+    let finished = false;
+    let resolveStop: ((result: LiveSpeechStopResult) => void) | null = null;
 
-  subscriptions.push(
-    ExpoSpeechRecognitionModule.addListener('start', () => callbacks.onStart?.()),
-    ExpoSpeechRecognitionModule.addListener('end', () => callbacks.onEnd?.()),
-    ExpoSpeechRecognitionModule.addListener('speechstart', () => callbacks.onSpeechStart?.()),
-    ExpoSpeechRecognitionModule.addListener('speechend', () => callbacks.onSpeechEnd?.()),
-    ExpoSpeechRecognitionModule.addListener('volumechange', (event: { value?: number }) => {
-      callbacks.onVolumeChange?.(typeof event?.value === 'number' ? event.value : -2);
-    }),
-    ExpoSpeechRecognitionModule.addListener(
-      'result',
-      (event: { isFinal?: boolean; results?: Array<{ transcript?: string }> }) => {
-        const transcript = getTranscriptFromResults(event?.results);
-        if (!transcript) return;
-        if (event?.isFinal) {
-          callbacks.onFinalResult?.(transcript);
+    const cleanup = () => {
+      setVoiceUiE2ELiveSpeechBridge(null);
+    };
+
+    const finish = () => {
+      if (finished) {
+        return;
+      }
+
+      finished = true;
+      callbacks.onEnd?.();
+      cleanup();
+      if (resolveStop) {
+        resolveStop({ transcript: latestTranscript, audioUri: null });
+        resolveStop = null;
+      }
+    };
+
+    setVoiceUiE2ELiveSpeechBridge({
+      onStart: () => callbacks.onStart?.(),
+      onSpeechStart: () => callbacks.onSpeechStart?.(),
+      onSpeechEnd: () => callbacks.onSpeechEnd?.(),
+      onInterimResult: (text) => {
+        latestTranscript = text?.trim() || latestTranscript;
+        callbacks.onInterimResult?.(text);
+      },
+      onFinalResult: (text) => {
+        latestTranscript = text?.trim() || latestTranscript;
+        callbacks.onFinalResult?.(text);
+      },
+      onError: (message) => {
+        callbacks.onError?.({ error: message, message });
+      },
+      onEnd: () => {
+        finish();
+      },
+    });
+
+    callbacks.onStart?.();
+
+    return {
+      stop: () => new Promise<LiveSpeechStopResult>((resolve) => {
+        if (finished) {
+          resolve({ transcript: latestTranscript, audioUri: null });
           return;
         }
-        callbacks.onInterimResult?.(transcript);
+
+        resolveStop = resolve;
+        callbacks.onSpeechEnd?.();
+        finish();
+      }),
+      abort: () => {
+        finish();
       },
-    ),
-    ExpoSpeechRecognitionModule.addListener('error', (event: { error?: string; message?: string }) => {
-      callbacks.onError?.(event || {});
+    };
+  }
+
+  return createSpeechRecognitionSessionController({
+    module: ExpoSpeechRecognitionModule as any,
+    callbacks,
+    startOptions: buildLiveSpeechStartOptions({
+      lang,
+      contextualStrings,
+      mode: options?.mode || 'duplex',
+      platformOs: Platform.OS,
+      platformVersion: Platform.Version,
+      module: ExpoSpeechRecognitionModule as any,
     }),
-  );
-
-  ExpoSpeechRecognitionModule.start({
-    lang: lang === 'zh' ? 'zh-CN' : 'en-US',
-    interimResults: true,
-    continuous: true,
-    maxAlternatives: 1,
-    addsPunctuation: true,
-    contextualStrings: contextualStrings.filter(Boolean).slice(0, 8),
-    requiresOnDeviceRecognition: Platform.OS === 'ios',
-    volumeChangeEventOptions: {
-      enabled: true,
-      intervalMillis: 150,
-    },
-    androidIntentOptions: {
-      EXTRA_LANGUAGE_MODEL: 'web_search',
-      EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 1500,
-      EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 1000,
-    },
-    iosCategory: {
-      category: 'playAndRecord',
-      categoryOptions: ['defaultToSpeaker', 'allowBluetooth'],
-      mode: 'measurement',
-    },
-    iosVoiceProcessingEnabled: true,
   });
-
-  const cleanup = () => {
-    subscriptions.splice(0).forEach((subscription) => {
-      try {
-        subscription.remove();
-      } catch {}
-    });
-  };
-
-  return {
-    stop: () => {
-      cleanup();
-      ExpoSpeechRecognitionModule.stop();
-    },
-    abort: () => {
-      cleanup();
-      ExpoSpeechRecognitionModule.abort();
-    },
-  };
 }
