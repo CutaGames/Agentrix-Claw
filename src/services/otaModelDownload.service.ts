@@ -675,6 +675,23 @@ export class OtaModelDownloadService {
     return result;
   }
 
+  static getStartupPackageMigrationResult(): StartupPackageMigrationResult | null {
+    return this.startupMigrationResult;
+  }
+
+  static getStartupInvalidatedArtifactKeys(modelId: string): OtaModelArtifactKey[] {
+    const entry = MODEL_REGISTRY[modelId];
+    const migrationResult = this.startupMigrationResult;
+    if (!entry || !migrationResult) {
+      return [];
+    }
+
+    const removedArtifacts = new Set(migrationResult.removedArtifacts);
+    return resolveArtifacts(entry)
+      .filter((item) => removedArtifacts.has(item.artifact.filename))
+      .map((item) => item.key);
+  }
+
   /**
    * Check if a model is already downloaded and available locally.
    */
@@ -977,9 +994,15 @@ export class OtaModelDownloadService {
           }
         }, 1000);
 
+        const targetFile = getModelFile(artifact.filename);
+        if (!targetFile) {
+          clearInterval(progressInterval);
+          throw new Error(`Unable to prepare local target file for ${artifact.filename}.`);
+        }
+
         const result = await ExpoFile.downloadFileAsync(
           downloadUrl,
-          modelsDir,
+          targetFile,
           {
             headers: { 'User-Agent': `AgentrixApp/${Platform.OS}` },
             idempotent: true,
@@ -990,13 +1013,23 @@ export class OtaModelDownloadService {
 
         if (this.aborted) return;
 
-        if (!result.exists) {
+        if (!targetFile.exists) {
           throw new Error(`Downloaded file not found after downloading ${artifact.filename}.`);
         }
 
-        if (result.size < artifact.sizeBytes * 0.95) {
-          result.delete();
-          throw new Error(`Download incomplete for ${artifact.filename}: got ${result.size} bytes, expected ~${artifact.sizeBytes}`);
+        if (targetFile.size < artifact.sizeBytes * 0.95) {
+          targetFile.delete();
+          throw new Error(`Download incomplete for ${artifact.filename}: got ${targetFile.size} bytes, expected ~${artifact.sizeBytes}`);
+        }
+
+        if (result.uri !== targetFile.uri) {
+          addVoiceDiagnostic('local-model-download', 'artifact-target-file', {
+            modelId,
+            key: item.key,
+            filename: artifact.filename,
+            expectedUri: targetFile.uri,
+            resolvedUri: result.uri,
+          });
         }
 
         confirmedBytes += artifact.sizeBytes;

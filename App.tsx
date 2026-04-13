@@ -95,7 +95,10 @@ function AppNavigator() {
 
   const reconcileStartupLocalPackages = () => {
     const migrationResult = OtaModelDownloadService.runStartupPackageMigration();
-    if (migrationResult.invalidatedModelIds.length === 0) {
+    if (
+      migrationResult.invalidatedModelIds.length === 0
+      && migrationResult.removedArtifacts.length === 0
+    ) {
       return;
     }
 
@@ -109,11 +112,22 @@ function AppNavigator() {
         localAiStatus: 'not_downloaded',
         localAiProgress: 0,
       });
+    } else {
+      const currentLocalModelDownloaded = OtaModelDownloadService.isModelDownloaded(settingsState.localAiModelId);
+      const artifactStatuses = OtaModelDownloadService.getArtifactStatuses(settingsState.localAiModelId);
+      const downloadedBytes = artifactStatuses.reduce((sum, item) => sum + (item.downloaded ? item.sizeBytes : 0), 0);
+      const totalBytes = artifactStatuses.reduce((sum, item) => sum + item.sizeBytes, 0);
+      const packagePercent = totalBytes > 0 ? Math.round((downloadedBytes / totalBytes) * 100) : 0;
+
+      useSettingsStore.setState({
+        localAiEnabled: currentLocalModelDownloaded,
+        localAiProgress: currentLocalModelDownloaded ? packagePercent : 0,
+      });
     }
 
     console.warn(
-      'Invalidated stale on-device model packages during startup migration:',
-      migrationResult.invalidatedModelIds.join(', '),
+      'Invalidated stale on-device model artifacts during startup migration:',
+      JSON.stringify(migrationResult),
     );
   };
 

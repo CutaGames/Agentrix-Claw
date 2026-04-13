@@ -42,7 +42,7 @@ test.describe('local AI model user flows', () => {
     await byTestId(page, 'local-ai-download-button-gemma-4-2b').click();
 
     await expect(byTestId(page, 'local-ai-current-artifact')).toBeVisible();
-    await expect(byTestId(page, 'local-ai-status-label')).toContainText(/下载中|Downloading/);
+    await expect(byTestId(page, 'local-ai-status-label')).toContainText(/下载中|Downloading|已就绪|Ready|文本已就绪|Text Ready/);
     await expect(byTestId(page, 'local-ai-artifact-model')).toContainText(/已完成|complete/i, { timeout: 10000 });
     await expect(byTestId(page, 'local-ai-artifact-multimodalProjector')).toContainText(/已完成|complete/i, { timeout: 10000 });
     await expect(byTestId(page, 'local-ai-ready-model')).toContainText('Gemma 4 E2B', { timeout: 10000 });

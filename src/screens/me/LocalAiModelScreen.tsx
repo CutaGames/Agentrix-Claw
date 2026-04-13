@@ -63,9 +63,19 @@ function statusColor(status: LocalAiStatus): string {
   }
 }
 
-function statusLabel(status: LocalAiStatus, t: ReturnType<typeof useI18n>['t']): string {
+function statusLabel(
+  status: LocalAiStatus,
+  t: ReturnType<typeof useI18n>['t'],
+  options: {
+    modelDownloaded?: boolean;
+    packageReady?: boolean;
+  } = {},
+): string {
   switch (status) {
-    case 'ready': return t({ en: 'Ready', zh: '已就绪' });
+    case 'ready':
+      return options.modelDownloaded && !options.packageReady
+        ? t({ en: 'Text Ready', zh: '文本已就绪' })
+        : t({ en: 'Ready', zh: '已就绪' });
     case 'downloading': return t({ en: 'Downloading...', zh: '下载中...' });
     case 'error': return t({ en: 'Runtime Blocked', zh: '运行时阻断' });
     default: return t({ en: 'Not Downloaded', zh: '未下载' });
@@ -265,6 +275,10 @@ export function LocalAiModelScreen() {
   const currentModelEntry = OtaModelDownloadService.getModelEntry(localAiModelId);
   const currentDeclaredCapabilities = OtaModelDownloadService.getDeclaredCapabilities(localAiModelId);
   const currentPackageSize = OtaModelDownloadService.getPackageSizeLabel(localAiModelId);
+  const startupInvalidatedArtifactKeys = OtaModelDownloadService.getStartupInvalidatedArtifactKeys(localAiModelId);
+  const startupInvalidatedArtifactLabels = startupInvalidatedArtifactKeys
+    .map((key) => getArtifactLabel(key))
+    .filter(Boolean);
   const missingAddOnBytes = [
     !OtaModelDownloadService.isMultimodalProjectorDownloaded(localAiModelId)
       ? currentModelEntry?.multimodalProjector?.sizeBytes || 0
@@ -336,7 +350,12 @@ export function LocalAiModelScreen() {
       <View style={styles.card} testID="local-ai-status-card">
         <View style={styles.statusRow} testID="local-ai-status-row">
           <View style={[styles.statusDot, { backgroundColor: statusColor(localAiStatus) }]} />
-          <Text testID="local-ai-status-label" style={styles.statusText}>{statusLabel(localAiStatus, t)}</Text>
+          <Text testID="local-ai-status-label" style={styles.statusText}>
+            {statusLabel(localAiStatus, t, {
+              modelDownloaded: currentModelDownloaded,
+              packageReady: currentPackageReady,
+            })}
+          </Text>
           {localAiStatus === 'downloading' && (
             <Text testID="local-ai-progress-text" style={styles.progressText}>{localAiProgress}%</Text>
           )}
@@ -383,6 +402,15 @@ export function LocalAiModelScreen() {
             );
           })}
         </View>
+
+        {startupInvalidatedArtifactLabels.length > 0 && currentModelDownloaded && !currentPackageReady && localAiStatus !== 'downloading' && (
+          <Text style={styles.warningText}>
+            {t({
+              en: `On the last app start, Agentrix invalidated ${startupInvalidatedArtifactLabels.join(', ')} because the downloaded file could not be re-validated against the expected local package. Re-download the missing add-on once on this build.`,
+              zh: `上次启动时，Agentrix 把 ${startupInvalidatedArtifactLabels.join('、')} 判成了无效安装，因为它没能重新通过本地包校验。请在这个构建里把缺失附件重下一次。`,
+            })}
+          </Text>
+        )}
 
         {localAiStatus === 'downloading' && (
           <Text style={styles.downloadHintText}>

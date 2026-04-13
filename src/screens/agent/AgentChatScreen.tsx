@@ -1556,6 +1556,14 @@ export function AgentChatScreen() {
       const shouldTryLocalNano = isLocalOnlyModelId(effectiveModelId) && localTurnDecision?.mode === 'local';
 
       if (localTurnDecision?.mode === 'blocked' && localModelLabel) {
+        if (
+          isLocalOnlyModelId(effectiveModelId)
+          && (localTurnDecision.reason === 'runtime-unavailable'
+            || localTurnDecision.reason === 'text-generation-unavailable')
+        ) {
+          setLocalAiStatus('error');
+          setLocalAiEnabled(false);
+        }
         setResolvedModelLabel(`${localModelLabel} · ${t({ en: 'On-device only', zh: '仅端侧' })}`);
         addVoiceDiagnostic('agent-chat', 'local-turn-blocked', {
           model: effectiveModelId,
