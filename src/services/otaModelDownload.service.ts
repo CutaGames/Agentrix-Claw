@@ -343,8 +343,43 @@ function clearInstallRecord(modelId: string): void {
   writeInstallManifest(manifest);
 }
 
-function recordInstalledArtifacts(entry: OtaModelEntry): void {
+function upsertInstallRecord(
+  entry: OtaModelEntry,
+  patch: Partial<OtaInstallManifestRecord>,
+): OtaInstallManifestRecord {
   const manifest = readInstallManifest();
+  const nextRecord: OtaInstallManifestRecord = {
+    packageRevision: getExpectedPackageRevision(entry),
+    installedAt: Date.now(),
+    artifacts: {},
+    ...manifest[entry.id],
+    ...patch,
+    artifacts: {
+      ...(manifest[entry.id]?.artifacts || {}),
+      ...(patch.artifacts || {}),
+    },
+  };
+
+  manifest[entry.id] = nextRecord;
+
+  writeInstallManifest(manifest);
+  return nextRecord;
+}
+
+function recordInstalledArtifact(
+  entry: OtaModelEntry,
+  key: OtaModelArtifactKey,
+  artifact: OtaModelArtifact,
+): void {
+  upsertInstallRecord(entry, {
+    installedAt: Date.now(),
+    artifacts: {
+      [key]: artifact.filename,
+    },
+  });
+}
+
+function recordInstalledArtifacts(entry: OtaModelEntry): void {
   const artifacts = resolveArtifacts(entry).reduce<Partial<Record<OtaModelArtifactKey, string>>>(
     (acc, item) => {
       acc[item.key] = item.artifact.filename;
@@ -353,11 +388,39 @@ function recordInstalledArtifacts(entry: OtaModelEntry): void {
     {},
   );
 
-  manifest[entry.id] = {
-    packageRevision: getExpectedPackageRevision(entry),
+  upsertInstallRecord(entry, {
     installedAt: Date.now(),
     artifacts,
-  };
+  });
+}
+
+function clearArtifactInstallRecord(modelId: string, key: OtaModelArtifactKey): void {
+  const manifest = readInstallManifest();
+  const currentRecord = manifest[modelId];
+  if (!currentRecord?.artifacts[key]) {
+    return;
+  }
+
+  const nextArtifacts = { ...currentRecord.artifacts };
+  delete nextArtifacts[key];
+
+  if (Object.keys(nextArtifacts).length === 0) {
+    delete manifest[modelId];
+  } else {
+    manifest[modelId] = {
+      ...currentRecord,
+      installedAt: Date.now(),
+      artifacts: nextArtifacts,
+    };
+  }
+
+  if (Object.keys(manifest).length === 0) {
+    const manifestFile = getInstallManifestFile();
+    if (manifestFile?.exists) {
+      manifestFile.delete();
+    }
+    return;
+  }
 
   writeInstallManifest(manifest);
 }
@@ -384,21 +447,23 @@ function isArtifactDownloaded(
 
 function purgeInvalidArtifacts(entry: OtaModelEntry, forceRedownload = false): void {
   const manifest = readInstallManifest();
-  let deletedAny = false;
 
   for (const item of resolveArtifacts(entry)) {
     const file = getModelFile(item.artifact.filename);
     if (!file?.exists) {
+      if (forceRedownload) {
+        clearArtifactInstallRecord(entry.id, item.key);
+      }
       continue;
     }
 
     if (forceRedownload || !isArtifactDownloaded(entry, item.key, item.artifact, manifest)) {
       file.delete();
-      deletedAny = true;
+      clearArtifactInstallRecord(entry.id, item.key);
     }
   }
 
-  if (forceRedownload || deletedAny) {
+  if (forceRedownload) {
     clearInstallRecord(entry.id);
   }
 }
@@ -488,33 +553,34 @@ export class OtaModelDownloadService {
       }
 
       const artifacts = resolveArtifacts(entry);
-      const hasAnyArtifactFiles = artifacts.some((item) => isArtifactFilePresent(item.artifact));
-
-      if (!hasAnyArtifactFiles) {
-        if (manifest[entry.id]) {
-          clearInstallRecord(entry.id);
-        }
-        continue;
-      }
-
-      const hasValidInstall = artifacts.every((item) => (
-        isArtifactDownloaded(entry, item.key, item.artifact, manifest)
-      ));
-
-      if (hasValidInstall) {
-        continue;
-      }
+      let removedPrimaryArtifact = false;
 
       for (const item of artifacts) {
+        if (!isArtifactFilePresent(item.artifact)) {
+          if (manifest[entry.id]?.artifacts[item.key]) {
+            clearArtifactInstallRecord(entry.id, item.key);
+          }
+          continue;
+        }
+
+        if (isArtifactDownloaded(entry, item.key, item.artifact, manifest)) {
+          continue;
+        }
+
         const file = getModelFile(item.artifact.filename);
         if (file?.exists) {
           file.delete();
           result.removedArtifacts.push(item.artifact.filename);
+          if (item.key === 'model') {
+            removedPrimaryArtifact = true;
+          }
         }
+        clearArtifactInstallRecord(entry.id, item.key);
       }
 
-      clearInstallRecord(entry.id);
-      result.invalidatedModelIds.push(entry.id);
+      if (removedPrimaryArtifact) {
+        result.invalidatedModelIds.push(entry.id);
+      }
     }
 
     this.startupMigrationResult = result;
@@ -756,6 +822,7 @@ export class OtaModelDownloadService {
         }
 
         confirmedBytes += artifact.sizeBytes;
+        recordInstalledArtifact(entry, item.key, artifact);
       }
 
       if (this.aborted) return;
