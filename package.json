@@ -11,6 +11,8 @@
     "typecheck:root": "node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc --noEmit -p tsconfig.json",
     "test:e2e:local-ai-user-flows": "playwright test -c tests/e2e/playwright.voice-ui.config.ts tests/e2e/ui/local-ai-ui.spec.ts tests/e2e/ui/voice-ui.spec.ts",
     "test:e2e:voice-ui": "playwright test -c tests/e2e/playwright.voice-ui.config.ts",
+    "test:e2e:ios": "playwright test -c tests/e2e/playwright.voice-ui.config.ts --project=webkit",
+    "test:e2e:mobile-chrome": "playwright test -c tests/e2e/playwright.voice-ui.config.ts --project=mobile-chrome",
     "lint": "eslint .",
     "test": "jest",
     "build:android": "eas build --platform android",

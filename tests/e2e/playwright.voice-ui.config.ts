@@ -30,5 +30,17 @@ export default defineConfig({
         viewport: { width: 1440, height: 960 },
       },
     },
+    {
+      name: 'webkit',
+      use: {
+        ...devices['iPhone 15'],
+      },
+    },
+    {
+      name: 'mobile-chrome',
+      use: {
+        ...devices['Pixel 7'],
+      },
+    },
   ],
 });
