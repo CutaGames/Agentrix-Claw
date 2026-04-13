@@ -11,6 +11,7 @@
 
 import { File as ExpoFile, Directory, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
+import { addVoiceDiagnostic } from './voiceDiagnostics';
 
 // ── Model Registry ─────────────────────────────────────
 
@@ -45,7 +46,7 @@ export interface OtaModelArtifact {
   cdnBase?: string;
 }
 
-type OtaModelArtifactKey = 'model' | 'multimodalProjector' | 'audioOutputModel' | 'vocoder';
+export type OtaModelArtifactKey = 'model' | 'multimodalProjector' | 'audioOutputModel' | 'vocoder';
 
 interface ResolvedOtaModelArtifact {
   key: OtaModelArtifactKey;
@@ -80,7 +81,7 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     id: 'gemma-4-2b',
     name: 'Gemma 4 E2B (Q4_K_M)',
     filename: 'gemma-4-E2B-it-Q4_K_M.gguf',
-    packageRevision: '2026-04-12-gemma4-e2b-r1',
+    packageRevision: '2026-04-13-gemma4-e2b-r2',
     sizeBytes: 3_110_000_000,
     sizeLabel: '3.1 GB',
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E2B-it-GGUF/resolve/main',
@@ -100,7 +101,7 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     id: 'gemma-4-4b',
     name: 'Gemma 4 E4B (Q4_K_M)',
     filename: 'gemma-4-E4B-it-Q4_K_M.gguf',
-    packageRevision: '2026-04-12-gemma4-e4b-r1',
+    packageRevision: '2026-04-13-gemma4-e4b-r2',
     sizeBytes: 4_980_000_000,
     sizeLabel: '5.0 GB',
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E4B-it-GGUF/resolve/main',
@@ -182,6 +183,10 @@ export interface DownloadProgress {
   etaSeconds: number;
   /** Error message if state is 'error' */
   error?: string;
+  currentArtifactKey?: OtaModelArtifactKey;
+  currentArtifactFilename?: string;
+  currentArtifactIndex?: number;
+  artifactCount?: number;
 }
 
 export interface DownloadCallbacks {
@@ -190,10 +195,33 @@ export interface DownloadCallbacks {
   onError?: (error: string) => void;
 }
 
+export interface ModelArtifactStatus {
+  key: OtaModelArtifactKey;
+  kind: OtaModelArtifact['kind'];
+  filename: string;
+  sizeBytes: number;
+  sizeLabel: string;
+  downloaded: boolean;
+  required: boolean;
+}
+
+interface OtaE2EMockState {
+  downloadedArtifactKeys: OtaModelArtifactKey[];
+  nextDownloadError: string | null;
+}
+
 // ── Helpers ────────────────────────────────────────────
 
 function supportsNativeModelStorage(): boolean {
   return Platform.OS !== 'web';
+}
+
+function supportsOtaE2EMock(): boolean {
+  const runtime = globalThis as typeof globalThis & {
+    __AGENTRIX_VOICE_UI_E2E_BOOTSTRAPPED__?: boolean;
+  };
+
+  return Platform.OS === 'web' && !!runtime.__AGENTRIX_VOICE_UI_E2E_BOOTSTRAPPED__;
 }
 
 function getModelsDir(): Directory | null {
@@ -351,7 +379,6 @@ function upsertInstallRecord(
   const nextRecord: OtaInstallManifestRecord = {
     packageRevision: getExpectedPackageRevision(entry),
     installedAt: Date.now(),
-    artifacts: {},
     ...manifest[entry.id],
     ...patch,
     artifacts: {
@@ -361,7 +388,6 @@ function upsertInstallRecord(
   };
 
   manifest[entry.id] = nextRecord;
-
   writeInstallManifest(manifest);
   return nextRecord;
 }
@@ -492,6 +518,7 @@ export class OtaModelDownloadService {
   private static downloadStartTime = 0;
   private static aborted = false;
   private static startupMigrationResult: StartupPackageMigrationResult | null = null;
+  private static e2eMockStates: Record<string, OtaE2EMockState> = {};
 
   /**
    * Get the model entry from the registry.
@@ -530,6 +557,65 @@ export class OtaModelDownloadService {
     return formatSize(this.getPackageSizeBytes(modelId));
   }
 
+  static configureE2EMockState(modelId: string, patch: Partial<OtaE2EMockState>): void {
+    const entry = MODEL_REGISTRY[modelId];
+    const mockState = this.getE2EMockState(modelId);
+    if (!entry || !mockState) {
+      return;
+    }
+
+    const validKeys = new Set(resolveArtifacts(entry).map((item) => item.key));
+
+    if (Object.prototype.hasOwnProperty.call(patch, 'downloadedArtifactKeys')) {
+      const nextKeys = patch.downloadedArtifactKeys ?? [];
+      mockState.downloadedArtifactKeys = Array.from(new Set(nextKeys.filter((key): key is OtaModelArtifactKey => validKeys.has(key))));
+    }
+
+    if (Object.prototype.hasOwnProperty.call(patch, 'nextDownloadError')) {
+      mockState.nextDownloadError = patch.nextDownloadError ?? null;
+    }
+  }
+
+  static resetE2EMockState(modelId?: string): void {
+    if (modelId) {
+      delete this.e2eMockStates[modelId];
+      return;
+    }
+
+    this.e2eMockStates = {};
+  }
+
+  static getArtifactStatuses(modelId: string): ModelArtifactStatus[] {
+    const entry = MODEL_REGISTRY[modelId];
+    if (!entry) {
+      return [];
+    }
+
+    const e2eDownloadedArtifactKeys = this.getE2EMockDownloadedArtifactKeys(modelId);
+    if (e2eDownloadedArtifactKeys) {
+      return resolveArtifacts(entry).map((item) => ({
+        key: item.key,
+        kind: item.artifact.kind,
+        filename: item.artifact.filename,
+        sizeBytes: item.artifact.sizeBytes,
+        sizeLabel: item.artifact.sizeLabel,
+        downloaded: e2eDownloadedArtifactKeys.has(item.key),
+        required: true,
+      }));
+    }
+
+    const manifest = readInstallManifest();
+    return resolveArtifacts(entry).map((item) => ({
+      key: item.key,
+      kind: item.artifact.kind,
+      filename: item.artifact.filename,
+      sizeBytes: item.artifact.sizeBytes,
+      sizeLabel: item.artifact.sizeLabel,
+      downloaded: isArtifactDownloaded(entry, item.key, item.artifact, manifest),
+      required: true,
+    }));
+  }
+
   static runStartupPackageMigration(): StartupPackageMigrationResult {
     if (this.startupMigrationResult) {
       return this.startupMigrationResult;
@@ -552,10 +638,9 @@ export class OtaModelDownloadService {
         continue;
       }
 
-      const artifacts = resolveArtifacts(entry);
       let removedPrimaryArtifact = false;
 
-      for (const item of artifacts) {
+      for (const item of resolveArtifacts(entry)) {
         if (!isArtifactFilePresent(item.artifact)) {
           if (manifest[entry.id]?.artifacts[item.key]) {
             clearArtifactInstallRecord(entry.id, item.key);
@@ -583,6 +668,9 @@ export class OtaModelDownloadService {
       }
     }
 
+    if (result.invalidatedModelIds.length > 0 || result.removedArtifacts.length > 0) {
+      addVoiceDiagnostic('local-model-download', 'startup-migration', result);
+    }
     this.startupMigrationResult = result;
     return result;
   }
@@ -594,32 +682,51 @@ export class OtaModelDownloadService {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry) return false;
 
+    const e2eDownloadedArtifactKeys = this.getE2EMockDownloadedArtifactKeys(modelId);
+    if (e2eDownloadedArtifactKeys) {
+      return e2eDownloadedArtifactKeys.has('model');
+    }
     return isArtifactDownloaded(entry, 'model', getPrimaryArtifact(entry));
   }
 
   static isMultimodalProjectorDownloaded(modelId: string): boolean {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry?.multimodalProjector) return false;
+
+    const e2eDownloadedArtifactKeys = this.getE2EMockDownloadedArtifactKeys(modelId);
+    if (e2eDownloadedArtifactKeys) {
+      return e2eDownloadedArtifactKeys.has('multimodalProjector');
+    }
     return isArtifactDownloaded(entry, 'multimodalProjector', entry.multimodalProjector);
   }
 
   static isVocoderDownloaded(modelId: string): boolean {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry?.vocoder) return false;
+
+    const e2eDownloadedArtifactKeys = this.getE2EMockDownloadedArtifactKeys(modelId);
+    if (e2eDownloadedArtifactKeys) {
+      return e2eDownloadedArtifactKeys.has('vocoder');
+    }
     return isArtifactDownloaded(entry, 'vocoder', entry.vocoder);
   }
 
   static isAudioOutputModelDownloaded(modelId: string): boolean {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry?.audioOutputModel) return false;
+
+    const e2eDownloadedArtifactKeys = this.getE2EMockDownloadedArtifactKeys(modelId);
+    if (e2eDownloadedArtifactKeys) {
+      return e2eDownloadedArtifactKeys.has('audioOutputModel');
+    }
     return isArtifactDownloaded(entry, 'audioOutputModel', entry.audioOutputModel);
   }
 
   static hasOnDeviceAudioOutputAssets(modelId: string): boolean {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry?.audioOutputModel || !entry.vocoder) return false;
-    return isArtifactDownloaded(entry, 'audioOutputModel', entry.audioOutputModel)
-      && isArtifactDownloaded(entry, 'vocoder', entry.vocoder);
+    return this.isAudioOutputModelDownloaded(modelId)
+      && this.isVocoderDownloaded(modelId);
   }
 
   static findDownloadedOnDeviceAudioOutputModelId(preferredModelId?: string | null): string | null {
@@ -641,6 +748,10 @@ export class OtaModelDownloadService {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry) return false;
 
+    const e2eDownloadedArtifactKeys = this.getE2EMockDownloadedArtifactKeys(modelId);
+    if (e2eDownloadedArtifactKeys) {
+      return resolveArtifacts(entry).every((item) => e2eDownloadedArtifactKeys.has(item.key));
+    }
     const manifest = readInstallManifest();
     return resolveArtifacts(entry).every((item) => (
       isArtifactDownloaded(entry, item.key, item.artifact, manifest)
@@ -653,21 +764,44 @@ export class OtaModelDownloadService {
   static getLocalPath(modelId: string): string | null {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry) return null;
+
+    const e2eDownloadedArtifactKeys = this.getE2EMockDownloadedArtifactKeys(modelId);
+    if (e2eDownloadedArtifactKeys) {
+      return e2eDownloadedArtifactKeys.has('model') ? `e2e://models/${entry.filename}` : null;
+    }
     return getArtifactPath(entry, 'model', getPrimaryArtifact(entry));
   }
 
   static getMultimodalProjectorPath(modelId: string): string | null {
     const entry = MODEL_REGISTRY[modelId];
+    const e2eDownloadedArtifactKeys = this.getE2EMockDownloadedArtifactKeys(modelId);
+    if (entry && e2eDownloadedArtifactKeys) {
+      return e2eDownloadedArtifactKeys.has('multimodalProjector')
+        ? `e2e://models/${entry.multimodalProjector?.filename || 'mmproj.gguf'}`
+        : null;
+    }
     return entry ? getArtifactPath(entry, 'multimodalProjector', entry.multimodalProjector) : null;
   }
 
   static getVocoderPath(modelId: string): string | null {
     const entry = MODEL_REGISTRY[modelId];
+    const e2eDownloadedArtifactKeys = this.getE2EMockDownloadedArtifactKeys(modelId);
+    if (entry && e2eDownloadedArtifactKeys) {
+      return e2eDownloadedArtifactKeys.has('vocoder')
+        ? `e2e://models/${entry.vocoder?.filename || 'vocoder.gguf'}`
+        : null;
+    }
     return entry ? getArtifactPath(entry, 'vocoder', entry.vocoder) : null;
   }
 
   static getAudioOutputModelPath(modelId: string): string | null {
     const entry = MODEL_REGISTRY[modelId];
+    const e2eDownloadedArtifactKeys = this.getE2EMockDownloadedArtifactKeys(modelId);
+    if (entry && e2eDownloadedArtifactKeys) {
+      return e2eDownloadedArtifactKeys.has('audioOutputModel')
+        ? `e2e://models/${entry.audioOutputModel?.filename || 'speech-model.gguf'}`
+        : null;
+    }
     return entry ? getArtifactPath(entry, 'audioOutputModel', entry.audioOutputModel) : null;
   }
 
@@ -707,20 +841,26 @@ export class OtaModelDownloadService {
     callbacks: DownloadCallbacks = {},
     options: StartDownloadOptions = {},
   ): Promise<void> {
-    if (!supportsNativeModelStorage()) {
-      callbacks.onError?.('On-device model downloads are unavailable on web.');
-      return;
-    }
-
     const entry = MODEL_REGISTRY[modelId];
     if (!entry) {
       callbacks.onError?.(`Unknown model: ${modelId}`);
       return;
     }
 
+    if (supportsOtaE2EMock()) {
+      await this.startE2EMockDownload(modelId, entry, callbacks, options);
+      return;
+    }
+
+    if (!supportsNativeModelStorage()) {
+      callbacks.onError?.('On-device model downloads are unavailable on web.');
+      return;
+    }
+
     this.callbacks = callbacks;
     this.downloadStartTime = Date.now();
     this.aborted = false;
+    this.startupMigrationResult = null;
 
     // Ensure models directory exists
     const modelsDir = getModelsDir();
@@ -748,6 +888,19 @@ export class OtaModelDownloadService {
     );
     const missingBytes = Math.max(totalBytes - alreadyDownloadedBytes, 0);
 
+    addVoiceDiagnostic('local-model-download', 'start', {
+      modelId,
+      forceRedownload: !!options.forceRedownload,
+      artifactCount: artifacts.length,
+      alreadyDownloadedBytes,
+      totalBytes,
+      artifacts: artifacts.map((item) => ({
+        key: item.key,
+        filename: item.artifact.filename,
+        sizeBytes: item.artifact.sizeBytes,
+      })),
+    });
+
     // Check disk space
     const freeSpace = this.getFreeDiskSpace();
     if (freeSpace < missingBytes * 1.1) {
@@ -759,24 +912,44 @@ export class OtaModelDownloadService {
     // If already fully downloaded, skip
     if (alreadyDownloadedBytes >= totalBytes * 0.95 && this.areRequiredArtifactsDownloaded(modelId)) {
       const localPath = this.getLocalPath(modelId);
-      this.emitProgress('complete', 100, totalBytes, totalBytes);
+      this.emitProgress('complete', 100, totalBytes, totalBytes, 0, 0, undefined, {
+        artifactCount: artifacts.length,
+      });
+      addVoiceDiagnostic('local-model-download', 'already-complete', {
+        modelId,
+        totalBytes,
+      });
       callbacks.onComplete?.(localPath || getModelFile(entry.filename)?.uri || '');
       return;
     }
 
-    this.emitProgress('checking', Math.round((alreadyDownloadedBytes / totalBytes) * 100), alreadyDownloadedBytes, totalBytes);
+    this.emitProgress('checking', Math.round((alreadyDownloadedBytes / totalBytes) * 100), alreadyDownloadedBytes, totalBytes, 0, 0, undefined, {
+      artifactCount: artifacts.length,
+    });
 
     try {
       let confirmedBytes = alreadyDownloadedBytes;
-      this.emitProgress('downloading', Math.max(1, Math.round((confirmedBytes / totalBytes) * 100)), confirmedBytes, totalBytes);
+      this.emitProgress('downloading', Math.max(1, Math.round((confirmedBytes / totalBytes) * 100)), confirmedBytes, totalBytes, 0, 0, undefined, {
+        artifactCount: artifacts.length,
+      });
 
-      for (const item of artifacts) {
+      for (let index = 0; index < artifacts.length; index += 1) {
+        const item = artifacts[index];
         const { artifact } = item;
         if (isArtifactDownloaded(entry, item.key, artifact)) {
           continue;
         }
 
         const downloadUrl = `${artifact.cdnBase || entry.cdnBase}/${artifact.filename}`;
+        addVoiceDiagnostic('local-model-download', 'artifact-start', {
+          modelId,
+          key: item.key,
+          filename: artifact.filename,
+          sizeBytes: artifact.sizeBytes,
+          index: index + 1,
+          artifactCount: artifacts.length,
+        });
+
         const progressInterval = setInterval(() => {
           if (this.aborted) {
             clearInterval(progressInterval);
@@ -793,7 +966,12 @@ export class OtaModelDownloadService {
             const remainingBytes = totalBytes - bytesDownloaded;
             const etaSeconds = speedBps > 0 ? Math.ceil(remainingBytes / speedBps) : 0;
 
-            this.emitProgress('downloading', percent, bytesDownloaded, totalBytes, speedBps, etaSeconds);
+            this.emitProgress('downloading', percent, bytesDownloaded, totalBytes, speedBps, etaSeconds, undefined, {
+              currentArtifactKey: item.key,
+              currentArtifactFilename: artifact.filename,
+              currentArtifactIndex: index + 1,
+              artifactCount: artifacts.length,
+            });
           } catch {
             // File may not exist yet during initial download phase
           }
@@ -823,19 +1001,42 @@ export class OtaModelDownloadService {
 
         confirmedBytes += artifact.sizeBytes;
         recordInstalledArtifact(entry, item.key, artifact);
+        addVoiceDiagnostic('local-model-download', 'artifact-complete', {
+          modelId,
+          key: item.key,
+          filename: artifact.filename,
+          sizeBytes: artifact.sizeBytes,
+          confirmedBytes,
+          totalBytes,
+        });
       }
 
       if (this.aborted) return;
 
-      this.emitProgress('verifying', 99, totalBytes, totalBytes);
+      this.emitProgress('verifying', 99, totalBytes, totalBytes, 0, 0, undefined, {
+        artifactCount: artifacts.length,
+      });
       recordInstalledArtifacts(entry);
-      this.emitProgress('complete', 100, totalBytes, totalBytes);
+      this.emitProgress('complete', 100, totalBytes, totalBytes, 0, 0, undefined, {
+        artifactCount: artifacts.length,
+      });
+      addVoiceDiagnostic('local-model-download', 'package-complete', {
+        modelId,
+        totalBytes,
+        artifactCount: artifacts.length,
+      });
       callbacks.onComplete?.(getModelFile(entry.filename)?.uri || '');
 
     } catch (error) {
       if (this.aborted) return;
       const msg = error instanceof Error ? error.message : String(error);
-      this.emitProgress('error', 0, 0, totalBytes, 0, 0, msg);
+      this.emitProgress('error', 0, 0, totalBytes, 0, 0, msg, {
+        artifactCount: artifacts.length,
+      });
+      addVoiceDiagnostic('local-model-download', 'error', {
+        modelId,
+        message: msg,
+      });
       callbacks.onError?.(msg);
     }
   }
@@ -892,6 +1093,11 @@ export class OtaModelDownloadService {
     const entry = MODEL_REGISTRY[modelId];
     if (!entry) return false;
 
+    if (supportsOtaE2EMock()) {
+      this.configureE2EMockState(modelId, { downloadedArtifactKeys: [], nextDownloadError: null });
+      return true;
+    }
+
     try {
       for (const item of resolveArtifacts(entry)) {
         const file = getModelFile(item.artifact.filename);
@@ -943,6 +1149,7 @@ export class OtaModelDownloadService {
     speedBps = 0,
     etaSeconds = 0,
     error?: string,
+    extras: Partial<DownloadProgress> = {},
   ): void {
     this.callbacks.onProgress?.({
       state,
@@ -952,6 +1159,146 @@ export class OtaModelDownloadService {
       speedBps,
       etaSeconds,
       error,
+      ...extras,
+    });
+  }
+
+  private static getE2EMockState(modelId: string): OtaE2EMockState | null {
+    if (!supportsOtaE2EMock()) {
+      return null;
+    }
+
+    if (!this.e2eMockStates[modelId]) {
+      this.e2eMockStates[modelId] = {
+        downloadedArtifactKeys: [],
+        nextDownloadError: null,
+      };
+    }
+
+    return this.e2eMockStates[modelId];
+  }
+
+  private static getE2EMockDownloadedArtifactKeys(modelId: string): Set<OtaModelArtifactKey> | null {
+    const mockState = this.getE2EMockState(modelId);
+    if (!mockState) {
+      return null;
+    }
+
+    return new Set(mockState.downloadedArtifactKeys);
+  }
+
+  private static async startE2EMockDownload(
+    modelId: string,
+    entry: OtaModelEntry,
+    callbacks: DownloadCallbacks,
+    options: StartDownloadOptions,
+  ): Promise<void> {
+    const mockState = this.getE2EMockState(modelId);
+    if (!mockState) {
+      callbacks.onError?.('OTA E2E mock is unavailable.');
+      return;
+    }
+
+    this.callbacks = callbacks;
+    this.downloadStartTime = Date.now();
+    this.aborted = false;
+    this.startupMigrationResult = null;
+
+    if (options.forceRedownload) {
+      mockState.downloadedArtifactKeys = [];
+    }
+
+    const artifacts = resolveArtifacts(entry);
+    const totalBytes = artifacts.reduce((sum, item) => sum + item.artifact.sizeBytes, 0);
+    let downloadedArtifactKeys = new Set(mockState.downloadedArtifactKeys);
+    let confirmedBytes = artifacts.reduce(
+      (sum, item) => sum + (downloadedArtifactKeys.has(item.key) ? item.artifact.sizeBytes : 0),
+      0,
+    );
+
+    const missingArtifacts = artifacts.filter((item) => !downloadedArtifactKeys.has(item.key));
+
+    if (missingArtifacts.length === 0) {
+      this.emitProgress('complete', 100, totalBytes, totalBytes, 0, 0, undefined, {
+        artifactCount: artifacts.length,
+      });
+      callbacks.onComplete?.(`e2e://models/${entry.filename}`);
+      return;
+    }
+
+    this.emitProgress(
+      'checking',
+      Math.round((confirmedBytes / totalBytes) * 100),
+      confirmedBytes,
+      totalBytes,
+      0,
+      0,
+      undefined,
+      { artifactCount: artifacts.length },
+    );
+
+    for (let index = 0; index < missingArtifacts.length; index += 1) {
+      if (this.aborted) {
+        return;
+      }
+
+      const item = missingArtifacts[index];
+      const artifactProgressBytes = Math.max(Math.floor(item.artifact.sizeBytes * 0.65), 1);
+      const previewBytesDownloaded = Math.min(confirmedBytes + artifactProgressBytes, totalBytes);
+      const previewPercent = Math.min(Math.max(Math.round((previewBytesDownloaded / totalBytes) * 100), 1), 99);
+
+      this.emitProgress('downloading', previewPercent, previewBytesDownloaded, totalBytes, item.artifact.sizeBytes * 4, 1, undefined, {
+        currentArtifactKey: item.key,
+        currentArtifactFilename: item.artifact.filename,
+        currentArtifactIndex: index + 1,
+        artifactCount: missingArtifacts.length,
+      });
+      await this.waitForE2EMockTick();
+
+      if (this.aborted) {
+        return;
+      }
+
+      if (mockState.nextDownloadError) {
+        const errorMessage = mockState.nextDownloadError;
+        mockState.nextDownloadError = null;
+        this.emitProgress('error', previewPercent, confirmedBytes, totalBytes, 0, 0, errorMessage, {
+          currentArtifactKey: item.key,
+          currentArtifactFilename: item.artifact.filename,
+          currentArtifactIndex: index + 1,
+          artifactCount: missingArtifacts.length,
+        });
+        callbacks.onError?.(errorMessage);
+        return;
+      }
+
+      downloadedArtifactKeys.add(item.key);
+      mockState.downloadedArtifactKeys = Array.from(downloadedArtifactKeys);
+      confirmedBytes += item.artifact.sizeBytes;
+      const percent = Math.min(Math.round((confirmedBytes / totalBytes) * 100), 99);
+
+      this.emitProgress('downloading', percent, confirmedBytes, totalBytes, item.artifact.sizeBytes * 5, 0, undefined, {
+        currentArtifactKey: item.key,
+        currentArtifactFilename: item.artifact.filename,
+        currentArtifactIndex: index + 1,
+        artifactCount: missingArtifacts.length,
+      });
+      await this.waitForE2EMockTick();
+    }
+
+    this.emitProgress('verifying', 99, totalBytes, totalBytes, 0, 0, undefined, {
+      artifactCount: artifacts.length,
+    });
+    await this.waitForE2EMockTick();
+    this.emitProgress('complete', 100, totalBytes, totalBytes, 0, 0, undefined, {
+      artifactCount: artifacts.length,
+    });
+    callbacks.onComplete?.(`e2e://models/${entry.filename}`);
+  }
+
+  private static waitForE2EMockTick(delayMs = 24): Promise<void> {
+    return new Promise((resolve) => {
+      setTimeout(resolve, delayMs);
     });
   }
 }

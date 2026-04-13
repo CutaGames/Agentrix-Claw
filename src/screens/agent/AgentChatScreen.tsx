@@ -709,6 +709,8 @@ export function AgentChatScreen() {
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
   const localAiStatus = useSettingsStore((s) => s.localAiStatus);
   const localAiModelId = useSettingsStore((s) => s.localAiModelId);
+  const setLocalAiStatus = useSettingsStore((s) => s.setLocalAiStatus);
+  const setLocalAiEnabled = useSettingsStore((s) => s.setLocalAiEnabled);
   const preferOnDeviceVoice = useSettingsStore((s) => s.preferOnDeviceVoice);
   const setPreferOnDeviceVoice = useSettingsStore((s) => s.setPreferOnDeviceVoice);
   const speechRate = useSettingsStore((s) => s.speechRate);
@@ -1645,6 +1647,10 @@ export function AgentChatScreen() {
           }
 
           const localErrorMessage = error?.message || t({ en: 'Local model inference failed.', zh: '本地模型推理失败。' });
+          if (isLocalOnlyModelId(effectiveModelId)) {
+            setLocalAiStatus('error');
+            setLocalAiEnabled(false);
+          }
           addVoiceDiagnostic('agent-chat', 'local-inference-failed', {
             model: effectiveModelId,
             message: localErrorMessage,

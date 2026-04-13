@@ -13,6 +13,7 @@ import { File as ExpoFile } from 'expo-file-system';
 import type { LlamaContext } from 'llama.rn';
 import { AppState, Platform, type AppStateStatus } from 'react-native';
 import { OtaModelDownloadService } from './otaModelDownload.service';
+import { addVoiceDiagnostic } from './voiceDiagnostics';
 import {
   getLocalLlamaModelPathCandidates,
   resolveLocalLlamaContextInitOptions,
@@ -205,8 +206,17 @@ async function getOrLoadContext(modelId: string, profile: ContextProfile = 'text
 
   activeModelId = modelId;
   loadingContextProfile = profile;
+  addVoiceDiagnostic('local-model-runtime', 'context-init-start', {
+    modelId,
+    profile,
+  });
   loadingPromise = initializeContext(modelPath, profile).catch((err) => {
     lastContextInitError = formatUnknownError(err) || 'unknown runtime error';
+    addVoiceDiagnostic('local-model-runtime', 'context-init-failed', {
+      modelId,
+      profile,
+      message: lastContextInitError,
+    });
     activeModelId = null;
     loadingPromise = null;
     loadingContextProfile = null;
@@ -221,6 +231,10 @@ async function getOrLoadContext(modelId: string, profile: ContextProfile = 'text
   activeMultimodalInitialized = false;
   activeRuntimeCapabilities = null;
   lastContextInitError = null;
+  addVoiceDiagnostic('local-model-runtime', 'context-init-ready', {
+    modelId,
+    profile,
+  });
   return ctx;
 }
 

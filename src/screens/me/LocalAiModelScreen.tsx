@@ -12,13 +12,13 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { LocalAiStatus } from '../../stores/settingsStore';
-import {
-  MobileLocalInferenceService,
-  type MobileLocalRuntimeCapabilities,
-} from '../../services/mobileLocalInference.service';
 import { isLiveSpeechRecognitionAvailable } from '../../services/liveSpeech.service';
 import { OtaModelDownloadService, type DownloadProgress } from '../../services/otaModelDownload.service';
 import { RealtimeMicrophoneService } from '../../services/realtimeMicrophone.service';
+
+interface DownloadRequestOptions {
+  repair?: boolean;
+}
 
 interface LocalModelInfo {
   id: string;
@@ -27,10 +27,6 @@ interface LocalModelInfo {
   descriptionZh: string;
   tier: string;
   recommended?: boolean;
-}
-
-interface DownloadRequestOptions {
-  repair?: boolean;
 }
 
 const AVAILABLE_MODELS: LocalModelInfo[] = [
@@ -78,7 +74,6 @@ function statusLabel(status: LocalAiStatus, t: ReturnType<typeof useI18n>['t']):
 
 export function LocalAiModelScreen() {
   const { t } = useI18n();
-  const localAiEnabled = useSettingsStore((s) => s.localAiEnabled);
   const localAiStatus = useSettingsStore((s) => s.localAiStatus);
   const localAiProgress = useSettingsStore((s) => s.localAiProgress);
   const localAiModelId = useSettingsStore((s) => s.localAiModelId);
@@ -87,73 +82,59 @@ export function LocalAiModelScreen() {
   const setLocalAiModelId = useSettingsStore((s) => s.setLocalAiModelId);
   const setLocalAiProgress = useSettingsStore((s) => s.setLocalAiProgress);
   const setSelectedModel = useSettingsStore((s) => s.setSelectedModel);
-  const [bridgeAvailable, setBridgeAvailable] = useState<boolean | null>(null);
-  const [runtimeCapabilities, setRuntimeCapabilities] = useState<MobileLocalRuntimeCapabilities | null>(null);
   const [liveVoiceInputAvailable, setLiveVoiceInputAvailable] = useState(false);
   const [downloadSpeed, setDownloadSpeed] = useState('');
   const [downloadEta, setDownloadEta] = useState('');
+  const [downloadArtifactKey, setDownloadArtifactKey] = useState<DownloadProgress['currentArtifactKey']>();
+  const [downloadArtifactFilename, setDownloadArtifactFilename] = useState('');
+  const [downloadArtifactIndex, setDownloadArtifactIndex] = useState(0);
+  const [downloadArtifactCount, setDownloadArtifactCount] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
+    const downloaded = OtaModelDownloadService.isModelDownloaded(localAiModelId);
+    const artifactStatuses = OtaModelDownloadService.getArtifactStatuses(localAiModelId);
+    const downloadedBytes = artifactStatuses.reduce((sum, item) => sum + (item.downloaded ? item.sizeBytes : 0), 0);
+    const totalBytes = artifactStatuses.reduce((sum, item) => sum + item.sizeBytes, 0);
+    const packagePercent = totalBytes > 0 ? Math.round((downloadedBytes / totalBytes) * 100) : 0;
 
-    void (async () => {
-      const downloaded = OtaModelDownloadService.isModelDownloaded(localAiModelId);
-      const available = downloaded
-        ? await MobileLocalInferenceService.isAvailable(localAiModelId).catch(() => false)
-        : false;
-
-      if (!cancelled) {
-        setBridgeAvailable(available);
-      }
-
-      void MobileLocalInferenceService.getCapabilities({ model: localAiModelId })
-        .then((capabilities) => {
-          if (!cancelled) {
-            setRuntimeCapabilities(capabilities);
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setRuntimeCapabilities(MobileLocalInferenceService.getDeclaredCapabilities({ model: localAiModelId }));
-          }
-        });
-
-      if (cancelled || localAiStatus === 'downloading') {
-        return;
-      }
-
+    if (localAiStatus !== 'downloading') {
       if (!downloaded) {
         if (localAiStatus !== 'not_downloaded') {
           setLocalAiStatus('not_downloaded');
         }
         setLocalAiEnabled(false);
-        return;
-      }
-
-      if (available) {
+        setLocalAiProgress(0);
+      } else if (localAiStatus === 'error') {
+        setLocalAiEnabled(false);
+        setLocalAiProgress(packagePercent);
+      } else {
         if (localAiStatus !== 'ready') {
           setLocalAiStatus('ready');
         }
         setLocalAiEnabled(true);
-        setLocalAiProgress(100);
-        return;
+        setLocalAiProgress(packagePercent);
       }
-
-      if (localAiStatus !== 'error') {
-        setLocalAiStatus('error');
-      }
-      setLocalAiEnabled(false);
-      setLocalAiProgress(100);
-    })();
+    }
 
     setLiveVoiceInputAvailable(
       RealtimeMicrophoneService.isAvailable() || isLiveSpeechRecognitionAvailable(),
     );
-
-    return () => {
-      cancelled = true;
-    };
   }, [localAiModelId, localAiStatus, setLocalAiEnabled, setLocalAiProgress, setLocalAiStatus]);
+
+  const getArtifactLabel = useCallback((key?: DownloadProgress['currentArtifactKey']) => {
+    switch (key) {
+      case 'model':
+        return t({ en: 'Base model', zh: '基础模型' });
+      case 'multimodalProjector':
+        return t({ en: 'Multimodal projector', zh: '多模态投影器' });
+      case 'audioOutputModel':
+        return t({ en: 'Speech model', zh: '语音模型' });
+      case 'vocoder':
+        return t({ en: 'Vocoder', zh: '声码器' });
+      default:
+        return '';
+    }
+  }, [t]);
 
   const formatSpeed = (bps: number): string => {
     if (bps > 1_000_000) return `${(bps / 1_000_000).toFixed(1)} MB/s`;
@@ -182,10 +163,18 @@ export function LocalAiModelScreen() {
     setLocalAiProgress(0);
     setDownloadSpeed('');
     setDownloadEta('');
+    setDownloadArtifactKey(undefined);
+    setDownloadArtifactFilename('');
+    setDownloadArtifactIndex(0);
+    setDownloadArtifactCount(0);
 
     void OtaModelDownloadService.startDownload(modelId, {
       onProgress: (progress: DownloadProgress) => {
         setLocalAiProgress(progress.percent);
+        setDownloadArtifactKey(progress.currentArtifactKey);
+        setDownloadArtifactFilename(progress.currentArtifactFilename || '');
+        setDownloadArtifactIndex(progress.currentArtifactIndex || 0);
+        setDownloadArtifactCount(progress.artifactCount || 0);
         if (progress.speedBps > 0) {
           setDownloadSpeed(formatSpeed(progress.speedBps));
         }
@@ -197,50 +186,42 @@ export function LocalAiModelScreen() {
         }
       },
       onComplete: () => {
-        const declaredCapabilities = OtaModelDownloadService.getDeclaredCapabilities(modelId);
         setLocalAiProgress(100);
         setDownloadSpeed('');
         setDownloadEta('');
-        void MobileLocalInferenceService.isAvailable(modelId)
-          .then((available) => {
-            setBridgeAvailable(available);
-
-            if (available) {
-              setLocalAiStatus('ready');
-              setLocalAiEnabled(true);
-              setSelectedModel(modelId);
-              Alert.alert(
-                repairRequested
-                  ? t({ en: 'Repair Complete', zh: '修复完成' })
-                  : t({ en: 'Download Complete', zh: '下载完成' }),
-                declaredCapabilities.audioInput && declaredCapabilities.onDeviceAudioOutput
-                  ? t({ en: 'Local AI package is ready. Text, images, wav/mp3 audio turns, and on-device speech output can now stay on-device when this runtime path is selected.', zh: '本地 AI 完整包已就绪。选择这条端侧路径后，文本、图片、wav/mp3 音频轮次，以及端侧语音输出都可以留在本机。' })
-                  : declaredCapabilities.audioInput
-                    ? t({ en: 'Local AI package is ready. Text, images, and supported wav/mp3 audio turns can stay on-device once this runtime exposes the audio path.', zh: '本地 AI 完整包已就绪。待当前运行时暴露音频链路后，文本、图片和受支持的 wav/mp3 音频轮次都可留在端侧。' })
-                    : t({ en: 'Local AI package is ready. Text and supported image turns can stay on-device; on-device speech output only appears after you install a speech-capable local package.', zh: '本地 AI 完整包已就绪。文本和受支持的图片轮次可留在端侧；端侧语音输出则需要额外安装带语音包的本地模型。' }),
-              );
-              return;
-            }
-
-            setLocalAiStatus('error');
-            setLocalAiEnabled(false);
-            Alert.alert(
-              t({ en: 'Runtime Self-Check Failed', zh: '运行时自检失败' }),
-              repairRequested
-                ? t({ en: 'The local package has been refreshed, but this device still could not initialize the on-device text runtime. The package path is now clean; the remaining blocker is the runtime/model compatibility on this device.', zh: '本地模型包已经重新刷新，但这台设备依然无法初始化端侧文本运行时。现在包路径已经清理干净，剩余阻塞点是当前设备上的运行时/模型兼容性。' })
-                : t({ en: 'The package finished downloading, but this device could not initialize the on-device text runtime. Local chat stays blocked until the package/runtime issue is fixed. Retry the local package, or switch models manually.', zh: '模型包已经下载完成，但这台设备未能初始化端侧文本运行时。在修复模型包或运行时之前，本地聊天会保持拦截。请重试本地模型包，或手动切换模型。' }),
-            );
-          })
-          .catch(() => {
-            setLocalAiStatus('error');
-            setLocalAiEnabled(false);
-          });
+        setDownloadArtifactKey(undefined);
+        setDownloadArtifactFilename('');
+        setDownloadArtifactIndex(0);
+        setDownloadArtifactCount(0);
+        setLocalAiStatus('ready');
+        setLocalAiEnabled(true);
+        setSelectedModel(modelId);
+        Alert.alert(
+          repairRequested
+            ? t({ en: 'Repair Complete', zh: '修复完成' })
+            : t({ en: 'Download Complete', zh: '下载完成' }),
+          t({
+            en: 'The model files are fully on disk now. Agentrix will initialize the native runtime lazily on the first real local turn instead of forcing a self-check immediately after download.',
+            zh: '模型文件现在已经完整落盘。Agentrix 不会再在下载结束后立刻强制自检，而会在第一次真正的本地轮次发生时再初始化原生运行时。',
+          }),
+        );
       },
       onError: (error: string) => {
-        setLocalAiStatus('error');
-        setLocalAiProgress(0);
+        const modelDownloaded = OtaModelDownloadService.isModelDownloaded(modelId);
+        const artifactStatuses = OtaModelDownloadService.getArtifactStatuses(modelId);
+        const downloadedBytes = artifactStatuses.reduce((sum, item) => sum + (item.downloaded ? item.sizeBytes : 0), 0);
+        const totalBytes = artifactStatuses.reduce((sum, item) => sum + item.sizeBytes, 0);
+        const packagePercent = totalBytes > 0 ? Math.round((downloadedBytes / totalBytes) * 100) : 0;
+
+        setLocalAiStatus(modelDownloaded ? 'ready' : 'error');
+        setLocalAiEnabled(modelDownloaded);
+        setLocalAiProgress(modelDownloaded ? packagePercent : 0);
         setDownloadSpeed('');
         setDownloadEta('');
+        setDownloadArtifactKey(undefined);
+        setDownloadArtifactFilename('');
+        setDownloadArtifactIndex(0);
+        setDownloadArtifactCount(0);
         Alert.alert(
           repairRequested
             ? t({ en: 'Repair Download Failed', zh: '修复下载失败' })
@@ -267,6 +248,10 @@ export function LocalAiModelScreen() {
             setLocalAiStatus('not_downloaded');
             setLocalAiProgress(0);
             setLocalAiEnabled(false);
+            setDownloadArtifactKey(undefined);
+            setDownloadArtifactFilename('');
+            setDownloadArtifactIndex(0);
+            setDownloadArtifactCount(0);
           },
         },
       ],
@@ -274,12 +259,12 @@ export function LocalAiModelScreen() {
   }, [localAiModelId, setLocalAiEnabled, setLocalAiProgress, setLocalAiStatus, t]);
 
   const currentModel = AVAILABLE_MODELS.find((m) => m.id === localAiModelId) ?? AVAILABLE_MODELS[0];
+  const currentArtifactStatuses = OtaModelDownloadService.getArtifactStatuses(localAiModelId);
   const currentPackageReady = OtaModelDownloadService.areRequiredArtifactsDownloaded(localAiModelId);
   const currentModelDownloaded = OtaModelDownloadService.isModelDownloaded(localAiModelId);
   const currentModelEntry = OtaModelDownloadService.getModelEntry(localAiModelId);
   const currentDeclaredCapabilities = OtaModelDownloadService.getDeclaredCapabilities(localAiModelId);
   const currentPackageSize = OtaModelDownloadService.getPackageSizeLabel(localAiModelId);
-  const bridgeUnavailable = bridgeAvailable === false;
   const missingAddOnBytes = [
     !OtaModelDownloadService.isMultimodalProjectorDownloaded(localAiModelId)
       ? currentModelEntry?.multimodalProjector?.sizeBytes || 0
@@ -310,12 +295,13 @@ export function LocalAiModelScreen() {
       ? '端侧语音输出'
       : null,
   ].filter(Boolean).join('、');
-  const canUpgradeCurrentPackage = localAiStatus === 'ready' && !currentPackageReady && missingAddOnBytes > 0;
-  const runtimeUnavailableWithDownloadedModel = currentModelDownloaded && bridgeUnavailable;
+  const canUpgradeCurrentPackage = currentModelDownloaded && !currentPackageReady && missingAddOnBytes > 0 && localAiStatus !== 'downloading';
+  const runtimeUnavailableWithDownloadedModel = currentModelDownloaded && localAiStatus === 'error';
   const canRepairCurrentPackage = localAiStatus === 'error' && currentModelDownloaded;
+  const currentArtifactLabel = getArtifactLabel(downloadArtifactKey);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView testID="local-ai-model-screen" style={styles.container} contentContainerStyle={styles.content}>
       {/* Tri-tier explanation */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>{t({ en: 'Tri-Tier AI Architecture', zh: '三级混合 AI 架构' })}</Text>
@@ -347,12 +333,12 @@ export function LocalAiModelScreen() {
       </View>
 
       {/* Status card */}
-      <View style={styles.card}>
-        <View style={styles.statusRow}>
+      <View style={styles.card} testID="local-ai-status-card">
+        <View style={styles.statusRow} testID="local-ai-status-row">
           <View style={[styles.statusDot, { backgroundColor: statusColor(localAiStatus) }]} />
-          <Text style={styles.statusText}>{statusLabel(localAiStatus, t)}</Text>
+          <Text testID="local-ai-status-label" style={styles.statusText}>{statusLabel(localAiStatus, t)}</Text>
           {localAiStatus === 'downloading' && (
-            <Text style={styles.progressText}>{localAiProgress}%</Text>
+            <Text testID="local-ai-progress-text" style={styles.progressText}>{localAiProgress}%</Text>
           )}
         </View>
 
@@ -369,29 +355,54 @@ export function LocalAiModelScreen() {
           </View>
         )}
 
+        {localAiStatus === 'downloading' && currentArtifactLabel ? (
+          <Text testID="local-ai-current-artifact" style={styles.downloadArtifactText}>
+            {t({ en: 'Current file', zh: '当前文件' })}: {currentArtifactLabel}
+            {downloadArtifactCount > 0 ? ` (${downloadArtifactIndex}/${downloadArtifactCount})` : ''}
+            {downloadArtifactFilename ? ` · ${downloadArtifactFilename}` : ''}
+          </Text>
+        ) : null}
+
+        <View style={styles.artifactList}>
+          {currentArtifactStatuses.map((artifact) => {
+            const isCurrentArtifact = localAiStatus === 'downloading' && artifact.key === downloadArtifactKey;
+            const artifactLabel = getArtifactLabel(artifact.key);
+            const statusText = artifact.downloaded
+              ? t({ en: '已完成', zh: '已完成' })
+              : isCurrentArtifact
+                ? t({ en: '下载中', zh: '下载中' })
+                : t({ en: '待下载', zh: '待下载' });
+
+            return (
+              <View key={artifact.key} style={styles.artifactRow} testID={`local-ai-artifact-${artifact.key}`}>
+                <Text style={styles.artifactLabel}>
+                  {artifact.downloaded ? '✅' : isCurrentArtifact ? '⬇️' : '⏳'} {artifactLabel}
+                </Text>
+                <Text style={styles.artifactMeta}>{artifact.sizeLabel} · {statusText}</Text>
+              </View>
+            );
+          })}
+        </View>
+
         {localAiStatus === 'downloading' && (
           <Text style={styles.downloadHintText}>
             {t({
-              en: 'Downloads currently need to finish in one pass. If the app or network is interrupted, restart the download from this screen.',
-              zh: '当前下载暂不支持断点续传。如果应用或网络中断，请回到此页重新开始下载。',
+              en: 'Agentrix still downloads the package as one queue, but the status above now shows which file is being fetched. Gemma needs both the base GGUF and the projector file for local image turns.',
+              zh: '当前仍按一个下载队列顺序拉取，但上面会明确显示正在下哪个文件。Gemma 要本地处理图片，必须同时具备基础 GGUF 和投影器文件。',
             })}
           </Text>
         )}
 
         {localAiStatus === 'ready' && (
-          <View style={styles.readyInfo}>
-            <Text style={styles.readyModel}>{currentModel.name}</Text>
+          <View style={styles.readyInfo} testID="local-ai-ready-info">
+            <Text testID="local-ai-ready-model" style={styles.readyModel}>{currentModel.name}</Text>
             <Text style={styles.readyDesc}>
               {t({
                 en: currentPackageReady
-                  ? (runtimeCapabilities?.supportsAudioOutput
-                    ? 'On-device package is active. Text stays local, image turns stay local when runtime vision is enabled, and speech playback now runs through the installed on-device vocoder stack.'
-                    : 'On-device package is active. Text stays local, image turns stay local when runtime vision is enabled, and speech playback falls back to the device speech path until a speech-capable pack is installed.')
+                  ? 'The required local files are on disk. Agentrix now initializes the native runtime lazily on the first real local turn, instead of forcing it at download time.'
                   : `Base text is active, but add-ons are still missing. Agentrix blocks ${missingSurfaceLabelsEn || 'the unfinished local surfaces'} until you finish the remaining package instead of silently switching them back to the cloud.`,
                 zh: currentPackageReady
-                  ? (runtimeCapabilities?.supportsAudioOutput
-                    ? '端侧完整包已激活。文本可本地处理，图片轮次会在运行时视觉能力开启后留在端侧；语音播报现在会走已安装的端侧 vocoder 链路。'
-                    : '端侧完整包已激活。文本可本地处理，图片轮次会在运行时视觉能力开启后留在端侧；语音播报在安装语音包前仍会回退到设备语音。')
+                  ? '所需本地文件已经全部落盘。Agentrix 现在会把原生运行时初始化延后到第一次真实的本地轮次，而不是在下载结束瞬间强拉。'
                   : `基础文本能力已激活，但剩余附件还没补齐。${missingSurfaceLabelsZh || '未完成的本地能力面'} 会继续被直接拦截，Agentrix 不会再偷偷切回云端。`,
               })}
             </Text>
@@ -399,46 +410,33 @@ export function LocalAiModelScreen() {
           </View>
         )}
 
-        {bridgeUnavailable && (
-          <Text style={styles.warningText}>
-            {t({
-              en: localAiStatus === 'ready'
-                ? 'The local package is on disk, but this device is not exposing the native inference bridge yet. Local chat turns will be blocked instead of silently falling back to the cloud.'
-                : 'Native inference bridge is not available on this device yet. You can still download the package now, but local chat will stay blocked until the bridge is exposed.',
-              zh: localAiStatus === 'ready'
-                ? '模型包已经下载到本机，但这台设备暂时还没有暴露原生推理桥。本地聊天轮次会被直接拦截，不会再偷偷回退到云端。'
-                : '当前设备暂时还没有暴露原生推理桥。你仍可先下载模型包，但在桥接可用前，本地聊天会保持拦截状态。',
-            })}
-          </Text>
-        )}
-
         {localAiStatus === 'error' && runtimeUnavailableWithDownloadedModel && (
-          <Text style={styles.warningText}>
+          <Text testID="local-ai-runtime-blocked-message" style={styles.warningText}>
             {t({
-              en: 'The package is on disk, but the device failed the on-device text runtime self-check. Use repair to wipe the old on-device package, fetch the fresh package revision, and re-run the runtime probe.',
-              zh: '模型包虽然已经在本机，但端侧文本运行时自检失败。请使用“修复并重下”先清掉旧包、拉取新的包版本，再重新执行运行时探测。',
+              en: 'The files are on disk, but a real local turn already failed to initialize the runtime on this device. Use repair to re-fetch the package, and keep the latest diagnostics for the next failure if it still happens.',
+              zh: '文件虽然已经落盘，但这台设备在真实本地轮次里仍然初始化运行时失败。请先用“修复并重下”重新拉包；如果仍失败，保留最新诊断日志继续定位。',
             })}
           </Text>
         )}
       </View>
 
       {canRepairCurrentPackage && (
-        <View style={styles.upgradeCard}>
+        <View style={styles.upgradeCard} testID="local-ai-repair-card">
           <Text style={styles.upgradeTitle}>{t({ en: 'Repair the on-device package', zh: '修复端侧模型包' })}</Text>
           <Text style={styles.upgradeDesc}>
             {t({
-              en: 'This device still has an old or broken on-device package. Repair will delete the current local Gemma files, download the fresh package revision into the app document models folder, and then run the runtime self-check again.',
-              zh: '当前设备里还留着旧的或损坏的端侧模型包。执行修复会先删除本地 Gemma 文件，再把新的包版本重新下载到应用 document/models 目录，并重新跑一次运行时自检。',
+              en: 'Repair deletes the current local files, downloads the latest package revision again, and keeps the next runtime failure easier to diagnose.',
+              zh: '修复会先删除当前本地文件，再重新下载最新包版本，并让下一次运行时失败更容易定位。',
             })}
           </Text>
-          <TouchableOpacity style={styles.upgradePrimaryBtn} onPress={() => handleDownload(localAiModelId, { repair: true })}>
+          <TouchableOpacity testID="local-ai-repair-button" style={styles.upgradePrimaryBtn} onPress={() => handleDownload(localAiModelId, { repair: true })}>
             <Text style={styles.upgradePrimaryBtnText}>{t({ en: `Repair and Re-download (${currentPackageSize})`, zh: `修复并重下（${currentPackageSize}）` })}</Text>
           </TouchableOpacity>
         </View>
       )}
 
       {canUpgradeCurrentPackage && (
-        <View style={styles.upgradeCard}>
+        <View style={styles.upgradeCard} testID="local-ai-upgrade-card">
           <Text style={styles.upgradeTitle}>{t({ en: 'Finish the remaining local add-ons', zh: '补齐剩余本地附件' })}</Text>
           <Text style={styles.upgradeDesc}>
             {t({
@@ -446,7 +444,7 @@ export function LocalAiModelScreen() {
               zh: `${currentModel.name} 还差 ${missingAddOnSizeLabel} 的附件未下载。补齐后才能解锁 ${missingSurfaceLabelsZh}。在此之前，Agentrix 会继续直接拦截这些本地能力面，不会再偷偷切到云端或 Expo 语音。`,
             })}
           </Text>
-          <TouchableOpacity style={styles.upgradePrimaryBtn} onPress={() => handleDownload(localAiModelId)}>
+          <TouchableOpacity testID="local-ai-upgrade-addons-button" style={styles.upgradePrimaryBtn} onPress={() => handleDownload(localAiModelId)}>
             <Text style={styles.upgradePrimaryBtnText}>{t({ en: `Download remaining add-ons (${missingAddOnSizeLabel})`, zh: `下载剩余附件（${missingAddOnSizeLabel}）` })}</Text>
           </TouchableOpacity>
         </View>
@@ -457,23 +455,23 @@ export function LocalAiModelScreen() {
         <View style={styles.routeRow}>
           <Text style={styles.routeLabel}>{t({ en: 'Image input', zh: '图片输入' })}</Text>
           <Text style={styles.routeValue}>
-            {runtimeCapabilities?.supportsVisionInput
-              ? t({ en: '📷 Local ready', zh: '📷 端侧可用' })
-              : currentModelEntry?.multimodalProjector
-                ? (currentPackageReady
-                  ? t({ en: '⛔ Runtime still not exposing vision; image turns stay blocked', zh: '⛔ 运行时仍未暴露视觉能力；图片轮次保持拦截' })
+            {currentModelEntry?.multimodalProjector
+              ? (currentPackageReady && localAiStatus !== 'error'
+                ? t({ en: '📷 Files ready; first local image turn will initialize vision lazily', zh: '📷 文件已齐；第一次本地图片轮次时再懒加载视觉能力' })
+                : currentPackageReady
+                  ? t({ en: '⛔ Files are present, but the runtime already failed on this device', zh: '⛔ 文件虽在，但该设备上的运行时已经失败过' })
                   : t({ en: '⬇️ Download projector add-on to unlock local image turns', zh: '⬇️ 需下载投影器附件后才能本地处理图片' }))
-                : t({ en: '—', zh: '—' })}
+              : t({ en: '—', zh: '—' })}
           </Text>
         </View>
         <View style={styles.routeRow}>
           <Text style={styles.routeLabel}>{t({ en: 'Audio file input', zh: '音频文件输入' })}</Text>
           <Text style={styles.routeValue}>
-            {runtimeCapabilities?.supportsAudioInput
-              ? t({ en: '🎙️ Local ready (wav/mp3)', zh: '🎙️ 端侧可用（wav/mp3）' })
-              : currentDeclaredCapabilities.audioInput
+            {currentDeclaredCapabilities.audioInput
                 ? (currentPackageReady
-                  ? t({ en: '⛔ Full package is present, but this runtime still is not exposing local audio input', zh: '⛔ 完整包已在本机，但当前运行时仍未暴露本地音频输入' })
+                  ? (localAiStatus === 'error'
+                    ? t({ en: '⛔ Files are present, but this device failed runtime initialization already', zh: '⛔ 文件已在本机，但该设备上的运行时已经初始化失败' })
+                    : t({ en: '🎙️ Files ready; direct audio turns depend on runtime support on first use', zh: '🎙️ 文件已齐；首次使用时是否直连音频仍取决于运行时支持' }))
                   : t({ en: '⬇️ Download the full projector bundle to unlock local wav/mp3 audio turns', zh: '⬇️ 需补齐完整投影器包后才能解锁本地 wav/mp3 音频轮次' }))
                 : t({ en: '⛔ This model family stays text/image-only on-device', zh: '⛔ 该模型族在端侧仅支持文本/图片，不支持本地音频输入' })}
           </Text>
@@ -483,10 +481,10 @@ export function LocalAiModelScreen() {
           <Text style={styles.routeValue}>
             {liveVoiceInputAvailable
               ? t({
-                en: localAiStatus === 'ready' && !bridgeUnavailable
+                en: localAiStatus === 'ready'
                   ? `🎤 On-device speech recognition ready -> transcripts can feed ${currentModel.name} local text turns`
                   : '🎤 On-device speech recognition is available; once the local text runtime is ready, hold-to-talk can stay on-device as text',
-                zh: localAiStatus === 'ready' && !bridgeUnavailable
+                zh: localAiStatus === 'ready'
                   ? `🎤 端侧实时语音识别可用 -> 转写结果可直接交给 ${currentModel.name} 的本地文本轮次`
                   : '🎤 端侧实时语音识别已可用；待本地文本运行时就绪后，按住说话即可先本地转写再走端侧文本轮次',
               })
@@ -496,9 +494,7 @@ export function LocalAiModelScreen() {
         <View style={styles.routeRow}>
           <Text style={styles.routeLabel}>{t({ en: 'Audio output surface', zh: '音频输出面' })}</Text>
           <Text style={styles.routeValue}>
-            {runtimeCapabilities?.supportsAudioOutput
-              ? t({ en: '🔊 On-device speech output ready', zh: '🔊 端侧语音输出可用' })
-              : currentDeclaredCapabilities.onDeviceAudioOutput
+            {currentDeclaredCapabilities.onDeviceAudioOutput
                 ? t({ en: '⬇️ Download the speech-output add-ons to unlock the local vocoder path', zh: '⬇️ 需下载语音输出附件后才能解锁本地 vocoder 链路' })
                 : t({ en: '🗣️ Device speech fallback for now', zh: '🗣️ 当前先走设备语音回退' })}
           </Text>
@@ -518,7 +514,7 @@ export function LocalAiModelScreen() {
         const canUpgradePackage = modelDownloaded && !packageReady;
 
         return (
-          <View key={model.id} style={[styles.modelCard, localAiModelId === model.id && styles.modelCardSelected]}>
+          <View key={model.id} style={[styles.modelCard, localAiModelId === model.id && styles.modelCardSelected]} testID={`local-ai-model-card-${model.id}`}>
             <View style={styles.modelHeader}>
               <Text style={styles.modelName}>{model.name}</Text>
               {model.recommended && (
@@ -541,41 +537,45 @@ export function LocalAiModelScreen() {
 
             {localAiModelId === model.id && localAiStatus === 'ready' && !canUpgradePackage ? (
               <View style={styles.modelActions}>
-                <TouchableOpacity style={styles.activeBtn} disabled>
+                <TouchableOpacity testID={`local-ai-active-button-${model.id}`} style={styles.activeBtn} disabled>
                   <Text style={styles.activeBtnText}>✅ {t({ en: 'Active', zh: '已激活' })}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
+                <TouchableOpacity testID={`local-ai-delete-button-${model.id}`} style={styles.deleteBtn} onPress={handleDelete}>
                   <Text style={styles.deleteBtnText}>{t({ en: 'Delete', zh: '删除' })}</Text>
                 </TouchableOpacity>
               </View>
             ) : localAiModelId === model.id && localAiStatus === 'ready' && canUpgradePackage ? (
               <View style={styles.modelActions}>
-                <TouchableOpacity style={styles.activeBtn} disabled>
+                <TouchableOpacity testID={`local-ai-partial-ready-button-${model.id}`} style={styles.activeBtn} disabled>
                   <Text style={styles.activeBtnText}>{t({ en: 'Text Ready', zh: '文本已就绪' })}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.downloadBtnCompact} onPress={() => handleDownload(model.id)}>
+                <TouchableOpacity testID={`local-ai-download-button-${model.id}`} style={styles.downloadBtnCompact} onPress={() => handleDownload(model.id)}>
                   <Text style={styles.downloadBtnText}>{t({ en: 'Upgrade to Full Package', zh: '升级到完整包' })}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
+                <TouchableOpacity testID={`local-ai-delete-button-${model.id}`} style={styles.deleteBtn} onPress={handleDelete}>
                   <Text style={styles.deleteBtnText}>{t({ en: 'Delete', zh: '删除' })}</Text>
                 </TouchableOpacity>
               </View>
             ) : localAiModelId === model.id && localAiStatus === 'error' ? (
               <View style={styles.modelActions}>
-                <TouchableOpacity style={styles.downloadBtnCompact} onPress={() => handleDownload(model.id, { repair: true })}>
+                <TouchableOpacity testID={`local-ai-download-button-${model.id}`} style={styles.downloadBtnCompact} onPress={() => handleDownload(model.id, { repair: true })}>
                   <Text style={styles.downloadBtnText}>{t({ en: 'Repair and Re-download', zh: '修复并重下' })}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
+                <TouchableOpacity testID={`local-ai-delete-button-${model.id}`} style={styles.deleteBtn} onPress={handleDelete}>
                   <Text style={styles.deleteBtnText}>{t({ en: 'Delete', zh: '删除' })}</Text>
                 </TouchableOpacity>
               </View>
             ) : localAiModelId === model.id && localAiStatus === 'downloading' ? (
-              <View style={styles.modelActions}>
+              <View style={styles.modelActions} testID={`local-ai-downloading-${model.id}`}>
                 <ActivityIndicator size="small" color="#3B82F6" />
-                <Text style={styles.downloadingText}>{t({ en: 'Downloading...', zh: '下载中...' })} {localAiProgress}%</Text>
+                <Text style={styles.downloadingText}>
+                  {t({ en: 'Downloading...', zh: '下载中...' })} {localAiProgress}%
+                  {downloadArtifactKey ? ` · ${getArtifactLabel(downloadArtifactKey)}` : ''}
+                </Text>
               </View>
             ) : (
               <TouchableOpacity
+                testID={`local-ai-download-button-${model.id}`}
                 style={styles.downloadBtn}
                 onPress={() => handleDownload(model.id)}
                 disabled={localAiStatus === 'downloading'}
@@ -597,15 +597,17 @@ export function LocalAiModelScreen() {
         <View style={styles.routeRow}>
           <Text style={styles.routeLabel}>{t({ en: 'Short text turns', zh: '简短文本轮次' })}</Text>
           <Text style={styles.routeValue}>
-            {localAiStatus === 'ready' && !bridgeUnavailable
+            {localAiStatus === 'ready'
               ? t({ en: `📱 ${currentModel.name} (when you select it in chat)`, zh: `📱 ${currentModel.name}（需在聊天中手动选中）` })
-              : t({ en: `☁️ Use a cloud model until the local runtime is ready`, zh: '☁️ 本地运行时就绪前请继续使用云端模型' })}
+              : localAiStatus === 'error'
+                ? t({ en: '⛔ Blocked until runtime/package issues are fixed', zh: '⛔ 需先修复运行时/模型包问题' })
+                : t({ en: `☁️ Use a cloud model until the local package is ready`, zh: '☁️ 本地包就绪前请继续使用云端模型' })}
           </Text>
         </View>
         <View style={styles.routeRow}>
           <Text style={styles.routeLabel}>{t({ en: 'Image turns', zh: '图片轮次' })}</Text>
           <Text style={styles.routeValue}>
-            {runtimeCapabilities?.supportsVisionInput
+            {currentPackageReady && localAiStatus === 'ready'
               ? t({ en: `📱 ${currentModel.name}`, zh: `📱 ${currentModel.name}` })
               : t({ en: '⛔ Blocked until the projector/full package is ready', zh: '⛔ 补齐投影器/完整包前会被直接拦截' })}
           </Text>
@@ -613,7 +615,7 @@ export function LocalAiModelScreen() {
         <View style={styles.routeRow}>
           <Text style={styles.routeLabel}>{t({ en: 'Audio file turns', zh: '音频文件轮次' })}</Text>
           <Text style={styles.routeValue}>
-            {runtimeCapabilities?.supportsAudioInput
+            {currentDeclaredCapabilities.audioInput && currentPackageReady && localAiStatus === 'ready'
               ? t({ en: `📱 ${currentModel.name} (wav/mp3)`, zh: `📱 ${currentModel.name}（wav/mp3）` })
               : currentDeclaredCapabilities.audioInput
                 ? t({ en: '⛔ Blocked until the full package and runtime audio path are both ready', zh: '⛔ 补齐完整包并暴露运行时音频链路前会被直接拦截' })
@@ -624,7 +626,7 @@ export function LocalAiModelScreen() {
           <Text style={styles.routeLabel}>{t({ en: 'Hold-to-talk voice turns', zh: '按住说话轮次' })}</Text>
           <Text style={styles.routeValue}>
             {liveVoiceInputAvailable
-              ? (localAiStatus === 'ready' && !bridgeUnavailable
+              ? (localAiStatus === 'ready'
                 ? t({ en: `📱 Speech recognition on-device -> ${currentModel.name} text turns`, zh: `📱 端侧语音识别 -> ${currentModel.name} 本地文本轮次` })
                 : t({ en: '🎤 Speech recognition is ready; local text routing unlocks after the runtime is ready', zh: '🎤 语音识别已可用；本地文本运行时就绪后即可接入端侧路由' }))
               : t({ en: '⛔ Blocked until this device exposes realtime speech recognition', zh: '⛔ 需等待当前设备暴露实时语音识别能力' })}
@@ -669,6 +671,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressFill: { height: '100%', backgroundColor: '#3B82F6', borderRadius: 3 },
+  downloadArtifactText: { fontSize: 11, color: '#93C5FD', lineHeight: 16 },
+  artifactList: { gap: 6 },
+  artifactRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  artifactLabel: { flex: 1, fontSize: 11, color: colors.textPrimary },
+  artifactMeta: { fontSize: 11, color: colors.textMuted },
   readyInfo: { gap: 4 },
   readyModel: { fontSize: 13, fontWeight: '600', color: '#10B981' },
   readyDesc: { fontSize: 11, color: colors.textMuted, lineHeight: 16 },

@@ -109,7 +109,11 @@ export class SpeechWakeWordService {
       ...config,
       phrases: expandPhraseAliases(config.phrases.map((item) => item.trim()).filter(Boolean)),
     };
-    addVoiceDiagnostic('speech-wake', 'init', { phrases: this.config.phrases, language: this.config.language });
+    addVoiceDiagnostic('speech-wake', 'init', {
+      phraseCount: this.config.phrases.length,
+      displayName: this.config.phrases[0] || 'Agentrix',
+      language: this.config.language,
+    });
   }
 
   async start(): Promise<void> {

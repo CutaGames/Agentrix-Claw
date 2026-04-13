@@ -5,7 +5,11 @@ import { GlobalFloatingBall } from '../components/GlobalFloatingBall';
 import type { AgentStackParamList } from '../navigation/types';
 import { useAuthStore } from '../stores/authStore';
 
-const Stack = createNativeStackNavigator<AgentStackParamList>();
+type VoiceUiE2EStackParamList = AgentStackParamList & {
+  LocalAiModel: undefined;
+};
+
+const Stack = createNativeStackNavigator<VoiceUiE2EStackParamList>();
 
 function AgentConsoleE2EScreen(props: any) {
   const { AgentConsoleScreen } = require('../screens/agent/AgentConsoleScreen');
@@ -36,11 +40,34 @@ function AgentChatE2EScreen(props: any) {
   );
 }
 
+function LocalAiModelE2EScreen(props: any) {
+  const { LocalAiModelScreen } = require('../screens/me/LocalAiModelScreen');
+  return (
+    <View style={styles.wrapper}>
+      <LocalAiModelScreen {...props} />
+    </View>
+  );
+}
+
+function resolveInitialRouteName(): keyof VoiceUiE2EStackParamList {
+  if (typeof window === 'undefined') {
+    return 'AgentChat';
+  }
+
+  try {
+    const screen = new URLSearchParams(window.location.search).get('screen');
+    return screen === 'local-ai' ? 'LocalAiModel' : 'AgentChat';
+  } catch {
+    return 'AgentChat';
+  }
+}
+
 export function VoiceUiE2EApp() {
   return (
-    <Stack.Navigator id={undefined} initialRouteName="AgentChat" screenOptions={{ headerShown: false }}>
+    <Stack.Navigator id={undefined} initialRouteName={resolveInitialRouteName()} screenOptions={{ headerShown: false }}>
       <Stack.Screen name="AgentChat" component={AgentChatE2EScreen} />
       <Stack.Screen name="AgentConsole" component={AgentConsoleE2EScreen} />
+      <Stack.Screen name="LocalAiModel" component={LocalAiModelE2EScreen} />
     </Stack.Navigator>
   );
 }

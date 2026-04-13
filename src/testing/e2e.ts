@@ -2,6 +2,8 @@ import { Platform } from 'react-native';
 import { setApiConfig } from '../services/api';
 import type { AuthUser, OpenClawInstance } from '../stores/authStore';
 import type { MobileLocalChatMessage, MobileLocalRuntimeCapabilities } from '../services/mobileLocalInference.service';
+import type { LocalAiStatus } from '../stores/settingsStore';
+import type { OtaModelArtifactKey } from '../services/otaModelDownload.service';
 
 // Stores are imported lazily inside applyVoiceUiE2EBootstrap() to avoid
 // circular dependency TDZ errors during module initialization.
@@ -68,6 +70,13 @@ export interface VoiceUiE2ERuntime {
     supportsVisionInput?: boolean;
     supportsAudioInput?: boolean;
     supportsAudioOutput?: boolean;
+  }) => void;
+  configureLocalPackageScenario: (config?: {
+    modelId?: string;
+    status?: LocalAiStatus;
+    downloadedArtifactKeys?: OtaModelArtifactKey[];
+    nextDownloadError?: string | null;
+    selectedModelId?: string;
   }) => void;
   getLocalModelCalls: () => VoiceUiE2ELocalBridgeCall[];
   clearLocalModelCalls: () => void;
@@ -267,6 +276,28 @@ function createVoiceUiE2ERuntime(): VoiceUiE2ERuntime {
         localAiModelId: nextModelId,
         selectedModelId: nextModelId,
         preferOnDeviceVoice: true,
+      });
+    },
+    configureLocalPackageScenario(config) {
+      const nextModelId = config?.modelId || 'gemma-4-2b';
+      const downloadedArtifactKeys = config?.downloadedArtifactKeys ?? [];
+      const nextStatus = config?.status ?? (downloadedArtifactKeys.includes('model') ? 'ready' : 'not_downloaded');
+      const { OtaModelDownloadService } = require('../services/otaModelDownload.service');
+      const { useSettingsStore } = require('../stores/settingsStore');
+
+      OtaModelDownloadService.resetE2EMockState();
+      OtaModelDownloadService.configureE2EMockState(nextModelId, {
+        downloadedArtifactKeys,
+        nextDownloadError: config?.nextDownloadError ?? null,
+      });
+
+      useSettingsStore.setState({
+        localAiEnabled: nextStatus === 'ready',
+        localAiStatus: nextStatus,
+        localAiProgress: nextStatus === 'not_downloaded' ? 0 : 100,
+        localAiModelId: nextModelId,
+        selectedModelId: config?.selectedModelId ?? nextModelId,
+        preferOnDeviceVoice: nextStatus === 'ready',
       });
     },
     getLocalModelCalls() {
