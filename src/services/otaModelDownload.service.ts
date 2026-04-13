@@ -709,6 +709,30 @@ export class OtaModelDownloadService {
           continue;
         }
 
+        // File is present on disk with correct size but manifest doesn't match.
+        // This can happen after a native crash (manifest write missed, or app was
+        // force-killed before the JSON flush finished).  Instead of deleting the
+        // file (forcing a multi-GB re-download), re-create the manifest entry so
+        // the artifact is treated as valid on subsequent checks.
+        if (isArtifactFilePresent(item.artifact)) {
+          const existingRevision = manifest[entry.id]?.packageRevision;
+          const expectedRevision = getExpectedPackageRevision(entry);
+
+          if (!existingRevision || existingRevision === expectedRevision) {
+            // Same or missing revision → trust the file and repair the manifest
+            recordInstalledArtifact(entry, item.key, item.artifact);
+            addVoiceDiagnostic('local-model-download', 'startup-manifest-repair', {
+              modelId: entry.id,
+              key: item.key,
+              filename: item.artifact.filename,
+            });
+            continue;
+          }
+
+          // Different packageRevision → the code was updated and this artifact
+          // belongs to an old package. Delete it.
+        }
+
         const file = getModelFile(item.artifact.filename);
         if (file?.exists) {
           file.delete();

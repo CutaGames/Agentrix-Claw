@@ -406,13 +406,19 @@ async function ensureRuntimeCapabilities(modelId: string): Promise<MobileLocalRu
     return activeRuntimeCapabilities;
   }
 
-  const context = await getOrLoadContext(modelId, 'multimodal');
-  const multimodalSupport = await ensureMultimodalSupport(context, modelId);
+  // Probe capabilities WITHOUT eagerly loading the multimodal projector.
+  // Loading the 986MB projector during capability probing causes OOM crashes
+  // on Android devices with limited RAM. Instead, determine multimodal support
+  // from file presence + declared capabilities, and only load the projector
+  // lazily when the user actually sends a multimodal message.
+  const staticCaps = buildStaticCapabilities(modelId);
+  const hasProjector = OtaModelDownloadService.hasMultimodalAssets(modelId)
+    && !!OtaModelDownloadService.getMultimodalProjectorPath(modelId);
 
   activeRuntimeCapabilities = {
-    ...buildStaticCapabilities(modelId),
-    supportsVisionInput: multimodalSupport.vision,
-    supportsAudioInput: multimodalSupport.audio,
+    ...staticCaps,
+    supportsVisionInput: hasProjector && staticCaps.supportsVisionInput,
+    supportsAudioInput: staticCaps.supportsAudioInput,
   };
 
   return activeRuntimeCapabilities;
@@ -566,6 +572,11 @@ const bridge = {
     const contextProfile = resolveContextProfile(payload.messages);
     await ensureMessageSupport(modelId, payload.messages);
     const context = await getOrLoadContext(modelId, contextProfile);
+
+    if (contextProfile === 'multimodal') {
+      await ensureMultimodalSupport(context, modelId);
+    }
+
     const completionMessages = await toNormalizedCompletionMessages(payload.messages);
 
     const result = await context.completion({
@@ -589,6 +600,14 @@ const bridge = {
     const contextProfile = resolveContextProfile(payload.messages);
     await ensureMessageSupport(modelId, payload.messages);
     const context = await getOrLoadContext(modelId, contextProfile);
+
+    // Lazily load the multimodal projector only when the message actually
+    // contains images.  This avoids a 986 MB projector load during capability
+    // probing, which caused OOM crashes on Android devices with limited RAM.
+    if (contextProfile === 'multimodal') {
+      await ensureMultimodalSupport(context, modelId);
+    }
+
     const completionMessages = await toNormalizedCompletionMessages(payload.messages);
 
     const chunks: string[] = [];
