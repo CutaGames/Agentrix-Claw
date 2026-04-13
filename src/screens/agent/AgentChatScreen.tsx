@@ -1589,7 +1589,7 @@ export function AgentChatScreen() {
 
         const localHistory = currentMsgs
           .filter((message) => (message.role === 'user' || message.role === 'assistant') && message.content.trim())
-          .slice(-12)
+          .slice(-6)
           .map((message) => ({
             role: message.role as 'user' | 'assistant',
             content: message.role === 'user'
@@ -1655,10 +1655,6 @@ export function AgentChatScreen() {
           }
 
           const localErrorMessage = error?.message || t({ en: 'Local model inference failed.', zh: '本地模型推理失败。' });
-          if (isLocalOnlyModelId(effectiveModelId)) {
-            setLocalAiStatus('error');
-            setLocalAiEnabled(false);
-          }
           addVoiceDiagnostic('agent-chat', 'local-inference-failed', {
             model: effectiveModelId,
             message: localErrorMessage,

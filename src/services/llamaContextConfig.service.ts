@@ -2,8 +2,8 @@ export type LocalLlamaContextProfile = 'text' | 'multimodal' | 'speech';
 export type LocalLlamaContextInitStage = 'primary' | 'fallback';
 export type LocalLlamaPlatformOs = 'android' | 'ios' | 'web' | 'windows' | 'macos' | 'unknown';
 
-const TEXT_CONTEXT_WINDOW = 2048;
-const TEXT_FALLBACK_CONTEXT_WINDOW = 1536;
+const TEXT_CONTEXT_WINDOW = 4096;
+const TEXT_FALLBACK_CONTEXT_WINDOW = 2048;
 const MULTIMODAL_CONTEXT_WINDOW = 4096;
 const MULTIMODAL_FALLBACK_CONTEXT_WINDOW = 3072;
 const SPEECH_CONTEXT_WINDOW = 4096;
@@ -47,6 +47,7 @@ export function resolveLocalLlamaContextInitOptions(
     n_ctx: useFallback ? TEXT_FALLBACK_CONTEXT_WINDOW : TEXT_CONTEXT_WINDOW,
     n_gpu_layers: onAndroid ? 0 : (useFallback ? 0 : 99),
     use_mlock: !onAndroid && !useFallback,
+    ctx_shift: true,
   };
 }
 
