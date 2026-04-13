@@ -158,6 +158,63 @@ const DEFAULT_DECLARED_CAPABILITIES: OtaModelDeclaredCapabilities = {
   onDeviceAudioOutput: false,
 };
 
+// ── CDN Fallback ───────────────────────────────────────
+
+/**
+ * Mirror prefixes ordered by priority.
+ * hf-mirror.com is primary (China mirror), huggingface.co is direct fallback.
+ */
+const CDN_MIRROR_PREFIXES = [
+  'https://hf-mirror.com/',
+  'https://huggingface.co/',
+];
+
+const MAX_RETRIES_PER_URL = 2;
+
+function getDownloadUrls(cdnBase: string, filename: string): string[] {
+  // ?download=true forces direct file serving, avoids XetHub CAS redirect
+  const primary = `${cdnBase}/${filename}?download=true`;
+  const urls = [primary];
+  for (const prefix of CDN_MIRROR_PREFIXES) {
+    if (cdnBase.startsWith(prefix)) {
+      const repoPath = cdnBase.slice(prefix.length);
+      for (const alt of CDN_MIRROR_PREFIXES) {
+        if (alt !== prefix) {
+          urls.push(`${alt}${repoPath}/${filename}?download=true`);
+        }
+      }
+      break;
+    }
+  }
+  return urls;
+}
+
+function isDnsOrHostError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes('unknownhostexception') ||
+    lower.includes('unable to resolve host') ||
+    lower.includes('no address associated with hostname')
+  );
+}
+
+function isRetryableNetworkError(msg: string): boolean {
+  if (isDnsOrHostError(msg)) return true;
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes('has been rejected') ||
+    lower.includes('econnrefused') ||
+    lower.includes('econnreset') ||
+    lower.includes('etimedout') ||
+    lower.includes('enetunreach') ||
+    lower.includes('connection refused') ||
+    lower.includes('connection reset') ||
+    lower.includes('network is unreachable') ||
+    lower.includes('ssl') ||
+    lower.includes('java.security.cert')
+  );
+}
+
 // ── Types ──────────────────────────────────────────────
 
 export type DownloadState =
@@ -957,7 +1014,7 @@ export class OtaModelDownloadService {
           continue;
         }
 
-        const downloadUrl = `${artifact.cdnBase || entry.cdnBase}/${artifact.filename}`;
+        const downloadUrls = getDownloadUrls(artifact.cdnBase || entry.cdnBase, artifact.filename);
         addVoiceDiagnostic('local-model-download', 'artifact-start', {
           modelId,
           key: item.key,
@@ -965,6 +1022,7 @@ export class OtaModelDownloadService {
           sizeBytes: artifact.sizeBytes,
           index: index + 1,
           artifactCount: artifacts.length,
+          cdnUrlCount: downloadUrls.length,
         });
 
         const progressInterval = setInterval(() => {
@@ -1000,35 +1058,88 @@ export class OtaModelDownloadService {
           throw new Error(`Unable to prepare local target file for ${artifact.filename}.`);
         }
 
-        const result = await ExpoFile.downloadFileAsync(
-          downloadUrl,
-          targetFile,
-          {
-            headers: { 'User-Agent': `AgentrixApp/${Platform.OS}` },
-            idempotent: true,
-          },
-        );
+        // ── CDN fallback download ──
+        let downloadSucceeded = false;
+        let lastDownloadError: Error | null = null;
+
+        for (let urlIdx = 0; urlIdx < downloadUrls.length && !downloadSucceeded; urlIdx++) {
+          const downloadUrl = downloadUrls[urlIdx];
+          const maxAttempts = MAX_RETRIES_PER_URL;
+
+          for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            if (this.aborted) { clearInterval(progressInterval); return; }
+
+            try {
+              // Clean up partial file from a previous failed attempt
+              if (targetFile.exists) { try { targetFile.delete(); } catch { /* ignore */ } }
+
+              addVoiceDiagnostic('local-model-download', 'download-attempt', {
+                modelId, key: item.key, filename: artifact.filename,
+                urlIdx, attempt, downloadUrl,
+              });
+
+              await ExpoFile.downloadFileAsync(
+                downloadUrl,
+                targetFile,
+                {
+                  headers: { 'User-Agent': `AgentrixApp/${Platform.OS}` },
+                  idempotent: true,
+                },
+              );
+
+              if (this.aborted) { clearInterval(progressInterval); return; }
+
+              if (!targetFile.exists) {
+                throw new Error(`Downloaded file not found after downloading ${artifact.filename}.`);
+              }
+
+              if (targetFile.size < artifact.sizeBytes * 0.95) {
+                targetFile.delete();
+                throw new Error(`Download incomplete for ${artifact.filename}: got ${targetFile.size} bytes, expected ~${artifact.sizeBytes}`);
+              }
+
+              downloadSucceeded = true;
+              break;
+            } catch (dlErr) {
+              lastDownloadError = dlErr instanceof Error ? dlErr : new Error(String(dlErr));
+              const errMsg = lastDownloadError.message;
+
+              addVoiceDiagnostic('local-model-download', 'download-attempt-failed', {
+                modelId, key: item.key, filename: artifact.filename,
+                urlIdx, attempt, downloadUrl, error: errMsg,
+              });
+
+              if (this.aborted) { clearInterval(progressInterval); return; }
+
+              // DNS / host errors: skip remaining retries, move to next CDN immediately
+              if (isDnsOrHostError(errMsg)) break;
+
+              // Non-network errors (disk, permission): throw immediately
+              if (!isRetryableNetworkError(errMsg)) {
+                clearInterval(progressInterval);
+                throw lastDownloadError;
+              }
+
+              // Transient network error: retry after short delay
+              if (attempt < maxAttempts) {
+                await new Promise((r) => setTimeout(r, 2000 * attempt));
+              }
+            }
+          }
+        }
 
         clearInterval(progressInterval);
 
-        if (this.aborted) return;
-
-        if (!targetFile.exists) {
-          throw new Error(`Downloaded file not found after downloading ${artifact.filename}.`);
+        if (!downloadSucceeded) {
+          throw lastDownloadError || new Error(`All CDN mirrors failed for ${artifact.filename}.`);
         }
 
-        if (targetFile.size < artifact.sizeBytes * 0.95) {
-          targetFile.delete();
-          throw new Error(`Download incomplete for ${artifact.filename}: got ${targetFile.size} bytes, expected ~${artifact.sizeBytes}`);
-        }
-
-        if (result.uri !== targetFile.uri) {
+        if (targetFile.uri) {
           addVoiceDiagnostic('local-model-download', 'artifact-target-file', {
             modelId,
             key: item.key,
             filename: artifact.filename,
-            expectedUri: targetFile.uri,
-            resolvedUri: result.uri,
+            targetUri: targetFile.uri,
           });
         }
 
