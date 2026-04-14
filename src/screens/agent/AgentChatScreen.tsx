@@ -1556,26 +1556,36 @@ export function AgentChatScreen() {
       const shouldTryLocalNano = isLocalOnlyModelId(effectiveModelId) && localTurnDecision?.mode === 'local';
 
       if (localTurnDecision?.mode === 'blocked' && localModelLabel) {
-        if (
-          isLocalOnlyModelId(effectiveModelId)
+        const isRecoverableBlock = isLocalOnlyModelId(effectiveModelId)
           && (localTurnDecision.reason === 'runtime-unavailable'
-            || localTurnDecision.reason === 'text-generation-unavailable')
-        ) {
-          setLocalAiStatus('error');
-          setLocalAiEnabled(false);
+            || localTurnDecision.reason === 'text-generation-unavailable');
+        if (isRecoverableBlock) {
+          // Don't block user — fall through to cloud
+          addVoiceDiagnostic('agent-chat', 'local-turn-blocked-fallback-cloud', {
+            model: effectiveModelId,
+            reason: localTurnDecision.reason,
+          });
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? { ...m, content: `⏳ ${t({ en: 'Local model unavailable, switching to cloud...', zh: '本地模型不可用，正在切换到云端…' })}\n`, streaming: true }
+                : m
+            )
+          );
+        } else {
+          setResolvedModelLabel(`${localModelLabel} · ${t({ en: 'On-device only', zh: '仅端侧' })}`);
+          addVoiceDiagnostic('agent-chat', 'local-turn-blocked', {
+            model: effectiveModelId,
+            reason: localTurnDecision.reason,
+            attachment: localTurnDecision.attachment?.originalName || null,
+          });
+          finishAssistantWithError(formatLocalTurnBlockedMessage({
+            t,
+            modelLabel: localModelLabel,
+            decision: localTurnDecision,
+          }));
+          return;
         }
-        setResolvedModelLabel(`${localModelLabel} · ${t({ en: 'On-device only', zh: '仅端侧' })}`);
-        addVoiceDiagnostic('agent-chat', 'local-turn-blocked', {
-          model: effectiveModelId,
-          reason: localTurnDecision.reason,
-          attachment: localTurnDecision.attachment?.originalName || null,
-        });
-        finishAssistantWithError(formatLocalTurnBlockedMessage({
-          t,
-          modelLabel: localModelLabel,
-          decision: localTurnDecision,
-        }));
-        return;
       }
 
       if (shouldTryLocalNano) {
@@ -1631,11 +1641,14 @@ export function AgentChatScreen() {
             addVoiceDiagnostic('agent-chat', 'local-empty-response', {
               model: effectiveModelId,
             });
-            finishAssistantWithError(t({
-              en: 'The selected local model returned no text. Agentrix did not fall back to the cloud. Retry the local model, or switch models manually.',
-              zh: '当前选中的本地模型没有返回文本。Agentrix 没有回退到云端。请重试本地模型，或手动切换模型。',
-            }));
-            return;
+            // Clear partial local output and fall through to cloud
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMsgId
+                  ? { ...m, content: `⏳ ${t({ en: 'Local model returned empty, switching to cloud...', zh: '本地模型返回为空，正在切换到云端…' })}\n`, streaming: true }
+                  : m
+              )
+            );
           }
 
           if (token && finalAssistant) {
@@ -1659,11 +1672,14 @@ export function AgentChatScreen() {
             model: effectiveModelId,
             message: localErrorMessage,
           });
-          finishAssistantWithError(t({
-            en: `On-device inference failed: ${localErrorMessage}. Agentrix did not fall back to the cloud. Check the local package/runtime and retry, or switch models manually.`,
-            zh: `端侧推理失败：${localErrorMessage}。Agentrix 没有回退到云端。请检查本地模型包和运行时后重试，或手动切换模型。`,
-          }));
-          return;
+          // Clear partial local output and fall through to cloud
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? { ...m, content: `⏳ ${t({ en: `Local failed (${localErrorMessage}), switching to cloud...`, zh: `端侧失败（${localErrorMessage}），正在切换到云端…` })}\n`, streaming: true }
+                : m
+            )
+          );
         }
       }
 
@@ -1671,7 +1687,17 @@ export function AgentChatScreen() {
       const proxyModelId = isLocalOnlyModelId(effectiveModelId)
         ? remoteResolvedModelId
         : effectiveModelId;
+      const localFellBack = isLocalOnlyModelId(effectiveModelId) && !streamSucceeded;
       if (!streamSucceeded && instanceId) {
+        // If falling back from local, clear the transitional status and reset content
+        if (localFellBack) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId ? { ...m, content: '', streaming: true } : m
+            )
+          );
+          setResolvedModelLabel(null); // let cloud resolve its own label
+        }
         await new Promise<void>((resolve) => {
           const ac = streamProxyChatSSE({
             instanceId,
@@ -2240,6 +2266,19 @@ export function AgentChatScreen() {
         onClose={handleSessionClose}
         t={t}
       />
+
+      {/* Quick model switch bar */}
+      <TouchableOpacity
+        accessibilityLabel="quick-model-switch"
+        onPress={() => setShowModelPicker(true)}
+        style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 5, backgroundColor: colors.bgCard, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}
+      >
+        <Text style={{ color: isLocalModelSelected ? '#f59e0b' : colors.accent, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
+          {isLocalModelSelected ? '📱 ' : '☁️ '}
+          {resolvedModelLabel || availableModels.find((m) => m.id === effectiveModelId)?.label || effectiveModelId}
+        </Text>
+        <Text style={{ color: colors.textMuted, fontSize: 11, marginLeft: 4 }}>{'▾'}</Text>
+      </TouchableOpacity>
 
       {loadingHistory && (
         <View style={styles.historyLoader}>
