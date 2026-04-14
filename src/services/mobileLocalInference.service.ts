@@ -234,12 +234,22 @@ function normalizeLocalOutput(text: string): string {
     return '';
   }
 
-  const withoutThinkTags = trimmed.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-  if (!/^Thinking Process:/i.test(withoutThinkTags)) {
-    return withoutThinkTags;
+  // Strip <think>…</think> and <|channel>thought…<|channel> blocks (Gemma 4 format)
+  let cleaned = trimmed
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<\|channel>thought[\s\S]*?<\|channel>/gi, '')
+    .replace(/<\|channel>thought[\s\S]*$/gi, '') // unclosed trailing block
+    .trim();
+
+  if (!cleaned) {
+    return '';
   }
 
-  const parts = withoutThinkTags.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+  if (!/^Thinking Process:/i.test(cleaned)) {
+    return cleaned;
+  }
+
+  const parts = cleaned.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
   if (parts.length > 1) {
     const tail = parts[parts.length - 1];
     if (tail && !/^Thinking Process:/i.test(tail)) {
@@ -247,7 +257,71 @@ function normalizeLocalOutput(text: string): string {
     }
   }
 
-  return withoutThinkTags;
+  return cleaned;
+}
+
+/**
+ * Streaming filter: buffers chunks to detect and strip thinking blocks that
+ * arrive incrementally (e.g. `<|channel>thought … <|channel>`).
+ */
+function createStreamThinkingFilter(): (chunk: string) => string {
+  let buffering = false;
+  let buffer = '';
+
+  return (chunk: string): string => {
+    if (buffering) {
+      buffer += chunk;
+      // Check for closing tag
+      const closeIdx = buffer.indexOf('<|channel>');
+      if (closeIdx !== -1) {
+        // Found closing tag — discard everything up to and including it
+        const afterClose = buffer.slice(closeIdx + '<|channel>'.length);
+        buffering = false;
+        buffer = '';
+        return afterClose;
+      }
+      if (buffer.includes('</think>')) {
+        const afterClose = buffer.split('</think>').pop() || '';
+        buffering = false;
+        buffer = '';
+        return afterClose;
+      }
+      return ''; // Still buffering — suppress output
+    }
+
+    // Detect start of thinking block
+    const combined = chunk;
+    if (combined.includes('<|channel>thought') || combined.includes('<think>')) {
+      buffering = true;
+      // Keep anything before the tag
+      const startMarker = combined.includes('<|channel>thought')
+        ? '<|channel>thought'
+        : '<think>';
+      const startIdx = combined.indexOf(startMarker);
+      const before = combined.slice(0, startIdx);
+      buffer = combined.slice(startIdx);
+
+      // Check if the whole block is in one chunk
+      const closeTag = startMarker === '<think>' ? '</think>' : '<|channel>';
+      const afterStart = buffer.slice(startMarker.length);
+      const closeIdx = afterStart.indexOf(closeTag);
+      if (closeIdx !== -1) {
+        const afterClose = afterStart.slice(closeIdx + closeTag.length);
+        buffering = false;
+        buffer = '';
+        return before + afterClose;
+      }
+
+      return before;
+    }
+
+    // Also strip "Thinking Process:" prefix lines from streaming
+    if (/^Thinking Process:/i.test(combined.trimStart())) {
+      return '';
+    }
+
+    return chunk;
+  };
 }
 
 export class MobileLocalInferenceService {
@@ -367,6 +441,7 @@ export class MobileLocalInferenceService {
       let streamError: unknown;
       let receivedIncrementalChunk = false;
       let wakeConsumer: (() => void) | null = null;
+      const thinkingFilter = createStreamThinkingFilter();
       const waitForChunk = () => new Promise<void>((resolve) => {
         wakeConsumer = resolve;
       });
@@ -390,7 +465,10 @@ export class MobileLocalInferenceService {
         }
 
         receivedIncrementalChunk = true;
-        pushChunk(chunk);
+        const filtered = thinkingFilter(chunk);
+        if (filtered) {
+          pushChunk(filtered);
+        }
       };
 
       const streamPromise = bridge.generateStream({

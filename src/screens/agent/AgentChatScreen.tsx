@@ -1633,7 +1633,7 @@ export function AgentChatScreen() {
         try {
           let localProducedOutput = false;
           for await (const chunk of MobileLocalInferenceService.generateTextStream([
-            { role: 'system', content: `You are ${instanceName}. Keep responses concise, practical, and conversational. Never reveal chain-of-thought or thinking traces. Reply with the final answer directly.` },
+            { role: 'system', content: `You are ${instanceName}, a local on-device AI assistant running directly on the user's phone. You run locally for privacy and speed — no cloud needed. Keep responses concise, practical, and conversational. Never output thinking traces, chain-of-thought, or internal reasoning. Reply in the user's language with the final answer directly.` },
             ...localHistory,
             { role: 'user', content: localUserContent },
           ], { model: effectiveModelId })) {

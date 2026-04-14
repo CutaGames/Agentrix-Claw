@@ -666,10 +666,25 @@ function resolveModelId(input?: string): string {
 
 // ── Lifecycle ──────────────────────────────────────────
 
+const BACKGROUND_RELEASE_DELAY_MS = 60_000; // Keep model loaded for 60s after backgrounding
+let backgroundReleaseTimer: ReturnType<typeof setTimeout> | null = null;
+
 function handleAppStateChange(state: AppStateStatus) {
   if (state === 'background' || state === 'inactive') {
-    // Release model from memory when app backgrounds to save RAM
-    void releaseActiveContext();
+    // Delay releasing model — brief app switches (e.g. checking notifications)
+    // should not trigger a costly 30s+ model reload.
+    if (!backgroundReleaseTimer) {
+      backgroundReleaseTimer = setTimeout(() => {
+        backgroundReleaseTimer = null;
+        void releaseActiveContext();
+      }, BACKGROUND_RELEASE_DELAY_MS);
+    }
+  } else if (state === 'active') {
+    // User came back — cancel pending release
+    if (backgroundReleaseTimer) {
+      clearTimeout(backgroundReleaseTimer);
+      backgroundReleaseTimer = null;
+    }
   }
 }
 
