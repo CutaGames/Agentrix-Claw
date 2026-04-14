@@ -1028,6 +1028,15 @@ export function AgentChatScreen() {
     selectedModelId,
   ]);
 
+  // Eagerly preload local model context when a local model is selected.
+  // Model loading on Android (CPU-only, 3.1GB) takes ~20-30s. By starting
+  // the load as soon as the chat screen mounts, the model is warm by the
+  // time the user types their first message.
+  useEffect(() => {
+    if (!isLocalModelSelected) return;
+    void MobileLocalInferenceService.isAvailable(effectiveModelId).catch(() => {});
+  }, [isLocalModelSelected, effectiveModelId]);
+
   // All messages (persisted) and visible slice for lazy rendering
   const allMessagesRef = useRef<Message[]>([]);
   const PAGE_SIZE = 15;
@@ -1633,7 +1642,7 @@ export function AgentChatScreen() {
         try {
           let localProducedOutput = false;
           for await (const chunk of MobileLocalInferenceService.generateTextStream([
-            { role: 'system', content: `You are ${instanceName}, a local on-device AI assistant running directly on the user's phone. You run locally for privacy and speed — no cloud needed. Keep responses concise, practical, and conversational. Never output thinking traces, chain-of-thought, or internal reasoning. Reply in the user's language with the final answer directly.` },
+            { role: 'system', content: `You are ${instanceName}, a local on-device AI assistant running directly on the user's phone. You run locally for privacy and speed — no cloud needed. Keep responses concise and practical. Reply in the user's language.` },
             ...localHistory,
             { role: 'user', content: localUserContent },
           ], { model: effectiveModelId })) {
