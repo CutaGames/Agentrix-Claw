@@ -68,6 +68,39 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
   'gemma-nano-2b',
   'gemma-nano-2b-local',
 ]);
+
+// ── Token budget estimation for local context management ──
+const LOCAL_CONTEXT_WINDOW = 4096;
+const LOCAL_RESPONSE_RESERVE = 512; // n_predict default
+const LOCAL_SYSTEM_PROMPT_ESTIMATE = 60; // tokens for system prompt
+
+/** Rough token estimate: ~2 chars/token for mixed CJK/Latin text */
+function estimateTokens(text: string): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 2);
+}
+
+/** Trim history to fit within token budget, keeping most recent messages */
+function trimHistoryToTokenBudget(
+  history: Array<{ role: string; content: string }>,
+  userMessageTokens: number,
+): Array<{ role: string; content: string }> {
+  const budget = LOCAL_CONTEXT_WINDOW - LOCAL_RESPONSE_RESERVE - LOCAL_SYSTEM_PROMPT_ESTIMATE - userMessageTokens;
+  if (budget <= 0) return [];
+
+  const result: Array<{ role: string; content: string }> = [];
+  let used = 0;
+
+  // Walk from newest to oldest, accumulate until budget exceeded
+  for (let i = history.length - 1; i >= 0; i--) {
+    const tokens = estimateTokens(history[i].content);
+    if (used + tokens > budget) break;
+    result.unshift(history[i]);
+    used += tokens;
+  }
+
+  return result;
+}
 const MOBILE_AUTO_CONTINUE_LIMIT = 3;
 const MOBILE_CONTINUE_PROMPT = 'Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting. If you were in the middle of a tool-driven task, resume the unfinished steps first and only summarize after the task is complete.';
 
@@ -1556,36 +1589,18 @@ export function AgentChatScreen() {
       const shouldTryLocalNano = isLocalOnlyModelId(effectiveModelId) && localTurnDecision?.mode === 'local';
 
       if (localTurnDecision?.mode === 'blocked' && localModelLabel) {
-        const isRecoverableBlock = isLocalOnlyModelId(effectiveModelId)
-          && (localTurnDecision.reason === 'runtime-unavailable'
-            || localTurnDecision.reason === 'text-generation-unavailable');
-        if (isRecoverableBlock) {
-          // Don't block user — fall through to cloud
-          addVoiceDiagnostic('agent-chat', 'local-turn-blocked-fallback-cloud', {
-            model: effectiveModelId,
-            reason: localTurnDecision.reason,
-          });
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId
-                ? { ...m, content: `⏳ ${t({ en: 'Local model unavailable, switching to cloud...', zh: '本地模型不可用，正在切换到云端…' })}\n`, streaming: true }
-                : m
-            )
-          );
-        } else {
-          setResolvedModelLabel(`${localModelLabel} · ${t({ en: 'On-device only', zh: '仅端侧' })}`);
-          addVoiceDiagnostic('agent-chat', 'local-turn-blocked', {
-            model: effectiveModelId,
-            reason: localTurnDecision.reason,
-            attachment: localTurnDecision.attachment?.originalName || null,
-          });
-          finishAssistantWithError(formatLocalTurnBlockedMessage({
-            t,
-            modelLabel: localModelLabel,
-            decision: localTurnDecision,
-          }));
-          return;
-        }
+        // All blocked reasons are recoverable — fall through to cloud
+        addVoiceDiagnostic('agent-chat', 'local-turn-blocked-fallback-cloud', {
+          model: effectiveModelId,
+          reason: localTurnDecision.reason,
+        });
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, content: `⏳ ${t({ en: 'Local model unavailable for this turn, switching to cloud...', zh: '本地模型无法处理此轮，正在切换到云端…' })}\n`, streaming: true }
+              : m
+          )
+        );
       }
 
       if (shouldTryLocalNano) {
@@ -1597,15 +1612,21 @@ export function AgentChatScreen() {
         let localAssistantText = '';
         const localUserContent = buildLocalUserContent(text, attachments, localRuntimeSnapshot || undefined);
 
-        const localHistory = currentMsgs
+        const rawLocalHistory = currentMsgs
           .filter((message) => (message.role === 'user' || message.role === 'assistant') && message.content.trim())
-          .slice(-6)
           .map((message) => ({
             role: message.role as 'user' | 'assistant',
-            content: message.role === 'user'
-              ? buildLocalUserContent(message.content, message.attachments || [], localRuntimeSnapshot || undefined)
-              : message.content,
+            content: message.content,
           }));
+
+        const userTokens = estimateTokens(typeof localUserContent === 'string' ? localUserContent : text);
+        const trimmedHistory = trimHistoryToTokenBudget(rawLocalHistory, userTokens);
+        const localHistory = trimmedHistory.map((message) => ({
+          role: message.role as 'user' | 'assistant',
+          content: message.role === 'user'
+            ? buildLocalUserContent(message.content, [], localRuntimeSnapshot || undefined)
+            : message.content,
+        }));
 
         resetVoicePhaseAfterResponse();
 

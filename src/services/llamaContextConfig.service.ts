@@ -30,7 +30,7 @@ export function resolveLocalLlamaContextInitOptions(
       // Android OpenCL support in llama.rn is device- and quant-specific; keep local mobile loads CPU-first.
       n_gpu_layers: onAndroid ? 0 : (useFallback ? 0 : 99),
       use_mlock: !onAndroid && !useFallback,
-      ctx_shift: false,
+      ctx_shift: true,
     };
   }
 
@@ -39,7 +39,7 @@ export function resolveLocalLlamaContextInitOptions(
       n_ctx: useFallback ? SPEECH_FALLBACK_CONTEXT_WINDOW : SPEECH_CONTEXT_WINDOW,
       n_gpu_layers: onAndroid ? 0 : (useFallback ? 0 : 99),
       use_mlock: !onAndroid && !useFallback,
-      ctx_shift: false,
+      ctx_shift: true,
     };
   }
 

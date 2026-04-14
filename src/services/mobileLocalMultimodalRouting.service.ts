@@ -5,7 +5,7 @@ import type {
   MobileLocalRuntimeCapabilities,
 } from './mobileLocalInference.service';
 
-const MOBILE_HYBRID_TASK_PATTERN = /([a-z]:\\|\\|\/|\.tsx?\b|\.jsx?\b|\.json\b|\.md\b|package\.json|readme|src\/|backend\/|desktop\/|```|\n)|\b(search|find|install|run|execute|debug|fix|edit|write|read|open|grep|list|analy[sz]e|inspect|deploy|build|test|git|ssh|workspace|file|folder|directory|project|repo|code|patch|benchmark|profile|trace|continue|resume|tool|skill|agent|plan|orchestrat)\b|搜索|查找|安装|运行|执行|修复|修改|查看|列出|分析|排查|部署|构建|测试|工作区|文件|目录|项目|仓库|代码|工具|技能|继续|恢复|计划|编排/i;
+
 
 export type LocalTurnBlockReason =
   | 'runtime-unavailable'
@@ -134,15 +134,6 @@ export function resolveLocalTurnExecution(
     }
 
     return { mode: 'blocked', reason: 'attachment-unsupported', attachment };
-  }
-
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return { mode: 'local' };
-  }
-
-  if (trimmed.length >= 240 || trimmed.includes('\n') || MOBILE_HYBRID_TASK_PATTERN.test(trimmed)) {
-    return { mode: 'blocked', reason: 'complex-turn' };
   }
 
   return { mode: 'local' };
