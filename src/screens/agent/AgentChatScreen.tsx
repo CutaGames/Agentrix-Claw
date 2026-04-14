@@ -1619,7 +1619,7 @@ export function AgentChatScreen() {
           setResolvedModelLabel(localModelLabel);
         }
         let localAssistantText = '';
-        const localUserContent = buildLocalUserContent(text, attachments, localRuntimeSnapshot || undefined);
+        const localUserContent = await buildLocalUserContent(text, attachments, localRuntimeSnapshot || undefined);
 
         const rawLocalHistory = currentMsgs
           .filter((message) => (message.role === 'user' || message.role === 'assistant') && message.content.trim())
@@ -1630,12 +1630,12 @@ export function AgentChatScreen() {
 
         const userTokens = estimateTokens(typeof localUserContent === 'string' ? localUserContent : text);
         const trimmedHistory = trimHistoryToTokenBudget(rawLocalHistory, userTokens);
-        const localHistory = trimmedHistory.map((message) => ({
+        const localHistory = await Promise.all(trimmedHistory.map(async (message) => ({
           role: message.role as 'user' | 'assistant',
           content: message.role === 'user'
-            ? buildLocalUserContent(message.content, [], localRuntimeSnapshot || undefined)
+            ? await buildLocalUserContent(message.content, [], localRuntimeSnapshot || undefined)
             : message.content,
-        }));
+        })));
 
         resetVoicePhaseAfterResponse();
 

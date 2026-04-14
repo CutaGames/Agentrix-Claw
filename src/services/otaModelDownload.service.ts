@@ -35,6 +35,7 @@ export interface OtaModelEntry {
 export interface OtaModelDeclaredCapabilities {
   visionInput: boolean;
   audioInput: boolean;
+  videoInput: boolean;
   onDeviceAudioOutput: boolean;
 }
 
@@ -87,7 +88,8 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E2B-it-GGUF/resolve/main',
     declaredCapabilities: {
       visionInput: true,
-      audioInput: false,
+      audioInput: true,
+      videoInput: true,
       onDeviceAudioOutput: false,
     },
     multimodalProjector: {
@@ -107,7 +109,8 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E4B-it-GGUF/resolve/main',
     declaredCapabilities: {
       visionInput: true,
-      audioInput: false,
+      audioInput: true,
+      videoInput: true,
       onDeviceAudioOutput: false,
     },
     multimodalProjector: {
@@ -127,6 +130,7 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     declaredCapabilities: {
       visionInput: true,
       audioInput: true,
+      videoInput: false,
       onDeviceAudioOutput: true,
     },
     multimodalProjector: {
@@ -155,6 +159,7 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
 const DEFAULT_DECLARED_CAPABILITIES: OtaModelDeclaredCapabilities = {
   visionInput: false,
   audioInput: false,
+  videoInput: false,
   onDeviceAudioOutput: false,
 };
 
@@ -598,6 +603,10 @@ export class OtaModelDownloadService {
 
   static declaresAudioInput(modelId?: string | null): boolean {
     return this.getDeclaredCapabilities(modelId).audioInput;
+  }
+
+  static declaresVideoInput(modelId?: string | null): boolean {
+    return this.getDeclaredCapabilities(modelId).videoInput;
   }
 
   static declaresOnDeviceAudioOutput(modelId?: string | null): boolean {

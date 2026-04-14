@@ -4,6 +4,7 @@ import type {
   MobileLocalChatContentPart,
   MobileLocalRuntimeCapabilities,
 } from './mobileLocalInference.service';
+import { extractVideoFrames, isVideoFrameExtractionAvailable } from './videoFrameExtraction.service';
 
 
 
@@ -33,6 +34,10 @@ function isImageAttachment(attachment: UploadedChatAttachment): boolean {
 
 function isAudioAttachment(attachment: UploadedChatAttachment): boolean {
   return attachment.kind === 'audio' || attachment.isAudio || attachment.mimetype?.startsWith('audio/');
+}
+
+function isVideoAttachment(attachment: UploadedChatAttachment): boolean {
+  return attachment.kind === 'video' || attachment.isVideo || attachment.mimetype?.startsWith('video/');
 }
 
 function describeAttachmentFallback(attachment: UploadedChatAttachment, index: number): string {
@@ -84,6 +89,10 @@ export function canAttachmentRunLocally(
     return runtimeCapabilities.supportsVisionInput;
   }
 
+  if (isVideoAttachment(attachment)) {
+    return runtimeCapabilities.supportsVisionInput && isVideoFrameExtractionAvailable();
+  }
+
   if (isAudioAttachment(attachment)) {
     return runtimeCapabilities.supportsAudioInput && resolveSupportedLocalAudioFormat(attachment) !== null;
   }
@@ -133,6 +142,22 @@ export function resolveLocalTurnExecution(
       continue;
     }
 
+    if (isVideoAttachment(attachment)) {
+      if (!hasUsableLocalUri(attachment)) {
+        return { mode: 'blocked', reason: 'attachment-not-local', attachment };
+      }
+
+      if (!runtimeCapabilities.supportsVisionInput) {
+        return { mode: 'blocked', reason: 'projector-required', attachment };
+      }
+
+      if (!isVideoFrameExtractionAvailable()) {
+        return { mode: 'blocked', reason: 'attachment-unsupported', attachment };
+      }
+
+      continue;
+    }
+
     return { mode: 'blocked', reason: 'attachment-unsupported', attachment };
   }
 
@@ -147,11 +172,11 @@ export function shouldEscalateLocalTurnToCloud(
   return resolveLocalTurnExecution(text, attachments, runtimeCapabilities).mode === 'blocked';
 }
 
-export function buildLocalUserContent(
+export async function buildLocalUserContent(
   text: string,
   attachments: UploadedChatAttachment[],
   runtimeCapabilities?: MobileLocalRuntimeCapabilities,
-): MobileLocalChatContent {
+): Promise<MobileLocalChatContent> {
   const trimmed = text.trim();
   if (attachments.length === 0) {
     return trimmed;
@@ -162,7 +187,9 @@ export function buildLocalUserContent(
     content.push({ type: 'text', text: trimmed });
   }
 
-  attachments.forEach((attachment, index) => {
+  for (let index = 0; index < attachments.length; index++) {
+    const attachment = attachments[index];
+
     if (
       hasUsableLocalUri(attachment)
       && isImageAttachment(attachment)
@@ -172,7 +199,29 @@ export function buildLocalUserContent(
         type: 'image_url',
         image_url: { url: attachment.localUri },
       });
-      return;
+      continue;
+    }
+
+    if (
+      hasUsableLocalUri(attachment)
+      && isVideoAttachment(attachment)
+      && isVideoFrameExtractionAvailable()
+      && (!runtimeCapabilities || runtimeCapabilities.supportsVisionInput)
+    ) {
+      const frames = await extractVideoFrames(attachment.localUri);
+      if (frames.length > 0) {
+        content.push({
+          type: 'text',
+          text: `[Video: ${attachment.originalName}, ${frames.length} frames extracted at ~1fps]`,
+        });
+        for (const frame of frames) {
+          content.push({
+            type: 'image_url',
+            image_url: { url: frame.uri },
+          });
+        }
+        continue;
+      }
     }
 
     const audioFormat = resolveSupportedLocalAudioFormat(attachment);
@@ -190,14 +239,14 @@ export function buildLocalUserContent(
             : { url: attachment.localUri }),
         },
       });
-      return;
+      continue;
     }
 
     content.push({
       type: 'text',
       text: describeAttachmentFallback(attachment, index),
     });
-  });
+  }
 
   return content.length === 1 && content[0].type === 'text'
     ? content[0].text

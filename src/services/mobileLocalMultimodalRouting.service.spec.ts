@@ -173,7 +173,7 @@ describe('mobileLocalMultimodalRouting', () => {
       localUri: 'file:///tmp/clip.mp3',
     });
 
-    assert.deepEqual(buildLocalUserContent('Inspect these inputs', [image, audio]), [
+    assert.deepEqual(await buildLocalUserContent('Inspect these inputs', [image, audio]), [
       { type: 'text', text: 'Inspect these inputs' },
       { type: 'image_url', image_url: { url: 'file:///tmp/photo.jpg' } },
       { type: 'input_audio', input_audio: { url: 'file:///tmp/clip.mp3', format: 'mp3' } },
@@ -190,7 +190,7 @@ describe('mobileLocalMultimodalRouting', () => {
       localUri: 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10',
     });
 
-    assert.deepEqual(buildLocalUserContent('', [audio]), [
+    assert.deepEqual(await buildLocalUserContent('', [audio]), [
       {
         type: 'input_audio',
         input_audio: {
@@ -211,7 +211,7 @@ describe('mobileLocalMultimodalRouting', () => {
       localUri: 'file:///tmp/clip.mp3',
     });
 
-    assert.deepEqual(buildLocalUserContent('Keep this in context', [audio], {
+    assert.deepEqual(await buildLocalUserContent('Keep this in context', [audio], {
       ...baseCapabilities,
       supportsAudioInput: false,
     }), [
