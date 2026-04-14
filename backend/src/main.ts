@@ -63,6 +63,9 @@ async function bootstrap() {
     rawBody: true,
   });
 
+  // Increase JSON body parser limit (default 100KB is too small for chat payloads with attachments)
+  app.useBodyParser('json', { limit: '10mb' });
+
   // HTTP security headers
   app.use(helmet({
     contentSecurityPolicy: false, // CSP managed separately or by frontend

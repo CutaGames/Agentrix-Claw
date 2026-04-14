@@ -31,7 +31,7 @@ import { fetchLatestDesktopClipboard, type MobileDesktopClipboardSnapshot } from
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
 import { getVoiceDiagnosticsText, clearVoiceDiagnostics } from '../../services/voiceDiagnostics';
-import { MobileLocalInferenceService } from '../../services/mobileLocalInference.service';
+import { MobileLocalInferenceService, StreamThinkingFilter } from '../../services/mobileLocalInference.service';
 import { planLocalVoiceCapabilitySplit } from '../../services/localVoiceCapabilityPlanner.service';
 import {
   buildLocalUserContent,
@@ -760,6 +760,8 @@ export function AgentChatScreen() {
   // Per-agent preferred model (from agent account)
   const [agentPreferredModel, setAgentPreferredModel] = useState<string | null>(null);
   const [agentVoiceId, setAgentVoiceId] = useState<string | null>(null);
+  // Cached agent context for local model system prompt enrichment
+  const localAgentContextRef = useRef<string>('');
   const isLocalModelSelected = isLocalOnlyModelId(selectedModelId);
   const localCapabilityModelId = isLocalModelSelected ? selectedModelId : localAiModelId;
   const localVoiceRuntimeCapabilities = MobileLocalInferenceService.getDeclaredCapabilities({ model: localCapabilityModelId });
@@ -1014,6 +1016,36 @@ export function AgentChatScreen() {
           if (agent.metadata?.voice_id) {
             setAgentVoiceId(agent.metadata.voice_id);
           }
+          // Build enriched context for local model system prompt
+          const contextParts: string[] = [];
+          if (agent.personality) {
+            contextParts.push(`Personality: ${agent.personality}`);
+          }
+          if (agent.description) {
+            contextParts.push(`Description: ${agent.description}`);
+          }
+          if (agent.systemPrompt) {
+            contextParts.push(`Instructions: ${agent.systemPrompt}`);
+          }
+          // Fetch installed skills
+          try {
+            const { getInstanceSkills } = await import('../../services/openclaw.service');
+            const skills = await getInstanceSkills(activeInstance!.id);
+            const enabledSkills = (skills || []).filter((s) => s.enabled);
+            if (enabledSkills.length > 0) {
+              contextParts.push(`Installed skills: ${enabledSkills.map((s) => s.name).join(', ')}`);
+            }
+          } catch {}
+          // Fetch recent agent memories
+          try {
+            const { recallMemories } = await import('../../services/memorySlot.api');
+            const memories = await recallMemories({ agentId: activeInstance!.id, limit: 5, scopes: ['agent', 'user'] });
+            if (memories?.length > 0) {
+              const memSummary = memories.map((m) => `[${m.key}]: ${typeof m.value === 'string' ? m.value.slice(0, 200) : JSON.stringify(m.value).slice(0, 200)}`).join('\n');
+              contextParts.push(`Memories:\n${memSummary}`);
+            }
+          } catch {}
+          localAgentContextRef.current = contextParts.join('\n');
         }
       } catch {}
     })();
@@ -1641,8 +1673,13 @@ export function AgentChatScreen() {
 
         try {
           let localProducedOutput = false;
+          const thinkFilter = new StreamThinkingFilter();
+          const agentContext = localAgentContextRef.current;
+          const systemPrompt = agentContext
+            ? `You are ${instanceName}, a local on-device AI assistant running on the user's phone.\n${agentContext}\nKeep responses concise and practical. Reply in the user's language.`
+            : `You are ${instanceName}, a local on-device AI assistant running directly on the user's phone. You run locally for privacy and speed — no cloud needed. Keep responses concise and practical. Reply in the user's language.`;
           for await (const chunk of MobileLocalInferenceService.generateTextStream([
-            { role: 'system', content: `You are ${instanceName}, a local on-device AI assistant running directly on the user's phone. You run locally for privacy and speed — no cloud needed. Keep responses concise and practical. Reply in the user's language.` },
+            { role: 'system', content: systemPrompt },
             ...localHistory,
             { role: 'user', content: localUserContent },
           ], { model: effectiveModelId })) {
@@ -1654,11 +1691,23 @@ export function AgentChatScreen() {
               continue;
             }
 
+            const visible = thinkFilter.push(chunk);
+            if (!visible) {
+              continue;
+            }
+
             localProducedOutput = true;
             streamSucceeded = true;
-            localAssistantText += chunk;
-            appendToStreamingMessage(assistantMsgId, chunk);
-            enqueueStreamedSpeech(chunk);
+            localAssistantText += visible;
+            appendToStreamingMessage(assistantMsgId, visible);
+            enqueueStreamedSpeech(visible);
+          }
+          // Flush any remaining buffered content
+          const flushed = thinkFilter.flush();
+          if (flushed) {
+            localAssistantText += flushed;
+            appendToStreamingMessage(assistantMsgId, flushed);
+            enqueueStreamedSpeech(flushed);
           }
           enqueueStreamedSpeech('', true);
 

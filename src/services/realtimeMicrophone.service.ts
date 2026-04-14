@@ -40,6 +40,12 @@ const SPEECH_PRE_ROLL_FRAMES = 6;
  */
 const SPEECH_POST_ROLL_FRAMES = 8;
 /**
+ * Maximum speech duration in frames before auto-triggering speech end.
+ * At 16kHz with 512-sample frames (~32ms each), 1875 frames ≈ 60 seconds.
+ * Prevents infinite recording when VAD can't detect silence (e.g. background noise).
+ */
+const MAX_SPEECH_FRAMES = 1875;
+/**
  * Volume threshold for barge-in detection while mic is muted (agent speaking).
  * Lowered from 0.72 to 0.50 — phone users speaking at normal distance easily hit 0.50+
  * but typical phone speaker echo stays below 0.45 on most devices.
@@ -187,6 +193,21 @@ export class RealtimeMicrophoneService {
 
       if (this.speechActive) {
         this.speechFrameCount += 1;
+
+        // Max speech duration guard — force speech-end if recording too long
+        if (this.speechFrameCount >= MAX_SPEECH_FRAMES) {
+          const speechFrameCount = this.speechFrameCount;
+          this.speechActive = false;
+          this.silentFrameCount = 0;
+          this.speechFrameCount = 0;
+          this.restartCooldownFrameCount = SPEECH_RESTART_COOLDOWN_FRAMES;
+          this.postRollRemaining = SPEECH_POST_ROLL_FRAMES;
+          addVoiceDiagnostic('realtime-mic', 'speech-end-max-duration', { speechFrameCount });
+          this.callbacks.onSpeechEnd?.();
+          this.callbacks.onFrame(pcmChunk);
+          return;
+        }
+
         if (normalizedVolume <= SPEECH_END_THRESHOLD) {
           this.silentFrameCount += 1;
           if (this.silentFrameCount >= SPEECH_END_FRAME_COUNT) {
