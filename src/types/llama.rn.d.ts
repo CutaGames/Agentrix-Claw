@@ -99,9 +99,14 @@ declare module 'llama.rn' {
   export interface InitLlamaParams {
     model: string;
     n_ctx?: number;
+    n_batch?: number;
+    n_threads?: number;
     n_gpu_layers?: number;
     use_mlock?: boolean;
+    use_mmap?: boolean;
     ctx_shift?: boolean;
+    cache_type_k?: string;
+    cache_type_v?: string;
   }
 
   export function initLlama(params: InitLlamaParams): Promise<LlamaContext>;

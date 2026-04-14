@@ -1499,11 +1499,10 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           && preferLocalSpeechRecognition
           && (isVoiceUiE2E || isLiveSpeechRecognitionAvailable());
 
-        const shouldBlockLocalRecordingStart = !duplexModeRef.current
-          && !!localModelSelected
-          && !canUseLocalSpeechForHold
-          && !canUseRealtimePcmForHold
-          && (!localAudioInputAvailable || !canRecordSupportedLocalAudioFormat);
+        // When the local model can't handle audio directly (e.g. Gemma text+vision),
+        // don't block — fall through to cloud recording path which transcribes
+        // audio to text and sends the text to the local model.
+        const shouldBlockLocalRecordingStart = false;
 
         if (shouldBlockLocalRecordingStart) {
           isRecordingRef.current = false;
@@ -1805,22 +1804,17 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         const uri = recordingRef.current.getURI();
         recordingRef.current = null;
         if (uri) {
-          if (localModelSelected) {
-            if (localAudioInputAvailable && isSupportedLocalAudioRecordingUri(uri)) {
-              const localAudioAttachment = await buildLocalRecordedAudioAttachment(uri);
-              setTranscriptPreview(t({ en: '[Local voice message]', zh: '[本地语音消息]' }));
-              setVoicePhase('thinking');
-              setTimeout(() => onSendMessageRef.current('', [localAudioAttachment]), 80);
-              return;
-            }
-
-            setVoicePhase('idle');
-            showLocalVoicePathBlockedAlert(
-              localAudioInputAvailable ? 'recording-format-unsupported' : 'audio-input-unavailable',
-            );
+          if (localModelSelected && localAudioInputAvailable && isSupportedLocalAudioRecordingUri(uri)) {
+            // Send audio directly to local model that supports audio input
+            const localAudioAttachment = await buildLocalRecordedAudioAttachment(uri);
+            setTranscriptPreview(t({ en: '[Local voice message]', zh: '[本地语音消息]' }));
+            setVoicePhase('thinking');
+            setTimeout(() => onSendMessageRef.current('', [localAudioAttachment]), 80);
             return;
           }
 
+          // For local models without audio input (e.g. Gemma): record → cloud
+          // transcribe → send text to local model. Also used for all cloud models.
           let transcript = '';
           const formData = new FormData();
           formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
