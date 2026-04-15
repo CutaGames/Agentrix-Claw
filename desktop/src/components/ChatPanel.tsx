@@ -219,7 +219,9 @@ function resolveEffectiveChatMode(
 }
 
 function shouldEscalateDesktopLocalTurn(effectiveChatMode: ChatMode, hasCloudPath: boolean): boolean {
-  return hasCloudPath && effectiveChatMode === "agent";
+  // With local tool calling support (--jinja), agent mode can be handled locally.
+  // Only escalate plan mode which requires multi-step orchestration beyond local capability.
+  return hasCloudPath && effectiveChatMode === "plan";
 }
 
 type BallState = "idle" | "recording" | "thinking" | "speaking";
@@ -2440,19 +2442,59 @@ export default function ChatPanel({
 
                 let receivedFirstLocalChunk = false;
 
-                for await (const chunk of localSidecar.chatStream(history)) {
-                  if (controller.signal.aborted) {
-                    break;
+                // Try tool-calling path first (requires --jinja on llama-server)
+                let toolCallingHandled = false;
+                try {
+                  const { runDesktopToolCallingLoop } = await import("../services/desktopToolCalling");
+                  setStreamFeedback({
+                    tone: "info",
+                    label: "正在思考",
+                    detail: "检查是否需要使用工具",
+                  });
+                  const toolResult = await runDesktopToolCallingLoop(
+                    localSidecar,
+                    history,
+                    {
+                      instanceId: activeInst?.id,
+                      agentId: activeInst?.metadata?.agentAccountId || activeInst?.id,
+                      authToken: authToken || undefined,
+                      temperature: 0.7,
+                      maxTokens: 2048,
+                      onToolCall: (name: string) => {
+                        setStreamFeedback({
+                          tone: "info",
+                          label: `🔧 ${name}`,
+                          detail: "正在执行工具调用",
+                        });
+                      },
+                      abortSignal: controller.signal,
+                    },
+                  );
+                  toolCallingHandled = true;
+                  if (toolResult.text) {
+                    chunkHandler(toolResult.text);
                   }
-                  if (!receivedFirstLocalChunk) {
-                    receivedFirstLocalChunk = true;
-                    setStreamFeedback({
-                      tone: "info",
-                      label: "正在输出回复",
-                      detail: "内容持续生成中",
-                    });
+                } catch (toolError: any) {
+                  // Tool calling not available or failed — fall through to plain streaming
+                  console.warn("[local-tool-calling] fallback to streaming:", toolError?.message);
+                }
+
+                // Fallback: plain streaming without tools
+                if (!toolCallingHandled) {
+                  for await (const chunk of localSidecar.chatStream(history)) {
+                    if (controller.signal.aborted) {
+                      break;
+                    }
+                    if (!receivedFirstLocalChunk) {
+                      receivedFirstLocalChunk = true;
+                      setStreamFeedback({
+                        tone: "info",
+                        label: "正在输出回复",
+                        detail: "内容持续生成中",
+                      });
+                    }
+                    chunkHandler(chunk);
                   }
-                  chunkHandler(chunk);
                 }
 
                 if (!controller.signal.aborted) {

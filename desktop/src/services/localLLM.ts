@@ -37,16 +37,35 @@ export interface SidecarConfig {
   threads?: number;
 }
 
+export interface ToolFunctionDef {
+  name: string;
+  description?: string;
+  parameters?: Record<string, unknown>;
+}
+
+export interface ToolDef {
+  type: "function";
+  function: ToolFunctionDef;
+}
+
+export interface ToolCallResult {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  tool_calls?: ToolCallResult[];
+  tool_call_id?: string;
 }
 
 export interface ChatCompletionResponse {
   id: string;
   choices: Array<{
     index: number;
-    message: ChatMessage;
+    message: ChatMessage & { tool_calls?: ToolCallResult[] };
     finish_reason: string;
   }>;
   usage?: {
@@ -155,7 +174,43 @@ export class LocalLLMSidecar {
       body: JSON.stringify({
         messages,
         temperature: options?.temperature ?? 0.7,
-        max_tokens: options?.maxTokens ?? 512,
+        max_tokens: options?.maxTokens ?? 2048,
+        reasoning_format: "none",
+        chat_template_kwargs: { enable_thinking: false },
+        stream: false,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Local LLM error: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /** Send a chat completion with tools (non-streaming) */
+  async chatWithTools(
+    messages: ChatMessage[],
+    tools: ToolDef[],
+    options?: {
+      temperature?: number;
+      maxTokens?: number;
+      tool_choice?: "auto" | "none" | "required";
+    },
+  ): Promise<ChatCompletionResponse> {
+    if (this.status !== "running") {
+      throw new Error("Local LLM sidecar is not running");
+    }
+
+    const response = await localHttpFetch(`http://127.0.0.1:${this.port}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages,
+        tools,
+        tool_choice: options?.tool_choice ?? "auto",
+        temperature: options?.temperature ?? 0.7,
+        max_tokens: options?.maxTokens ?? 2048,
         reasoning_format: "none",
         chat_template_kwargs: { enable_thinking: false },
         stream: false,
@@ -184,7 +239,7 @@ export class LocalLLMSidecar {
       body: JSON.stringify({
         messages,
         temperature: options?.temperature ?? 0.7,
-        max_tokens: options?.maxTokens ?? 512,
+        max_tokens: options?.maxTokens ?? 2048,
         reasoning_format: "none",
         chat_template_kwargs: { enable_thinking: false },
         stream: true,

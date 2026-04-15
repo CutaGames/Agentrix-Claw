@@ -1461,6 +1461,7 @@ pub fn start_llm_sidecar(
        .arg("--port").arg(port.to_string())
        .arg("--ctx-size").arg(context_size.to_string())
          .arg("--n-gpu-layers").arg(n_gpu_layers.to_string())
+         .arg("--jinja")
          .arg("--reasoning").arg("off")
          .arg("--reasoning-format").arg("none");
 
