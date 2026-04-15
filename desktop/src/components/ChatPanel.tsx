@@ -219,9 +219,10 @@ function resolveEffectiveChatMode(
 }
 
 function shouldEscalateDesktopLocalTurn(effectiveChatMode: ChatMode, hasCloudPath: boolean): boolean {
-  // With local tool calling support (--jinja), agent mode can be handled locally.
-  // Only escalate plan mode which requires multi-step orchestration beyond local capability.
-  return hasCloudPath && effectiveChatMode === "plan";
+  // Desktop targets VSCode-level capability for complex tasks.
+  // agent/plan modes escalate to cloud for full tool orchestration (40+ tools, file ops, commands, 16-22 rounds).
+  // ask mode runs locally with basic tools (5 tools, 5 rounds) — fast, private, offline-capable.
+  return hasCloudPath && (effectiveChatMode === "agent" || effectiveChatMode === "plan");
 }
 
 type BallState = "idle" | "recording" | "thinking" | "speaking";
