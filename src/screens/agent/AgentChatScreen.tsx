@@ -71,8 +71,8 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
 
 // ── Token budget estimation for local context management ──
 const LOCAL_CONTEXT_WINDOW = 4096;
-const LOCAL_RESPONSE_RESERVE = 512; // n_predict default
-const LOCAL_SYSTEM_PROMPT_ESTIMATE = 60; // tokens for system prompt
+const LOCAL_RESPONSE_RESERVE = 2048; // n_predict default
+const LOCAL_SYSTEM_PROMPT_ESTIMATE = 200; // tokens for enriched system prompt
 
 /** Rough token estimate: ~2 chars/token for mixed CJK/Latin text */
 function estimateTokens(text: string): number {
@@ -219,10 +219,20 @@ function buildOutgoingMessageContent(text: string, attachments: UploadedChatAtta
         text: `[Video Attachment ${index + 1}: ${attachment.originalName}] URL: ${attachmentUrl}`,
       });
     } else if (attachment.mimetype?.startsWith('audio/') || attachment.originalName.match(/\.(mp3|wav|m4a|ogg)$/i)) {
-      multimodalContent.push({
-        type: 'input_audio',
-        input_audio: { url: attachmentUrl }
-      });
+      // Cloud models don't support input_audio — send as text reference
+      // Voice audio is transcribed before reaching here in the normal flow;
+      // this fallback handles edge cases where raw audio attachments slip through.
+      if (attachmentUrl.startsWith('http')) {
+        multimodalContent.push({
+          type: 'text',
+          text: `[Voice Message: ${attachment.originalName}] ${attachmentUrl}`,
+        });
+      } else {
+        multimodalContent.push({
+          type: 'text',
+          text: `[Voice Message from user]`,
+        });
+      }
     } else {
       multimodalContent.push({
         type: 'text',
@@ -1675,9 +1685,10 @@ export function AgentChatScreen() {
           let localProducedOutput = false;
           const thinkFilter = new StreamThinkingFilter();
           const agentContext = localAgentContextRef.current;
+          const identityBlock = `You are ${instanceName}. You are NOT Gemini, NOT GPT, NOT Claude — you are ${instanceName}, an Agentrix AI agent running locally on the user’s device. Never claim to be any other model or assistant.`;
           const systemPrompt = agentContext
-            ? `You are ${instanceName}, a local on-device AI assistant running on the user's phone.\n${agentContext}\nKeep responses concise and practical. Reply in the user's language.`
-            : `You are ${instanceName}, a local on-device AI assistant running directly on the user's phone. You run locally for privacy and speed — no cloud needed. Keep responses concise and practical. Reply in the user's language.`;
+            ? `${identityBlock}\n${agentContext}\nYou run locally for privacy and speed. Give complete, thorough answers. Reply in the user's language.`
+            : `${identityBlock}\nYou run locally on the user's phone for privacy and speed — no cloud needed. Give complete, thorough answers. Reply in the user's language.`;
           for await (const chunk of MobileLocalInferenceService.generateTextStream([
             { role: 'system', content: systemPrompt },
             ...localHistory,

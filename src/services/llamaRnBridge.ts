@@ -581,7 +581,7 @@ const bridge = {
 
     const result = await context.completion({
       messages: completionMessages,
-      n_predict: payload.maxTokens || 512,
+      n_predict: payload.maxTokens || 2048,
       temperature: payload.temperature ?? 0.7,
       stop: STOP_TOKENS,
     } as any);
@@ -626,12 +626,16 @@ const bridge = {
     await context.completion(
       ({
         messages: completionMessages,
-        n_predict: payload.maxTokens || 512,
+        n_predict: payload.maxTokens || 2048,
         temperature: payload.temperature ?? 0.7,
         stop: STOP_TOKENS,
       } as any),
       (data) => {
-        const tokenText = typeof data.token === 'string' ? data.token : '';
+        // Skip thinking/reasoning tokens — only emit visible content
+        if (data.reasoning_content) return;
+        const tokenText = typeof data.token === 'string'
+          ? data.token
+          : (typeof data.content === 'string' ? data.content : '');
         if (tokenText) {
           pendingChunk += tokenText;
           if (shouldFlushStreamChunk(tokenText, pendingChunk)) {
