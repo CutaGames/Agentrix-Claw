@@ -10,7 +10,7 @@
  */
 
 import { File as ExpoFile } from 'expo-file-system';
-import type { LlamaContext } from 'llama.rn';
+import type { LlamaContext, ToolDefinition, ToolCall } from 'llama.rn';
 import { AppState, Platform, type AppStateStatus } from 'react-native';
 import { OtaModelDownloadService } from './otaModelDownload.service';
 import { addVoiceDiagnostic } from './voiceDiagnostics';
@@ -60,8 +60,10 @@ type MessageRequirements = {
 };
 
 type CompletionMessage = {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | Array<Record<string, unknown>>;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
 };
 
 type LlamaContextWithExtras = LlamaContext & {
@@ -509,15 +511,23 @@ async function toNormalizedCompletionMessages(
   messages: MobileLocalChatMessage[],
 ): Promise<CompletionMessage[]> {
   return Promise.all(messages.map(async (message) => {
+    const role = message.role as CompletionMessage['role'];
+
+    // Tool result messages and assistant messages with tool_calls
+    const extended = message as MobileLocalChatMessage & {
+      tool_calls?: ToolCall[];
+      tool_call_id?: string;
+    };
+
     if (!Array.isArray(message.content)) {
-      return {
-        role: message.role as 'system' | 'user' | 'assistant',
-        content: message.content,
-      };
+      const msg: CompletionMessage = { role, content: message.content };
+      if (extended.tool_calls) msg.tool_calls = extended.tool_calls;
+      if (extended.tool_call_id) msg.tool_call_id = extended.tool_call_id;
+      return msg;
     }
 
     return {
-      role: message.role as 'system' | 'user' | 'assistant',
+      role,
       content: await Promise.all(message.content.map((part) => normalizeContentPart(part))),
     };
   }));
@@ -647,6 +657,80 @@ const bridge = {
 
     flushPendingChunk();
 
+    return chunks;
+  },
+
+  async generateWithTools(payload: {
+    model?: string;
+    messages: MobileLocalChatMessage[];
+    tools?: ToolDefinition[];
+    tool_choice?: 'auto' | 'none' | 'required';
+    temperature?: number;
+    maxTokens?: number;
+  }): Promise<{ text: string; tool_calls?: ToolCall[] }> {
+    const modelId = resolveModelId(payload.model);
+    const context = await getOrLoadContext(modelId, 'text');
+    const completionMessages = await toNormalizedCompletionMessages(payload.messages);
+
+    const result = await context.completion({
+      messages: completionMessages,
+      n_predict: payload.maxTokens || 2048,
+      temperature: payload.temperature ?? 0.7,
+      stop: STOP_TOKENS,
+      ...(payload.tools?.length ? { tools: payload.tools, tool_choice: payload.tool_choice || 'auto' } : {}),
+    } as any);
+
+    return {
+      text: result.text,
+      tool_calls: (result as any).tool_calls as ToolCall[] | undefined,
+    };
+  },
+
+  async generateStreamWithTools(payload: {
+    model?: string;
+    messages: MobileLocalChatMessage[];
+    temperature?: number;
+    maxTokens?: number;
+    onToken?: (chunk: string) => void;
+  }): Promise<string[]> {
+    // Streaming path WITHOUT tools — used for the final natural-language response
+    // after tool calls are resolved. Same as generateStream but accepts 'tool' role messages.
+    const modelId = resolveModelId(payload.model);
+    const context = await getOrLoadContext(modelId, 'text');
+    const completionMessages = await toNormalizedCompletionMessages(payload.messages);
+
+    const chunks: string[] = [];
+    let pendingChunk = '';
+
+    const flushPendingChunk = () => {
+      if (!pendingChunk) return;
+      chunks.push(pendingChunk);
+      payload.onToken?.(pendingChunk);
+      pendingChunk = '';
+    };
+
+    await context.completion(
+      ({
+        messages: completionMessages,
+        n_predict: payload.maxTokens || 2048,
+        temperature: payload.temperature ?? 0.7,
+        stop: STOP_TOKENS,
+      } as any),
+      (data) => {
+        if (data.reasoning_content) return;
+        const tokenText = typeof data.token === 'string'
+          ? data.token
+          : (typeof data.content === 'string' ? data.content : '');
+        if (tokenText) {
+          pendingChunk += tokenText;
+          if (shouldFlushStreamChunk(tokenText, pendingChunk)) {
+            flushPendingChunk();
+          }
+        }
+      },
+    );
+
+    flushPendingChunk();
     return chunks;
   },
 };

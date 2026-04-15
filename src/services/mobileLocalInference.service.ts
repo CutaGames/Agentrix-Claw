@@ -1,7 +1,7 @@
 import { NativeModules } from 'react-native';
 import { OtaModelDownloadService } from './otaModelDownload.service';
 
-export type MobileLocalChatRole = 'system' | 'user' | 'assistant';
+export type MobileLocalChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
 export type MobileLocalChatContentPart =
   | {

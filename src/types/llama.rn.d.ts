@@ -34,6 +34,28 @@ declare module 'llama.rn' {
     content: LlamaMessageContent;
   }
 
+  export interface ToolFunctionDefinition {
+    name: string;
+    description?: string;
+    parameters?: Record<string, unknown>;
+  }
+
+  export interface ToolDefinition {
+    type: 'function';
+    function: ToolFunctionDefinition;
+  }
+
+  export interface ToolCallFunction {
+    name: string;
+    arguments: string;
+  }
+
+  export interface ToolCall {
+    id?: string;
+    type: 'function';
+    function: ToolCallFunction;
+  }
+
   export interface CompletionParams {
     messages?: LlamaMessage[];
     prompt?: string;
@@ -43,6 +65,8 @@ declare module 'llama.rn' {
     grammar?: string;
     guide_tokens?: number[];
     stop?: string[];
+    tools?: ToolDefinition[];
+    tool_choice?: 'auto' | 'none' | 'required';
   }
 
   export interface CompletionTokenData {
@@ -74,7 +98,7 @@ declare module 'llama.rn' {
     completion(
       params: CompletionParams,
       onToken?: (data: CompletionTokenData) => void,
-    ): Promise<{ text: string; audio_tokens?: number[]; timings?: Record<string, number> }>;
+    ): Promise<{ text: string; tool_calls?: ToolCall[]; audio_tokens?: number[]; timings?: Record<string, number> }>;
 
     stopCompletion(): Promise<void>;
 
