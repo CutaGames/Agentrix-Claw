@@ -1818,7 +1818,6 @@ export function AgentChatScreen() {
                   },
                   abortSignal: toolAbort.signal,
                 });
-                toolCallingHandled = true;
                 // Handle non-streamed response (direct reply or post-tool result)
                 if (toolResult.text && !localProducedOutput) {
                   const visible = thinkFilter.push(toolResult.text);
@@ -1832,6 +1831,8 @@ export function AgentChatScreen() {
                     enqueueStreamedSpeech(finalText);
                   }
                 }
+                // Only mark handled if we actually got output — otherwise fall through to plain streaming
+                toolCallingHandled = localProducedOutput;
               } finally {
                 clearTimeout(toolTimeout);
                 localAbort.signal.removeEventListener('abort', onUserAbort);

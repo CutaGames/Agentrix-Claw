@@ -2457,7 +2457,7 @@ export default function ChatPanel({
                     history,
                     {
                       instanceId: activeInst?.id,
-                      agentId: activeInst?.metadata?.agentAccountId || activeInst?.id,
+                      agentId: (activeInst as any)?.metadata?.agentAccountId || activeInst?.id,
                       authToken: authToken || undefined,
                       temperature: 0.7,
                       maxTokens: 2048,
