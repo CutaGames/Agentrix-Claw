@@ -916,8 +916,13 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     try {
       const audioBuffer = await edgeTTS(data.text, { voice });
 
-      // Send in chunks (16KB each) for streaming playback
-      const CHUNK_SIZE = 16 * 1024;
+      // Send in chunks for streaming playback. Chunk size is env-tunable
+      // (VOICE_TTS_CHUNK_SIZE, default 16384) — larger values reduce socket
+      // frame count at the cost of time-to-first-audio.
+      const rawChunk = parseInt(process.env.VOICE_TTS_CHUNK_SIZE || '', 10);
+      const CHUNK_SIZE = Number.isFinite(rawChunk) && rawChunk >= 1024 && rawChunk <= 131072
+        ? rawChunk
+        : 16 * 1024;
       for (let offset = 0; offset < audioBuffer.length; offset += CHUNK_SIZE) {
         const chunk = audioBuffer.subarray(offset, offset + CHUNK_SIZE);
         client.emit('voice:tts:chunk', {

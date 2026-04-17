@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { VoiceController } from './voice.controller';
 import { VoiceMetricsController } from './voice-metrics.controller';
+import { OuteTTSRelayController } from './outetts-relay.controller';
 import { VoiceService } from './voice.service';
 import { RealtimeVoiceGateway } from './realtime-voice.gateway';
 import { VoiceSessionStore } from './voice-session.store';
@@ -18,7 +19,7 @@ import { DeviceSession } from '../../entities/device-session.entity';
 
 @Module({
   imports: [JwtModule, ConfigModule, forwardRef(() => OpenClawProxyModule), TypeOrmModule.forFeature([UserProviderConfig, DeviceSession])],
-  controllers: [VoiceController, VoiceMetricsController],
+  controllers: [VoiceController, VoiceMetricsController, OuteTTSRelayController],
   providers: [
     VoiceService,
     RealtimeVoiceGateway,

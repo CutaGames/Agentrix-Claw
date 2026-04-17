@@ -58,6 +58,13 @@ export interface ChatMessageDto {
   platform?: 'desktop' | 'mobile' | 'web';
   deviceId?: string;
   agentId?: string;
+  /**
+   * Phase 5.e — strict-local mode. When true and the requested model is a
+   * LOCAL_ONLY model that the backend cannot run, the server rejects with
+   * 422 instead of silently falling back to a cloud model. Mobile/desktop
+   * clients that want to guarantee on-device execution should send this.
+   */
+  requireLocal?: boolean;
 }
 
 export interface UnifiedChatRequestDto {
@@ -1291,6 +1298,26 @@ export class OpenClawProxyService {
 
     const installedToolMap = new Map(installedToolEntries.map((entry) => [entry.toolName, entry.skill]));
 
+    // Phase 5.b: surface user-registered MCP server tools to the LLM.
+    // Schemas come from discoverTools() → stored on McpServer.discoveredTools.
+    // Execution is already wired in the `name.startsWith('mcp_')` branch below.
+    let mcpToolSchemas: any[] = [];
+    try {
+      const userMcpTools = await this.mcpRegistryService.getUserMcpTools(userId);
+      mcpToolSchemas = userMcpTools
+        .filter((t) => !permissionProfile?.deniedToolNames.includes(t.name))
+        .map((t) => ({
+          name: t.name,
+          description: t.description,
+          input_schema: t.input_schema,
+        }));
+      if (mcpToolSchemas.length) {
+        this.logger.log(`🔌 MCP: injecting ${mcpToolSchemas.length} user-registered MCP tools into chat`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`MCP tool discovery failed (non-fatal): ${err?.message}`);
+    }
+
     // P4/P5 Intelligence tools
     const intelligenceTools = [
       {
@@ -1379,6 +1406,7 @@ export class OpenClawProxyService {
         ...presetTools,
         ...installedToolEntries.map((entry) => entry.schema),
         ...intelligenceTools,
+        ...mcpToolSchemas,
       ],
       onToolCall: async (name: string, args: any) => {
         const preset = AGENT_PRESET_SKILLS.find((skill) => skill.handlerName === name);
@@ -1839,6 +1867,18 @@ export class OpenClawProxyService {
         || isLocalOnlyModel(instanceActiveModel)
         ? 'local_only_fallback_to_cloud'
         : undefined;
+
+    // Phase 5.e — strict-local reject. Client explicitly asked for on-device
+    // execution; refuse to fall back to cloud so the client knows to run locally.
+    if (localOnlyFallbackReason && dto.requireLocal) {
+      throw new BadRequestException({
+        statusCode: 422,
+        error: 'LocalOnlyModelRequired',
+        message: 'Requested model is local-only and requireLocal=true. Run on-device.',
+        requestedModel: rawDtoModel || rawPreferredModel || instanceActiveModel || null,
+        reason: 'local_only_required',
+      });
+    }
     let resolvedModel = sanitizedDtoModel
       || (instanceModelPinned ? sanitizedInstanceActiveModel : undefined)
       || sanitizedPreferred
