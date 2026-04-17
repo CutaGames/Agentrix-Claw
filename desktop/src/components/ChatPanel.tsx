@@ -101,6 +101,15 @@ import {
   checkDesktopLocalModelReady,
 } from "../services/localChat";
 import { LocalLLMSidecar } from "../services/localLLM";
+import {
+  classifyTurnForAuto,
+  DEFAULT_EXECUTION_MODE,
+  parseExplicitTierHint,
+  readExecutionMode,
+  resolveExecutionTier,
+  writeExecutionMode,
+  type ExecutionMode,
+} from "../services/turnRouter";
 
 // Send desktop notification when app is in background
 async function notifyIfBackground(title: string, body: string) {
@@ -177,20 +186,47 @@ function getConversationModelLabel(
   return modelId || activeInstance?.resolvedModel || null;
 }
 
+function sanitizeAgentProfile(raw?: string | null): string {
+  if (!raw) return "";
+  // Strip phrases that falsely hardcode an underlying model (e.g. "我的底层驱动是 Gemini 3.1 Pro").
+  // Keeps persona/role description intact while preventing identity contradictions across tiers.
+  const patterns: RegExp[] = [
+    /my (underlying |底层\s*)?(model|engine|llm|驱动)[^\n]*?(gemini|claude|gpt|gemma|llama|qwen|mistral|deepseek)[^\n]*/gi,
+    /powered by (gemini|claude|gpt|gemma|llama|qwen|mistral|deepseek)[^\n]*/gi,
+    /我的底层驱动是[^\n。]*/g,
+    /我基于[^\n。]*(gemini|claude|gpt|gemma)[^\n]*/gi,
+  ];
+  let cleaned = raw;
+  for (const p of patterns) cleaned = cleaned.replace(p, "");
+  return cleaned.trim();
+}
+
 function buildConversationSystemMessages(
   activeAgent: DesktopAgent | null,
   modelLabel: string | null,
+  tier: "local" | "cloud" = "cloud",
 ): Array<{ role: "system"; content: string }> {
   const systemMessages: Array<{ role: "system"; content: string }> = [];
 
-  if (modelLabel) {
+  if (tier === "local") {
+    // Local tier (Gemma/llama.cpp) can latch onto training-data identities (e.g. claim to be
+    // Gemini/Claude) unless strongly anchored. Keep this block terse but emphatic.
+    systemMessages.push({
+      role: "system",
+      content:
+        "You run locally on the user's device via the Agentrix desktop runtime. " +
+        "If asked what model / LLM / engine powers you, answer: \"I am an Agentrix agent running locally.\" " +
+        "Do NOT claim to be Gemini, Claude, GPT, Bard, Gemma, Llama, or any other specific model, " +
+        "even if internal training suggests one. Never contradict this identity.",
+    });
+  } else if (modelLabel) {
     systemMessages.push({
       role: "system",
       content: `Current selected model for this conversation: "${modelLabel}". If the user asks which model is currently selected, answer with this exact label. Do not claim to be a different model.`,
     });
   }
 
-  const agentProfile = activeAgent?.description?.trim();
+  const agentProfile = sanitizeAgentProfile(activeAgent?.description);
   if (agentProfile) {
     systemMessages.push({
       role: "system",
@@ -292,6 +328,11 @@ export default function ChatPanel({
     useAuthStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [executionMode, setExecutionModeState] = useState<ExecutionMode>(() => readExecutionMode());
+  const setExecutionMode = useCallback((mode: ExecutionMode) => {
+    setExecutionModeState(mode);
+    writeExecutionMode(mode);
+  }, []);
   const [ballState, setBallState] = useState<BallState>("idle");
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [ttsEnabled, setTtsEnabled] = useState(true);
@@ -1950,13 +1991,34 @@ export default function ChatPanel({
       const targetSessionId = sessionIdRef.current;
       const targetRuntime = sessionRuntimeRef.current[targetSessionId] || createEmptySessionRuntimeState();
       const isSyntheticContinueTurn = isSyntheticContinuePrompt(text);
-      const useDesktopLocalModel = isDesktopLocalModelId(selectedModel);
       const activeInst = activeInstanceId
         ? instances.find((instance) => instance.id === activeInstanceId)
         : undefined;
       const fallbackCloudModel = activeInst?.resolvedModel && !isDesktopLocalModelId(activeInst.resolvedModel)
         ? activeInst.resolvedModel
         : undefined;
+
+      // Tri-tier router: unified source of truth for local-vs-cloud routing.
+      // `useDesktopLocalModel` used to be derived from `isDesktopLocalModelId(selectedModel)` alone,
+      // which meant a user picking "cloud-only" mode could still silently hit the sidecar if the
+      // dropdown still pointed at a local model. Routing decisions now go through one helper.
+      const tierDecision = resolveExecutionTier({
+        selectedModelId: selectedModel,
+        executionMode,
+        agentPreferredModel: null,
+        instanceResolvedModel: activeInst?.resolvedModel || null,
+        finalFallbackModel: fallbackCloudModel || "claude-haiku-4-5",
+        isLocalModelId: isDesktopLocalModelId,
+        localRuntimeReady: true, // readiness probed later inside the local branch
+        autoClassification: classifyTurnForAuto({
+          text,
+          attachmentCount: pendingAttachments.length,
+          hasNonImageAttachment: pendingAttachments.some((a) => a.kind !== "image"),
+          approxContextTokens: Math.round((messages.map((m) => m.content || "").join("\n").length) / APPROX_CHARS_PER_TOKEN),
+          explicitTierHint: parseExplicitTierHint(text),
+        }),
+      });
+      const useDesktopLocalModel = tierDecision.tier === "local" && isDesktopLocalModelId(selectedModel);
 
       if ((!text && pendingAttachments.length === 0) || targetRuntime.sending || uploadingAttachments) {
         return;
@@ -2070,7 +2132,11 @@ export default function ChatPanel({
           content: serializeMessageForModel(message.content, message.attachments || []),
         }));
         const currentModelLabel = getConversationModelLabel(selectedModel, models, activeInst);
-        const systemMessages = buildConversationSystemMessages(activeAgent, currentModelLabel);
+        const systemMessages = buildConversationSystemMessages(
+          activeAgent,
+          currentModelLabel,
+          useDesktopLocalModel ? "local" : "cloud",
+        );
 
         if (systemMessages.length > 0) {
           history.unshift(...systemMessages);
@@ -2359,8 +2425,9 @@ export default function ChatPanel({
             // Pre-flight: check if local model + binary are available
             const readiness = await checkDesktopLocalModelReady();
             if (!readiness.ready) {
-              // No local model available — skip local attempt, fall through to cloud
-              shouldFallbackToCloud = Boolean(authToken);
+              // Respect the user's execution-mode preference: in "local-only" mode we surface
+              // the error instead of silently falling back to cloud, even if auth would allow it.
+              shouldFallbackToCloud = Boolean(authToken) && tierDecision.allowCloudFallback;
               if (!shouldFallbackToCloud) {
                 updateSessionMessages(
                   targetSessionId,
@@ -4006,6 +4073,48 @@ export default function ChatPanel({
             ))}
           </div>
         )}
+        {/* Tri-tier execution mode selector — single source of truth for local vs cloud. */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            marginBottom: 6,
+            fontSize: 11,
+            color: "var(--text-dim)",
+          }}
+        >
+          <span style={{ opacity: 0.7 }}>执行</span>
+          {(["local-only", "auto", "cloud-only"] as ExecutionMode[]).map((mode) => {
+            const active = executionMode === mode;
+            const label = mode === "local-only" ? "🔒 端侧" : mode === "cloud-only" ? "☁️ 云端" : "🤖 智能";
+            const hint =
+              mode === "local-only"
+                ? "强制本地 · 失败不切换云端"
+                : mode === "cloud-only"
+                  ? "强制云端 · 忽略本地模型"
+                  : "自动 · 简单问题本地，复杂用云端";
+            return (
+              <button
+                key={mode}
+                onClick={() => setExecutionMode(mode)}
+                title={hint}
+                style={{
+                  padding: "3px 10px",
+                  borderRadius: 999,
+                  border: "1px solid var(--border)",
+                  background: active ? "var(--accent)" : "var(--bg-input)",
+                  color: active ? "white" : "var(--text-dim)",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  transition: "background 0.15s, color 0.15s",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
         <div
           style={{
             display: "flex",

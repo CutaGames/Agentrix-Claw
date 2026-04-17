@@ -441,13 +441,25 @@ export class MobileLocalInferenceService {
 
   static async *generateTextStream(
     messages: MobileLocalChatMessage[],
-    options?: { model?: string; temperature?: number; maxTokens?: number },
+    options?: {
+      model?: string;
+      temperature?: number;
+      maxTokens?: number;
+      /** Abort if the overall stream doesn't complete within this many ms. Default 30s. */
+      timeoutMs?: number;
+      /** Abort if no token chunk arrives within this many ms. Default 15s. */
+      stallTimeoutMs?: number;
+      /** Optional caller-controlled abort signal. */
+      signal?: AbortSignal;
+    },
   ): AsyncGenerator<string> {
     const resolvedBridge = resolveBridge();
     if (!resolvedBridge) {
       throw new Error('Local mobile inference bridge is not available on this device.');
     }
     const { bridge, source } = resolvedBridge;
+    const overallTimeoutMs = options?.timeoutMs ?? 30_000;
+    const stallTimeoutMs = options?.stallTimeoutMs ?? 15_000;
 
     if (typeof bridge.generateStream === 'function') {
       const queuedChunks: string[] = [];
@@ -458,18 +470,51 @@ export class MobileLocalInferenceService {
       const waitForChunk = () => new Promise<void>((resolve) => {
         wakeConsumer = resolve;
       });
+      const wake = () => {
+        if (wakeConsumer) {
+          const resolve = wakeConsumer;
+          wakeConsumer = null;
+          resolve();
+        }
+      };
+      // Overall + stall watchdogs convert hang → abort + streamError.
+      const fail = (err: unknown) => {
+        if (!streamCompleted) {
+          streamError = err;
+          streamCompleted = true;
+          wake();
+        }
+      };
+      let lastTokenAt = Date.now();
+      const overallTimer = setTimeout(() => {
+        fail(new Error(`Local inference timeout after ${Math.round(overallTimeoutMs / 1000)}s. Please try again or switch to cloud.`));
+      }, overallTimeoutMs);
+      const stallTimer = setInterval(() => {
+        if (streamCompleted) return;
+        if (Date.now() - lastTokenAt > stallTimeoutMs) {
+          fail(new Error(`Local inference stalled (no tokens for ${Math.round(stallTimeoutMs / 1000)}s).`));
+        }
+      }, Math.min(stallTimeoutMs / 2, 5000));
+      const externalAbort = options?.signal;
+      const onExternalAbort = () => fail(new Error('Local inference aborted.'));
+      if (externalAbort) {
+        if (externalAbort.aborted) onExternalAbort();
+        else externalAbort.addEventListener('abort', onExternalAbort, { once: true });
+      }
+      const cleanupTimers = () => {
+        clearTimeout(overallTimer);
+        clearInterval(stallTimer);
+        if (externalAbort) externalAbort.removeEventListener('abort', onExternalAbort);
+      };
 
       const pushChunk = (chunk: string) => {
         if (!chunk) {
           return;
         }
 
+        lastTokenAt = Date.now();
         queuedChunks.push(chunk);
-        if (wakeConsumer) {
-          const resolve = wakeConsumer;
-          wakeConsumer = null;
-          resolve();
-        }
+        wake();
       };
 
       const handleIncrementalChunk = (chunk: string) => {
@@ -503,36 +548,32 @@ export class MobileLocalInferenceService {
         }
 
         streamCompleted = true;
-        if (wakeConsumer) {
-          const resolve = wakeConsumer;
-          wakeConsumer = null;
-          resolve();
-        }
+        wake();
       }).catch((error) => {
         streamError = error;
         streamCompleted = true;
-        if (wakeConsumer) {
-          const resolve = wakeConsumer;
-          wakeConsumer = null;
-          resolve();
-        }
+        wake();
       });
 
-      while (!streamCompleted || queuedChunks.length > 0) {
-        if (queuedChunks.length === 0) {
-          await waitForChunk();
-          continue;
+      try {
+        while (!streamCompleted || queuedChunks.length > 0) {
+          if (queuedChunks.length === 0) {
+            await waitForChunk();
+            continue;
+          }
+
+          const nextChunk = queuedChunks.shift();
+          if (nextChunk) {
+            yield nextChunk;
+          }
         }
 
-        const nextChunk = queuedChunks.shift();
-        if (nextChunk) {
-          yield nextChunk;
+        await streamPromise;
+        if (streamError) {
+          throw new Error(extractErrorMessage(streamError, 'Local model inference failed.'));
         }
-      }
-
-      await streamPromise;
-      if (streamError) {
-        throw new Error(extractErrorMessage(streamError, 'Local model inference failed.'));
+      } finally {
+        cleanupTimers();
       }
 
       return;

@@ -41,6 +41,13 @@ export const SUPPORTED_MODELS: ModelOption[] = [
 
 export type LocalAiStatus = 'not_downloaded' | 'downloading' | 'ready' | 'error';
 
+/**
+ * User-level execution policy that governs whether a chat turn runs on the
+ * on-device model, in the cloud, or is dispatched automatically by the
+ * classifier. Defaults to `auto`.
+ */
+export type ExecutionMode = 'local-only' | 'auto' | 'cloud-only';
+
 interface SettingsState {
   customApiKeys: Record<string, string>;
   setCustomApiKey: (provider: string, key: string) => void;
@@ -50,6 +57,9 @@ interface SettingsState {
   
   // AI Model
   selectedModelId: ModelId;
+
+  /** Tri-tier execution policy. */
+  executionMode: ExecutionMode;
 
   // Local AI Model (端侧 Gemma)
   localAiEnabled: boolean;
@@ -83,6 +93,7 @@ interface SettingsState {
   setEnvironment: (env: Environment) => void;
   setApiBaseUrl: (url: string) => void;
   setSelectedModel: (modelId: ModelId) => void;
+  setExecutionMode: (mode: ExecutionMode) => void;
   setLocalAiEnabled: (enabled: boolean) => void;
   setLocalAiStatus: (status: LocalAiStatus) => void;
   setLocalAiModelId: (modelId: string) => void;
@@ -138,6 +149,8 @@ export const useSettingsStore = create<SettingsState>()(
       
       selectedModelId: 'claude-haiku-4-5' as ModelId,
 
+      executionMode: 'auto' as ExecutionMode,
+
       localAiEnabled: false,
       localAiStatus: 'not_downloaded' as LocalAiStatus,
       localAiModelId: 'gemma-4-2b',
@@ -165,6 +178,8 @@ export const useSettingsStore = create<SettingsState>()(
       setApiBaseUrl: (url) => set({ apiBaseUrl: url }),
       
       setSelectedModel: (modelId) => set({ selectedModelId: modelId }),
+
+      setExecutionMode: (mode) => set({ executionMode: mode }),
 
       setLocalAiEnabled: (enabled) => set({ localAiEnabled: enabled }),
       setLocalAiStatus: (status) => set({ localAiStatus: status }),
@@ -198,9 +213,9 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'agentrix-settings-storage',
       storage: createJSONStorage(() => mmkvStorage),
-      version: 4,
+      version: 5,
       migrate: (persistedState: any, version) => {
-        if (!persistedState || version >= 4) {
+        if (!persistedState || version >= 5) {
           return persistedState;
         }
 
@@ -224,6 +239,13 @@ export const useSettingsStore = create<SettingsState>()(
           nextState = {
             ...nextState,
             preferOnDeviceVoice: true,
+          };
+        }
+
+        if (version < 5) {
+          nextState = {
+            ...nextState,
+            executionMode: 'auto' as ExecutionMode,
           };
         }
 

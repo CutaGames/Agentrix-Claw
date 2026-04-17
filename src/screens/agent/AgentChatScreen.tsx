@@ -39,6 +39,12 @@ import {
   resolveLocalTurnExecution,
   type LocalTurnExecutionDecision,
 } from '../../services/mobileLocalMultimodalRouting.service';
+import {
+  resolveExecutionTier,
+  classifyTurnForAuto,
+  parseExplicitTierHint,
+} from '../../utils/turnRouter';
+import { buildSystemPrompt, sanitizeAgentContext } from '../../utils/agentPersona';
 import type { StreamEvent } from '../../../shared/stream-parser';
 
 // expo-av: graceful degrade if missing
@@ -822,6 +828,8 @@ export function AgentChatScreen() {
   const setPreferOnDeviceVoice = useSettingsStore((s) => s.setPreferOnDeviceVoice);
   const speechRate = useSettingsStore((s) => s.speechRate);
   const setSpeechRate = useSettingsStore((s) => s.setSpeechRate);
+  const executionMode = useSettingsStore((s) => s.executionMode);
+  const setExecutionMode = useSettingsStore((s) => s.setExecutionMode);
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [provisioning, setProvisioning] = useState(false);
@@ -1720,7 +1728,28 @@ export function AgentChatScreen() {
       const localTurnDecision = isLocalOnlyModelId(effectiveModelId) && localRuntimeSnapshot
         ? resolveLocalTurnExecution(text, attachments, localRuntimeSnapshot)
         : null;
-      const shouldTryLocalNano = isLocalOnlyModelId(effectiveModelId) && localTurnDecision?.mode === 'local';
+
+      // Tri-tier router: user preference (local-only / auto / cloud-only) gates everything below.
+      const tierDecision = resolveExecutionTier({
+        selectedModelId: effectiveModelId,
+        executionMode,
+        agentPreferredModel: null,
+        instanceResolvedModel: remoteResolvedModelId || null,
+        finalFallbackModel: 'claude-haiku-4-5',
+        isLocalModelId: isLocalOnlyModelId,
+        localRuntimeReady: !!localRuntimeSnapshot,
+        autoClassification: classifyTurnForAuto({
+          text,
+          attachmentCount: attachments.length,
+          hasNonImageAttachment: attachments.some((a) => !a.isImage),
+          approxContextTokens: estimateTokens(currentMsgs.map((m) => m.content || '').join('\n')),
+          explicitTierHint: parseExplicitTierHint(text),
+        }),
+      });
+      const shouldTryLocalNano =
+        tierDecision.tier === 'local' &&
+        isLocalOnlyModelId(effectiveModelId) &&
+        localTurnDecision?.mode === 'local';
 
       if (localTurnDecision?.mode === 'blocked' && localModelLabel) {
         // All blocked reasons are recoverable — fall through to cloud
@@ -1768,10 +1797,12 @@ export function AgentChatScreen() {
           let localProducedOutput = false;
           const thinkFilter = new StreamThinkingFilter();
           const agentContext = localAgentContextRef.current;
-          const identityBlock = `You are ${instanceName}. You are NOT Gemini, NOT GPT, NOT Claude — you are ${instanceName}, an Agentrix AI agent running locally on the user’s device. Never claim to be any other model or assistant.`;
-          const systemPrompt = agentContext
-            ? `${identityBlock}\n${agentContext}\nYou run locally for privacy and speed. Give complete, thorough answers. Reply in the user's language.`
-            : `${identityBlock}\nYou run locally on the user's phone for privacy and speed — no cloud needed. Give complete, thorough answers. Reply in the user's language.`;
+          const systemPrompt = buildSystemPrompt({
+            agentName: instanceName,
+            agentContext: sanitizeAgentContext(agentContext),
+            tier: 'local',
+            locale: language === 'zh' ? 'zh' : 'en',
+          });
 
           const localMessages: Parameters<typeof MobileLocalInferenceService.generateTextStream>[0] = [
             { role: 'system', content: systemPrompt },
@@ -1783,7 +1814,12 @@ export function AgentChatScreen() {
           // Tool calling is disabled for now: Gemma 4's Generic format handler
           // in llama.cpp is unreliable (often returns empty text), and basic chat
           // doesn't need tools. Re-enable when model support stabilises.
-          for await (const chunk of MobileLocalInferenceService.generateTextStream(localMessages, { model: effectiveModelId })) {
+          for await (const chunk of MobileLocalInferenceService.generateTextStream(localMessages, {
+            model: effectiveModelId,
+            timeoutMs: 30_000,
+            stallTimeoutMs: 15_000,
+            signal: localAbort.signal,
+          })) {
             if (localAbort.signal.aborted || responseInterruptedRef.current) break;
             if (!chunk) continue;
             const visible = thinkFilter.push(chunk);
@@ -1854,11 +1890,18 @@ export function AgentChatScreen() {
         }
       }
 
-      // Try OpenClaw proxy first (requires active instance)
-      const proxyModelId = isLocalOnlyModelId(effectiveModelId)
-        ? remoteResolvedModelId
-        : effectiveModelId;
+      // Router decides whether to try cloud next. In local-only mode we surface the error instead.
+      const proxyModelId = tierDecision.activeModelId;
       const localFellBack = isLocalOnlyModelId(effectiveModelId) && !streamSucceeded;
+      if (!streamSucceeded && localFellBack && !tierDecision.allowCloudFallback) {
+        finishAssistantWithError(
+          t({
+            en: 'Local model is unavailable or timed out. Switch to Smart/Cloud mode or try again.',
+            zh: '端侧模型不可用或超时。请切换到「智能 / 云端」模式或稍后重试。',
+          })
+        );
+        return;
+      }
       if (!streamSucceeded && instanceId) {
         // If falling back from local, clear the transitional status and reset content
         if (localFellBack) {
@@ -2669,6 +2712,32 @@ export function AgentChatScreen() {
         </View>
       )}
 
+      {/* Execution mode selector — tri-tier router (local / auto / cloud). */}
+      <View style={executionModeStyles.row}>
+        <Text style={executionModeStyles.label}>{t({ en: 'Tier', zh: '执行' })}</Text>
+        {(['local-only', 'auto', 'cloud-only'] as const).map((mode) => {
+          const active = executionMode === mode;
+          const label =
+            mode === 'local-only'
+              ? t({ en: '🔒 Local', zh: '🔒 端侧' })
+              : mode === 'cloud-only'
+              ? t({ en: '☁️ Cloud', zh: '☁️ 云端' })
+              : t({ en: '🤖 Smart', zh: '🤖 智能' });
+          return (
+            <TouchableOpacity
+              key={mode}
+              onPress={() => setExecutionMode(mode)}
+              style={[executionModeStyles.chip, active && executionModeStyles.chipActive]}
+              accessibilityLabel={`execution-mode-${mode}`}
+            >
+              <Text style={[executionModeStyles.chipText, active && executionModeStyles.chipTextActive]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       <View style={styles.inputRow}>
         {voiceMode ? (
           duplexMode && duplexSessionConnected ? (
@@ -3373,6 +3442,32 @@ const sf = StyleSheet.create({
     color: colors.textMuted,
     paddingLeft: 4,
   },
+});
+
+const executionModeStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 2,
+    gap: 6,
+  },
+  label: { color: colors.textMuted, fontSize: 11, marginRight: 2 },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  chipActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  chipText: { color: colors.textMuted, fontSize: 11 },
+  chipTextActive: { color: '#fff', fontWeight: '600' },
 });
 
 const styles = StyleSheet.create({
