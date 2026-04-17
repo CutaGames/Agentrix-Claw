@@ -19,6 +19,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ChatRateLimitGuard } from '../../common/guards/chat-rate-limit.guard';
 import { OpenClawProxyService, ChatMessageDto, UnifiedChatRequestDto } from './openclaw-proxy.service';
 
 @ApiTags('openclaw/proxy')
@@ -39,6 +40,7 @@ export class OpenClawProxyController {
   // ===== Chat =====
 
   @Post('chat')
+  @UseGuards(ChatRateLimitGuard)
   @ApiOperation({ summary: 'Send a chat message using the user default OpenClaw instance' })
   async sendDefaultChat(
     @Request() req: any,
@@ -48,6 +50,7 @@ export class OpenClawProxyController {
   }
 
   @Post('stream')
+  @UseGuards(ChatRateLimitGuard)
   @ApiOperation({ summary: 'Stream a chat response using the user default OpenClaw instance' })
   async streamDefaultChat(
     @Request() req: any,
@@ -58,6 +61,7 @@ export class OpenClawProxyController {
   }
 
   @Post(':instanceId/chat')
+  @UseGuards(ChatRateLimitGuard)
   @ApiOperation({ summary: 'Send a chat message (non-streaming)' })
   async sendChat(
     @Request() req: any,
@@ -68,6 +72,7 @@ export class OpenClawProxyController {
   }
 
   @Post(':instanceId/stream')
+  @UseGuards(ChatRateLimitGuard)
   @ApiOperation({ summary: 'Stream a chat response (SSE)' })
   async streamChat(
     @Request() req: any,

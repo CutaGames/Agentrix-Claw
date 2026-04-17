@@ -13,6 +13,30 @@ import { fixEnumTypesBeforeSync } from './config/database-pre-sync';
 async function bootstrap() {
   console.log('🚀 Starting Agentrix Backend...');
 
+  // ── Optional Sentry init (only if SENTRY_DSN set & @sentry/node installed) ──
+  if (process.env.SENTRY_DSN) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const Sentry = require('@sentry/node');
+      Sentry.init({
+        dsn: process.env.SENTRY_DSN,
+        environment: process.env.NODE_ENV || 'development',
+        tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? 0.1),
+        release: process.env.GIT_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA || undefined,
+      });
+      console.log('🛰️  Sentry initialized');
+      // Trap unhandled rejections / uncaught exceptions so they reach Sentry.
+      process.on('unhandledRejection', (reason) => {
+        try { Sentry.captureException(reason); } catch {}
+      });
+      process.on('uncaughtException', (err) => {
+        try { Sentry.captureException(err); } catch {}
+      });
+    } catch (err: any) {
+      console.warn(`⚠️  SENTRY_DSN set but @sentry/node not installed: ${err?.message || err}`);
+    }
+  }
+
   // ── Startup env validation (warn on missing optional-but-important vars) ──
   const envWarnings: string[] = [];
   if (!process.env.EXPO_ACCESS_TOKEN)     envWarnings.push('EXPO_ACCESS_TOKEN  — push notifications will not work');

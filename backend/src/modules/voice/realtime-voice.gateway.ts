@@ -572,6 +572,83 @@ export class RealtimeVoiceGateway implements OnGatewayConnection, OnGatewayDisco
     });
   }
 
+  // ── Wearable Gestures ─────────────────────────────────
+  /**
+   * Wearable gesture event from glasses / watch / etc.
+   * Logs the gesture, broadcasts it to all devices in the session
+   * (so the primary device can react), and acks the sender.
+   *
+   * Payload: { sessionId, gesture, deviceId?, ts?, payload? }
+   *   gesture examples: 'tap', 'double_tap', 'swipe_left', 'swipe_right',
+   *                     'nod', 'shake', 'pinch', 'long_press', 'wake'
+   */
+  @SubscribeMessage('voice:gesture')
+  async handleVoiceGesture(
+    @ConnectedSocket() client: AuthenticatedVoiceSocket,
+    @MessageBody() data: {
+      sessionId: string;
+      gesture: string;
+      deviceId?: string;
+      ts?: number;
+      payload?: Record<string, any>;
+    },
+  ) {
+    if (!client.userId) {
+      client.emit('voice:error', { error: 'Not authenticated' });
+      return;
+    }
+    if (!data?.sessionId || !data?.gesture) {
+      client.emit('voice:error', {
+        error: 'Missing sessionId or gesture',
+        code: 'INVALID_GESTURE',
+      });
+      return;
+    }
+
+    const session = this.sessions.get(data.sessionId);
+    const event = {
+      sessionId: data.sessionId,
+      gesture: data.gesture,
+      deviceId: data.deviceId ?? session?.fabricDeviceId ?? null,
+      userId: client.userId,
+      ts: data.ts ?? Date.now(),
+      payload: data.payload ?? null,
+    };
+
+    this.logger.log(
+      `voice:gesture session=${event.sessionId} gesture=${event.gesture} device=${event.deviceId ?? 'unknown'}`,
+    );
+
+    // Map common gestures to existing intents.
+    if (data.gesture === 'long_press' || data.gesture === 'shake') {
+      // Treat as interrupt
+      if (session) {
+        const strategy = this.getStrategyForSession(session);
+        if (strategy) {
+          this.clearPendingAgentEnd(session);
+          strategy.interrupt(data.sessionId);
+        } else {
+          this.interruptSessionResponse(client, session);
+        }
+      }
+    }
+
+    // Broadcast to all devices in this session so primary can react.
+    try {
+      await this.outputDispatcher.broadcast(data.sessionId, 'voice:gesture', event);
+    } catch (err: any) {
+      this.logger.warn(`Gesture broadcast failed: ${err?.message || err}`);
+      // Fallback: emit to room directly
+      this.server?.to(`voice:${data.sessionId}`).emit('voice:gesture', event);
+    }
+
+    client.emit('voice:gesture:ack', {
+      sessionId: data.sessionId,
+      gesture: data.gesture,
+      ts: event.ts,
+    });
+  }
+
   @SubscribeMessage('voice:tool_hold')
   handleToolHold(
     @ConnectedSocket() client: AuthenticatedVoiceSocket,

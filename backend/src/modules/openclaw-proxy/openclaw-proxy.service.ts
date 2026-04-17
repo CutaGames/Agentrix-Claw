@@ -421,10 +421,29 @@ export class OpenClawProxyService {
     messageText: string,
     needsTools: boolean,
   ): { maxToolRounds: number; maxTokens: number; taskTier?: string; routingReason?: string } {
+    // Phase 3.2: always classify into a TaskTier so billing analytics has a tier
+    // label for every chat turn, regardless of tool use.
+    let precomputedTier: string | undefined;
+    try {
+      precomputedTier = this.llmRouterService.classifyTask(messageText, {
+        hasImageFrame: Array.isArray(dto.message) && dto.message.some((block: any) => (
+          block?.type === 'image' || block?.type === 'image_url'
+        )),
+        requiresCodeGen:
+          dto.platform === 'desktop'
+          || /(code|file|workspace|repo|directory|debug|fix|implement|refactor|patch|terminal|command)/i.test(messageText),
+        isA2AOrchestration: /(multi[- ]?agent|sub-?agent|orchestrat|coordinate|delegate)/i.test(messageText),
+      });
+    } catch (err: any) {
+      this.logger.debug?.(`classifyTask failed: ${err?.message}`);
+    }
+
     if (!needsTools) {
       return {
         maxToolRounds: dto.platform === 'desktop' ? 6 : 5,
         maxTokens: dto.platform === 'desktop' ? 4096 : 3072,
+        taskTier: precomputedTier,
+        routingReason: precomputedTier ? `tier-${precomputedTier}` : undefined,
       };
     }
 
@@ -1992,7 +2011,10 @@ export class OpenClawProxyService {
     }
 
     const executionBudget = this.resolveToolRoundBudget(dto, messageText, needsTools);
-    const finalRoutingReason = localOnlyFallbackReason || executionBudget.routingReason;
+    const finalRoutingReason = localOnlyFallbackReason
+      || (executionBudget.taskTier
+        ? `${executionBudget.routingReason ?? 'primary'}|tier=${executionBudget.taskTier}`
+        : executionBudget.routingReason);
 
     let result: any;
     // Phase 1.6: wrap dispatch with a labelled closure so Phase 1.2 continuation

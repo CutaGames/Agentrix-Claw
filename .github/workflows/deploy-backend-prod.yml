@@ -55,6 +55,10 @@ jobs:
           set -euo pipefail
           cd /home/ubuntu/Agentrix
 
+          # Capture the currently deployed SHA so we can roll back if health fails.
+          PREVIOUS_SHA="$(git rev-parse HEAD || echo '')"
+          echo "Previous deployed SHA: ${PREVIOUS_SHA}"
+
           REF="${TARGET_REF:-main}"
           git fetch origin "${REF}"
           git checkout "${REF}" 2>/dev/null || git checkout -b "${REF}" "origin/${REF}"
@@ -118,8 +122,47 @@ jobs:
             pm2 logs agentrix-backend --lines 120 --nostream || true
             echo "=== Port 3000 listeners ==="
             ss -ltnp | grep ':3000' || true
-            echo "=== Rollback hint ==="
-            echo "   gunzip -c ${BACKUP_FILE} | psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB}"
+
+            # ── Phase 2.5: Automated rollback ──
+            if [ -n "${PREVIOUS_SHA}" ] && [ "${PREVIOUS_SHA}" != "${TARGET_SHA}" ]; then
+              echo "🛟  Auto-rollback: restoring DB and reverting to ${PREVIOUS_SHA}"
+              echo "   1) Restoring DB from ${BACKUP_FILE}"
+              set +e
+              gunzip -c "${BACKUP_FILE}" | PGPASSWORD="${DB_PASSWORD:-${POSTGRES_PASSWORD:-}}" \
+                psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=0 > /tmp/restore.log 2>&1
+              RESTORE_EXIT=$?
+              set -e
+              if [ "$RESTORE_EXIT" -ne 0 ]; then
+                echo "⚠️  DB restore returned non-zero (${RESTORE_EXIT}). Last 40 lines:"
+                tail -40 /tmp/restore.log || true
+              fi
+              echo "   2) Reverting git to ${PREVIOUS_SHA}"
+              cd /home/ubuntu/Agentrix
+              git reset --hard "${PREVIOUS_SHA}"
+              cd backend
+              echo "   3) Rebuilding previous version"
+              npm run build || (rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json)
+              echo "   4) Restarting pm2"
+              pm2 restart agentrix-backend --update-env
+              ROLLBACK_OK=0
+              for attempt in 1 2 3 4 5 6 7 8 9 10; do
+                if curl -fsS http://127.0.0.1:3000/api/health; then
+                  ROLLBACK_OK=1
+                  break
+                fi
+                echo "   Rollback health attempt ${attempt} failed, retrying..."
+                sleep 5
+              done
+              if [ "$ROLLBACK_OK" -eq 1 ]; then
+                echo "✅ Rolled back to ${PREVIOUS_SHA} successfully"
+              else
+                echo "❌ Rollback also failed health check — manual intervention required"
+              fi
+            else
+              echo "⚠️  No previous SHA recorded; skipping auto-rollback"
+              echo "   Manual rollback hint:"
+              echo "   gunzip -c ${BACKUP_FILE} | psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB}"
+            fi
             exit 1
           fi
 
