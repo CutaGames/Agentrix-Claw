@@ -62,6 +62,36 @@ jobs:
 
           cd backend
           npm run build || (rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json)
+
+          # Phase 0: Pre-migration DB backup — kept for 14 days on the prod host
+          # so a failed migration can be rolled back without waiting for cloud backups.
+          BACKUP_DIR="/home/ubuntu/Agentrix/backups"
+          mkdir -p "$BACKUP_DIR"
+          BACKUP_TAG="pre-deploy-$(date +%Y%m%d-%H%M%S)-${TARGET_SHA:0:8}"
+          BACKUP_FILE="${BACKUP_DIR}/${BACKUP_TAG}.sql.gz"
+          echo "=== Taking DB backup → ${BACKUP_FILE} ==="
+          set +e
+          # Honour DATABASE_URL / PG* env from the backend .env so we dump the right DB.
+          set -a; [ -f /home/ubuntu/Agentrix/backend/.env ] && . /home/ubuntu/Agentrix/backend/.env; set +a
+          PG_DB="${DB_NAME:-${POSTGRES_DB:-paymind}}"
+          PG_USER="${DB_USERNAME:-${POSTGRES_USER:-postgres}}"
+          PG_HOST="${DB_HOST:-127.0.0.1}"
+          PG_PORT="${DB_PORT:-5432}"
+          PGPASSWORD="${DB_PASSWORD:-${POSTGRES_PASSWORD:-}}" \
+            pg_dump -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" --no-owner --no-privileges 2>/tmp/pgdump.err | gzip > "${BACKUP_FILE}"
+          DUMP_EXIT=${PIPESTATUS[0]}
+          set -e
+          if [ "$DUMP_EXIT" -ne 0 ]; then
+            echo "⚠️  pg_dump failed (exit=$DUMP_EXIT) — aborting deploy to avoid lossy migration"
+            cat /tmp/pgdump.err || true
+            rm -f "${BACKUP_FILE}"
+            exit 1
+          fi
+          BACKUP_SIZE=$(stat -c%s "${BACKUP_FILE}" 2>/dev/null || echo 0)
+          echo "Backup size: ${BACKUP_SIZE} bytes"
+          # Prune backups older than 14 days
+          find "$BACKUP_DIR" -name 'pre-deploy-*.sql.gz' -type f -mtime +14 -delete || true
+
           npm run migration:run
 
           pm2 restart agentrix-backend --update-env
@@ -88,8 +118,19 @@ jobs:
             pm2 logs agentrix-backend --lines 120 --nostream || true
             echo "=== Port 3000 listeners ==="
             ss -ltnp | grep ':3000' || true
+            echo "=== Rollback hint ==="
+            echo "   gunzip -c ${BACKUP_FILE} | psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB}"
             exit 1
           fi
 
           curl -fsS http://127.0.0.1:3000/api/health
+
+          # Smoke tests — touch a few critical read endpoints. Failures here are
+          # informative only (we don't roll back) because they often fail due to
+          # auth rather than regressions.
+          echo "=== Smoke tests ==="
+          for ep in /api/health /api/llm/models /api/openclaw/presets; do
+            code=$(curl -o /dev/null -s -w '%{http_code}' "http://127.0.0.1:3000${ep}") || code=000
+            echo "  ${ep} → HTTP ${code}"
+          done
           REMOTE

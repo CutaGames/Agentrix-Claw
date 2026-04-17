@@ -351,6 +351,12 @@ export class OpenClawProxyService {
     }
 
     const sequenceNumber = (await this.messageRepo.count({ where: { sessionId: session.id } })) + 1;
+    // Phase 1.3: promote stopReason + toolCalls from metadata bag to dedicated
+    // columns so analytics queries (max_tokens rate, tool usage) don't have
+    // to scan the full metadata jsonb blob.
+    const stopReason =
+      typeof metadata?.stopReason === 'string' ? (metadata.stopReason as string) : null;
+    const toolCalls = Array.isArray(metadata?.toolCalls) ? metadata!.toolCalls : null;
     const message = this.messageRepo.create({
       session,
       sessionId: session.id,
@@ -360,6 +366,8 @@ export class OpenClawProxyService {
       content,
       metadata,
       sequenceNumber,
+      stopReason,
+      toolCalls,
     });
 
     await this.messageRepo.save(message);
@@ -1794,6 +1802,14 @@ export class OpenClawProxyService {
     const rawDtoModel = dto.model;
     const sanitizedDtoModel = rawDtoModel && !LOCAL_ONLY_MODELS.includes(rawDtoModel)
       ? rawDtoModel : undefined;
+    // Track whether sanitization dropped a local-only model (client requested a local model
+    // that the server cannot run — we fall back to cloud and surface this in meta).
+    const localOnlyFallbackReason: string | undefined =
+      (rawDtoModel && LOCAL_ONLY_MODELS.includes(rawDtoModel))
+        || (rawPreferredModel && LOCAL_ONLY_MODELS.includes(rawPreferredModel))
+        || (instanceActiveModel && LOCAL_ONLY_MODELS.includes(instanceActiveModel))
+        ? 'local_only_fallback_to_cloud'
+        : undefined;
     let resolvedModel = sanitizedDtoModel
       || (instanceModelPinned ? sanitizedInstanceActiveModel : undefined)
       || sanitizedPreferred
@@ -1959,7 +1975,24 @@ export class OpenClawProxyService {
 
     _lap(`pre-LLM (model=${executionModel}, provider=${resolvedProvider || 'platform'}, msgs=${messages.length})`);
 
+    // Phase 0.2: Pre-LLM quota check — reject before incurring LLM cost if user is over plan.
+    // Only enforced on platform-hosted path (no BYOK). Users with their own apiKey bypass this.
+    if (!userCredentials?.apiKey) {
+      try {
+        const preQuota = await this.tokenQuotaService.getQuotaStatus(userId);
+        if (preQuota?.quotaExhausted) {
+          throw new ForbiddenException(
+            'Monthly token quota exhausted. Please upgrade your plan or bring your own API key to continue.',
+          );
+        }
+      } catch (err: any) {
+        if (err instanceof ForbiddenException) throw err;
+        this.logger.warn(`Pre-LLM quota check failed (allowing through): ${err?.message}`);
+      }
+    }
+
     const executionBudget = this.resolveToolRoundBudget(dto, messageText, needsTools);
+    const finalRoutingReason = localOnlyFallbackReason || executionBudget.routingReason;
 
     let result: any;
     if (resolvedProvider === 'gemini') {
@@ -2007,6 +2040,15 @@ export class OpenClawProxyService {
       executionModel,
       inputTokens,
       outputTokens,
+      0,
+      0,
+      {
+        userId,
+        agentId: agentAccount?.id ?? null,
+        instanceId: instance.id,
+        provider: resolvedProvider ?? null,
+        routingReason: finalRoutingReason ?? 'primary',
+      },
     );
     try {
       streamingCallbacks?.onEvent?.({
@@ -2075,6 +2117,7 @@ export class OpenClawProxyService {
       model: executionModel,
       toolCalls: result?.toolCalls || null,
       plan: parsedPlan || undefined,
+      stopReason: result?.stopReason || 'end_turn',
     });
 
     return {
@@ -2082,7 +2125,7 @@ export class OpenClawProxyService {
       resolvedModel: executionModel,
       resolvedModelLabel,
       taskTier: executionBudget.taskTier,
-      routingReason: executionBudget.routingReason,
+      routingReason: finalRoutingReason,
       toolBudget: executionBudget.maxToolRounds,
       tokenBudget: executionBudget.maxTokens,
       usage: {

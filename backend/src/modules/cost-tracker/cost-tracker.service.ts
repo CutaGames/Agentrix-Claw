@@ -5,9 +5,25 @@
  * Maintains a pricing table for all supported models and calculates
  * costs from actual API usage data.
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { AgentCostRecord } from '../../entities/agent-cost-record.entity';
 
 const logger = new Logger('CostTracker');
+
+/**
+ * Optional context attached when persisting a cost record.
+ * Populated by the openclaw-proxy and chat entry points so billing / audit
+ * can be traced back to (user, instance, agent, provider).
+ */
+export interface PersistCostContext {
+  userId?: string | null;
+  agentId?: string | null;
+  instanceId?: string | null;
+  provider?: string | null;
+  routingReason?: string | null;
+}
 
 // ============================================================
 // Model Pricing (per million tokens, USD)
@@ -82,8 +98,14 @@ export interface SessionCostRecord {
 
 @Injectable()
 export class CostTrackerService {
-  /** In-memory session cost accumulator */
+  /** In-memory session cost accumulator (fast path for session totals). */
   private readonly sessionCosts = new Map<string, SessionCostRecord[]>();
+
+  constructor(
+    @Optional()
+    @InjectRepository(AgentCostRecord)
+    private readonly costRepo?: Repository<AgentCostRecord>,
+  ) {}
 
   /**
    * Calculate cost for a single API call.
@@ -118,6 +140,13 @@ export class CostTrackerService {
 
   /**
    * Record a cost entry for a session.
+   *
+   * Fast path: updates in-memory accumulator synchronously so downstream
+   * `getSessionTotal()` reads are cheap.
+   *
+   * Slow path: if an `AgentCostRecord` repository is available, persists
+   * an audit row in background. Failures are logged but never thrown
+   * (cost recording is non-fatal to chat).
    */
   recordCost(
     sessionId: string,
@@ -126,6 +155,7 @@ export class CostTrackerService {
     outputTokens: number,
     cacheReadTokens: number = 0,
     cacheWriteTokens: number = 0,
+    context?: PersistCostContext,
   ): SessionCostRecord {
     const costUsd = this.calculateCost(model, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens);
 
@@ -145,7 +175,61 @@ export class CostTrackerService {
     }
     this.sessionCosts.get(sessionId)!.push(record);
 
+    // Fire-and-forget DB persistence — never block the chat path.
+    if (this.costRepo) {
+      this.costRepo
+        .save(
+          this.costRepo.create({
+            userId: context?.userId ?? null,
+            sessionId,
+            agentId: context?.agentId ?? null,
+            instanceId: context?.instanceId ?? null,
+            model,
+            provider: context?.provider ?? null,
+            inputTokens,
+            outputTokens,
+            cacheReadTokens,
+            cacheWriteTokens,
+            costUsd,
+            routingReason: context?.routingReason ?? null,
+          }),
+        )
+        .catch((err: any) => {
+          logger.warn(`Failed to persist AgentCostRecord (session=${sessionId}): ${err?.message || err}`);
+        });
+    }
+
     return record;
+  }
+
+  /**
+   * Query historical cost for a user within a time range.
+   * Returns empty list if persistence is not available (e.g. in unit tests).
+   */
+  async getUserCostInRange(userId: string, since: Date, until: Date = new Date()): Promise<{
+    totalUsd: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    callCount: number;
+  }> {
+    if (!this.costRepo) {
+      return { totalUsd: 0, totalInputTokens: 0, totalOutputTokens: 0, callCount: 0 };
+    }
+    const qb = this.costRepo
+      .createQueryBuilder('c')
+      .select('COALESCE(SUM(c.cost_usd), 0)', 'total_usd')
+      .addSelect('COALESCE(SUM(c.input_tokens), 0)', 'total_in')
+      .addSelect('COALESCE(SUM(c.output_tokens), 0)', 'total_out')
+      .addSelect('COUNT(*)', 'calls')
+      .where('c.user_id = :userId', { userId })
+      .andWhere('c.created_at >= :since AND c.created_at < :until', { since, until });
+    const row = await qb.getRawOne();
+    return {
+      totalUsd: Number(row?.total_usd ?? 0),
+      totalInputTokens: Number(row?.total_in ?? 0),
+      totalOutputTokens: Number(row?.total_out ?? 0),
+      callCount: Number(row?.calls ?? 0),
+    };
   }
 
   /**

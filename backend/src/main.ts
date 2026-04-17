@@ -4,6 +4,7 @@ import { ProxyAgent, setGlobalDispatcher } from 'undici';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import { randomUUID } from 'crypto';
 import * as session from 'express-session';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
@@ -65,6 +66,25 @@ async function bootstrap() {
 
   // Increase JSON body parser limit (default 100KB is too small for chat payloads with attachments)
   app.useBodyParser('json', { limit: '10mb' });
+
+  // Phase 0.9: Request ID middleware — every inbound request gets a stable
+  // `x-request-id` so logs across backend + LLM providers + SSE streams can
+  // be correlated. Honours an existing header from upstream (Nginx, client)
+  // when present.
+  app.use((req: any, res: any, next: any) => {
+    const incoming =
+      typeof req.headers['x-request-id'] === 'string' && req.headers['x-request-id']
+        ? (req.headers['x-request-id'] as string)
+        : undefined;
+    const reqId = incoming || randomUUID();
+    req.id = reqId;
+    try {
+      res.setHeader('x-request-id', reqId);
+    } catch {
+      // Response may already be streaming (SSE pre-flush) — ignore.
+    }
+    next();
+  });
 
   // HTTP security headers
   app.use(helmet({
