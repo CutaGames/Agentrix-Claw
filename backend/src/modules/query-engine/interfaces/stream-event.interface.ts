@@ -97,6 +97,19 @@ export interface ErrorStreamEvent {
   retriable: boolean;
 }
 
+/**
+ * Phase 4.3: emitted BEFORE the cloud LLM call when the client requested a
+ * local-only model (mobile/desktop on-device) but the backend sanitized it to
+ * a cloud fallback. Clients may choose to cancel the stream and run on-device.
+ */
+export interface MetaEvent {
+  type: 'meta';
+  localOnlyFallback?: boolean;
+  requestedModel?: string | null;
+  routedModel?: string | null;
+  reason?: string;
+}
+
 // ============================================================
 // Union Type
 // ============================================================
@@ -112,7 +125,8 @@ export type StreamEvent =
   | UsageEvent
   | TurnInfoEvent
   | DoneEvent
-  | ErrorStreamEvent;
+  | ErrorStreamEvent
+  | MetaEvent;
 
 // ============================================================
 // SSE Helpers

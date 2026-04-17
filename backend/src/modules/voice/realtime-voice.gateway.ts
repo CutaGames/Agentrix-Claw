@@ -23,6 +23,7 @@ import type { StreamEvent } from '../query-engine/interfaces/stream-event.interf
 import { UserProviderConfig } from '../../entities/user-provider-config.entity';
 import { CascadeVoiceStrategy, GemmaMultimodalVoiceStrategy } from './strategies';
 import type { IVoiceStreamStrategy, VoiceStrategyCallbacks, VoiceStrategyName } from './strategies';
+import { LOCAL_ONLY_MODEL_IDS } from '../../common/llm/local-only-models';
 import { SessionFabricService } from './session-fabric.service';
 import { OutputDispatcherService } from './output-dispatcher.service';
 import { DeepThinkOrchestratorService } from './deep-think-orchestrator.service';
@@ -118,7 +119,6 @@ const PCM_SAMPLE_RATE = 16000;
 const PCM_CHANNEL_COUNT = 1;
 const PCM_BITS_PER_SAMPLE = 16;
 const STREAMING_FINALIZATION_TIMEOUT_MS = 2000;
-const LOCAL_ONLY_MODEL_IDS = new Set(['gemma-nano-2b', 'gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b', 'gemma-nano-2b-local']);
 
 function sanitizeRealtimeModelId(modelId?: string | null): string | undefined {
   if (!modelId) {

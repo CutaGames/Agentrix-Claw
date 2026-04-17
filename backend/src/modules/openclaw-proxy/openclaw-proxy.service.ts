@@ -36,6 +36,16 @@ import { AgentOrchestrationService } from '../agent-orchestration/agent-orchestr
 import { LlmRouterService } from '../llm-router/llm-router.service';
 import { CostTrackerService } from '../cost-tracker/cost-tracker.service';
 import { RuntimeSeamService } from '../query-engine/runtime-seam.service';
+import { LOCAL_ONLY_MODEL_IDS, isLocalOnlyModel } from '../../common/llm/local-only-models';
+
+// Phase 4.2 — allow ops to tune the per-instance chat replay window via env.
+// Clamped to [1, 50] so an accidental 0 or runaway value can't bypass the
+// default or blow up the query.
+const CHAT_HISTORY_LIMIT = (() => {
+  const raw = Number(process.env.CHAT_HISTORY_LIMIT ?? 12);
+  if (!Number.isFinite(raw) || raw <= 0) return 12;
+  return Math.min(50, Math.max(1, Math.floor(raw)));
+})();
 
 export interface ChatMessageDto {
   message: string | any[];
@@ -377,7 +387,7 @@ export class OpenClawProxyService {
   private async getPlatformConversationHistory(
     userId: string,
     instanceId: string,
-    limit: number = 12,
+    limit: number = CHAT_HISTORY_LIMIT,
   ): Promise<AgentMessage[]> {
     const messages = await this.messageRepo
       .createQueryBuilder('message')
@@ -1810,23 +1820,23 @@ export class OpenClawProxyService {
       : null;
     const instanceActiveModel = (instance.capabilities as any)?.activeModel;
     const instanceModelPinned = (instance.capabilities as any)?.modelPinned === true;
-    // Local-only model IDs that cannot be routed to any cloud provider
-    const LOCAL_ONLY_MODELS = ['gemma-nano-2b', 'gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b', 'gemma-nano-2b-local'];
-    const sanitizedInstanceActiveModel = instanceActiveModel && !LOCAL_ONLY_MODELS.includes(instanceActiveModel)
+    // Local-only model IDs that cannot be routed to any cloud provider.
+    // Phase 4.1: centralized in `common/llm/local-only-models` — do not re-declare.
+    const sanitizedInstanceActiveModel = instanceActiveModel && !LOCAL_ONLY_MODEL_IDS.has(instanceActiveModel)
       ? instanceActiveModel
       : undefined;
     const rawPreferredModel = agentAccount?.preferredModel;
-    const sanitizedPreferred = rawPreferredModel && !LOCAL_ONLY_MODELS.includes(rawPreferredModel)
+    const sanitizedPreferred = rawPreferredModel && !LOCAL_ONLY_MODEL_IDS.has(rawPreferredModel)
       ? rawPreferredModel : undefined;
     const rawDtoModel = dto.model;
-    const sanitizedDtoModel = rawDtoModel && !LOCAL_ONLY_MODELS.includes(rawDtoModel)
+    const sanitizedDtoModel = rawDtoModel && !LOCAL_ONLY_MODEL_IDS.has(rawDtoModel)
       ? rawDtoModel : undefined;
     // Track whether sanitization dropped a local-only model (client requested a local model
     // that the server cannot run — we fall back to cloud and surface this in meta).
     const localOnlyFallbackReason: string | undefined =
-      (rawDtoModel && LOCAL_ONLY_MODELS.includes(rawDtoModel))
-        || (rawPreferredModel && LOCAL_ONLY_MODELS.includes(rawPreferredModel))
-        || (instanceActiveModel && LOCAL_ONLY_MODELS.includes(instanceActiveModel))
+      isLocalOnlyModel(rawDtoModel)
+        || isLocalOnlyModel(rawPreferredModel)
+        || isLocalOnlyModel(instanceActiveModel)
         ? 'local_only_fallback_to_cloud'
         : undefined;
     let resolvedModel = sanitizedDtoModel
@@ -2015,6 +2025,22 @@ export class OpenClawProxyService {
       || (executionBudget.taskTier
         ? `${executionBudget.routingReason ?? 'primary'}|tier=${executionBudget.taskTier}`
         : executionBudget.routingReason);
+
+    // Phase 4.3: surface local-only fallback to client BEFORE the cloud LLM call
+    // so mobile/desktop can choose to cancel the stream and run on-device instead.
+    if (localOnlyFallbackReason) {
+      try {
+        streamingCallbacks?.onEvent?.({
+          type: 'meta',
+          localOnlyFallback: true,
+          requestedModel: rawDtoModel || rawPreferredModel || instanceActiveModel || null,
+          routedModel: executionModel,
+          reason: localOnlyFallbackReason,
+        });
+      } catch (err: any) {
+        this.logger.warn(`local_only_fallback meta emit failed: ${err?.message}`);
+      }
+    }
 
     let result: any;
     // Phase 1.6: wrap dispatch with a labelled closure so Phase 1.2 continuation

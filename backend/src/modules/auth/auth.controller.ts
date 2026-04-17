@@ -16,6 +16,7 @@ import { OpenClawInstance } from '../../entities/openclaw-instance.entity';
 import { AgentAccount } from '../../entities/agent-account.entity';
 import { UserProviderConfig } from '../../entities/user-provider-config.entity';
 import { AiProviderService } from '../ai-provider/ai-provider.service';
+import { LOCAL_ONLY_MODEL_IDS } from '../../common/llm/local-only-models';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -1312,13 +1313,12 @@ export class AuthController {
       openClawInstances: instances.map(i => {
         const acctId = i.agentAccountId || (i.metadata as any)?.agentAccountId;
         const acct = acctId ? accountMap.get(acctId) : undefined;
-        const LOCAL_ONLY_MODELS = ['gemma-nano-2b', 'gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b', 'gemma-nano-2b-local'];
         const instanceActiveModel = (i.capabilities as any)?.activeModel;
-        const sanitizedInstanceActiveModel = instanceActiveModel && !LOCAL_ONLY_MODELS.includes(instanceActiveModel)
+        const sanitizedInstanceActiveModel = instanceActiveModel && !LOCAL_ONLY_MODEL_IDS.has(instanceActiveModel)
           ? instanceActiveModel
           : undefined;
         const instanceModelPinned = (i.capabilities as any)?.modelPinned === true;
-        const sanitizedPreferredModel = acct?.preferredModel && !LOCAL_ONLY_MODELS.includes(acct.preferredModel)
+        const sanitizedPreferredModel = acct?.preferredModel && !LOCAL_ONLY_MODEL_IDS.has(acct.preferredModel)
           ? acct.preferredModel
           : undefined;
         // Priority: explicitly pinned instance model → agentAccount.preferredModel → user's defaultProviderConfig → instance baseline
