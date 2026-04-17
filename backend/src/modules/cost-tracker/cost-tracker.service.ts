@@ -42,6 +42,7 @@ export interface ModelPricing {
  */
 const MODEL_PRICING: Record<string, ModelPricing> = {
   // Claude models
+  'claude-opus-4-7-20260401': { inputPerMillion: 15, outputPerMillion: 75, cacheReadPerMillion: 1.5, cacheWritePerMillion: 18.75 },
   'claude-opus-4-20250514': { inputPerMillion: 15, outputPerMillion: 75, cacheReadPerMillion: 1.5, cacheWritePerMillion: 18.75 },
   'claude-sonnet-4-20250514': { inputPerMillion: 3, outputPerMillion: 15, cacheReadPerMillion: 0.3, cacheWritePerMillion: 3.75 },
   'claude-3-5-haiku-20241022': { inputPerMillion: 0.8, outputPerMillion: 4, cacheReadPerMillion: 0.08, cacheWritePerMillion: 1 },
@@ -66,6 +67,7 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   'llama-3.1-8b': { inputPerMillion: 0.05, outputPerMillion: 0.08 },
 
   // Bedrock cross-region
+  'us.anthropic.claude-opus-4-7-20260401-v1:0': { inputPerMillion: 15, outputPerMillion: 75, cacheReadPerMillion: 1.5, cacheWritePerMillion: 18.75 },
   'us.anthropic.claude-sonnet-4-20250514-v1:0': { inputPerMillion: 3, outputPerMillion: 15, cacheReadPerMillion: 0.3, cacheWritePerMillion: 3.75 },
   'us.anthropic.claude-3-5-haiku-20241022-v1:0': { inputPerMillion: 0.8, outputPerMillion: 4, cacheReadPerMillion: 0.08, cacheWritePerMillion: 1 },
   'ap-southeast-1.anthropic.claude-sonnet-4-20250514-v1:0': { inputPerMillion: 3, outputPerMillion: 15, cacheReadPerMillion: 0.3, cacheWritePerMillion: 3.75 },

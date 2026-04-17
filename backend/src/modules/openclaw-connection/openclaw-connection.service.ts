@@ -140,6 +140,16 @@ export const PLATFORM_MODELS: AvailableModel[] = [
     availability: 'available',
     costTier: 'pro',
   },
+  {
+    id: 'claude-opus-4-7',
+    label: 'Claude Opus 4.7',
+    provider: 'AWS Bedrock',
+    bedrockModelId: 'us.anthropic.claude-opus-4-7-20260401-v1:0',
+    icon: '🏆',
+    badge: 'Max+',
+    availability: 'available',
+    costTier: 'pro',
+  },
 ];
 
 @Injectable()

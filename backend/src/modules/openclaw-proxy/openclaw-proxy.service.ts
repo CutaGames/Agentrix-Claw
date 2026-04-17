@@ -810,7 +810,7 @@ export class OpenClawProxyService {
       return 'platform';
     }
 
-    if (modelId === 'claude-opus-4-6') {
+    if (modelId === 'claude-opus-4-6' || modelId === 'claude-opus-4-7') {
       return 'platform';
     }
 

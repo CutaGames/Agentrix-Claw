@@ -47,6 +47,7 @@ interface ResolvedModelCapability {
 const PLATFORM_MODEL_ALIASES: Record<string, { label: string; multimodal: boolean }> = {
   'claude-haiku-4-5': { label: 'Claude Haiku 4.5 (平台默认 API)', multimodal: true },
   'claude-sonnet-4-6': { label: 'Claude Sonnet 4.6 (平台默认 API)', multimodal: true },
+  'claude-opus-4-7': { label: 'Claude Opus 4.7 (平台旗舰 API)', multimodal: true },
 };
 
 const SUBSCRIPTION_MODEL_ALIASES: Record<string, string> = {
@@ -74,6 +75,7 @@ const SUBSCRIPTION_MODEL_ALIASES: Record<string, string> = {
   'copilot-sub-gemini-3.1-pro': 'gemini-3.1-pro-preview',
   'copilot-sub-claude-opus-4.5': 'claude-opus-4.5',
   'copilot-sub-claude-opus-4.6': 'claude-opus-4.6',
+  'copilot-sub-claude-opus-4.7': 'claude-opus-4.7',
   // ── Volcengine Savings Plan (火山引擎节省计划) ──
   'volc-plan-doubao-seed-2.0-pro': 'doubao-seed-2.0-pro',
   'volc-plan-doubao-2.0-lite': 'doubao-2.0-lite',
@@ -153,6 +155,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
       // ── 💎 Premium Tier (3x+ multiplier, Pro+ only) ──
       { id: 'copilot-sub-claude-opus-4.5', label: 'Claude Opus 4.5', contextWindow: 200000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 3, positioning: '💎 3x · 深度推理/扩展思考' },
       { id: 'copilot-sub-claude-opus-4.6', label: 'Claude Opus 4.6', contextWindow: 200000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 3, positioning: '💎 3x · Anthropic旗舰/最强推理' },
+      { id: 'copilot-sub-claude-opus-4.7', label: 'Claude Opus 4.7', contextWindow: 200000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 3, positioning: '💎 3x · Anthropic 4.7 / 最新旗舰' },
     ],
   },
   {
@@ -171,7 +174,8 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     placeholder: { apiKey: 'sk-ant-api03-...' },
     models: [
-      { id: 'claude-opus-4-20250514', label: 'Claude Opus 4.6 (最强)', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '深度推理/代码/长文本' },
+      { id: 'claude-opus-4-7-20260401', label: 'Claude Opus 4.7 (最新旗舰)', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '🆕 4.7 / 最新Opus / 极强推理与代码' },
+      { id: 'claude-opus-4-20250514', label: 'Claude Opus 4.6', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '深度推理/代码/长文本' },
       { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4.6', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$3.00', outputPrice: '$15.00', positioning: '均衡/默认/接近旗舰' },
       { id: 'claude-3-5-haiku-20241022', label: 'Claude Haiku 4.5', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$1.00', outputPrice: '$5.00', positioning: '轻量/快速/成本1/3' },
     ],
@@ -201,6 +205,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     placeholder: { apiKey: 'AKIA... / ASIA...', secretKey: 'wJal...', region: 'us-east-1' },
     models: [
       // ── Anthropic Claude ──
+      { id: 'us.anthropic.claude-opus-4-7-20260401-v1:0', label: 'Claude Opus 4.7 (最新旗舰)', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '🆕 4.7 / 最新Opus / 极强推理与代码' },
       { id: 'us.anthropic.claude-opus-4-20250514-v1:0', label: 'Claude Opus 4.6', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '深度推理/代码/长文本' },
       { id: 'us.anthropic.claude-sonnet-4-20250514-v1:0', label: 'Claude Sonnet 4.6', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$3.00', outputPrice: '$15.00', positioning: '均衡/默认/接近旗舰' },
       { id: 'us.anthropic.claude-haiku-4-5-20251001-v1:0', label: 'Claude Haiku 4.5', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$1.00', outputPrice: '$5.00', positioning: '轻量/快速/成本1/3' },

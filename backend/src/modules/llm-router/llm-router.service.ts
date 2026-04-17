@@ -161,8 +161,16 @@ export class LlmRouterService {
       tiers: [TaskTier.HEAVY],
     },
     // ── ULTRA tier (frontier, highest capability) ────────────────
-    {
-      id: 'anthropic.claude-opus-4-6-v1:0',
+    {      id: 'anthropic.claude-opus-4-7-v1:0',
+      provider: 'anthropic',
+      name: 'Claude Opus 4.7',
+      inputCostPer1M: 15.00,
+      outputCostPer1M: 75.00,
+      maxTokens: 200_000,
+      tiers: [TaskTier.ULTRA],
+      supportsVision: true,
+    },
+    {      id: 'anthropic.claude-opus-4-6-v1:0',
       provider: 'anthropic',
       name: 'Claude Opus 4.6',
       inputCostPer1M: 15.00,

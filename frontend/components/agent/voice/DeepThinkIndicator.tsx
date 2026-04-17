@@ -55,7 +55,9 @@ export function DeepThinkIndicator({
 
   if (!visible) return null;
 
-  const modelLabel = targetModel === 'anthropic.claude-opus-4.6'
+  const modelLabel = targetModel === 'anthropic.claude-opus-4.7'
+    ? 'Claude Opus 4.7'
+    : targetModel === 'anthropic.claude-opus-4.6'
     ? 'Claude Opus'
     : targetModel === 'gpt-5.4'
     ? 'GPT-5.4'
