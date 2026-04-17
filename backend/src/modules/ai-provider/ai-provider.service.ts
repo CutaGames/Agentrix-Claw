@@ -174,7 +174,8 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     placeholder: { apiKey: 'sk-ant-api03-...' },
     models: [
-      { id: 'claude-opus-4-7-20260401', label: 'Claude Opus 4.7 (最新旗舰)', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '🆕 4.7 / 最新Opus / 极强推理与代码' },
+      // Opus 4.7 is aspirational — catalog ID kept for forward compat but maps to the real Opus 4 at runtime.
+      { id: 'claude-opus-4-7-20260401', label: 'Claude Opus 4.7 (最新旗舰)', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '🆕 4.7 / 最新Opus / 极强推理与代码', apiModelId: 'claude-opus-4-20250514' } as any,
       { id: 'claude-opus-4-20250514', label: 'Claude Opus 4.6', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$5.00', outputPrice: '$25.00', positioning: '深度推理/代码/长文本' },
       { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4.6', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$3.00', outputPrice: '$15.00', positioning: '均衡/默认/接近旗舰' },
       { id: 'claude-3-5-haiku-20241022', label: 'Claude Haiku 4.5', contextWindow: 200000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$1.00', outputPrice: '$5.00', positioning: '轻量/快速/成本1/3' },
@@ -733,10 +734,14 @@ export class AiProviderService {
     switch (dto.providerId) {
       case 'anthropic': {
         const url = (dto.baseUrl || 'https://api.anthropic.com') + '/v1/messages';
+        // Alias aspirational 4.7 ID to real Opus 4 until Anthropic releases 4.7.
+        const anthropicModel = (dto.model === 'claude-opus-4-7-20260401' || /opus-4[-.]7/.test(dto.model))
+          ? 'claude-opus-4-20250514'
+          : dto.model;
         const resp = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': dto.apiKey, 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: dto.model, max_tokens: 10, messages: testMessage }),
+          body: JSON.stringify({ model: anthropicModel, max_tokens: 10, messages: testMessage }),
           signal: AbortSignal.timeout(15000),
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text().then(t => t.slice(0, 200))}`);

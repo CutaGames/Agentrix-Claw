@@ -179,11 +179,21 @@ export class RealtimeVoiceService {
     // Set up AudioContext + AudioWorklet for PCM capture
     this.audioCtx = new AudioContext({ sampleRate: 16000 });
 
-    // Register worklet from inline code
-    const blob = new Blob([PCM_WORKLET_CODE], { type: "application/javascript" });
-    const workletUrl = URL.createObjectURL(blob);
-    await this.audioCtx.audioWorklet.addModule(workletUrl);
-    URL.revokeObjectURL(workletUrl);
+    // Load worklet. Tauri WebView2 rejects Blob-URL worklets, so prefer the
+    // static file (served from public/pcm-capture-worklet.js). Fall back to
+    // inline code only when the static asset is unavailable (e.g. vitest).
+    try {
+      await this.audioCtx.audioWorklet.addModule("/pcm-capture-worklet.js");
+    } catch (staticErr) {
+      console.warn("[realtimeVoice] static worklet load failed, falling back to blob", staticErr);
+      const blob = new Blob([PCM_WORKLET_CODE], { type: "application/javascript" });
+      const workletUrl = URL.createObjectURL(blob);
+      try {
+        await this.audioCtx.audioWorklet.addModule(workletUrl);
+      } finally {
+        URL.revokeObjectURL(workletUrl);
+      }
+    }
 
     this.mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {

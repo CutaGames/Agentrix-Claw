@@ -60,7 +60,10 @@ export class BedrockIntegrationService {
    * Handles backward compat for IDs stored in user DB from old catalog.
    */
   private static readonly MODEL_ID_REMAP: Record<string, string> = {
-    'us.anthropic.claude-opus-4-7-v1:0':   'us.anthropic.claude-opus-4-7-20260401-v1:0',
+    // Opus 4.7 is an aspirational catalog entry; AWS Bedrock does not yet host it.
+    // Route 4.7 selections to the real latest available Opus (4/4.6) so chat works end-to-end.
+    'us.anthropic.claude-opus-4-7-v1:0':          'us.anthropic.claude-opus-4-20250514-v1:0',
+    'us.anthropic.claude-opus-4-7-20260401-v1:0': 'us.anthropic.claude-opus-4-20250514-v1:0',
     'us.anthropic.claude-opus-4-6-v1:0':   'us.anthropic.claude-opus-4-20250514-v1:0',
     'us.anthropic.claude-sonnet-4-6-v1:0':  'us.anthropic.claude-sonnet-4-20250514-v1:0',
     'us.anthropic.claude-haiku-4-5-v1:0':   'us.anthropic.claude-haiku-4-5-20251001-v1:0',
@@ -80,7 +83,8 @@ export class BedrockIntegrationService {
     if (remapped) return remapped;
 
     if (this.isFullBedrockModelId(modelId)) return modelId;
-    if (modelId.includes('opus-4-7') || modelId.includes('opus-4.7')) return 'us.anthropic.claude-opus-4-7-20260401-v1:0';
+    // 4.7 is aspirational — alias to real Opus 4 until AWS hosts 4.7.
+    if (modelId.includes('opus-4-7') || modelId.includes('opus-4.7')) return 'us.anthropic.claude-opus-4-20250514-v1:0';
     if (modelId.includes('opus')) return 'us.anthropic.claude-opus-4-20250514-v1:0';
     if (modelId.includes('sonnet')) return 'us.anthropic.claude-sonnet-4-20250514-v1:0';
     if (modelId.includes('haiku')) return 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
