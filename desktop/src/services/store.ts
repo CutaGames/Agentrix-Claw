@@ -483,19 +483,61 @@ async function consumeAgentrixSse(
     onMeta: (meta) => callbacks.onMeta?.(meta as { resolvedModel?: string; resolvedModelLabel?: string }),
   });
 
-  while (!settled) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    parser.feed(decoder.decode(value, { stream: true }));
-  }
+  // Phase 0.8: Wrap reader.read() in a guard so a mid-stream network drop is
+  // reported as an error instead of surfacing as a silent end-of-turn.
+  try {
+    while (!settled) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parser.feed(decoder.decode(value, { stream: true }));
+    }
 
-  const tail = decoder.decode();
-  if (tail) {
-    parser.feed(tail);
+    const tail = decoder.decode();
+    if (tail) {
+      parser.feed(tail);
+    }
+    parser.end();
+    finish();
+  } catch (err: any) {
+    fail(err?.message || 'Stream read failed');
   }
-  parser.end();
-  finish();
 }
+
+/**
+ * Phase 0.8: fetch() wrapper with exponential-backoff retries for transient
+ * failures (network drop, DNS blip, 502/503/504). Only retries BEFORE the
+ * response body has been consumed — never duplicates a chat turn.
+ */
+async function fetchWithBackoff(
+  doFetch: () => Promise<Response>,
+  opts: { retries?: number; signal?: AbortSignal } = {},
+): Promise<Response> {
+  const retries = opts.retries ?? 3;
+  const delays = [1000, 2000, 4000, 8000]; // ms, capped by retries
+  let lastErr: any = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (opts.signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+    try {
+      const res = await doFetch();
+      // Retry on 502/503/504 (upstream/gateway issues) — fine to retry since
+      // we haven't started streaming yet.
+      if (attempt < retries && (res.status === 502 || res.status === 503 || res.status === 504)) {
+        await new Promise((r) => setTimeout(r, delays[Math.min(attempt, delays.length - 1)]));
+        continue;
+      }
+      return res;
+    } catch (err: any) {
+      lastErr = err;
+      if (err?.name === 'AbortError') throw err;
+      if (attempt >= retries) break;
+      await new Promise((r) => setTimeout(r, delays[Math.min(attempt, delays.length - 1)]));
+    }
+  }
+  throw lastErr || new Error('fetch failed after retries');
+}
+
 
 /** SSE streaming chat via OpenClaw proxy */
 export function streamChat(opts: {
@@ -541,7 +583,7 @@ export function streamChat(opts: {
     }
   };
 
-  doFetch()
+  fetchWithBackoff(doFetch, { signal: ac.signal })
     .then(async (res) => {
       if (!res.ok || !res.body) {
         let detail = `HTTP ${res.status}`;
@@ -619,7 +661,7 @@ export function streamDirectChat(opts: {
     }
   };
 
-  doFetch()
+  fetchWithBackoff(doFetch, { signal: ac.signal })
     .then(async (res) => {
       if (!res.ok || !res.body) {
         let detail = `HTTP ${res.status}`;

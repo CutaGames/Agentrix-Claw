@@ -1995,29 +1995,33 @@ export class OpenClawProxyService {
     const finalRoutingReason = localOnlyFallbackReason || executionBudget.routingReason;
 
     let result: any;
-    if (resolvedProvider === 'gemini') {
-      result = await this.geminiIntegrationService.chatWithFunctions(messages as Array<{ role: 'user' | 'assistant' | 'system'; content: string }>, {
-        model: executionModel,
-        context: { userId, sessionId },
-        maxTokens: executionBudget.maxTokens,
-        additionalTools: seamContext.effectiveTools,
-        onToolCall: seamContext.effectiveOnToolCall,
-        userApiKey: userCredentials?.apiKey,
-      });
-    } else if (this.isOpenAICompatibleProvider(resolvedProvider)) {
-      result = await this.openAIIntegrationService.chatWithFunctions(messages, {
-        model: executionModel,
-        context: { userId, sessionId },
-        maxTokens: executionBudget.maxTokens,
-        maxToolRounds: executionBudget.maxToolRounds,
-        additionalTools: this.toOpenAITools(seamContext.effectiveTools),
-        onToolCall: seamContext.effectiveOnToolCall,
-        userApiKey: userCredentials?.apiKey,
-        userBaseURL: userCredentials?.baseUrl,
-        onChunk: streamingCallbacks?.onChunk,
-      });
-    } else {
-      result = await this.claudeIntegrationService.chatWithFunctions(messages, {
+    // Phase 1.6: wrap dispatch with a labelled closure so Phase 1.2 continuation
+    // can reuse the same transport (same provider branch) on retry.
+    const dispatchLLM = async (msgs: any[]): Promise<any> => {
+      if (resolvedProvider === 'gemini') {
+        return this.geminiIntegrationService.chatWithFunctions(msgs as Array<{ role: 'user' | 'assistant' | 'system'; content: string }>, {
+          model: executionModel,
+          context: { userId, sessionId },
+          maxTokens: executionBudget.maxTokens,
+          additionalTools: seamContext.effectiveTools,
+          onToolCall: seamContext.effectiveOnToolCall,
+          userApiKey: userCredentials?.apiKey,
+        });
+      }
+      if (this.isOpenAICompatibleProvider(resolvedProvider)) {
+        return this.openAIIntegrationService.chatWithFunctions(msgs, {
+          model: executionModel,
+          context: { userId, sessionId },
+          maxTokens: executionBudget.maxTokens,
+          maxToolRounds: executionBudget.maxToolRounds,
+          additionalTools: this.toOpenAITools(seamContext.effectiveTools),
+          onToolCall: seamContext.effectiveOnToolCall,
+          userApiKey: userCredentials?.apiKey,
+          userBaseURL: userCredentials?.baseUrl,
+          onChunk: streamingCallbacks?.onChunk,
+        });
+      }
+      return this.claudeIntegrationService.chatWithFunctions(msgs, {
         model: executionModel,
         context: { userId, sessionId },
         maxTokens: executionBudget.maxTokens,
@@ -2029,7 +2033,44 @@ export class OpenClawProxyService {
           : undefined,
         onChunk: streamingCallbacks?.onChunk,
       });
+    };
+
+    result = await dispatchLLM(messages);
+
+    // Phase 1.2: Server-side auto-continuation on max_tokens — if the LLM
+    // stopped because it hit the per-turn token ceiling, automatically re-prompt
+    // with "continue" and append the additional text. Limited to 2 additional
+    // rounds so runaway models cannot inflate cost indefinitely.
+    let continuationCount = 0;
+    const MAX_CONTINUATIONS = 2;
+    while (
+      result?.stopReason === 'max_tokens' &&
+      continuationCount < MAX_CONTINUATIONS &&
+      !userCredentials?.apiKey // only on platform-hosted path (BYOK users control their own limits)
+    ) {
+      continuationCount++;
+      const partial = result?.text || '';
+      _lap(`continuation ${continuationCount} (prev len=${partial.length})`);
+      try {
+        streamingCallbacks?.onEvent?.({
+          type: 'turn_info',
+          turn: continuationCount,
+          maxTurns: MAX_CONTINUATIONS,
+        } as any);
+      } catch { /* non-fatal */ }
+      const continuationMessages = [
+        ...messages,
+        { role: 'assistant' as const, content: partial },
+        { role: 'user' as const, content: 'continue' },
+      ];
+      const next = await dispatchLLM(continuationMessages);
+      // Merge — concat text, reuse the final stopReason/toolCalls from the last segment.
+      result = {
+        ...next,
+        text: (partial || '') + (next?.text || ''),
+      };
     }
+
 
     _lap(`LLM done (toolCalls=${result?.toolCalls?.length || 0})`);
     const text = result?.text || '';

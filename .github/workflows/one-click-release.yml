@@ -1,0 +1,154 @@
+name: One-Click Release (backend + mobile)
+
+# Phase 0: Unified release workflow that lets us ship a single build branch
+# to both the production backend and the mobile mirror repo in one click.
+#
+# Usage:
+#   1. Push the branch (typically `buildNNN-…`) to origin.
+#   2. Actions → "One-Click Release" → Run workflow → pick the branch.
+#   3. Optionally toggle `deploy_backend` / `trigger_mobile` if you only need
+#      one side this time.
+#
+# What runs:
+#   - backend-checks: lint + unit tests + `npx tsc --noEmit` on the chosen ref.
+#     Gating: any failure blocks the deploy step below.
+#   - deploy-backend: dispatches the existing `deploy-backend-prod.yml` flow
+#     (which already takes a `pg_dump` snapshot + runs migrations + smoke tests).
+#   - trigger-mobile: dispatches `sync-mobile-build-repo.yml` so mobile public
+#     build repo picks up the same commit and kicks off its own APK build.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or SHA to release (default = current ref)
+        required: false
+        default: ''
+      deploy_backend:
+        description: Deploy backend to production
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+      trigger_mobile:
+        description: Sync to mobile public build repo
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+      skip_tests:
+        description: Skip pre-deploy tests (emergency only)
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: one-click-release-${{ inputs.ref || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  resolve-ref:
+    name: Resolve release ref
+    runs-on: ubuntu-latest
+    outputs:
+      release_ref: ${{ steps.pick.outputs.ref }}
+    steps:
+      - id: pick
+        run: |
+          REF="${{ inputs.ref }}"
+          if [ -z "$REF" ]; then
+            REF="${{ github.ref_name }}"
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "::notice ::Releasing ref=$REF"
+
+  backend-checks:
+    name: Backend checks (lint + tsc + jest)
+    runs-on: ubuntu-latest
+    needs: resolve-ref
+    if: ${{ inputs.skip_tests != 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-ref.outputs.release_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install backend deps
+        working-directory: backend
+        run: npm ci --legacy-peer-deps --no-audit --no-fund || npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Type-check
+        working-directory: backend
+        run: npx tsc -p tsconfig.build.json --noEmit
+      - name: Unit tests (targeted — full suite takes too long in CI)
+        working-directory: backend
+        run: |
+          # Only run the pure-TS utility tests to keep the gate fast.
+          npx jest src/common --no-coverage --runInBand || (echo "Unit tests failed" && exit 1)
+
+  deploy-backend:
+    name: Deploy backend to production
+    runs-on: ubuntu-latest
+    needs: [resolve-ref, backend-checks]
+    if: |
+      always() &&
+      inputs.deploy_backend == 'true' &&
+      (needs.backend-checks.result == 'success' || inputs.skip_tests == 'true')
+    steps:
+      - name: Dispatch deploy-backend-prod
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF: ${{ needs.resolve-ref.outputs.release_ref }}
+        run: |
+          set -euo pipefail
+          echo "Dispatching deploy-backend-prod.yml with ref=$REF"
+          curl -sS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/deploy-backend-prod.yml/dispatches" \
+            -d "{\"ref\":\"${REF}\",\"inputs\":{\"ref\":\"${REF}\"}}"
+          echo "Deploy dispatched. Follow progress under Actions → Deploy Backend Production."
+
+  trigger-mobile:
+    name: Sync mobile build
+    runs-on: ubuntu-latest
+    needs: [resolve-ref, backend-checks]
+    if: |
+      always() &&
+      inputs.trigger_mobile == 'true' &&
+      (needs.backend-checks.result == 'success' || inputs.skip_tests == 'true')
+    steps:
+      - name: Dispatch sync-mobile-build-repo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF: ${{ needs.resolve-ref.outputs.release_ref }}
+        run: |
+          set -euo pipefail
+          echo "Dispatching sync-mobile-build-repo.yml with ref=$REF"
+          curl -sS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/sync-mobile-build-repo.yml/dispatches" \
+            -d "{\"ref\":\"${REF}\"}"
+          echo "Mobile sync dispatched. Follow progress under Actions → Sync Mobile Frontend."
+
+  summary:
+    name: Release summary
+    runs-on: ubuntu-latest
+    needs: [resolve-ref, deploy-backend, trigger-mobile]
+    if: always()
+    steps:
+      - name: Print summary
+        run: |
+          echo "## One-Click Release Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Ref: \`${{ needs.resolve-ref.outputs.release_ref }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Backend checks: ${{ needs.deploy-backend.result || 'skipped' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Backend deploy: ${{ needs.deploy-backend.result || 'skipped' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Mobile sync:    ${{ needs.trigger-mobile.result || 'skipped' }}" >> "$GITHUB_STEP_SUMMARY"

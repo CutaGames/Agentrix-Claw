@@ -152,7 +152,28 @@ export async function uploadChatAttachment(file: {
   type: string;
 }): Promise<UploadedChatAttachment> {
   const formData = new FormData();
-  formData.append('file', file as any);
+
+  // Phase 0.7: Android `content://` URIs cannot be streamed directly by
+  // React Native's FormData polyfill on all devices — it races with the
+  // Android content resolver and yields 0-byte uploads. Fall back to a
+  // base64 data-URL round-trip for those URIs (and any other non-file
+  // schemes) so the upload is guaranteed to contain bytes.
+  let payload: any = file;
+  const uri = file.uri || '';
+  if (uri.startsWith('content://') || uri.startsWith('ph://')) {
+    try {
+      const FS = await import('expo-file-system');
+      const base64 = await FS.readAsStringAsync(uri, {
+        encoding: (FS as any).EncodingType?.Base64 ?? 'base64',
+      });
+      const dataUrl = `data:${file.type || 'application/octet-stream'};base64,${base64}`;
+      payload = { uri: dataUrl, name: file.name, type: file.type };
+    } catch (err: any) {
+      console.warn(`[uploadChatAttachment] content:// normalize failed, falling back to raw uri: ${err?.message || err}`);
+    }
+  }
+
+  formData.append('file', payload as any);
 
   const uploaded = await apiFetch<Omit<UploadedChatAttachment, 'publicUrl' | 'localUri'>>('/upload/chat-attachment', {
     method: 'POST',
