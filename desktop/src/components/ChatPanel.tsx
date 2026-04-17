@@ -110,6 +110,7 @@ import {
   writeExecutionMode,
   type ExecutionMode,
 } from "../services/turnRouter";
+import { trackLocalInferenceOutcome } from "../services/localInferenceTelemetry";
 
 // Send desktop notification when app is in background
 async function notifyIfBackground(title: string, body: string) {
@@ -2393,6 +2394,8 @@ export default function ChatPanel({
         if (useDesktopLocalModel) {
           const controller = new AbortController();
           let shouldFallbackToCloud = false;
+          const localStartedAt = Date.now();
+          let localTokensOut = 0;
           sessionAbortControllersRef.current[targetSessionId] = controller;
           if (targetSessionId === sessionIdRef.current) {
             abortRef.current = controller;
@@ -2587,10 +2590,29 @@ export default function ChatPanel({
                       void syncLocalConversation(authToken, targetSessionId, syncMessages, normalizeDesktopLocalModelId(selectedModel));
                     }
                   }
+                  trackLocalInferenceOutcome({
+                    platform: 'desktop',
+                    tier: 'local',
+                    outcome: 'success',
+                    modelId: selectedModel,
+                    durationMs: Date.now() - localStartedAt,
+                    tokensOut: localTokensOut,
+                  });
                 }
               } catch (error: any) {
                 const message = error?.message || String(error);
-                shouldFallbackToCloud = Boolean(authToken);
+                const timedOut = /timeout/i.test(message);
+                const stalled = /stall/i.test(message);
+                const aborted = /abort/i.test(message);
+                trackLocalInferenceOutcome({
+                  platform: 'desktop',
+                  tier: 'local',
+                  outcome: aborted ? 'aborted' : timedOut ? 'timeout' : stalled ? 'stall' : 'error',
+                  modelId: selectedModel,
+                  durationMs: Date.now() - localStartedAt,
+                  reason: message.slice(0, 160),
+                });
+                shouldFallbackToCloud = Boolean(authToken) && tierDecision.allowCloudFallback;
                 if (!shouldFallbackToCloud) {
                   updateSessionMessages(
                     targetSessionId,

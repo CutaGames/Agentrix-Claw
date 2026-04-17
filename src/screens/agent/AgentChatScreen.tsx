@@ -45,6 +45,7 @@ import {
   parseExplicitTierHint,
 } from '../../utils/turnRouter';
 import { buildSystemPrompt, sanitizeAgentContext } from '../../utils/agentPersona';
+import { trackLocalInferenceOutcome } from '../../services/localInferenceTelemetry';
 import type { StreamEvent } from '../../../shared/stream-parser';
 
 // expo-av: graceful degrade if missing
@@ -1792,6 +1793,7 @@ export function AgentChatScreen() {
         })));
 
         resetVoicePhaseAfterResponse();
+        const localStartedAt = Date.now();
 
         try {
           let localProducedOutput = false;
@@ -1869,12 +1871,39 @@ export function AgentChatScreen() {
               platform: 'mobile',
             });
           }
+
+          trackLocalInferenceOutcome({
+            platform: 'mobile',
+            tier: 'local',
+            outcome: finalAssistant ? 'success' : 'fallback-to-cloud',
+            modelId: effectiveModelId,
+            durationMs: Date.now() - localStartedAt,
+            tokensOut: finalAssistant ? estimateTokens(finalAssistant) : 0,
+            reason: finalAssistant ? 'ok' : 'empty-output',
+          });
         } catch (error: any) {
           if (responseInterruptedRef.current || localAbort.signal.aborted) {
+            trackLocalInferenceOutcome({
+              platform: 'mobile',
+              tier: 'local',
+              outcome: 'aborted',
+              modelId: effectiveModelId,
+              durationMs: Date.now() - localStartedAt,
+            });
             return;
           }
 
           const localErrorMessage = error?.message || t({ en: 'Local model inference failed.', zh: '本地模型推理失败。' });
+          const timedOut = /timeout/i.test(localErrorMessage);
+          const stalled = /stall/i.test(localErrorMessage);
+          trackLocalInferenceOutcome({
+            platform: 'mobile',
+            tier: 'local',
+            outcome: timedOut ? 'timeout' : stalled ? 'stall' : 'error',
+            modelId: effectiveModelId,
+            durationMs: Date.now() - localStartedAt,
+            reason: localErrorMessage.slice(0, 160),
+          });
           addVoiceDiagnostic('agent-chat', 'local-inference-failed', {
             model: effectiveModelId,
             message: localErrorMessage,
