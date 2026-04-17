@@ -1726,9 +1726,11 @@ export function AgentChatScreen() {
       const localRuntimeSnapshot = isLocalOnlyModelId(effectiveModelId)
         ? (localRuntimeCapabilities || MobileLocalInferenceService.getDeclaredCapabilities({ model: effectiveModelId }))
         : null;
-      const localTurnDecision = isLocalOnlyModelId(effectiveModelId) && localRuntimeSnapshot
+      const localRuntimeReady = Boolean(localRuntimeSnapshot?.available);
+      const localTurnDecision = isLocalOnlyModelId(effectiveModelId) && localRuntimeReady && localRuntimeSnapshot
         ? resolveLocalTurnExecution(text, attachments, localRuntimeSnapshot)
         : null;
+      let localAttempted = false;
 
       // Tri-tier router: user preference (local-only / auto / cloud-only) gates everything below.
       const tierDecision = resolveExecutionTier({
@@ -1738,7 +1740,7 @@ export function AgentChatScreen() {
         instanceResolvedModel: remoteResolvedModelId || null,
         finalFallbackModel: 'claude-haiku-4-5',
         isLocalModelId: isLocalOnlyModelId,
-        localRuntimeReady: !!localRuntimeSnapshot,
+        localRuntimeReady,
         autoClassification: classifyTurnForAuto({
           text,
           attachmentCount: attachments.length,
@@ -1752,12 +1754,27 @@ export function AgentChatScreen() {
         isLocalOnlyModelId(effectiveModelId) &&
         localTurnDecision?.mode === 'local';
 
-      if (localTurnDecision?.mode === 'blocked' && localModelLabel) {
-        // All blocked reasons are recoverable — fall through to cloud
+      if (tierDecision.tier === 'local' && localTurnDecision?.mode === 'blocked' && localModelLabel) {
         addVoiceDiagnostic('agent-chat', 'local-turn-blocked-fallback-cloud', {
           model: effectiveModelId,
           reason: localTurnDecision.reason,
         });
+        trackLocalInferenceOutcome({
+          platform: 'mobile',
+          tier: 'local',
+          outcome: tierDecision.allowCloudFallback ? 'fallback-to-cloud' : 'error',
+          modelId: effectiveModelId,
+          reason: `local-turn-blocked:${localTurnDecision.reason}`,
+        });
+        if (!tierDecision.allowCloudFallback) {
+          finishAssistantWithError(
+            t({
+              en: 'This local model cannot handle this turn. Switch to Smart/Cloud mode or adjust the request.',
+              zh: '当前端侧模型无法处理此轮。请切换到「智能 / 云端」模式或调整输入。',
+            })
+          );
+          return;
+        }
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMsgId
@@ -1768,6 +1785,7 @@ export function AgentChatScreen() {
       }
 
       if (shouldTryLocalNano) {
+        localAttempted = true;
         const localAbort = new AbortController();
         streamAbortRef.current = localAbort;
         if (localModelLabel) {
@@ -1875,7 +1893,7 @@ export function AgentChatScreen() {
           trackLocalInferenceOutcome({
             platform: 'mobile',
             tier: 'local',
-            outcome: finalAssistant ? 'success' : 'fallback-to-cloud',
+            outcome: finalAssistant ? 'success' : tierDecision.allowCloudFallback ? 'fallback-to-cloud' : 'error',
             modelId: effectiveModelId,
             durationMs: Date.now() - localStartedAt,
             tokensOut: finalAssistant ? estimateTokens(finalAssistant) : 0,
@@ -1908,20 +1926,43 @@ export function AgentChatScreen() {
             model: effectiveModelId,
             message: localErrorMessage,
           });
-          // Clear partial local output and fall through to cloud
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId
-                ? { ...m, content: `⏳ ${t({ en: `Local failed (${localErrorMessage}), switching to cloud...`, zh: `端侧失败（${localErrorMessage}），正在切换到云端…` })}\n`, streaming: true }
-                : m
-            )
-          );
+          if (tierDecision.allowCloudFallback) {
+            // Clear partial local output and fall through to cloud
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMsgId
+                  ? { ...m, content: `⏳ ${t({ en: `Local failed (${localErrorMessage}), switching to cloud...`, zh: `端侧失败（${localErrorMessage}），正在切换到云端…` })}\n`, streaming: true }
+                  : m
+              )
+            );
+          }
         }
       }
 
       // Router decides whether to try cloud next. In local-only mode we surface the error instead.
       const proxyModelId = tierDecision.activeModelId;
-      const localFellBack = isLocalOnlyModelId(effectiveModelId) && !streamSucceeded;
+      const localRuntimeUnavailableInForcedLocalMode =
+        executionMode === 'local-only' &&
+        isLocalOnlyModelId(effectiveModelId) &&
+        tierDecision.reason === 'local-runtime-not-ready' &&
+        !streamSucceeded;
+      if (localRuntimeUnavailableInForcedLocalMode) {
+        trackLocalInferenceOutcome({
+          platform: 'mobile',
+          tier: 'local',
+          outcome: 'error',
+          modelId: effectiveModelId,
+          reason: 'local-runtime-not-ready',
+        });
+        finishAssistantWithError(
+          t({
+            en: 'Local model is unavailable or timed out. Switch to Smart/Cloud mode or try again.',
+            zh: '端侧模型不可用或超时。请切换到「智能 / 云端」模式或稍后重试。',
+          })
+        );
+        return;
+      }
+      const localFellBack = localAttempted && !streamSucceeded;
       if (!streamSucceeded && localFellBack && !tierDecision.allowCloudFallback) {
         finishAssistantWithError(
           t({

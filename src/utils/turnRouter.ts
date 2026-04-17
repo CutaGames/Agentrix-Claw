@@ -56,7 +56,7 @@ export interface TierResolutionResult {
  * Rules (in priority order):
  *  1. `cloud-only` → tier=cloud, no local attempt.
  *  2. `local-only` → tier=local if runtime ready AND a local model is picked/implied; else return cloud with reason `local-runtime-not-ready` (caller should surface error rather than silently fall back — `allowCloudFallback=false`).
- *  3. `auto` → consult autoClassification; if user explicitly picked a local model, prefer local.
+ *  3. `auto` → consult autoClassification first; a long / tool-heavy turn can still be promoted to cloud even if the dropdown currently points at a local model.
  */
 export function resolveExecutionTier(input: TierResolutionInput): TierResolutionResult {
   const {
@@ -108,36 +108,32 @@ export function resolveExecutionTier(input: TierResolutionInput): TierResolution
     };
   }
 
-  // Auto mode.
+  // Auto mode: classifier wins. Picking a local model means "prefer local when suitable",
+  // not "force local even for long / tool-heavy turns".
+  const autoTier = autoClassification ?? (userPickedLocal ? 'local' : 'cloud');
+  if (autoTier === 'cloud') {
+    return {
+      tier: 'cloud',
+      allowCloudFallback: false,
+      activeModelId: cloudCandidate,
+      reason: userPickedLocal ? 'auto-classified-cloud' : 'default-cloud',
+    };
+  }
+
   if (userPickedLocal && localRuntimeReady) {
     return {
       tier: 'local',
       allowCloudFallback: true,
       activeModelId: selectedModelId as string,
-      reason: 'local-model-picked',
+      reason: autoClassification === 'local' ? 'auto-classified-local' : 'local-model-picked',
     };
-  }
-
-  const autoTier = autoClassification ?? 'cloud';
-  if (autoTier === 'local' && localRuntimeReady) {
-    // No explicit local model picked but classifier says local.
-    // Caller should pass a default local model id via selectedModelId if desired;
-    // otherwise fall through to cloud.
-    if (userPickedLocal) {
-      return {
-        tier: 'local',
-        allowCloudFallback: true,
-        activeModelId: selectedModelId as string,
-        reason: 'auto-classified-local',
-      };
-    }
   }
 
   return {
     tier: 'cloud',
     allowCloudFallback: false,
     activeModelId: cloudCandidate,
-    reason: autoTier === 'local' ? 'local-runtime-not-ready' : 'default-cloud',
+    reason: 'local-runtime-not-ready',
   };
 }
 

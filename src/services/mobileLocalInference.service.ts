@@ -568,6 +568,10 @@ export class MobileLocalInferenceService {
           }
         }
 
+        if (streamError) {
+          throw new Error(extractErrorMessage(streamError, 'Local model inference failed.'));
+        }
+
         await streamPromise;
         if (streamError) {
           throw new Error(extractErrorMessage(streamError, 'Local model inference failed.'));

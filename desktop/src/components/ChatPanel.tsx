@@ -2431,6 +2431,14 @@ export default function ChatPanel({
               // Respect the user's execution-mode preference: in "local-only" mode we surface
               // the error instead of silently falling back to cloud, even if auth would allow it.
               shouldFallbackToCloud = Boolean(authToken) && tierDecision.allowCloudFallback;
+              trackLocalInferenceOutcome({
+                platform: 'desktop',
+                tier: 'local',
+                outcome: shouldFallbackToCloud ? 'fallback-to-cloud' : 'error',
+                modelId: selectedModel,
+                durationMs: Date.now() - localStartedAt,
+                reason: readiness.message || 'local-runtime-not-ready',
+              });
               if (!shouldFallbackToCloud) {
                 updateSessionMessages(
                   targetSessionId,

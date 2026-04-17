@@ -46,6 +46,7 @@ export interface TierResolutionResult {
     | 'user-forced-cloud'
     | 'local-model-picked'
     | 'auto-classified-local'
+    | 'auto-classified-cloud'
     | 'local-runtime-not-ready'
     | 'default-cloud';
 }
@@ -65,7 +66,7 @@ function pickCloudModel(args: {
 }
 
 export function resolveExecutionTier(input: TierResolutionInput): TierResolutionResult {
-  const { selectedModelId, executionMode, isLocalModelId, localRuntimeReady } = input;
+  const { selectedModelId, executionMode, isLocalModelId, localRuntimeReady, autoClassification } = input;
   const userPickedLocal = isLocalModelId(selectedModelId);
   const cloudCandidate = pickCloudModel(input);
 
@@ -80,11 +81,26 @@ export function resolveExecutionTier(input: TierResolutionInput): TierResolution
     return { tier: 'cloud', allowCloudFallback: false, activeModelId: cloudCandidate, reason: 'local-runtime-not-ready' };
   }
 
-  if (userPickedLocal && localRuntimeReady) {
-    return { tier: 'local', allowCloudFallback: true, activeModelId: selectedModelId as string, reason: 'local-model-picked' };
+  const autoTier = autoClassification ?? (userPickedLocal ? 'local' : 'cloud');
+  if (autoTier === 'cloud') {
+    return {
+      tier: 'cloud',
+      allowCloudFallback: false,
+      activeModelId: cloudCandidate,
+      reason: userPickedLocal ? 'auto-classified-cloud' : 'default-cloud',
+    };
   }
 
-  return { tier: 'cloud', allowCloudFallback: false, activeModelId: cloudCandidate, reason: 'default-cloud' };
+  if (userPickedLocal && localRuntimeReady) {
+    return {
+      tier: 'local',
+      allowCloudFallback: true,
+      activeModelId: selectedModelId as string,
+      reason: autoClassification === 'local' ? 'auto-classified-local' : 'local-model-picked',
+    };
+  }
+
+  return { tier: 'cloud', allowCloudFallback: false, activeModelId: cloudCandidate, reason: 'local-runtime-not-ready' };
 }
 
 export interface TurnClassificationInput {
