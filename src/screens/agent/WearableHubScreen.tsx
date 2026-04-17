@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   ScrollView,
   StyleSheet,
@@ -311,9 +312,13 @@ export function WearableHubScreen({ navigation }: any) {
           )}
 
           <TouchableOpacity
+            testID="wearable-scan-btn"
+            accessibilityLabel="wearable-scan-btn"
             style={[st.scanBtn, isScanning && st.scanBtnActive]}
-            onPress={() => { void startScan(); }}
-            disabled={isScanning}
+            onPress={() => {
+              if (isScanning) { stopScan(); return; }
+              void startScan();
+            }}
             activeOpacity={0.8}
           >
             {isScanning ? (
@@ -325,10 +330,31 @@ export function WearableHubScreen({ navigation }: any) {
             )}
             <Text style={st.scanBtnText}>
               {isScanning
-                ? t({ en: 'Scanning...', zh: '搜索中...' })
+                ? t({ en: 'Scanning… Tap to cancel', zh: '搜索中… 点击取消' })
                 : t({ en: 'Scan for Devices', zh: '搜索设备' })}
             </Text>
           </TouchableOpacity>
+
+          {/* BLE state hint — makes the scan progress visible and exposes a cancel affordance
+              so users aren't stuck watching a 12-second silent spinner with BT off. */}
+          {isScanning && (
+            <View testID="wearable-scan-status" style={st.scanStatus}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={st.scanStatusText}>
+                {permissionState?.granted === false
+                  ? t({ en: 'Bluetooth permission denied — grant access in Settings', zh: '蓝牙权限未授权 — 请在设置中开启' })
+                  : t({ en: 'Looking for nearby BLE wearables (up to 12s)…', zh: '正在搜索附近蓝牙设备（最多 12 秒）…' })}
+              </Text>
+              <TouchableOpacity
+                testID="wearable-scan-cancel"
+                onPress={stopScan}
+                style={st.scanCancelBtn}
+                activeOpacity={0.8}
+              >
+                <Text style={st.scanCancelText}>{t({ en: 'Cancel', zh: '取消' })}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* Filter chips */}
           {(isScanning || scanCandidates.length > 0) && (
@@ -514,6 +540,18 @@ const st = StyleSheet.create({
   scanBtnActive: { opacity: 0.85 },
   scanBtnIcon: { fontSize: 20, color: '#FFF' },
   scanBtnText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+  scanStatus: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.bgSecondary, borderRadius: 12,
+    paddingVertical: 10, paddingHorizontal: 14,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  scanStatusText: { flex: 1, fontSize: 13, color: colors.textSecondary, lineHeight: 18 },
+  scanCancelBtn: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10,
+    backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border,
+  },
+  scanCancelText: { color: colors.textPrimary, fontSize: 12, fontWeight: '700' },
   filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   filterChip: {
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,

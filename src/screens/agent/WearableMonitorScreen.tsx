@@ -552,10 +552,10 @@ const st = StyleSheet.create({
   },
   channelIconBg: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   channelIcon: { fontSize: 20 },
-  channelLabel: { fontSize: 11, color: colors.textMuted, fontWeight: '500', marginTop: 4 },
+  channelLabel: { fontSize: 13, color: colors.textSecondary, fontWeight: '600', marginTop: 4 },
   channelValue: { fontSize: 28, fontWeight: '700', color: colors.textPrimary },
-  channelUnit: { fontSize: 11, color: colors.textMuted },
-  channelTime: { fontSize: 10, color: colors.textMuted, marginTop: 4 },
+  channelUnit: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
+  channelTime: { fontSize: 11, color: colors.textMuted, marginTop: 4 },
 
   // Empty
   emptyState: { alignItems: 'center', paddingVertical: 40 },
@@ -570,7 +570,7 @@ const st = StyleSheet.create({
   sampleDot: { width: 8, height: 8, borderRadius: 4 },
   sampleChannel: { fontSize: 12, color: colors.textMuted, width: 80 },
   sampleValue: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, flex: 1 },
-  sampleTime: { fontSize: 10, color: colors.textMuted },
+  sampleTime: { fontSize: 11, color: colors.textMuted },
 
   // Rules
   ruleCard: {

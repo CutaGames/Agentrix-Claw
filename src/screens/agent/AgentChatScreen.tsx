@@ -25,6 +25,7 @@ import { useI18n } from '../../stores/i18nStore';
 import DesktopDiscoveryBanner from '../../components/DesktopDiscoveryBanner';
 import { VoiceOnboardingTooltip } from '../../components/VoiceOnboardingTooltip';
 import { ChatSessionTabs, loadSessions, saveSessions, MAX_SESSIONS, type ChatSession } from '../../components/ChatSessionTabs';
+import { ModelCatalogSheet, type ModelCatalogEntry } from '../../components/common/ModelCatalogSheet';
 import { uploadChatAttachment, apiFetch, syncLocalConversation, type UploadedChatAttachment } from '../../services/api';
 import { mapRawInstance } from '../../services/auth';
 import { fetchLatestDesktopClipboard, type MobileDesktopClipboardSnapshot } from '../../services/desktopSync';
@@ -2709,7 +2710,11 @@ export function AgentChatScreen() {
               testID="chat-voice-action-button"
               accessibilityLabel={`chat-voice-action-button:ptt:${voicePhase}:${isRecording ? 'recording' : 'idle'}`}
               style={[styles.holdTalkBtn, isRecording && styles.holdTalkBtnActive]}
-              onPressIn={handleVoicePressIn}
+              onPressIn={() => {
+                // Barge-in confirmation: fire Heavy haptic immediately so user knows the interrupt registered.
+                void runImpactHaptic(Haptics.ImpactFeedbackStyle.Heavy);
+                handleVoicePressIn();
+              }}
               onPressOut={handleVoicePressOut}
               activeOpacity={0.85}
             >
@@ -3027,68 +3032,41 @@ export function AgentChatScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Model picker modal — dynamic models from user's configured providers */}
-      <Modal visible={showModelPicker} transparent animationType="slide">
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowModelPicker(false)} activeOpacity={1}>
-          <View style={styles.modelSheet}>
-            <Text style={styles.modelSheetTitle}>{t({ en: 'Switch Model', zh: '切换模型' })}</Text>
-            <Text style={styles.modelSheetSubtitle}>{t({ en: 'Syncs this agent engine. Permissions override this selection.', zh: '会同步当前智能体引擎；若权限里设置了专属模型，则专属模型优先。' })}</Text>
-            <ScrollView>
-              {availableModels.map((m) => {
-                const isActive = m.id === effectiveModelId;
-                return (
-                  <TouchableOpacity
-                    key={m.id}
-                    style={[
-                      styles.modelOption,
-                      isActive && styles.modelOptionActive,
-                    ]}
-                    onPress={async () => {
-                      const isLocalTargetModel = isLocalOnlyModelId(m.id);
-                      setSelectedModel(m.id);
-                      setResolvedModelLabel(isLocalTargetModel ? getLocalModelLabel(m.id) : m.label);
-                      setShowModelPicker(false);
-                      if (instanceId && !isLocalTargetModel) {
-                        updateInstance(instanceId, {
-                          capabilities: {
-                            ...(activeInstance?.capabilities || {}),
-                            activeModel: m.id,
-                            modelPinned: true,
-                          },
-                          resolvedModel: m.id,
-                          resolvedModelLabel: m.label,
-                        });
-                        try { await switchInstanceModel(instanceId, m.id); } catch {}
-                      }
-                    }}
-                  >
-                    <View style={styles.modelOptionRow}>
-                      <Text style={styles.modelOptionIcon}>{m.icon}</Text>
-                      <View style={styles.modelOptionInfo}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={styles.modelOptionLabel}>{m.label}</Text>
-                          {m.badge && (
-                            <View style={styles.modelBadge}>
-                              <Text style={styles.modelBadgeText}>{m.badge}</Text>
-                            </View>
-                          )}
-                        </View>
-                        <Text style={styles.modelOptionProvider}>{m.provider}</Text>
-                      </View>
-                      {isActive && <Text style={styles.modelOptionCheck}>✓</Text>}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-              {availableModels.length <= 1 && (
-                <Text style={{ color: colors.textMuted, textAlign: 'center', paddingVertical: 16, fontSize: 13 }}>
-                  {t({ en: 'Configure API keys in Settings → API Keys to unlock more models', zh: '前往 设置 → API密钥 配置厂商密钥以解锁更多模型' })}
-                </Text>
-              )}
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      {/* Model picker — unified catalog sheet with search + provider-tier grouping. */}
+      <ModelCatalogSheet
+        visible={showModelPicker}
+        onClose={() => setShowModelPicker(false)}
+        activeModelId={effectiveModelId}
+        subtitle={t({ en: 'Syncs this agent engine. Permissions override this selection.', zh: '会同步当前智能体引擎；若权限里设置了专属模型，则专属模型优先。' })}
+        models={availableModels.map<ModelCatalogEntry>((m) => ({
+          id: m.id,
+          label: m.label,
+          provider: m.provider,
+          icon: m.icon,
+          badge: m.badge,
+          tier: m.costTier === 'free' || m.costTier === 'free_trial'
+            ? (isLocalOnlyModelId(m.id) ? 'local' : 'free')
+            : (m.costTier === 'enterprise' ? 'enterprise' : 'pro'),
+        }))}
+        onSelect={async (m) => {
+          const isLocalTargetModel = isLocalOnlyModelId(m.id);
+          setSelectedModel(m.id);
+          setResolvedModelLabel(isLocalTargetModel ? getLocalModelLabel(m.id) : m.label);
+          setShowModelPicker(false);
+          if (instanceId && !isLocalTargetModel) {
+            updateInstance(instanceId, {
+              capabilities: {
+                ...(activeInstance?.capabilities || {}),
+                activeModel: m.id,
+                modelPinned: true,
+              },
+              resolvedModel: m.id,
+              resolvedModelLabel: m.label,
+            });
+            try { await switchInstanceModel(instanceId, m.id); } catch {}
+          }
+        }}
+      />
 
       {/* Voice diagnostics modal */}
       <Modal visible={showDiagnostics} transparent animationType="slide">

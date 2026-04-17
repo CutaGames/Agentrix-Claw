@@ -19,11 +19,13 @@ export const colors = {
   accentDark: '#009dbf',
 
   // ── Text ─────────────────────────────────────
+  // textSecondary bumped from #8ba3be (4.1:1) → #a6bdd6 (~6.2:1) for WCAG AA
+  // textMuted bumped from #4d6278 (2.3:1 — FAIL) → #7b93ab (~4.8:1) for AA
   text: '#f0f6ff',
   textPrimary: '#f0f6ff',
-  textSecondary: '#8ba3be',
-  textMuted: '#4d6278',
-  muted: '#4d6278',
+  textSecondary: '#a6bdd6',
+  textMuted: '#7b93ab',
+  muted: '#7b93ab',
   textInverse: '#0B1220',
 
   // ── Status ───────────────────────────────────

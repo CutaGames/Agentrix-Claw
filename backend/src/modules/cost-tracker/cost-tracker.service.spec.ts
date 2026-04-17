@@ -26,6 +26,18 @@ describe('CostTrackerService', () => {
       expect(cost).toBeCloseTo(18, 5);
     });
 
+    it('calculates Claude Opus 4.7 (direct) cost at $15 in / $75 out per 1M', () => {
+      // 100k in @ $15 + 40k out @ $75 = 1.5 + 3 = 4.5
+      const cost = service.calculateCost('claude-opus-4-7-20260401', 100_000, 40_000);
+      expect(cost).toBeCloseTo(4.5, 5);
+    });
+
+    it('calculates Bedrock Claude Opus 4.7 cost identically to direct Anthropic', () => {
+      const direct = service.calculateCost('claude-opus-4-7-20260401', 1_000_000, 200_000);
+      const bedrock = service.calculateCost('us.anthropic.claude-opus-4-7-20260401-v1:0', 1_000_000, 200_000);
+      expect(bedrock).toBeCloseTo(direct, 5);
+    });
+
     it('includes cache read/write costs when supported', () => {
       // Sonnet 4: cache read $0.3/M, cache write $3.75/M
       const cost = service.calculateCost(

@@ -392,6 +392,9 @@ export default function ChatPanel({
   const [streamFeedback, setStreamFeedback] = useState<StreamFeedback | null>(null);
   const [activeToolRun, setActiveToolRun] = useState<ActiveToolRun | null>(null);
   const [sendStartedAt, setSendStartedAt] = useState<number | null>(null);
+  // Toolbar: collapse low-frequency panels (Economy / Memory / Dream / Plugins / Wiki / MCP)
+  // into a "More" popover to free up header real-estate.
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   // Deep-think + fabric device visual state
   const [deepThinkActive, setDeepThinkActive] = useState(false);
   const [deepThinkTargetModel, setDeepThinkTargetModel] = useState<string | null>(null);
@@ -3294,19 +3297,23 @@ export default function ChatPanel({
                   );
                 })}
               </select>
-              {/* Model selector — always visible so user can switch between custom and platform models */}
+              {/* Model selector — always visible so user can switch between custom and platform models.
+                  maxWidth widened from 180→260 so long labels like "Claude Opus 4.7 (Platform)" render fully. */}
               <select
+                data-testid="chat-model-select"
                 value={selectedModel}
                 onChange={(e) => { void persistSelectedModel(e.target.value); }}
                 data-no-drag="true"
                 style={{
-                  background: "transparent",
-                  color: "var(--text-dim)",
-                  border: "none",
+                  background: "var(--surface-2, rgba(255,255,255,0.04))",
+                  color: "var(--text, #f0f6ff)",
+                  border: "1px solid var(--border, #2a3a52)",
+                  borderRadius: 6,
+                  padding: "3px 6px",
                   fontSize: 11,
                   cursor: "pointer",
                   marginLeft: 8,
-                  maxWidth: 180,
+                  maxWidth: 260,
                   WebkitAppRegion: "no-drag",
                 }}
               >
@@ -3358,24 +3365,63 @@ export default function ChatPanel({
             <button onClick={() => setTaskWorkbenchOpen(true)} style={iconBtnStyle} title="Task Workbench">
               🗂
             </button>
-            <button onClick={() => setEconomyPanelOpen(true)} style={iconBtnStyle} title="Agent Economy">
-              💰
-            </button>
-            <button onClick={() => setMemoryPanelOpen(true)} style={iconBtnStyle} title="Memory">
-              🧠
-            </button>
-            <button onClick={() => setDreamPanelOpen(true)} style={iconBtnStyle} title="Dreaming">
-              💤
-            </button>
-            <button onClick={() => setPluginPanelOpen(true)} style={iconBtnStyle} title="Plugin Hub">
-              🧩
-            </button>
-            <button onClick={() => setWikiPanelOpen(true)} style={iconBtnStyle} title="Memory Wiki">
-              📝
-            </button>
-            <button onClick={() => setMcpPanelOpen(true)} style={iconBtnStyle} title="MCP Manager">
-              🔌
-            </button>
+            {/* Collapsed low-frequency panels — Economy / Memory / Dream / Plugins / Wiki / MCP */}
+            <div style={{ position: "relative" }}>
+              <button
+                data-testid="chat-toolbar-more"
+                aria-label="chat-toolbar-more"
+                onClick={() => setShowMoreMenu((v) => !v)}
+                style={iconBtnStyle}
+                title="More panels"
+              >
+                ⋯
+              </button>
+              {showMoreMenu && (
+                <>
+                  <div
+                    onClick={() => setShowMoreMenu(false)}
+                    style={{ position: "fixed", inset: 0, zIndex: 40, background: "transparent" }}
+                  />
+                  <div
+                    data-testid="chat-toolbar-more-menu"
+                    style={{
+                      position: "absolute", top: "calc(100% + 6px)", right: 0,
+                      zIndex: 41, minWidth: 180, padding: 6,
+                      background: "var(--surface, #1a2235)",
+                      border: "1px solid var(--border, #2a3a52)",
+                      borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+                      display: "flex", flexDirection: "column", gap: 2,
+                    }}
+                  >
+                    {[
+                      { emoji: "💰", label: "Agent Economy", action: () => setEconomyPanelOpen(true) },
+                      { emoji: "🧠", label: "Memory", action: () => setMemoryPanelOpen(true) },
+                      { emoji: "💤", label: "Dreaming", action: () => setDreamPanelOpen(true) },
+                      { emoji: "🧩", label: "Plugin Hub", action: () => setPluginPanelOpen(true) },
+                      { emoji: "📝", label: "Memory Wiki", action: () => setWikiPanelOpen(true) },
+                      { emoji: "🔌", label: "MCP Manager", action: () => setMcpPanelOpen(true) },
+                    ].map((it) => (
+                      <button
+                        key={it.label}
+                        onClick={() => { it.action(); setShowMoreMenu(false); }}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 10,
+                          padding: "8px 12px", borderRadius: 8, border: "none",
+                          background: "transparent", color: "var(--text, #f0f6ff)",
+                          cursor: "pointer", textAlign: "left", fontSize: 13,
+                          WebkitAppRegion: "no-drag" as any,
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                      >
+                        <span style={{ fontSize: 16 }}>{it.emoji}</span>
+                        <span>{it.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
         <div
