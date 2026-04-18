@@ -175,14 +175,13 @@ export class LocalLLMSidecar {
         messages,
         temperature: options?.temperature ?? 0.7,
         max_tokens: options?.maxTokens ?? 2048,
-        reasoning_format: "none",
-        chat_template_kwargs: { enable_thinking: false },
         stream: false,
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`Local LLM error: ${response.status} ${response.statusText}`);
+      const detail = await response.text().catch(() => "");
+      throw new Error(`Local LLM error: ${response.status} ${response.statusText}${detail ? ` — ${detail.slice(0, 300)}` : ""}`);
     }
 
     return response.json();
@@ -211,14 +210,13 @@ export class LocalLLMSidecar {
         tool_choice: options?.tool_choice ?? "auto",
         temperature: options?.temperature ?? 0.7,
         max_tokens: options?.maxTokens ?? 2048,
-        reasoning_format: "none",
-        chat_template_kwargs: { enable_thinking: false },
         stream: false,
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`Local LLM error: ${response.status} ${response.statusText}`);
+      const detail = await response.text().catch(() => "");
+      throw new Error(`Local LLM error: ${response.status} ${response.statusText}${detail ? ` — ${detail.slice(0, 300)}` : ""}`);
     }
 
     return response.json();
@@ -240,14 +238,13 @@ export class LocalLLMSidecar {
         messages,
         temperature: options?.temperature ?? 0.7,
         max_tokens: options?.maxTokens ?? 2048,
-        reasoning_format: "none",
-        chat_template_kwargs: { enable_thinking: false },
         stream: true,
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`Local LLM error: ${response.status}`);
+      const detail = await response.text().catch(() => "");
+      throw new Error(`Local LLM error: ${response.status}${detail ? ` — ${detail.slice(0, 300)}` : ""}`);
     }
 
     const reader = response.body?.getReader();

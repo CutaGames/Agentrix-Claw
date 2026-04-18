@@ -61,8 +61,11 @@ export class SkillController {
   }
 
   @Get()
-  findAll(@Query('status') status?: SkillStatus) {
-    return this.skillService.findAll(status);
+  findAll(
+    @Query('status') status?: SkillStatus,
+    @Query('view') view?: 'summary' | 'full',
+  ) {
+    return this.skillService.findAll(status, view === 'full' ? 'full' : 'summary');
   }
 
   @Get(':id')

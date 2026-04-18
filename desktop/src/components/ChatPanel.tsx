@@ -1733,7 +1733,7 @@ export default function ChatPanel({
         const { apiFetch, API_BASE } = await import("../services/store");
         if (!skillArg) {
           // List available skills
-          const res = await apiFetch(`${API_BASE}/skills`, {
+          const res = await apiFetch(`${API_BASE}/skills?view=summary`, {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1743,7 +1743,7 @@ export default function ChatPanel({
             addSystemMessage("🧩 No skills available. Visit the marketplace to install skills.");
           } else {
             const list = skills.slice(0, 10).map((s: any) =>
-              `• **${s.name || s.id}** — ${s.description || "No description"}`
+              `• **${s.displayName || s.name || s.id}** — ${s.description || s.category || "No description"}`
             ).join("\n");
             addSystemMessage(`🧩 Available Skills:\n\n${list}\n\nUse \`/skill <name>\` to activate.`);
           }

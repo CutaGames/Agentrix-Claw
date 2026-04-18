@@ -4,9 +4,9 @@ import { Skill, SkillStatus } from '../types/skill.types';
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 export const skillApi = {
-  async getSkills(status?: SkillStatus) {
+  async getSkills(status?: SkillStatus, view: 'summary' | 'full' = 'full') {
     const response = await axios.get<Skill[]>(`${API_BASE}/api/skills`, {
-      params: { status }
+      params: { status, view }
     });
     return response.data;
   },

@@ -1816,31 +1816,64 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           // For local models without audio input (e.g. Gemma): record → cloud
           // transcribe → send text to local model. Also used for all cloud models.
           let transcript = '';
+          let transcribeTimedOut = false;
+          let transcribeFailed = false;
           const formData = new FormData();
           formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
           const ac = new AbortController();
-          const timeout = setTimeout(() => ac.abort(), 35_000);
+          // Upper bound tolerant of worst case: Gemini STT chain (3 keys × ~15s) → AWS fallback.
+          // We intentionally race an independent timeout promise because some RN builds do not
+          // actually reject the in-flight fetch when AbortController.abort() fires, which would
+          // otherwise leave the UI stuck in the 'transcribing' phase forever.
+          const TRANSCRIBE_TIMEOUT_MS = 45_000;
+          const timeout = setTimeout(() => ac.abort(), TRANSCRIBE_TIMEOUT_MS);
           try {
-            const resp = await fetch(`${API_BASE}/voice/transcribe?lang=${voiceLanguageHint}`, {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${token}` },
-              body: formData,
-              signal: ac.signal,
-            });
+            const resp = await Promise.race([
+              fetch(`${API_BASE}/voice/transcribe?lang=${voiceLanguageHint}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+                signal: ac.signal,
+              }),
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () => reject(new Error('transcribe-timeout')),
+                  TRANSCRIBE_TIMEOUT_MS + 1_000,
+                ),
+              ),
+            ]);
             if (resp.ok) {
               const data = await resp.json();
               transcript = data?.text || data?.transcript || '';
+            } else {
+              transcribeFailed = true;
+              console.warn('Transcription HTTP error', resp.status);
             }
-          } catch (err) {
+          } catch (err: any) {
+            if (err?.message === 'transcribe-timeout' || err?.name === 'AbortError') {
+              transcribeTimedOut = true;
+            } else {
+              transcribeFailed = true;
+            }
             console.warn('Transcription failed', err);
           } finally {
             clearTimeout(timeout);
+            try { ac.abort(); } catch {}
           }
 
           if (transcript) {
             setTranscriptPreview(transcript);
             setVoicePhase('thinking');
             setTimeout(() => onSendMessageRef.current(transcript), 80);
+          } else if (transcribeTimedOut) {
+            setVoicePhase('idle');
+            Alert.alert(
+              t({ en: 'Transcription Timeout', zh: '转写超时' }),
+              t({
+                en: 'Audio transcription took too long. Please try again.',
+                zh: '语音转写超时，请重试。',
+              }),
+            );
           } else {
             // Try uploading audio as attachment fallback
             try {
@@ -1856,10 +1889,22 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
                 setTimeout(() => onSendMessageRef.current('', [uploadedAudio]), 80);
               } else {
                 setVoicePhase('idle');
+                if (transcribeFailed) {
+                  Alert.alert(
+                    t({ en: 'Transcription Failed', zh: '转写失败' }),
+                    t({
+                      en: 'Transcription service is unavailable. Please try again.',
+                      zh: '转写服务不可用，请稍后重试。',
+                    }),
+                  );
+                }
               }
             } catch {
               setVoicePhase('idle');
-              Alert.alert(t({ en: 'No Speech', zh: '未检测到语音' }), t({ en: 'No speech detected.', zh: '未检测到有效语音。' }));
+              Alert.alert(
+                t({ en: 'No Speech', zh: '未检测到语音' }),
+                t({ en: 'No speech detected.', zh: '未检测到有效语音。' }),
+              );
             }
           }
         } else {

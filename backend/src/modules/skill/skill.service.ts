@@ -7,6 +7,17 @@ import { Skill, SkillStatus, SkillPricingType, SkillValueType } from '../../enti
 import { UserInstalledSkill } from '../../entities/user-installed-skill.entity';
 import { SkillConverterService } from './skill-converter.service';
 
+type SkillListView = 'summary' | 'full';
+
+const SKILL_SUMMARY_SELECT_FIELDS = [
+  'skill.id',
+  'skill.name',
+  'skill.displayName',
+  'skill.category',
+  'skill.imageUrl',
+  'skill.thumbnailUrl',
+] as const;
+
 @Injectable()
 export class SkillService {
   constructor(
@@ -32,12 +43,21 @@ export class SkillService {
     }
   }
 
-  async findAll(status?: SkillStatus) {
+  private buildFindAllQuery(status?: SkillStatus, view: SkillListView = 'summary') {
     const query = this.skillRepository.createQueryBuilder('skill');
     if (status) {
       query.where('skill.status = :status', { status });
     }
-    return query.getMany();
+
+    if (view === 'summary') {
+      query.select([...SKILL_SUMMARY_SELECT_FIELDS]);
+    }
+
+    return query;
+  }
+
+  async findAll(status?: SkillStatus, view: SkillListView = 'summary') {
+    return this.buildFindAllQuery(status, view).getMany();
   }
 
   async findById(id: string) {

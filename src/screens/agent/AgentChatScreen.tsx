@@ -233,27 +233,43 @@ async function transcribeAudioAttachments(
           formData.append('audio', { uri: audioUri, name: att.originalName || 'voice.m4a', type: att.mimetype || 'audio/m4a' } as any);
         }
         const ac = new AbortController();
-        const timeout = setTimeout(() => ac.abort(), 30_000);
-        const resp = await fetch(`${API_BASE}/voice/transcribe`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-          signal: ac.signal,
-        });
-        clearTimeout(timeout);
-        if (resp.ok) {
-          const data = await resp.json();
-          const transcript = data?.text || data?.transcript || '';
-          if (transcript) {
-            transcribedTexts.push(transcript);
-            return {
-              ...att,
-              kind: 'text' as any,
-              mimetype: 'text/plain',
-              originalName: `${att.originalName} (transcribed)`,
-              _transcriptText: transcript,
-            };
+        // Mirror the hard timeout used in useVoiceSession to survive worst-case
+        // Gemini STT chain + AWS fallback, and race an independent timer because
+        // AbortController does not always reject the in-flight fetch on RN.
+        const TRANSCRIBE_TIMEOUT_MS = 45_000;
+        const timeout = setTimeout(() => ac.abort(), TRANSCRIBE_TIMEOUT_MS);
+        try {
+          const resp = await Promise.race([
+            fetch(`${API_BASE}/voice/transcribe`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+              body: formData,
+              signal: ac.signal,
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () => reject(new Error('transcribe-timeout')),
+                TRANSCRIBE_TIMEOUT_MS + 1_000,
+              ),
+            ),
+          ]);
+          if (resp.ok) {
+            const data = await resp.json();
+            const transcript = data?.text || data?.transcript || '';
+            if (transcript) {
+              transcribedTexts.push(transcript);
+              return {
+                ...att,
+                kind: 'text' as any,
+                mimetype: 'text/plain',
+                originalName: `${att.originalName} (transcribed)`,
+                _transcriptText: transcript,
+              };
+            }
           }
+        } finally {
+          clearTimeout(timeout);
+          try { ac.abort(); } catch {}
         }
       } catch (err) {
         console.warn('[transcribeAudioAttachments] failed:', err);
