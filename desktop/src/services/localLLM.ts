@@ -121,7 +121,7 @@ export class LocalLLMSidecar {
         modelPath: config.modelPath,
         port: this.port,
         nGpuLayers: config.nGpuLayers ?? 0,
-        contextSize: config.contextSize ?? 4096,
+        contextSize: config.contextSize ?? 8192,
         threads: config.threads,
       });
 

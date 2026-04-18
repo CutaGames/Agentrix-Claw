@@ -84,22 +84,39 @@ export async function speechToText(
   formData.append("audio", blob, `recording.${getExtension(audioBlob.type)}`);
 
   const langParam = lang ? `?lang=${lang}` : "";
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
   let res: Response;
   try {
-    res = await tauriFetch(`${API_BASE}/voice/transcribe${langParam}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` } as any,
-      body: formData as any,
-    } as any);
-  } catch {
-    res = await fetch(`${API_BASE}/voice/transcribe${langParam}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData,
-    });
+    try {
+      res = await tauriFetch(`${API_BASE}/voice/transcribe${langParam}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` } as any,
+        body: formData as any,
+        signal: controller.signal,
+      } as any);
+    } catch {
+      res = await fetch(`${API_BASE}/voice/transcribe${langParam}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+        signal: controller.signal,
+      });
+    }
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err?.name === "AbortError") {
+      throw new Error("STT timed out after 30s");
+    }
+    throw err;
   }
+  clearTimeout(timeoutId);
 
-  if (!res.ok) throw new Error(`STT failed: ${res.status}`);
+  if (!res.ok) {
+    let body = "";
+    try { body = await res.text(); } catch { /* ignore */ }
+    throw new Error(`STT failed: ${res.status}${body ? ` — ${body.slice(0, 200)}` : ""}`);
+  }
   const text = await res.text();
   const data = text ? JSON.parse(text) : {};
   return data.transcript || data.text || "";

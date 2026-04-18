@@ -879,7 +879,7 @@ function LocalModelSection() {
                       <button
                         onClick={async () => {
                           try {
-                            await sidecarRef.start({ modelPath: m.path, contextSize: 4096, nGpuLayers: 0 });
+                            await sidecarRef.start({ modelPath: m.path, contextSize: 8192, nGpuLayers: 0 });
                           } catch (err: any) {
                             const msg = typeof err === "string" ? err : (err?.message || String(err));
                             setDownloadMessage(`Sidecar error: ${msg}`);

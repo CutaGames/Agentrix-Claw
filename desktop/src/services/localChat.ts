@@ -141,7 +141,7 @@ export async function ensureDesktopLocalSidecar(sidecar: LocalLLMSidecar): Promi
   if (!sidecar.isRunning) {
     await sidecar.start({
       modelPath,
-      contextSize: 4096,
+      contextSize: 8192,
       nGpuLayers: 0,
     });
   }

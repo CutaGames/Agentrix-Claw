@@ -2128,7 +2128,10 @@ export default function ChatPanel({
 
       if (token || useDesktopLocalModel) {
         const authToken = token;
-        const history = currentMessagesForSession.slice(-25).map((message) => ({
+        // Local sidecar runs with a bounded ctx window (8192 tokens). Keep recent history only
+        // for local path so prompt_tokens stays well under ctx even after several turns.
+        const historyWindow = useDesktopLocalModel ? 8 : 25;
+        const history = currentMessagesForSession.slice(-historyWindow).map((message) => ({
           role: message.role,
           content: serializeMessageForModel(message.content, message.attachments || []),
         }));
