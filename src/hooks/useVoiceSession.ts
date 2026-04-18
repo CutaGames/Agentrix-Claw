@@ -1875,32 +1875,20 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
               }),
             );
           } else {
-            // Try uploading audio as attachment fallback
-            try {
-              const { uploadChatAttachment } = require('../services/api');
-              const uploadedAudio = await uploadChatAttachment({
-                uri,
-                name: `voice-${Date.now()}.m4a`,
-                type: 'audio/m4a',
-              });
-              if (uploadedAudio) {
-                setTranscriptPreview('[Voice Message]');
-                setVoicePhase('thinking');
-                setTimeout(() => onSendMessageRef.current('', [uploadedAudio]), 80);
-              } else {
-                setVoicePhase('idle');
-                if (transcribeFailed) {
-                  Alert.alert(
-                    t({ en: 'Transcription Failed', zh: '转写失败' }),
-                    t({
-                      en: 'Transcription service is unavailable. Please try again.',
-                      zh: '转写服务不可用，请稍后重试。',
-                    }),
-                  );
-                }
-              }
-            } catch {
-              setVoicePhase('idle');
+            // Do NOT silently upload the raw m4a and ship it to the text model.
+            // Most cloud chat models (e.g. Gemini Pro text) will simply reply
+            // "I cannot process audio", which looks like the voice button is
+            // broken. Surface a clear error and let the user retry or type.
+            setVoicePhase('idle');
+            if (transcribeFailed) {
+              Alert.alert(
+                t({ en: 'Transcription Failed', zh: '转写失败' }),
+                t({
+                  en: 'Transcription service is unavailable right now. Please try again or type your message.',
+                  zh: '转写服务暂时不可用，请稍后重试或直接输入文字。',
+                }),
+              );
+            } else {
               Alert.alert(
                 t({ en: 'No Speech', zh: '未检测到语音' }),
                 t({ en: 'No speech detected.', zh: '未检测到有效语音。' }),

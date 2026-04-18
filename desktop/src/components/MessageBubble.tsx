@@ -1,4 +1,4 @@
-import { type CSSProperties, useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from "react";
+import { memo, type CSSProperties, useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from "react";
 import type { ChatMessage } from "../services/store";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -17,10 +17,10 @@ function extractTextFromChildren(children: ReactNode): string {
 
 interface Props {
   message: ChatMessage;
-  onRetry?: () => void;
+  onRetry?: (messageId: string) => void;
 }
 
-export default function MessageBubble({ message, onRetry }: Props) {
+function MessageBubbleImpl({ message, onRetry }: Props) {
   const [hovering, setHovering] = useState(false);
   const isUser = message.role === "user";
   const isError = message.error;
@@ -324,7 +324,7 @@ export default function MessageBubble({ message, onRetry }: Props) {
       {/* Retry button for error messages */}
       {isError && onRetry && (
         <button
-          onClick={onRetry}
+          onClick={() => onRetry(message.id)}
           style={{
             marginTop: 6,
             padding: "4px 10px",
@@ -376,6 +376,25 @@ export default function MessageBubble({ message, onRetry }: Props) {
     </div>
   );
 }
+
+// Memoized export: avoids re-rendering every bubble (with markdown + highlight)
+// on each ChatPanel state change, which was the main source of typing/drag lag.
+const MessageBubble = memo(MessageBubbleImpl, (prev, next) => {
+  if (prev.onRetry !== next.onRetry) return false;
+  const a = prev.message;
+  const b = next.message;
+  return (
+    a.id === b.id &&
+    a.content === b.content &&
+    a.role === b.role &&
+    (a as any).streaming === (b as any).streaming &&
+    (a as any).error === (b as any).error &&
+    (a as any).meta === (b as any).meta &&
+    (a as any).attachments === (b as any).attachments
+  );
+});
+
+export default MessageBubble;
 
 function formatBytes(size: number) {
   if (!size) return "Unknown size";

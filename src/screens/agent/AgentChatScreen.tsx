@@ -1661,6 +1661,28 @@ export function AgentChatScreen() {
       } catch (err) {
         console.warn('[handleSend] audio transcription failed, sending as-is:', err);
       }
+      // If transcription produced no text and the only attachments are audio,
+      // do NOT silently send the raw m4a to a text-only chat model — it will
+      // just answer "I cannot process audio". Surface the failure instead.
+      const stillHasUntranscribedAudio = resolvedAttachments.some(
+        (a) => (a.mimetype?.startsWith('audio/') || a.originalName.match(/\.(mp3|wav|m4a|ogg|aac|flac|opus)$/i))
+          && !(a as any)._transcriptText,
+      );
+      if (stillHasUntranscribedAudio && !audioTranscriptText && !text.trim()) {
+        try {
+          const { Alert } = require('react-native');
+          Alert.alert(
+            t({ en: 'Transcription Failed', zh: '转写失败' }),
+            t({
+              en: 'We could not transcribe the audio. Please try again or type your message.',
+              zh: '语音转写失败。请稍后重试或直接输入文字。',
+            }),
+          );
+        } catch {}
+        setSending(false);
+        if (voicePhase !== 'idle') setVoicePhase('idle');
+        return;
+      }
     }
 
     const effectiveText = audioTranscriptText || text;

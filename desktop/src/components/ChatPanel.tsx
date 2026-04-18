@@ -187,6 +187,34 @@ function getConversationModelLabel(
   return modelId || activeInstance?.resolvedModel || null;
 }
 
+// Tiny TTL cache so we don't re-hit /openclaw/proxy/:id/skills on every keystroke.
+// Keyed by instance id; cleared every 60s.
+const _installedSkillsCache: Map<string, { at: number; skills: Array<{ id?: string; name?: string; version?: string }> }> = new Map();
+const INSTALLED_SKILLS_TTL_MS = 60_000;
+
+async function fetchInstalledSkillsCached(
+  instanceId: string,
+  token: string,
+): Promise<Array<{ id?: string; name?: string; version?: string }> | null> {
+  if (!instanceId || !token) return null;
+  const hit = _installedSkillsCache.get(instanceId);
+  const now = Date.now();
+  if (hit && now - hit.at < INSTALLED_SKILLS_TTL_MS) return hit.skills;
+  try {
+    const res = await apiFetch(`${API_BASE}/openclaw/proxy/${instanceId}/skills`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return hit?.skills || null;
+    const data = await res.json();
+    const enabled = (Array.isArray(data) ? data : []).filter((s: any) => s.enabled !== false);
+    const mapped = enabled.map((s: any) => ({ id: s.id, name: s.name, version: s.version }));
+    _installedSkillsCache.set(instanceId, { at: now, skills: mapped });
+    return mapped;
+  } catch {
+    return hit?.skills || null;
+  }
+}
+
 function sanitizeAgentProfile(raw?: string | null): string {
   if (!raw) return "";
   // Strip phrases that falsely hardcode an underlying model (e.g. "我的底层驱动是 Gemini 3.1 Pro").
@@ -206,6 +234,7 @@ function buildConversationSystemMessages(
   activeAgent: DesktopAgent | null,
   modelLabel: string | null,
   tier: "local" | "cloud" = "cloud",
+  installedSkills?: Array<{ id?: string; name?: string; version?: string }> | null,
 ): Array<{ role: "system"; content: string }> {
   const systemMessages: Array<{ role: "system"; content: string }> = [];
 
@@ -220,6 +249,26 @@ function buildConversationSystemMessages(
         "Do NOT claim to be Gemini, Claude, GPT, Bard, Gemma, Llama, or any other specific model, " +
         "even if internal training suggests one. Never contradict this identity.",
     });
+    if (installedSkills && installedSkills.length > 0) {
+      const skillList = installedSkills
+        .slice(0, 30)
+        .map((s) => s.name || s.id || "")
+        .filter(Boolean)
+        .join(", ");
+      if (skillList) {
+        systemMessages.push({
+          role: "system",
+          content:
+            `Installed skills on this Agentrix instance (${installedSkills.length} total): ${skillList}. ` +
+            "If the user asks which skills are installed, list these by name. Do NOT say 'no skills' or 'I don't have skills'.",
+        });
+      }
+    } else if (installedSkills && installedSkills.length === 0) {
+      systemMessages.push({
+        role: "system",
+        content: "No skills are currently installed on this Agentrix instance.",
+      });
+    }
   } else if (modelLabel) {
     systemMessages.push({
       role: "system",
@@ -394,6 +443,26 @@ export default function ChatPanel({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
   const sentenceAccRef = useRef<SentenceAccumulator | null>(null);
+  // Stable refs so the memoized MessageBubble's onRetry prop does not change every render.
+  const messagesRetryRef = useRef<ChatMessage[]>([]);
+  const handleSendRetryRef = useRef<((text?: string) => unknown) | null>(null);
+  const setMessagesRetryRef = useRef<typeof setMessages | null>(null);
+
+  const handleRetryMessage = useCallback((msgId: string) => {
+    const msgs = messagesRetryRef.current;
+    const err = msgs.find((m) => m.id === msgId);
+    if (!err || !(err as any).error) return;
+    const lastUser = [...msgs].reverse().find((m) => m.role === "user");
+    if (!lastUser) return;
+    setMessagesRetryRef.current?.((prev) => prev.filter((m) => m.id !== msgId));
+    handleSendRetryRef.current?.(lastUser.content);
+  }, []);
+
+  // Keep retry refs in sync so the stable handleRetryMessage always sees current state.
+  useEffect(() => {
+    messagesRetryRef.current = messages;
+    setMessagesRetryRef.current = setMessages;
+  }, [messages]);
   const localSidecarRef = useRef<LocalLLMSidecar | null>(null);
   const manualModelSelectionRef = useRef<{
     modelId: string;
@@ -2136,10 +2205,15 @@ export default function ChatPanel({
           content: serializeMessageForModel(message.content, message.attachments || []),
         }));
         const currentModelLabel = getConversationModelLabel(selectedModel, models, activeInst);
+        let installedSkillsForPrompt: Array<{ id?: string; name?: string; version?: string }> | null = null;
+        if (useDesktopLocalModel && activeInstanceId && authToken) {
+          installedSkillsForPrompt = await fetchInstalledSkillsCached(activeInstanceId, authToken);
+        }
         const systemMessages = buildConversationSystemMessages(
           activeAgent,
           currentModelLabel,
           useDesktopLocalModel ? "local" : "cloud",
+          installedSkillsForPrompt,
         );
 
         if (systemMessages.length > 0) {
@@ -2824,6 +2898,11 @@ export default function ChatPanel({
       queueAutoContinue,
     ],
   );
+
+  // Keep the stable retry-handler in sync with the latest handleSend identity.
+  useEffect(() => {
+    handleSendRetryRef.current = handleSend as unknown as (text?: string) => unknown;
+  }, [handleSend]);
 
   const handleContinue = useCallback(() => {
     if (!continuePrompt || sending) return;
@@ -3880,18 +3959,8 @@ export default function ChatPanel({
           </div>
         )}
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} onRetry={() => {
-            if (msg.error) {
-              // Remove error message and re-send the last user message
-              const lastUserMsg = messages.filter(m => m.role === 'user').pop();
-              if (lastUserMsg) {
-                setMessages(prev => prev.filter(m => m.id !== msg.id));
-                handleSend(lastUserMsg.content);
-              }
-            }
-          }} />
-        ))}
-        {activePlan && (
+          <MessageBubble key={msg.id} message={msg} onRetry={handleRetryMessage} />
+        ))}        {activePlan && (
           <PlanPanel
             plan={activePlan}
             onApprove={async () => {
