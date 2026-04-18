@@ -88,21 +88,17 @@ export async function speechToText(
   const timeoutId = setTimeout(() => controller.abort(), 30000);
   let res: Response;
   try {
-    try {
-      res = await tauriFetch(`${API_BASE}/voice/transcribe${langParam}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` } as any,
-        body: formData as any,
-        signal: controller.signal,
-      } as any);
-    } catch {
-      res = await fetch(`${API_BASE}/voice/transcribe${langParam}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-        signal: controller.signal,
-      });
-    }
+    // NOTE: do NOT use @tauri-apps/plugin-http for multipart uploads.
+    // tauriFetch does not serialize FormData/Blob properly and the server
+    // rejects the request with `Multipart: Unexpected end of form`.
+    // The WebView2 native fetch handles multipart correctly and our backend
+    // already allows the desktop origin via CORS.
+    res = await fetch(`${API_BASE}/voice/transcribe${langParam}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+      signal: controller.signal,
+    });
   } catch (err: any) {
     clearTimeout(timeoutId);
     if (err?.name === "AbortError") {

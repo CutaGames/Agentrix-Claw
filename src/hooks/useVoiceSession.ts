@@ -1818,6 +1818,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           let transcript = '';
           let transcribeTimedOut = false;
           let transcribeFailed = false;
+          let transcribeErrorDetail = '';
           const formData = new FormData();
           formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
           const ac = new AbortController();
@@ -1847,13 +1848,19 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
               transcript = data?.text || data?.transcript || '';
             } else {
               transcribeFailed = true;
-              console.warn('Transcription HTTP error', resp.status);
+              // Capture server response body so the alert (and logs) show the
+              // actual upstream reason (e.g. "Multipart: Unexpected end of form",
+              // "model unavailable", auth errors). Without this the user just
+              // sees a generic "转写失败" with no way to triage.
+              try { transcribeErrorDetail = await resp.text(); } catch { /* ignore */ }
+              console.warn('Transcription HTTP error', resp.status, transcribeErrorDetail.slice(0, 300));
             }
           } catch (err: any) {
             if (err?.message === 'transcribe-timeout' || err?.name === 'AbortError') {
               transcribeTimedOut = true;
             } else {
               transcribeFailed = true;
+              transcribeErrorDetail = String(err?.message || err);
             }
             console.warn('Transcription failed', err);
           } finally {
@@ -1881,11 +1888,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
             // broken. Surface a clear error and let the user retry or type.
             setVoicePhase('idle');
             if (transcribeFailed) {
+              const detail = transcribeErrorDetail ? `\n\n${transcribeErrorDetail.slice(0, 200)}` : '';
               Alert.alert(
                 t({ en: 'Transcription Failed', zh: '转写失败' }),
                 t({
-                  en: 'Transcription service is unavailable right now. Please try again or type your message.',
-                  zh: '转写服务暂时不可用，请稍后重试或直接输入文字。',
+                  en: `Transcription service is unavailable right now. Please try again or type your message.${detail}`,
+                  zh: `转写服务暂时不可用，请稍后重试或直接输入文字。${detail}`,
                 }),
               );
             } else {

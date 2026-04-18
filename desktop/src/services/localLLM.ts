@@ -88,13 +88,21 @@ export interface LocalModelDownloadEvent {
   message?: string;
 }
 
+/**
+ * IMPORTANT: We deliberately use the WebView2 native `fetch` here instead of
+ * `@tauri-apps/plugin-http`. The Tauri HTTP plugin buffers the entire response
+ * body before resolving, which breaks SSE / streaming endpoints (the user sees
+ * the full response appear at once after a long delay) and also corrupts
+ * multipart/form-data uploads. Since the sidecar is bound to 127.0.0.1 there is
+ * no CORS or sandbox concern that would require the Rust-side fetch.
+ */
 async function localHttpFetch(url: string, init?: RequestInit): Promise<Response> {
-  try {
-    return await tauriFetch(url, init as any);
-  } catch {
-    return await fetch(url, init);
-  }
+  return await fetch(url, init);
 }
+
+// Suppress unused-import warning while keeping the import available for any
+// future non-streaming endpoint that explicitly opts back in to tauriFetch.
+void tauriFetch;
 
 // ── Service ────────────────────────────────────────────
 
@@ -176,6 +184,7 @@ export class LocalLLMSidecar {
         temperature: options?.temperature ?? 0.7,
         max_tokens: options?.maxTokens ?? 2048,
         stream: false,
+        cache_prompt: true,
       }),
     });
 
@@ -211,6 +220,7 @@ export class LocalLLMSidecar {
         temperature: options?.temperature ?? 0.7,
         max_tokens: options?.maxTokens ?? 2048,
         stream: false,
+        cache_prompt: true,
       }),
     });
 
@@ -239,6 +249,7 @@ export class LocalLLMSidecar {
         temperature: options?.temperature ?? 0.7,
         max_tokens: options?.maxTokens ?? 2048,
         stream: true,
+        cache_prompt: true,
       }),
     });
 

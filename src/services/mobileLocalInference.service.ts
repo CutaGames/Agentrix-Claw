@@ -445,9 +445,9 @@ export class MobileLocalInferenceService {
       model?: string;
       temperature?: number;
       maxTokens?: number;
-      /** Abort if the overall stream doesn't complete within this many ms. Default 30s. */
+      /** Abort if the overall stream doesn't complete within this many ms. Default 60s. */
       timeoutMs?: number;
-      /** Abort if no token chunk arrives within this many ms. Default 15s. */
+      /** Abort if no token chunk arrives within this many ms. Default 25s. */
       stallTimeoutMs?: number;
       /** Optional caller-controlled abort signal. */
       signal?: AbortSignal;
@@ -458,8 +458,8 @@ export class MobileLocalInferenceService {
       throw new Error('Local mobile inference bridge is not available on this device.');
     }
     const { bridge, source } = resolvedBridge;
-    const overallTimeoutMs = options?.timeoutMs ?? 30_000;
-    const stallTimeoutMs = options?.stallTimeoutMs ?? 15_000;
+    const overallTimeoutMs = options?.timeoutMs ?? 60_000;
+    const stallTimeoutMs = options?.stallTimeoutMs ?? 25_000;
 
     if (typeof bridge.generateStream === 'function') {
       const queuedChunks: string[] = [];
