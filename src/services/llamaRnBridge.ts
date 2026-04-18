@@ -622,6 +622,13 @@ const bridge = {
 
     const chunks: string[] = [];
     let pendingChunk = '';
+    // Safety net: some chat templates (notably certain Gemma variants) can mis-tag
+    // every generated token as `reasoning_content`. Dropping them silently leaves
+    // the caller with an empty stream and triggers a silent cloud fallback. We
+    // buffer reasoning separately and flush it as the fallback if no regular
+    // content was produced by the end of the stream.
+    let emittedRegularContent = false;
+    let reasoningBuffer = '';
 
     const flushPendingChunk = () => {
       if (!pendingChunk) {
@@ -641,12 +648,17 @@ const bridge = {
         stop: STOP_TOKENS,
       } as any),
       (data) => {
-        // Skip thinking/reasoning tokens — only emit visible content
-        if (data.reasoning_content) return;
+        if (data.reasoning_content) {
+          if (typeof data.reasoning_content === 'string') {
+            reasoningBuffer += data.reasoning_content;
+          }
+          return;
+        }
         const tokenText = typeof data.token === 'string'
           ? data.token
           : (typeof data.content === 'string' ? data.content : '');
         if (tokenText) {
+          emittedRegularContent = true;
           pendingChunk += tokenText;
           if (shouldFlushStreamChunk(tokenText, pendingChunk)) {
             flushPendingChunk();
@@ -656,6 +668,17 @@ const bridge = {
     );
 
     flushPendingChunk();
+
+    if (!emittedRegularContent && reasoningBuffer.trim()) {
+      addVoiceDiagnostic('local-model-runtime', 'reasoning-only-fallback', {
+        modelId,
+        contextProfile,
+        reasoningLength: reasoningBuffer.length,
+      });
+      const fallback = reasoningBuffer.trim();
+      chunks.push(fallback);
+      payload.onToken?.(fallback);
+    }
 
     return chunks;
   },
