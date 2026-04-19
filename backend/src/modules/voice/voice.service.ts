@@ -93,8 +93,16 @@ export class VoiceService {
     let attemptedProviders = 0;
     let lastProviderError: string | undefined;
 
+    // Known-invalid / non-Whisper OpenAI key shapes. Some deployments use
+    // `api2d.net`-style reseller keys prefixed with `fk` — those proxies
+    // route chat completions but do NOT support the Whisper audio endpoints,
+    // which makes the STT call return `401 Incorrect API key` and surfaces
+    // a confusing auth error to the user. Skip OpenAI entirely in that case.
+    const openAiKey = process.env.OPENAI_API_KEY || '';
+    const openAiKeyUsableForWhisper = openAiKey.startsWith('sk-');
+
     for (const provider of this.getTranscriptionOrder()) {
-      if (provider === 'openai' && process.env.OPENAI_API_KEY) {
+      if (provider === 'openai' && openAiKey && openAiKeyUsableForWhisper) {
         attemptedProviders += 1;
         try {
           return await this.openAiCompatibleTranscription(buffer, originalName, {

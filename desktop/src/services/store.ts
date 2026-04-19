@@ -203,7 +203,15 @@ export async function apiFetch(url: string, init?: RequestInit): Promise<Respons
   // - chat streams to appear as a 30-40s blank wait before the whole reply lands
   // - attachment / voice uploads to fail with malformed multipart bodies
   if (requestRequiresNativeFetch(init)) {
-    return await fetch(url, init);
+    try {
+      return await fetch(url, init);
+    } catch (err: any) {
+      // Browser-level CORS / network failures throw TypeError with no Response.
+      // Degrade to tauriFetch so the call still succeeds (at the cost of
+      // buffering for SSE). Better a working answer than a failed stream.
+      console.warn("[apiFetch] native fetch failed, falling back to tauriFetch:", err?.message || err);
+      return await tauriFetch(url, init as any);
+    }
   }
 
   try {
@@ -605,8 +613,19 @@ export function streamChat(opts: {
 
   // IMPORTANT: SSE must use native fetch. The Tauri HTTP plugin buffers the
   // whole response body before resolving, which destroys first-token latency.
+  // However, some production backends have not yet whitelisted the Tauri
+  // origin (`http://tauri.localhost` on Windows) in their CORS config. When
+  // native fetch is blocked by CORS it throws a `TypeError: Failed to fetch`
+  // with no Response — fall back to the Tauri HTTP plugin, which runs in
+  // Rust and is not subject to browser CORS. Streaming will be buffered in
+  // that degraded path but the user still gets an answer.
   const doFetch = async () => {
-    return await fetch(url, fetchInit);
+    try {
+      return await fetch(url, fetchInit);
+    } catch (err: any) {
+      console.warn("[streamChat] native fetch failed, falling back to tauriFetch:", err?.message || err);
+      return await tauriFetch(url, fetchInit as any);
+    }
   };
 
   fetchWithBackoff(doFetch, { signal: ac.signal })
@@ -680,8 +699,15 @@ export function streamDirectChat(opts: {
 
   // IMPORTANT: SSE must use native fetch. The Tauri HTTP plugin buffers the
   // whole response body before resolving, which destroys first-token latency.
+  // CORS fallback: if native fetch is blocked (backend missing tauri origin)
+  // we degrade to tauriFetch so the user still receives a response.
   const doFetch = async () => {
-    return await fetch(`${API_BASE}/openclaw/proxy/stream`, fetchInit);
+    try {
+      return await fetch(`${API_BASE}/openclaw/proxy/stream`, fetchInit);
+    } catch (err: any) {
+      console.warn("[streamDirectChat] native fetch failed, falling back to tauriFetch:", err?.message || err);
+      return await tauriFetch(`${API_BASE}/openclaw/proxy/stream`, fetchInit as any);
+    }
   };
 
   fetchWithBackoff(doFetch, { signal: ac.signal })

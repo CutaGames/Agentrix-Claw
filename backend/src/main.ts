@@ -139,7 +139,20 @@ async function bootstrap() {
   });
 
   const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000,https://agentrix.top,https://www.agentrix.top,https://api.agentrix.top,tauri://localhost,https://tauri.localhost';
-  const corsOrigins = corsOrigin.split(',').map(origin => origin.trim());
+  const corsOrigins = corsOrigin.split(',').map(origin => origin.trim()).filter(Boolean);
+
+  // Tauri desktop: WebView2 (Windows) sends Origin `http://tauri.localhost`,
+  // WKWebView/GTK (macOS/Linux) sends `tauri://localhost`. These MUST always
+  // be permitted regardless of the `CORS_ORIGIN` env value — the desktop app
+  // cannot function without them (SSE streaming, FormData uploads, OAuth).
+  const TAURI_ORIGINS = [
+    'tauri://localhost',
+    'http://tauri.localhost',
+    'https://tauri.localhost',
+  ];
+  for (const o of TAURI_ORIGINS) {
+    if (!corsOrigins.includes(o)) corsOrigins.push(o);
+  }
 
   // GPTs / ChatGPT Actions: if ALLOW_GPTs is set, add known OpenAI origins
   // rather than opening to the entire internet.
