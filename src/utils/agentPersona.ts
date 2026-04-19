@@ -52,7 +52,14 @@ export function buildSystemPrompt(args: BuildSystemPromptArgs): string {
   // Closing reinforcement — last instruction has disproportionate weight.
   parts.push(`Remember: you are ${agentName}. Never contradict this identity.`);
 
-  return parts.join('\n\n');
+  const raw = parts.join('\n\n');
+  // Gemma 4 2B has a small context window (~2 048 tokens). Cap local system
+  // prompts to ~600 chars (≈150 tokens) so the conversation history budget
+  // is not accidentally over-consumed before any turns are exchanged.
+  if (tier === 'local' && raw.length > 600) {
+    return raw.slice(0, 600);
+  }
+  return raw;
 }
 
 /**

@@ -1751,10 +1751,77 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         });
 
         const wavUri = await persistDirectLocalAudioCaptureAsWav(directCapture.pcmChunks);
-        const localAudioAttachment = await buildLocalRecordedAudioAttachment(wavUri);
-        setTranscriptPreview(t({ en: '[Local voice message]', zh: '[本地语音消息]' }));
-        setVoicePhase('thinking');
-        setTimeout(() => onSendMessageRef.current('', [localAudioAttachment]), 80);
+        // Route through cloud STT instead of sending WAV directly to local model.
+        // Gemma 4 2B reports supportsAudioInput=true from the native bridge but
+        // cannot actually process audio tokens, causing the model to stall.
+        let pcmTranscript = '';
+        let pcmTranscribeTimedOut = false;
+        let pcmTranscribeFailed = false;
+        let pcmTranscribeErrorDetail = '';
+        const pcmFormData = new FormData();
+        pcmFormData.append('audio', { uri: wavUri, name: 'voice.wav', type: 'audio/wav' } as any);
+        const pcmAc = new AbortController();
+        const TRANSCRIBE_TIMEOUT_MS = 45_000;
+        const pcmTimeout = setTimeout(() => pcmAc.abort(), TRANSCRIBE_TIMEOUT_MS);
+        try {
+          const resp = await Promise.race([
+            fetch(`${API_BASE}/voice/transcribe?lang=${voiceLanguageHint}`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+              body: pcmFormData,
+              signal: pcmAc.signal,
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('transcribe-timeout')), TRANSCRIBE_TIMEOUT_MS + 1_000),
+            ),
+          ]);
+          if (resp.ok) {
+            const data = await resp.json();
+            pcmTranscript = data?.text || data?.transcript || '';
+          } else {
+            pcmTranscribeFailed = true;
+            try { pcmTranscribeErrorDetail = await resp.text(); } catch { /* ignore */ }
+          }
+        } catch (err: any) {
+          if (err?.message === 'transcribe-timeout' || err?.name === 'AbortError') {
+            pcmTranscribeTimedOut = true;
+          } else {
+            pcmTranscribeFailed = true;
+            pcmTranscribeErrorDetail = String(err?.message || err);
+          }
+        } finally {
+          clearTimeout(pcmTimeout);
+          try { pcmAc.abort(); } catch {}
+        }
+
+        if (pcmTranscript) {
+          setTranscriptPreview(pcmTranscript);
+          setVoicePhase('thinking');
+          setTimeout(() => onSendMessageRef.current(pcmTranscript), 80);
+        } else if (pcmTranscribeTimedOut) {
+          setVoicePhase('idle');
+          Alert.alert(
+            t({ en: 'Transcription Timeout', zh: '转写超时' }),
+            t({ en: 'Audio transcription took too long. Please try again.', zh: '语音转写超时，请重试。' }),
+          );
+        } else {
+          setVoicePhase('idle');
+          if (pcmTranscribeFailed) {
+            const detail = pcmTranscribeErrorDetail ? `\n\n${pcmTranscribeErrorDetail.slice(0, 200)}` : '';
+            Alert.alert(
+              t({ en: 'Transcription Failed', zh: '转写失败' }),
+              t({
+                en: `Transcription service unavailable. Please retry or type your message.${detail}`,
+                zh: `转写服务暂时不可用，请稍后重试或直接输入文字。${detail}`,
+              }),
+            );
+          } else {
+            Alert.alert(
+              t({ en: 'No Speech', zh: '未检测到语音' }),
+              t({ en: 'No speech detected.', zh: '未检测到有效语音。' }),
+            );
+          }
+        }
         return;
       }
 

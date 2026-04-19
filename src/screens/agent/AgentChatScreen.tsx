@@ -80,7 +80,7 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
 // ── Token budget estimation for local context management ──
 const LOCAL_CONTEXT_WINDOW = 4096;
 const LOCAL_RESPONSE_RESERVE = 2048; // n_predict default
-const LOCAL_SYSTEM_PROMPT_ESTIMATE = 200; // tokens for enriched system prompt
+const LOCAL_SYSTEM_PROMPT_ESTIMATE = 400; // tokens for enriched system prompt (capped at 600 chars ≈ 150 tokens + safety margin)
 
 /** Rough token estimate: ~2 chars/token for mixed CJK/Latin text */
 function estimateTokens(text: string): number {

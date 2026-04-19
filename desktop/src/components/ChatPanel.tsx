@@ -373,7 +373,7 @@ export default function ChatPanel({
   const { token, activeAgentId, agents, setActiveAgent, instances, activeInstanceId, setActiveInstance, loadToken } =
     useAuthStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [executionMode, setExecutionModeState] = useState<ExecutionMode>(() => readExecutionMode());
   const setExecutionMode = useCallback((mode: ExecutionMode) => {
     setExecutionModeState(mode);
@@ -1168,7 +1168,7 @@ export default function ChatPanel({
     abortRef.current = null;
     setMessages([]);
     setPendingAttachments([]);
-    setInput("");
+    if (textareaRef.current) textareaRef.current.value = "";
     setBallState("idle");
     audioPlayerRef.current?.stopAll();
     sentenceAccRef.current?.reset();
@@ -1199,7 +1199,7 @@ export default function ChatPanel({
     }
     abortRef.current = sessionAbortControllersRef.current[target.sessionId] || null;
     setPendingAttachments([]);
-    setInput("");
+    if (textareaRef.current) textareaRef.current.value = "";
     setBallState((sessionRuntimeRef.current[target.sessionId] || createEmptySessionRuntimeState()).sending ? "thinking" : "idle");
   }, [activeTabId, tabs, messages]);
 
@@ -1238,7 +1238,7 @@ export default function ChatPanel({
       }
       abortRef.current = sessionAbortControllersRef.current[nextTab.sessionId] || null;
       setPendingAttachments([]);
-      setInput("");
+      if (textareaRef.current) textareaRef.current.value = "";
       setBallState((sessionRuntimeRef.current[nextTab.sessionId] || createEmptySessionRuntimeState()).sending ? "thinking" : "idle");
     }
   }, [tabs, activeTabId, abortSession]);
@@ -1305,7 +1305,7 @@ export default function ChatPanel({
     sessionIdRef.current = nextSessionId;
     abortRef.current = null;
     setPendingAttachments([]);
-    setInput("");
+    if (textareaRef.current) textareaRef.current.value = "";
     setBallState("idle");
     setMessages(
       restoredMessages.length > 0
@@ -2053,7 +2053,7 @@ export default function ChatPanel({
 
   const handleSend = useCallback(
     async (overrideText?: string) => {
-      const text = (overrideText || input).trim();
+      const text = (overrideText || textareaRef.current?.value || "").trim();
       const targetSessionId = sessionIdRef.current;
       const targetRuntime = sessionRuntimeRef.current[targetSessionId] || createEmptySessionRuntimeState();
       const isSyntheticContinueTurn = isSyntheticContinuePrompt(text);
@@ -2096,8 +2096,8 @@ export default function ChatPanel({
         autoContinueCountRef.current = 0;
       }
 
-      if (!overrideText) {
-        setInput("");
+      if (!overrideText && textareaRef.current) {
+        textareaRef.current.value = "";
       }
 
       if (text.startsWith("/") && pendingAttachments.length === 0) {
@@ -2874,7 +2874,6 @@ export default function ChatPanel({
       }
     },
     [
-      input,
       activeAgent,
       activeAgentId,
       activeInstanceId,
@@ -2988,7 +2987,7 @@ export default function ChatPanel({
   const handleVoiceTranscript = useCallback(
     (text: string) => {
       voiceInitiatedRef.current = true;
-      setInput(text);
+      if (textareaRef.current) textareaRef.current.value = text;
       handleSend(text);
     },
     [handleSend],
@@ -3050,7 +3049,7 @@ export default function ChatPanel({
     abortRef.current = sessionAbortControllersRef.current[sid] || null;
     setMessages(stored);
     setPendingAttachments([]);
-    setInput("");
+    if (textareaRef.current) textareaRef.current.value = "";
     setBallState("idle");
     setHistoryOpen(false);
   }, [abortSession]);
@@ -4226,8 +4225,8 @@ export default function ChatPanel({
           }}
         >
         <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
+          ref={textareaRef}
+          defaultValue=""
           onKeyDown={handleKeyDown}
           placeholder="Type a message... (/ for commands)"
           rows={1}
@@ -4293,16 +4292,16 @@ export default function ChatPanel({
         />
         <button
           onClick={() => handleSend()}
-          disabled={(!input.trim() && pendingAttachments.length === 0) || sending || uploadingAttachments}
+          disabled={sending || uploadingAttachments}
           style={{
             width: 40,
             height: 40,
             borderRadius: "50%",
             background:
-              (input.trim() || pendingAttachments.length > 0) && !sending && !uploadingAttachments ? "var(--accent)" : "var(--bg-input)",
+              !sending && !uploadingAttachments ? "var(--accent)" : "var(--bg-input)",
             color: "white",
             border: "none",
-            cursor: (input.trim() || pendingAttachments.length > 0) && !sending && !uploadingAttachments ? "pointer" : "default",
+            cursor: !sending && !uploadingAttachments ? "pointer" : "default",
             fontSize: 18,
             display: "flex",
             alignItems: "center",

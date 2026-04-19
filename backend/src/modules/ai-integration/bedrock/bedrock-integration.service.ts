@@ -75,6 +75,15 @@ export class BedrockIntegrationService {
     'mistral.mistral-large-v1:0':           'mistral.mistral-large-2402-v1:0',
     'anthropic.claude-sonnet-4-v1:0':       'anthropic.claude-sonnet-4-20250514-v1:0',
     'anthropic.claude-haiku-4-v1:0':        'anthropic.claude-3-5-haiku-20241022-v1:0',
+    // Legacy claude-3 base IDs that Bedrock now rejects as "not used in 30 days"
+    'anthropic.claude-3-opus-20240229-v1:0':     'us.anthropic.claude-opus-4-1-20250805-v1:0',
+    'anthropic.claude-3-sonnet-20240229-v1:0':   'us.anthropic.claude-sonnet-4-20250514-v1:0',
+    'anthropic.claude-3-haiku-20240307-v1:0':    'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+    'anthropic.claude-3-5-sonnet-20240620-v1:0': 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+    'anthropic.claude-3-5-sonnet-20241022-v1:0': 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+    'anthropic.claude-instant-v1':               'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+    'anthropic.claude-2':                        'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+    'anthropic.claude-2:1':                      'us.anthropic.claude-haiku-4-5-20251001-v1:0',
   };
 
   /**
