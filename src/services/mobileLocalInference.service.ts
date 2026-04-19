@@ -123,8 +123,11 @@ function buildDeclaredCapabilities(
         available: OtaModelDownloadService.isModelDownloaded(modelId),
         supportsVisionInput: OtaModelDownloadService.hasMultimodalAssets(modelId)
           && OtaModelDownloadService.declaresVisionInput(modelId),
-        supportsAudioInput: OtaModelDownloadService.hasMultimodalAssets(modelId)
-          && OtaModelDownloadService.declaresAudioInput(modelId),
+        // Audio is handled by the whisper-base audio encoder (separate OTA asset).
+        // supportsAudioInput is true only when the encoder is downloaded, because
+        // the main model GGUF has no audio tokeniser — audio sent without the
+        // encoder causes "Exception in HostFunction: <unknown>" in llama.cpp.
+        supportsAudioInput: OtaModelDownloadService.hasAudioInputAssets(modelId),
         supportsAudioOutput: OtaModelDownloadService.hasAnyOnDeviceAudioOutputAssets(modelId),
       }
     : null;

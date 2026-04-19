@@ -28,6 +28,8 @@ export interface OtaModelEntry {
   cdnBase: string;
   declaredCapabilities?: OtaModelDeclaredCapabilities;
   multimodalProjector?: OtaModelArtifact;
+  /** Whisper-based audio encoder for on-device STT (used with whisper.rn). */
+  audioEncoder?: OtaModelArtifact;
   audioOutputModel?: OtaModelArtifact;
   vocoder?: OtaModelArtifact;
 }
@@ -40,14 +42,14 @@ export interface OtaModelDeclaredCapabilities {
 }
 
 export interface OtaModelArtifact {
-  kind: 'model' | 'mmproj' | 'tts-model' | 'vocoder';
+  kind: 'model' | 'mmproj' | 'audio-encoder' | 'tts-model' | 'vocoder';
   filename: string;
   sizeBytes: number;
   sizeLabel: string;
   cdnBase?: string;
 }
 
-export type OtaModelArtifactKey = 'model' | 'multimodalProjector' | 'audioOutputModel' | 'vocoder';
+export type OtaModelArtifactKey = 'model' | 'multimodalProjector' | 'audioEncoder' | 'audioOutputModel' | 'vocoder';
 
 interface ResolvedOtaModelArtifact {
   key: OtaModelArtifactKey;
@@ -82,20 +84,24 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     id: 'gemma-4-2b',
     name: 'Gemma 4 E2B (Q4_K_M)',
     filename: 'gemma-4-E2B-it-Q4_K_M.gguf',
-    packageRevision: '2026-04-13-gemma4-e2b-r2',
+    packageRevision: '2026-04-19-gemma4-e2b-r3',
     sizeBytes: 3_110_000_000,
     sizeLabel: '3.1 GB',
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E2B-it-GGUF/resolve/main',
     declaredCapabilities: {
       visionInput: true,
-      // audioInput requires a dedicated audio-encoder asset (e.g. whisper.gguf)
-      // which is NOT bundled in this package. The mmproj-F16.gguf is the vision-only
-      // projector. Sending raw audio to llama.cpp without an audio encoder stalls
-      // the model (0 tokens, "Exception in HostFunction: <unknown>").
-      // Re-enable once we add an audio encoder to the package.
-      audioInput: false,
+      // Audio is handled by the whisper-base audio encoder below.
+      // supportsAudioInput is gated on audioEncoder being downloaded.
+      audioInput: true,
       videoInput: true,
       onDeviceAudioOutput: false,
+    },
+    audioEncoder: {
+      kind: 'audio-encoder',
+      filename: 'ggml-base-q5_1.gguf',
+      sizeBytes: 57_000_000,
+      sizeLabel: '57 MB',
+      cdnBase: 'https://hf-mirror.com/ggml-org/whisper-base/resolve/main',
     },
     multimodalProjector: {
       kind: 'mmproj',
@@ -108,15 +114,22 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     id: 'gemma-4-4b',
     name: 'Gemma 4 E4B (Q4_K_M)',
     filename: 'gemma-4-E4B-it-Q4_K_M.gguf',
-    packageRevision: '2026-04-13-gemma4-e4b-r2',
+    packageRevision: '2026-04-19-gemma4-e4b-r3',
     sizeBytes: 4_980_000_000,
     sizeLabel: '5.0 GB',
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E4B-it-GGUF/resolve/main',
     declaredCapabilities: {
       visionInput: true,
-      audioInput: false, // same as 2B — no audio encoder asset bundled
+      audioInput: true, // requires audioEncoder (whisper-base) to be downloaded
       videoInput: true,
       onDeviceAudioOutput: false,
+    },
+    audioEncoder: {
+      kind: 'audio-encoder',
+      filename: 'ggml-base-q5_1.gguf',
+      sizeBytes: 57_000_000,
+      sizeLabel: '57 MB',
+      cdnBase: 'https://hf-mirror.com/ggml-org/whisper-base/resolve/main',
     },
     multimodalProjector: {
       kind: 'mmproj',
@@ -347,6 +360,10 @@ function resolveArtifacts(entry: OtaModelEntry): ResolvedOtaModelArtifact[] {
 
   if (entry.multimodalProjector) {
     artifacts.push({ key: 'multimodalProjector', artifact: entry.multimodalProjector });
+  }
+
+  if (entry.audioEncoder) {
+    artifacts.push({ key: 'audioEncoder', artifact: entry.audioEncoder });
   }
 
   if (entry.audioOutputModel) {
@@ -915,6 +932,36 @@ export class OtaModelDownloadService {
         : null;
     }
     return entry ? getArtifactPath(entry, 'audioOutputModel', entry.audioOutputModel) : null;
+  }
+
+  static isAudioEncoderDownloaded(modelId: string): boolean {
+    const entry = MODEL_REGISTRY[modelId];
+    if (!entry?.audioEncoder) return false;
+
+    const e2eDownloadedArtifactKeys = this.getE2EMockDownloadedArtifactKeys(modelId);
+    if (e2eDownloadedArtifactKeys) {
+      return e2eDownloadedArtifactKeys.has('audioEncoder');
+    }
+    return isArtifactDownloaded(entry, 'audioEncoder', entry.audioEncoder);
+  }
+
+  static getAudioEncoderPath(modelId: string): string | null {
+    const entry = MODEL_REGISTRY[modelId];
+    const e2eDownloadedArtifactKeys = this.getE2EMockDownloadedArtifactKeys(modelId);
+    if (entry && e2eDownloadedArtifactKeys) {
+      return e2eDownloadedArtifactKeys.has('audioEncoder')
+        ? `e2e://models/${entry.audioEncoder?.filename || 'whisper-encoder.gguf'}`
+        : null;
+    }
+    return entry ? getArtifactPath(entry, 'audioEncoder', entry.audioEncoder) : null;
+  }
+
+  /**
+   * Returns true when the model's audio encoder (whisper GGUF) is downloaded
+   * and usable via whisper.rn for on-device STT before feeding text to the model.
+   */
+  static hasAudioInputAssets(modelId: string): boolean {
+    return this.isAudioEncoderDownloaded(modelId);
   }
 
   static hasMultimodalAssets(modelId: string): boolean {

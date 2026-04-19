@@ -38,6 +38,7 @@ import {
   estimatePcmDurationMs,
 } from '../services/localPcmWav.service';
 import { LocalSpeechOutputService } from '../services/localSpeechOutput.service';
+import { LocalWhisperService } from '../services/localWhisperService';
 
 // Lazy import to avoid circular dependency TDZ during module initialization.
 // testing/e2e.ts imports Zustand stores at top-level, which can cause
@@ -1751,9 +1752,34 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         });
 
         const wavUri = await persistDirectLocalAudioCaptureAsWav(directCapture.pcmChunks);
-        // Route through cloud STT instead of sending WAV directly to local model.
-        // Gemma 4 2B reports supportsAudioInput=true from the native bridge but
-        // cannot actually process audio tokens, causing the model to stall.
+
+        // ── On-device STT (whisper.rn) ────────────────────────
+        // If the whisper-base audio encoder is downloaded alongside the model,
+        // transcribe locally — no cloud round-trip, no privacy leak, works offline.
+        // On any failure, fall through to cloud STT below.
+        if (LocalWhisperService.isAvailableForModel(localModelId)) {
+          try {
+            const whisperTranscript = await LocalWhisperService.transcribe(
+              localModelId!,
+              wavUri,
+              voiceLanguageHint,
+            );
+            if (whisperTranscript) {
+              setTranscriptPreview(whisperTranscript);
+              setVoicePhase('thinking');
+              setTimeout(() => onSendMessageRef.current(whisperTranscript), 80);
+              return;
+            }
+          } catch (whisperErr: any) {
+            addVoiceDiagnostic('voice-session', 'hold-local-whisper-failed', {
+              model: localModelId || 'local-model',
+              error: String(whisperErr?.message || whisperErr),
+            });
+            // Fall through to cloud STT
+          }
+        }
+
+        // ── Cloud STT fallback ────────────────────────────────
         let pcmTranscript = '';
         let pcmTranscribeTimedOut = false;
         let pcmTranscribeFailed = false;
@@ -1871,6 +1897,33 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         const uri = recordingRef.current.getURI();
         recordingRef.current = null;
         if (uri) {
+          // ── On-device STT (whisper.rn) ────────────────────────
+          // When the whisper-base encoder is downloaded, transcribe locally
+          // for any local model (replaces both the raw-audio-to-model path
+          // and the cloud transcription path). Falls through to cloud STT
+          // on any error or if encoder is not yet downloaded.
+          if (localModelSelected && LocalWhisperService.isAvailableForModel(localModelId)) {
+            try {
+              const whisperTranscript = await LocalWhisperService.transcribe(
+                localModelId!,
+                uri,
+                voiceLanguageHint,
+              );
+              if (whisperTranscript) {
+                setTranscriptPreview(whisperTranscript);
+                setVoicePhase('thinking');
+                setTimeout(() => onSendMessageRef.current(whisperTranscript), 80);
+                return;
+              }
+            } catch (whisperErr: any) {
+              addVoiceDiagnostic('voice-session', 'local-whisper-m4a-failed', {
+                model: localModelId || 'local-model',
+                error: String(whisperErr?.message || whisperErr),
+              });
+              // Fall through to cloud STT path
+            }
+          }
+
           if (localModelSelected && localAudioInputAvailable && isSupportedLocalAudioRecordingUri(uri)) {
             // Send audio directly to local model that supports audio input
             const localAudioAttachment = await buildLocalRecordedAudioAttachment(uri);
