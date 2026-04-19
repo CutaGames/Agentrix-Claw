@@ -289,19 +289,15 @@ function buildConversationSystemMessages(
 
 function resolveEffectiveChatMode(
   requestedMode: ChatMode,
-  text: string,
-  attachmentCount: number,
-  hasActivePlan: boolean,
+  _text: string,
+  _attachmentCount: number,
+  _hasActivePlan: boolean,
 ): ChatMode {
-  if (requestedMode !== "agent") {
-    return requestedMode;
-  }
-
-  if (attachmentCount > 0 || hasActivePlan) {
-    return "agent";
-  }
-
-  return TASK_LIKE_PROMPT_PATTERN.test(text.trim()) ? "agent" : "ask";
+  // Respect the user's explicit mode selection.
+  // The previous heuristic downgraded manually-selected `agent` mode back to
+  // `ask` for short prompts, which silently disabled tools for queries like
+  // weather/search/file requests and made the desktop feel "permissionless".
+  return requestedMode;
 }
 
 function shouldEscalateDesktopLocalTurn(effectiveChatMode: ChatMode, hasCloudPath: boolean): boolean {
@@ -417,7 +413,7 @@ export default function ChatPanel({
   const desktopDeviceId = useMemo(() => getDesktopDeviceId(), []);
   const [chatMode, setChatMode] = useState<ChatMode>(() => {
     const saved = localStorage.getItem("agentrix_chat_mode");
-    return saved === "ask" || saved === "plan" || saved === "agent" ? saved : "ask";
+    return saved === "ask" || saved === "plan" || saved === "agent" ? saved : "agent";
   });
   const activeAgent = useMemo<DesktopAgent | null>(
     () => agents.find((agent) => agent.id === activeAgentId) || null,
@@ -2601,41 +2597,46 @@ export default function ChatPanel({
 
                 let receivedFirstLocalChunk = false;
 
-                // Try tool-calling path first (requires --jinja on llama-server)
+                // Only attempt local tool-calling for explicit agent/plan turns.
+                // For normal ask-mode chat we stream immediately; otherwise the
+                // extra non-streaming tool loop delays the first visible token
+                // by tens of seconds on CPU-bound local models.
                 let toolCallingHandled = false;
-                try {
-                  const { runDesktopToolCallingLoop } = await import("../services/desktopToolCalling");
-                  setStreamFeedback({
-                    tone: "info",
-                    label: "正在思考",
-                    detail: "检查是否需要使用工具",
-                  });
-                  const toolResult = await runDesktopToolCallingLoop(
-                    localSidecar,
-                    history,
-                    {
-                      instanceId: activeInst?.id,
-                      agentId: (activeInst as any)?.metadata?.agentAccountId || activeInst?.id,
-                      authToken: authToken || undefined,
-                      temperature: 0.7,
-                      maxTokens: 2048,
-                      onToolCall: (name: string) => {
-                        setStreamFeedback({
-                          tone: "info",
-                          label: `🔧 ${name}`,
-                          detail: "正在执行工具调用",
-                        });
+                if (effectiveChatMode !== "ask") {
+                  try {
+                    const { runDesktopToolCallingLoop } = await import("../services/desktopToolCalling");
+                    setStreamFeedback({
+                      tone: "info",
+                      label: "正在思考",
+                      detail: "检查是否需要使用工具",
+                    });
+                    const toolResult = await runDesktopToolCallingLoop(
+                      localSidecar,
+                      history,
+                      {
+                        instanceId: activeInst?.id,
+                        agentId: (activeInst as any)?.metadata?.agentAccountId || activeInst?.id,
+                        authToken: authToken || undefined,
+                        temperature: 0.7,
+                        maxTokens: 2048,
+                        onToolCall: (name: string) => {
+                          setStreamFeedback({
+                            tone: "info",
+                            label: `🔧 ${name}`,
+                            detail: "正在执行工具调用",
+                          });
+                        },
+                        abortSignal: controller.signal,
                       },
-                      abortSignal: controller.signal,
-                    },
-                  );
-                  toolCallingHandled = true;
-                  if (toolResult.text) {
-                    chunkHandler(toolResult.text);
+                    );
+                    toolCallingHandled = true;
+                    if (toolResult.text) {
+                      chunkHandler(toolResult.text);
+                    }
+                  } catch (toolError: any) {
+                    // Tool calling not available or failed — fall through to plain streaming
+                    console.warn("[local-tool-calling] fallback to streaming:", toolError?.message);
                   }
-                } catch (toolError: any) {
-                  // Tool calling not available or failed — fall through to plain streaming
-                  console.warn("[local-tool-calling] fallback to streaming:", toolError?.message);
                 }
 
                 // Fallback: plain streaming without tools

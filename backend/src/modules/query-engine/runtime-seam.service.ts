@@ -153,7 +153,8 @@ export class RuntimeSeamService {
       planModeAddition: planModeAddition || undefined,
     });
 
-    const systemBlocks = this.agentContextService.buildCacheableSystemBlocks(builtContext);
+    let systemPrompt = builtContext.systemPrompt;
+    let systemBlocks = this.agentContextService.buildCacheableSystemBlocks(builtContext);
 
     // 2. Pre-message hooks
     let hookBlocked = false;
@@ -200,7 +201,6 @@ export class RuntimeSeamService {
         this.logger.warn(`MCP tools injection failed: ${err.message}`);
       }
 
-      // 3b. Plugin-provided tools
       try {
         const pluginTools = await this.pluginService.getPluginProvidedTools(userId);
         for (const pt of pluginTools) {
@@ -215,6 +215,28 @@ export class RuntimeSeamService {
       } catch (err: any) {
         this.logger.warn(`Plugin tools injection failed: ${err.message}`);
       }
+    }
+
+    const toolNames = effectiveTools
+      .map((tool) => tool?.name || tool?.function?.name)
+      .filter((name): name is string => typeof name === 'string' && name.length > 0);
+    const runtimeHints: string[] = [];
+    if (toolNames.some((name) => name.startsWith('desktop_'))) {
+      runtimeHints.push('- Desktop tools are available in this chat: use desktop_read_file / desktop_list_directory for inspection, and desktop_write_file / desktop_run_command when needed (approval may be required).');
+    }
+    if (toolNames.includes('web_search') || toolNames.includes('search_web') || toolNames.includes('web_fetch') || toolNames.includes('open_url')) {
+      runtimeHints.push('- Web access tools are available in this chat for weather, current events, docs, and URL fetch/open tasks.');
+    }
+    if (toolNames.some((name) => name.startsWith('mcp_'))) {
+      runtimeHints.push('- MCP tools are available in this chat; use them instead of claiming MCP/server access is unavailable.');
+    }
+    if (toolNames.some((name) => name.startsWith('installed_'))) {
+      runtimeHints.push('- Installed skills are available in this chat via installed_* tools.');
+    }
+    if (runtimeHints.length > 0) {
+      const runtimeToolBlock = `\n## Runtime Tool Availability\n${runtimeHints.join('\n')}\nOnly claim lack of access if the relevant tool is absent from the callable tool list.\n`;
+      systemPrompt += runtimeToolBlock;
+      systemBlocks = [...systemBlocks, { type: 'text', text: runtimeToolBlock }];
     }
 
     // 4. Merge tool call handlers: caller's handler + MCP execution + plugin execution
@@ -248,14 +270,14 @@ export class RuntimeSeamService {
       : onToolCall;
 
     return {
-      systemPrompt: builtContext.systemPrompt,
+      systemPrompt,
       systemBlocks,
       effectiveTools,
       effectiveOnToolCall,
       hookBlocked,
       hookBlockMessage,
       contextSummary: {
-        systemPromptChars: builtContext.systemPrompt.length,
+        systemPromptChars: systemPrompt.length,
         memoryTokenEstimate: builtContext.memoryTokenEstimate,
         hookCount: 0,
         mcpToolCount,

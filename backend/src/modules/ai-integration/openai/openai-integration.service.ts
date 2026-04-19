@@ -659,11 +659,14 @@ export class OpenAIIntegrationService {
     }
 
     try {
-      // 获取基础 Function Schemas 并合并额外的工具
-      const baseTools = await this.getFunctionSchemas();
-      const tools = options?.additionalTools 
-        ? [...baseTools, ...options.additionalTools]
-        : baseTools;
+      // When the runtime seam passes `additionalTools`, those are the canonical
+      // tools for this conversation. Do NOT prepend the legacy Agentrix
+      // commerce/cart tools here, otherwise personal-assistant conversations on
+      // desktop get polluted with unrelated marketplace-only functions and the
+      // model learns the wrong capability surface.
+      const tools = options?.additionalTools !== undefined
+        ? options.additionalTools
+        : await this.getFunctionSchemas();
 
       // 调用 OpenAI API
       // 注意：新版本 OpenAI API 使用 tools，旧版本使用 functions

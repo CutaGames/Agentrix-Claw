@@ -176,7 +176,36 @@ async function secureClearToken(): Promise<void> {
 }
 
 // Use Tauri HTTP plugin (bypasses CORS) when available, else standard fetch
+function requestRequiresNativeFetch(init?: RequestInit): boolean {
+  if (!init) return false;
+
+  if (typeof FormData !== "undefined" && init.body instanceof FormData) {
+    return true;
+  }
+
+  try {
+    const headers = new Headers(init.headers || {});
+    const accept = headers.get("Accept") || headers.get("accept") || "";
+    if (/text\/event-stream/i.test(accept)) {
+      return true;
+    }
+  } catch {
+    // Ignore malformed header bags and fall back to the default transport.
+  }
+
+  return false;
+}
+
 export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  // IMPORTANT: native fetch is required for SSE and multipart/form-data.
+  // `@tauri-apps/plugin-http` buffers streaming responses and corrupts
+  // FormData serialization, which causes:
+  // - chat streams to appear as a 30-40s blank wait before the whole reply lands
+  // - attachment / voice uploads to fail with malformed multipart bodies
+  if (requestRequiresNativeFetch(init)) {
+    return await fetch(url, init);
+  }
+
   try {
     return await tauriFetch(url, init as any);
   } catch {
@@ -574,13 +603,10 @@ export function streamChat(opts: {
     signal: ac.signal,
   };
 
-  // Use tauriFetch (bypasses CORS) with fallback to window.fetch
+  // IMPORTANT: SSE must use native fetch. The Tauri HTTP plugin buffers the
+  // whole response body before resolving, which destroys first-token latency.
   const doFetch = async () => {
-    try {
-      return await tauriFetch(url, fetchInit as any);
-    } catch {
-      return await fetch(url, fetchInit);
-    }
+    return await fetch(url, fetchInit);
   };
 
   fetchWithBackoff(doFetch, { signal: ac.signal })
@@ -652,13 +678,10 @@ export function streamDirectChat(opts: {
     signal: ac.signal,
   };
 
-  // Use tauriFetch (bypasses CORS) with fallback to window.fetch
+  // IMPORTANT: SSE must use native fetch. The Tauri HTTP plugin buffers the
+  // whole response body before resolving, which destroys first-token latency.
   const doFetch = async () => {
-    try {
-      return await tauriFetch(`${API_BASE}/openclaw/proxy/stream`, fetchInit as any);
-    } catch {
-      return await fetch(`${API_BASE}/openclaw/proxy/stream`, fetchInit);
-    }
+    return await fetch(`${API_BASE}/openclaw/proxy/stream`, fetchInit);
   };
 
   fetchWithBackoff(doFetch, { signal: ac.signal })

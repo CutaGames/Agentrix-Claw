@@ -223,6 +223,7 @@ async function transcribeAudioAttachments(
       const audioUri = att.publicUrl || att.localUri;
       if (!audioUri) return att;
 
+      let transcribeErrorDetail = '';
       try {
         const formData = new FormData();
         if (audioUri.startsWith('http')) {
@@ -266,6 +267,8 @@ async function transcribeAudioAttachments(
                 _transcriptText: transcript,
               };
             }
+          } else {
+            try { transcribeErrorDetail = await resp.text(); } catch { /* ignore */ }
           }
         } finally {
           clearTimeout(timeout);
@@ -273,8 +276,14 @@ async function transcribeAudioAttachments(
         }
       } catch (err) {
         console.warn('[transcribeAudioAttachments] failed:', err);
+        return {
+          ...att,
+          _transcribeErrorDetail: String((err as any)?.message || err || '').slice(0, 240),
+        } as any;
       }
-      return att;
+      return transcribeErrorDetail
+        ? ({ ...att, _transcribeErrorDetail: transcribeErrorDetail.slice(0, 240) } as any)
+        : att;
     }),
   );
   return { attachments: result, transcribedTexts };
@@ -1109,11 +1118,12 @@ export function AgentChatScreen() {
         if (agentAccountId) {
           const { getUnifiedAgent } = await import('../../services/unifiedAgent');
           const agent = await getUnifiedAgent(activeInstance!.id);
+          const agentMetadata = (agent as any)?.metadata;
           if (agent.defaultModel) {
             setAgentPreferredModel(agent.defaultModel);
           }
-          if (agent.metadata?.voice_id) {
-            setAgentVoiceId(agent.metadata.voice_id);
+          if (agentMetadata?.voice_id) {
+            setAgentVoiceId(agentMetadata.voice_id);
           }
           // Build enriched context for local model system prompt
           const contextParts: string[] = [];
@@ -1669,13 +1679,15 @@ export function AgentChatScreen() {
           && !(a as any)._transcriptText,
       );
       if (stillHasUntranscribedAudio && !audioTranscriptText && !text.trim()) {
+        const firstTranscribeError = (resolvedAttachments as any[]).find((a) => a?._transcribeErrorDetail)?._transcribeErrorDetail;
+        const detail = firstTranscribeError ? `\n\n${String(firstTranscribeError).slice(0, 200)}` : '';
         try {
           const { Alert } = require('react-native');
           Alert.alert(
             t({ en: 'Transcription Failed', zh: '转写失败' }),
             t({
-              en: 'We could not transcribe the audio. Please try again or type your message.',
-              zh: '语音转写失败。请稍后重试或直接输入文字。',
+              en: `We could not transcribe the audio. Please try again or type your message.${detail}`,
+              zh: `语音转写失败。请稍后重试或直接输入文字。${detail}`,
             }),
           );
         } catch {}
@@ -1874,8 +1886,8 @@ export function AgentChatScreen() {
           // doesn't need tools. Re-enable when model support stabilises.
           for await (const chunk of MobileLocalInferenceService.generateTextStream(localMessages, {
             model: effectiveModelId,
-            timeoutMs: 30_000,
-            stallTimeoutMs: 15_000,
+            timeoutMs: 60_000,
+            stallTimeoutMs: 25_000,
             signal: localAbort.signal,
           })) {
             if (localAbort.signal.aborted || responseInterruptedRef.current) break;
@@ -2613,7 +2625,9 @@ export function AgentChatScreen() {
         sessionId={sessionIdRef.current}
         agentId={activeInstance?.metadata?.agentAccountId || instanceId}
         instanceName={instanceName}
-        messages={allMessagesRef.current.length > 0 ? allMessagesRef.current.slice(-10) : messages.slice(-10)}
+        messages={(allMessagesRef.current.length > 0 ? allMessagesRef.current : messages)
+          .filter((message) => message.role === 'user' || message.role === 'assistant')
+          .slice(-10) as any}
       />
 
       {isOffline && (
@@ -3073,7 +3087,7 @@ export function AgentChatScreen() {
                     );
                     return;
                   }
-                  setDuplexMode((prev) => !prev);
+                  setDuplexMode(!duplexMode);
                 }}
                 style={[styles.sheetToggle, duplexMode && styles.sheetToggleActive]}
                 testID="chat-duplex-toggle"
