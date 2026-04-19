@@ -88,7 +88,12 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E2B-it-GGUF/resolve/main',
     declaredCapabilities: {
       visionInput: true,
-      audioInput: true,
+      // audioInput requires a dedicated audio-encoder asset (e.g. whisper.gguf)
+      // which is NOT bundled in this package. The mmproj-F16.gguf is the vision-only
+      // projector. Sending raw audio to llama.cpp without an audio encoder stalls
+      // the model (0 tokens, "Exception in HostFunction: <unknown>").
+      // Re-enable once we add an audio encoder to the package.
+      audioInput: false,
       videoInput: true,
       onDeviceAudioOutput: false,
     },
@@ -109,7 +114,7 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E4B-it-GGUF/resolve/main',
     declaredCapabilities: {
       visionInput: true,
-      audioInput: true,
+      audioInput: false, // same as 2B — no audio encoder asset bundled
       videoInput: true,
       onDeviceAudioOutput: false,
     },
