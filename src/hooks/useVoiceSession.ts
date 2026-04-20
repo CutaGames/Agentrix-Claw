@@ -1557,6 +1557,33 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           };
 
           try {
+            // Pre-flight: request RECORD_AUDIO via expo-av so the system permission
+            // dialog is shown on first use. The Picovoice VoiceProcessor only
+            // exposes hasRecordAudioPermission() (read-only) — without this prep
+            // Android users see "permission denied" even on cold install.
+            if (Audio) {
+              try {
+                const permResult = await Audio.requestPermissionsAsync();
+                if (!permResult?.granted) {
+                  setLiveSpeechPermissionState('denied');
+                  localDirectAudioCaptureRef.current = null;
+                  isRecordingRef.current = false;
+                  setIsRecording(false);
+                  setVoicePhase('idle');
+                  Alert.alert(
+                    t({ en: 'Microphone Permission', zh: '麦克风权限' }),
+                    t({
+                      en: 'Please enable microphone access in Settings to use hold-to-talk with local models.',
+                      zh: '请在系统设置中授予麦克风权限，才能使用本地模型的按住说话。',
+                    }),
+                  );
+                  return;
+                }
+              } catch {
+                // Non-fatal: fall through; realtimeMicrophone.start() will surface a clearer error
+              }
+            }
+
             await realtimeMicrophone.start();
             setLiveSpeechPermissionState('granted');
             setIsRecording(true);
@@ -1576,7 +1603,32 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
               message,
               model: localModelId || 'local-model',
             });
-            throw error;
+            // Surface a user-actionable error instead of silently dying. The most
+            // common causes are: (a) RECORD_AUDIO denied, (b) another app holding
+            // the mic (music player / video call), (c) Picovoice native module
+            // not linked in this build.
+            isRecordingRef.current = false;
+            setIsRecording(false);
+            setVoicePhase('idle');
+            let hint = message;
+            if (/permission denied/i.test(message)) {
+              hint = t({
+                en: 'Microphone permission was denied. Enable it in Settings.',
+                zh: '麦克风权限被拒绝，请到系统设置中开启。',
+              });
+            } else if (/unavailable|not.*linked|undefined/i.test(message)) {
+              hint = t({
+                en: 'Local voice capture is not available in this build. Falling back to cloud recording next time.',
+                zh: '当前版本暂不支持本地直采，下一次将尝试云端录音路径。',
+              });
+            } else {
+              hint = t({
+                en: 'Microphone is busy. Close other audio apps and try again.',
+                zh: '麦克风被占用，请关闭其他音频应用后重试。',
+              });
+            }
+            Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), hint);
+            return;
           }
         }
 
@@ -1740,7 +1792,15 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
             model: localModelId || 'local-model',
           });
           setVoicePhase('idle');
-          Alert.alert(t({ en: 'No Speech', zh: '未检测到语音' }), t({ en: 'No speech detected.', zh: '未检测到有效语音。' }));
+          // 0 bytes almost always means: mic was never actually granted live frames.
+          // Tell the user what to check instead of just "no speech".
+          Alert.alert(
+            t({ en: 'No Audio Captured', zh: '未采集到音频' }),
+            t({
+              en: 'The microphone did not produce any audio. Make sure permission is granted and no other app is using the mic, then try again.',
+              zh: '麦克风未输出任何音频。请确认已授予权限，且没有其他应用在占用麦克风，然后重试。',
+            }),
+          );
           return;
         }
 

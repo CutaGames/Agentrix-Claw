@@ -1,5 +1,6 @@
 import { CSSProperties, useState, useCallback, useRef, useEffect } from "react";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import agentrixLogo from "../assets/agentrix-logo.png";
 import { type ClipboardCapture, type ClipboardAction, buildClipboardPrompt } from "../services/clipboard";
 import VoiceResultCard from "./VoiceResultCard";
@@ -641,7 +642,6 @@ export default function FloatingBall({
         longPressTimer.current = null;
       }
       try {
-        const { getCurrentWindow } = await import("@tauri-apps/api/window");
         await getCurrentWindow().startDragging();
       } catch {}
     }
@@ -736,8 +736,10 @@ export default function FloatingBall({
         height: BALL_SIZE,
         borderRadius: isCapsule ? BALL_SIZE / 2 : "50%",
         background: `linear-gradient(135deg, ${colors.from} 0%, ${colors.to} 100%)`,
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
+        // Note: backdrop-filter removed — the gradient background is opaque so the blur
+        // has no visible effect but still forces per-frame compositing on transparent
+        // always-on-top Tauri windows. Removing this eliminates drag/idle GPU lag on
+        // integrated GPUs (Intel UHD/Iris) without any visual change.
         display: "flex",
         alignItems: "center",
         justifyContent: isCapsule ? "flex-start" : "center",
@@ -879,9 +881,7 @@ export default function FloatingBall({
           bottom: BALL_SIZE + 10,
           left: "50%",
           transform: "translateX(-50%)",
-          background: "rgba(22,33,62,0.92)",
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
+          background: "rgba(22,33,62,0.95)",
           border: "1px solid rgba(255,255,255,0.1)",
           borderRadius: 12,
           padding: "10px 14px",
@@ -908,9 +908,7 @@ export default function FloatingBall({
           bottom: 64,
           left: "50%",
           transform: "translateX(-50%)",
-          background: "rgba(22,33,62,0.95)",
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
+          background: "rgba(22,33,62,0.98)",
           border: "1px solid rgba(255,255,255,0.1)",
           borderRadius: 12,
           boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
@@ -1018,9 +1016,7 @@ export default function FloatingBall({
           position: "fixed",
           top: contextMenu.y,
           left: contextMenu.x,
-          background: "rgba(22,33,62,0.95)",
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
+          background: "rgba(22,33,62,0.98)",
           border: "1px solid rgba(255,255,255,0.1)",
           borderRadius: 10,
           boxShadow: "0 8px 24px rgba(0,0,0,0.5)",

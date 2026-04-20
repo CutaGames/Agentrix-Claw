@@ -172,11 +172,16 @@ export function detectLang(text: string): "zh" | "en" {
 export class SentenceAccumulator {
   private buffer = "";
   private onSentence: (sentence: string) => void;
+  private hasEmitted = false;
 
   // Chinese-aware punctuation delimiters
   private static BOUNDARY_RE = /[^。！？.!?\n]+[。！？.!?\n]+/g;
-  private static EARLY_FLUSH_CHARS = 36;
-  private static EARLY_FLUSH_PUNCT = /[、，:;；—]/;
+  // Lowered from 36 → 20 to cut first-sentence TTS latency on voice mode.
+  // Intermediate buffers still flush when a weak delimiter appears.
+  private static EARLY_FLUSH_CHARS = 20;
+  // Aggressive first-sentence flush to minimize time-to-first-audio.
+  private static FIRST_FLUSH_CHARS = 10;
+  private static EARLY_FLUSH_PUNCT = /[、，:;；—,]/;
 
   constructor(onSentence: (sentence: string) => void) {
     this.onSentence = onSentence;
@@ -194,15 +199,22 @@ export class SentenceAccumulator {
         const trimmed = sentence.trim();
         if (trimmed.length > 0) {
           this.onSentence(trimmed);
+          this.hasEmitted = true;
         }
         consumed += sentence.length;
       }
       this.buffer = this.buffer.slice(consumed);
     }
 
+    // Early flush threshold — lower for the very first sentence so the user
+    // hears audio within ~500ms instead of waiting for a full sentence.
+    const flushThreshold = this.hasEmitted
+      ? SentenceAccumulator.EARLY_FLUSH_CHARS
+      : SentenceAccumulator.FIRST_FLUSH_CHARS;
+
     // Early flush: if buffer is long enough and has a weak delimiter
     if (
-      this.buffer.length >= SentenceAccumulator.EARLY_FLUSH_CHARS &&
+      this.buffer.length >= flushThreshold &&
       SentenceAccumulator.EARLY_FLUSH_PUNCT.test(this.buffer)
     ) {
       const lastPunctIdx = Math.max(
@@ -212,7 +224,10 @@ export class SentenceAccumulator {
       );
       if (lastPunctIdx > 0) {
         const sentence = this.buffer.slice(0, lastPunctIdx + 1).trim();
-        if (sentence) this.onSentence(sentence);
+        if (sentence) {
+          this.onSentence(sentence);
+          this.hasEmitted = true;
+        }
         this.buffer = this.buffer.slice(lastPunctIdx + 1);
       }
     }
@@ -223,6 +238,7 @@ export class SentenceAccumulator {
     const trimmed = this.buffer.trim();
     if (trimmed.length > 0) {
       this.onSentence(trimmed);
+      this.hasEmitted = true;
     }
     this.buffer = "";
   }
@@ -230,5 +246,6 @@ export class SentenceAccumulator {
   /** Reset without emitting */
   reset() {
     this.buffer = "";
+    this.hasEmitted = false;
   }
 }

@@ -370,8 +370,19 @@ export default function ChatPanel({
   proMode = false,
   onEnterProMode,
 }: Props) {
-  const { token, activeAgentId, agents, setActiveAgent, instances, activeInstanceId, setActiveInstance, loadToken } =
-    useAuthStore();
+  // Use fine-grained Zustand selectors so typing in the textarea (which does not
+  // touch auth store) does not trigger a full ChatPanel re-render when unrelated
+  // store slices change. Previous `useAuthStore()` destructure subscribed to
+  // the entire store \u2014 every token refresh / agent list update re-rendered the
+  // whole message list + markdown bubbles, causing the typing lag the user sees.
+  const token = useAuthStore((s) => s.token);
+  const activeAgentId = useAuthStore((s) => s.activeAgentId);
+  const agents = useAuthStore((s) => s.agents);
+  const setActiveAgent = useAuthStore((s) => s.setActiveAgent);
+  const instances = useAuthStore((s) => s.instances);
+  const activeInstanceId = useAuthStore((s) => s.activeInstanceId);
+  const setActiveInstance = useAuthStore((s) => s.setActiveInstance);
+  const loadToken = useAuthStore((s) => s.loadToken);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [executionMode, setExecutionModeState] = useState<ExecutionMode>(() => readExecutionMode());
@@ -1373,15 +1384,46 @@ export default function ChatPanel({
     [workspaceDir],
   );
 
-  const appendChunk = useCallback((sessionId: string, msgId: string, chunk: string) => {
-    updateSessionMessages(sessionId, (prev) =>
-      prev.map((m) =>
-        m.id === msgId ? { ...m, content: m.content + chunk } : m,
-      ),
-    );
+  // Batch SSE chunks via requestAnimationFrame to avoid per-chunk re-renders.
+  // Accumulates text in a ref and flushes once per animation frame.
+  const chunkBufferRef = useRef<Map<string, { sessionId: string; chunks: string[] }>>(new Map());
+  const chunkFlushRafRef = useRef<number | null>(null);
+
+  const flushChunkBuffer = useCallback(() => {
+    chunkFlushRafRef.current = null;
+    const entries = Array.from(chunkBufferRef.current.entries());
+    chunkBufferRef.current.clear();
+    for (const [msgId, { sessionId, chunks }] of entries) {
+      const combined = chunks.join("");
+      if (!combined) continue;
+      updateSessionMessages(sessionId, (prev) =>
+        prev.map((m) =>
+          m.id === msgId ? { ...m, content: m.content + combined } : m,
+        ),
+      );
+    }
   }, [updateSessionMessages]);
 
+  const appendChunk = useCallback((sessionId: string, msgId: string, chunk: string) => {
+    const existing = chunkBufferRef.current.get(msgId);
+    if (existing) {
+      existing.chunks.push(chunk);
+    } else {
+      chunkBufferRef.current.set(msgId, { sessionId, chunks: [chunk] });
+    }
+    if (chunkFlushRafRef.current === null) {
+      chunkFlushRafRef.current = requestAnimationFrame(flushChunkBuffer);
+    }
+  }, [flushChunkBuffer]);
+
   const finalizeMessage = useCallback((sessionId: string, msgId: string) => {
+    // Flush any pending batched chunks before marking the message as done.
+    if (chunkFlushRafRef.current !== null) {
+      cancelAnimationFrame(chunkFlushRafRef.current);
+      chunkFlushRafRef.current = null;
+    }
+    flushChunkBuffer();
+
     const updated = updateSessionMessages(
       sessionId,
       (prev) => prev.map((m) => {
@@ -1412,7 +1454,7 @@ export default function ChatPanel({
     if (msg) {
       notifyIfBackground("Agentrix", msg.content.slice(0, 100));
     }
-  }, [updateSessionMessages]);
+  }, [flushChunkBuffer, updateSessionMessages]);
 
   const addSystemMessage = useCallback((content: string) => {
     setMessages(prev => [...prev, {
