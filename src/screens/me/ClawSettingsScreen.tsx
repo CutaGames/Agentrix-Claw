@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput, Share, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput, Share, Platform, ActivityIndicator, AppState } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
@@ -72,9 +72,23 @@ export function ClawSettingsScreen() {
     if (Platform.OS !== 'android' || !isAndroidBackgroundWakeWordAvailable()) {
       return;
     }
-    void getAndroidOverlayPermissionStatus()
-      .then(setOverlayPermissionGranted)
-      .catch(() => setOverlayPermissionGranted(false));
+    const fetchStatus = () => {
+      void getAndroidOverlayPermissionStatus()
+        .then(setOverlayPermissionGranted)
+        .catch(() => setOverlayPermissionGranted(false));
+    };
+    fetchStatus();
+    // Re-probe when the user returns from the system "display over other apps"
+    // permission page — without this, state stays stale and the foreground
+    // service is never (re)started after the user finally grants access.
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        fetchStatus();
+      }
+    });
+    return () => {
+      sub.remove();
+    };
   }, [wakeWordConfig.enabled, wakeWordConfig.localModel]);
 
   useEffect(() => {

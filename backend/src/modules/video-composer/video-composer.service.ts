@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { HfVideoGenerationProvider, resolveHfVideoModel } from '../video-generation/hf-video-generation.provider';
+import { FalVideoGenerationProvider } from '../video-generation/fal-video-generation.provider';
 import { PollyTtsProvider } from './polly-tts.provider';
 import {
   runFfmpeg,
@@ -27,7 +28,12 @@ export interface ComposerScene {
 export interface ComposeVideoParams {
   title?: string;
   scenes: ComposerScene[];
-  /** 'hf-ltx' (default, fast) | 'hf-cogvideox' (higher quality, slower) */
+  /** Provider for per-scene video generation. 'fal' (default) uses fal.ai
+   * Kling/Veo which is paid but reliable. 'hf' uses a self-hosted HF
+   * Inference Endpoint (the large OSS video models are NOT on HF serverless). */
+  provider?: 'fal' | 'hf';
+  /** Model path. For fal: full fal model path (default kling-video/v2.1/master/text-to-video).
+   * For hf: model repo of a self-hosted HF Inference Endpoint. */
   model?: string;
   /** Voice id for Polly; defaults based on language. */
   voice?: string;
@@ -91,6 +97,7 @@ export class VideoComposerService {
   constructor(
     private readonly configService: ConfigService,
     private readonly hfProvider: HfVideoGenerationProvider,
+    private readonly falProvider: FalVideoGenerationProvider,
     private readonly pollyProvider: PollyTtsProvider,
   ) {}
 
@@ -137,29 +144,27 @@ export class VideoComposerService {
 
   private async runJob(job: ComposeVideoJob): Promise<void> {
     try {
-      const apiKey = this.resolveHfApiKey();
-      if (!apiKey) {
-        throw new Error('HuggingFace video provider is not configured. Set HF_TOKEN on the server.');
+      const providerId = (job.params.provider || 'fal').toLowerCase();
+      if (providerId !== 'fal' && providerId !== 'hf') {
+        throw new Error(`Unsupported compose provider: ${providerId}. Supported: fal, hf.`);
       }
       const workDir = await this.prepareWorkDir(job.jobId);
 
       job.status = 'generating_scenes';
       job.updatedAt = Date.now();
-      const modelRef = resolveHfVideoModel(job.params.model);
-      this.appendLog(job, `Using HF model ${modelRef.path} for scene generation.`);
 
-      // 1. Kick off all scene HF calls in parallel and collect binaries.
+      // 1. Generate each scene clip as a raw mp4 buffer.
       const sceneBuffers: Buffer[] = [];
       for (let i = 0; i < job.params.scenes.length; i++) {
         const scene = job.params.scenes[i];
-        this.appendLog(job, `Scene ${i + 1}/${job.totalScenes}: submitting to HF.`);
-        const submission = this.hfProvider.submit(apiKey, modelRef.path, scene.visualPrompt);
-        job.sceneRequestIds!.push(submission.request_id);
-        const buf = await this.awaitSceneResult(submission.request_id);
+        this.appendLog(job, `Scene ${i + 1}/${job.totalScenes}: submitting to ${providerId}.`);
+        const buf = providerId === 'fal'
+          ? await this.generateSceneViaFal(scene, job)
+          : await this.generateSceneViaHf(scene, job);
         sceneBuffers.push(buf);
         job.scenesDone = i + 1;
         job.updatedAt = Date.now();
-        this.appendLog(job, `Scene ${i + 1}/${job.totalScenes}: HF returned ${buf.length} bytes.`);
+        this.appendLog(job, `Scene ${i + 1}/${job.totalScenes}: ${providerId} returned ${buf.length} bytes.`);
       }
 
       // Persist raw scene MP4s to work dir.
@@ -418,6 +423,69 @@ export class VideoComposerService {
       }
       await new Promise((r) => setTimeout(r, SCENE_POLL_INTERVAL_MS));
     }
+  }
+
+  private async generateSceneViaHf(scene: ComposerScene, job: ComposeVideoJob): Promise<Buffer> {
+    const apiKey = this.resolveHfApiKey();
+    if (!apiKey) {
+      throw new Error('HuggingFace provider unavailable (set HF_TOKEN), or switch provider to "fal".');
+    }
+    const modelRef = resolveHfVideoModel(job.params.model);
+    const submission = this.hfProvider.submit(apiKey, modelRef.path, scene.visualPrompt);
+    job.sceneRequestIds!.push(submission.request_id);
+    return this.awaitSceneResult(submission.request_id);
+  }
+
+  private async generateSceneViaFal(scene: ComposerScene, job: ComposeVideoJob): Promise<Buffer> {
+    const apiKey = this.resolveFalApiKey();
+    if (!apiKey) {
+      throw new Error('fal video provider is not configured. Set FAL_KEY (or VIDEO_FAL_API_KEY) on the server.');
+    }
+    const modelPath = job.params.model && job.params.model.includes('/')
+      ? job.params.model
+      : 'fal-ai/kling-video/v2.1/master/text-to-video';
+    const durationSec = scene.durationSec && scene.durationSec > 0
+      ? Math.min(10, Math.max(5, Math.round(scene.durationSec)))
+      : 5;
+    const aspectRatio = job.params.aspectRatio || '9:16';
+    const submission = await this.falProvider.submit(apiKey, modelPath, {
+      prompt: scene.visualPrompt,
+      duration: String(durationSec) as any,
+      aspect_ratio: aspectRatio,
+    } as any);
+    job.sceneRequestIds!.push(submission.request_id);
+
+    // Poll.
+    const start = Date.now();
+    while (true) {
+      const status = await this.falProvider.getStatus(apiKey, modelPath, submission.request_id);
+      if (status.status === 'COMPLETED') {
+        const result = await this.falProvider.getResult(apiKey, modelPath, submission.request_id, status.response_url);
+        const url = this.falProvider.extractVideoUrl(result);
+        if (!url) {
+          throw new Error('fal completed but no video URL in response');
+        }
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(`Failed to download fal video: HTTP ${res.status}`);
+        }
+        return Buffer.from(await res.arrayBuffer());
+      }
+      if (status.status !== 'IN_QUEUE' && status.status !== 'IN_PROGRESS') {
+        throw new Error(`fal scene failed (status=${status.status}): ${status.error || 'unknown'}`);
+      }
+      if (Date.now() - start > SCENE_MAX_WAIT_MS) {
+        throw new Error(`fal scene exceeded ${SCENE_MAX_WAIT_MS / 1000}s`);
+      }
+      await new Promise((r) => setTimeout(r, SCENE_POLL_INTERVAL_MS));
+    }
+  }
+
+  private resolveFalApiKey(): string | null {
+    return this.configService.get<string>('FAL_KEY')
+      || this.configService.get<string>('VIDEO_FAL_API_KEY')
+      || this.configService.get<string>('FAL_API_KEY')
+      || null;
   }
 
   private async prepareWorkDir(jobId: string): Promise<string> {

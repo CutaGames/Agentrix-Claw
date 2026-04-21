@@ -18,6 +18,6 @@ import { AgentMessage } from '../../entities/agent-message.entity';
     DesktopSyncModule,
   ],
   providers: [VideoGenerationService, FalVideoGenerationProvider, HfVideoGenerationProvider],
-  exports: [VideoGenerationService, HfVideoGenerationProvider],
+  exports: [VideoGenerationService, HfVideoGenerationProvider, FalVideoGenerationProvider],
 })
 export class VideoGenerationModule {}

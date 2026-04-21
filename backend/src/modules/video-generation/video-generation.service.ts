@@ -85,9 +85,15 @@ export class VideoGenerationService {
       throw new Error('video_generate requires a prompt or an existing taskId. Reference-driven modes also require their source media URLs.');
     }
 
-    const provider = String(params.provider || 'hf').trim().toLowerCase();
+    // Provider default is 'fal' because the HuggingFace serverless Inference
+    // API does NOT currently host the large open-source video models
+    // (Lightricks/LTX-Video, THUDM/CogVideoX-2b). Probes return HTTP 404:
+    // "Model ... is not available on Inference API." Keeping 'hf' available
+    // for users who self-deploy HF Inference Endpoints and override the
+    // model id to their own endpoint-serving repo.
+    const provider = String(params.provider || 'fal').trim().toLowerCase();
     if (provider !== 'fal' && provider !== 'hf') {
-      throw new Error(`Unsupported video provider: ${provider}. Supported: hf (free, HuggingFace), fal (paid).`);
+      throw new Error(`Unsupported video provider: ${provider}. Supported: fal (default, Kling/Veo), hf (advanced: requires a self-hosted HF Inference Endpoint).`);
     }
 
     const inputPayload = (this.buildInput(mode, params, prompt) as unknown) as Record<string, unknown>;

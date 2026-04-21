@@ -136,7 +136,9 @@ export function LocalAiModelScreen() {
       case 'model':
         return t({ en: 'Base model', zh: '基础模型' });
       case 'multimodalProjector':
-        return t({ en: 'Multimodal projector', zh: '多模态投影器' });
+        return t({ en: 'Multimodal projector (vision)', zh: '多模态投影器（图像）' });
+      case 'audioEncoder':
+        return t({ en: 'Audio encoder (whisper-base, for voice input)', zh: '音频编码器（whisper-base，语音输入用）' });
       case 'audioOutputModel':
         return t({ en: 'Speech model', zh: '语音模型' });
       case 'vocoder':
