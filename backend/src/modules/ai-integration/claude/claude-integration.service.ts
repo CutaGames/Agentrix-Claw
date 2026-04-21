@@ -184,8 +184,8 @@ export class ClaudeIntegrationService {
             mode: { type: 'string', enum: ['text_to_video', 'image_to_video', 'video_to_video'], description: 'Generation mode. Use image_to_video for animating a still image, or video_to_video for reference-driven motion transfer.' },
             prompt: { type: 'string', description: 'Prompt or edit instruction for the generated video. Optional for reference-driven modes when the reference media already implies the motion/style goal.' },
             taskId: { type: 'string', description: 'Existing async task id to query instead of creating a new task' },
-            provider: { type: 'string', description: 'Provider id, currently fal' },
-            model: { type: 'string', description: 'Provider model path override' },
+            provider: { type: 'string', enum: ['hf', 'fal'], description: 'Provider id. "hf" = free HuggingFace Inference (LTX-Video/CogVideoX-2b, 30-120s cold start), "fal" = paid fal.ai (faster, requires FAL_KEY). Default: hf.' },
+            model: { type: 'string', description: 'Provider model path. For hf: "ltx" | "cogvideox" | explicit "owner/repo" path. For fal: full fal model path.' },
             duration: { type: 'string', enum: ['5', '10'], description: 'Approximate output duration in seconds' },
             aspectRatio: { type: 'string', enum: ['16:9', '9:16', '1:1'], description: 'Aspect ratio for text-to-video and provider-supported image-to-video models' },
             negativePrompt: { type: 'string', description: 'Things the model should avoid generating' },
@@ -196,6 +196,39 @@ export class ClaudeIntegrationService {
             referenceVideoUrl: { type: 'string', description: 'Reference video URL. Required for video_to_video.' },
             keepOriginalSound: { type: 'boolean', description: 'When using video_to_video, keep the original sound from the reference video if the provider supports it.' },
             characterOrientation: { type: 'string', enum: ['image', 'video'], description: 'For video_to_video, choose whether subject orientation should follow the reference image or the reference video.' },
+          },
+        },
+      },
+      {
+        name: 'video_compose',
+        description: 'Compose a multi-scene composite video with narration + subtitles + optional background music, mirroring the OpenClaw montage capability. Each scene is generated with a free HuggingFace video model, narration uses AWS Polly TTS, subtitles are burned in, and scenes are joined with crossfade transitions. Returns a jobId immediately; call again with { jobId } to poll status. Typical completion 2-5 minutes per scene.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            jobId: { type: 'string', description: 'Existing compose job id to poll instead of creating a new job.' },
+            title: { type: 'string', description: 'Human-readable title for the composite video.' },
+            scenes: {
+              type: 'array',
+              description: 'Ordered list of scenes. 1-12 scenes per job.',
+              items: {
+                type: 'object',
+                properties: {
+                  visualPrompt: { type: 'string', description: 'Prompt describing what the scene should look like (fed to the video model).' },
+                  narration: { type: 'string', description: 'Narration text spoken over this scene (Polly TTS). Also used as subtitle unless overridden.' },
+                  subtitle: { type: 'string', description: 'Optional subtitle text if different from narration.' },
+                  durationSec: { type: 'number', description: 'Desired scene duration in seconds (1-30). Default 5.' },
+                },
+                required: ['visualPrompt'],
+              },
+            },
+            model: { type: 'string', description: 'HF model: "ltx" (fast, default) or "cogvideox" (higher quality, slower) or explicit "owner/repo".' },
+            voice: { type: 'string', description: 'Polly voice id override (e.g., Zhiyu for zh, Joanna for en).' },
+            language: { type: 'string', enum: ['zh', 'en'], description: 'Narration language. Default: zh.' },
+            bgmUrl: { type: 'string', description: 'Optional URL of a background music track (mp3). Mixed at 18% volume under narration.' },
+            aspectRatio: { type: 'string', enum: ['16:9', '9:16', '1:1'], description: 'Final video aspect ratio. Default: 9:16 (vertical social).' },
+            subtitleFontSize: { type: 'number', description: 'Subtitle font size in pixels. Default 28.' },
+            transitionSec: { type: 'number', description: 'Crossfade duration between scenes in seconds. Default 0.5.' },
+            burnSubtitles: { type: 'boolean', description: 'Whether to burn subtitles into the video. Default true.' },
           },
         },
       },
@@ -872,7 +905,8 @@ export class ClaudeIntegrationService {
         case 'skill_publish':
         case 'resource_publish':
         case 'marketplace_purchase':
-        case 'video_generate': {
+        case 'video_generate':
+        case 'video_compose': {
           const executor = this.getSkillExecutor();
           if (!executor) {
             return { success: false, error: 'Skill service unavailable' };

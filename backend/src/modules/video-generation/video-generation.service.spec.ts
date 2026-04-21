@@ -63,6 +63,11 @@ describe('VideoGenerationService', () => {
     extractVideoUrl: jest.fn(),
     extractThumbnailUrl: jest.fn(),
   };
+  const hfProvider = {
+    submit: jest.fn(() => ({ request_id: 'hf-request-1' })),
+    getStatus: jest.fn(() => ({ status: 'IN_PROGRESS', elapsedMs: 0 })),
+    saveResult: jest.fn(async () => ({ outputUrl: 'https://agentrix.top/api/uploads/video/x.mp4', localPath: '/tmp/x.mp4' })),
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -75,6 +80,7 @@ describe('VideoGenerationService', () => {
       aiProviderService as any,
       desktopSyncService as any,
       falProvider as any,
+      hfProvider as any,
     );
   });
 
@@ -82,6 +88,7 @@ describe('VideoGenerationService', () => {
     await service.executeTool(
       {
         mode: 'image_to_video',
+        provider: 'fal',
         referenceImageUrl: 'https://cdn.example.com/reference.png',
         endImageUrl: 'https://cdn.example.com/end.png',
       },
@@ -107,6 +114,7 @@ describe('VideoGenerationService', () => {
     await service.executeTool(
       {
         mode: 'video_to_video',
+        provider: 'fal',
         prompt: 'Preserve the subject identity while following the dance timing from the source clip.',
         referenceImageUrl: 'https://cdn.example.com/subject.png',
         referenceVideoUrl: 'https://cdn.example.com/source.mp4',

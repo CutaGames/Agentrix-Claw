@@ -26,6 +26,7 @@ import { SkillCategory, SkillStatus } from '../../entities/skill.entity';
 import { OpenClawBridgeService } from '../openclaw-bridge/openclaw-bridge.service';
 import { OpenClawSkillHubService } from '../openclaw-bridge/openclaw-skill-hub.service';
 import { VideoGenerationService } from '../video-generation/video-generation.service';
+import { VideoComposerService } from '../video-composer/video-composer.service';
 import axios from 'axios';
 
 export interface ExecutionContext {
@@ -81,6 +82,7 @@ export class SkillExecutorService {
     private readonly openClawBridgeService: OpenClawBridgeService,
     private readonly openClawSkillHubService: OpenClawSkillHubService,
     private readonly videoGenerationService: VideoGenerationService,
+    private readonly videoComposerService: VideoComposerService,
   ) {
     this.registerDefaultHandlers();
   }
@@ -1689,6 +1691,52 @@ export class SkillExecutorService {
      */
     this.registerHandler('video_generate', async (params, context) => {
       return this.videoGenerationService.executeTool(params || {}, context);
+    });
+
+    /**
+     * video_compose — Build a multi-scene video with narration+subtitles+BGM.
+     * Uses free HF video generation per scene, Polly TTS for narration, and
+     * ffmpeg for concat/crossfade/subtitle-burn. Returns immediately with a
+     * jobId; call again with { jobId } to fetch status.
+     */
+    this.registerHandler('video_compose', async (params, context) => {
+      const userId = context.userId;
+      if (!userId) {
+        throw new BadRequestException('video_compose requires an authenticated user');
+      }
+      const { jobId } = (params || {}) as { jobId?: string };
+      if (jobId) {
+        const job = this.videoComposerService.getJob(userId, jobId);
+        if (!job) {
+          return { accepted: false, error: `No compose job found: ${jobId}` };
+        }
+        return {
+          accepted: true,
+          jobId: job.jobId,
+          status: job.status,
+          outputUrl: job.outputUrl,
+          scenesDone: job.scenesDone,
+          totalScenes: job.totalScenes,
+          error: job.error,
+          logsTail: job.logs.slice(-20),
+          ready: job.status === 'completed',
+          video: job.outputUrl ? { url: job.outputUrl, mimetype: 'video/mp4' } : undefined,
+          message: job.status === 'completed'
+            ? 'Composite video ready. See outputUrl.'
+            : job.status === 'failed'
+              ? `Composite video failed: ${job.error}`
+              : `Composite video is ${job.status} (${job.scenesDone}/${job.totalScenes} scenes).`,
+        };
+      }
+      const job = this.videoComposerService.startJob(userId, (params || {}) as any);
+      return {
+        accepted: true,
+        async: true,
+        jobId: job.jobId,
+        status: job.status,
+        totalScenes: job.totalScenes,
+        message: 'Composite video job queued. Call video_compose again with this jobId to check status (typical completion 2-5 minutes per scene).',
+      };
     });
 
     /**

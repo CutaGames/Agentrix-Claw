@@ -13,6 +13,8 @@ import {
   DesktopApprovalRiskLevel,
 } from '../desktop-sync/dto/desktop-sync.dto';
 import { FalVideoGenerationProvider, type FalVideoGenerationInput } from './fal-video-generation.provider';
+import { HfVideoGenerationProvider, resolveHfVideoModel } from './hf-video-generation.provider';
+import * as path from 'path';
 import { AgentSession } from '../../entities/agent-session.entity';
 import { AgentMessage, MessageRole, MessageType } from '../../entities/agent-message.entity';
 import { emitAgentSyncEvent } from '../agent-intelligence/agent-sync.events';
@@ -63,6 +65,7 @@ export class VideoGenerationService {
     private readonly aiProviderService: AiProviderService,
     private readonly desktopSyncService: DesktopSyncService,
     private readonly falProvider: FalVideoGenerationProvider,
+    private readonly hfProvider: HfVideoGenerationProvider,
   ) {}
 
   async executeTool(params: VideoGenerateParams, context: ExecutionContext): Promise<Record<string, unknown>> {
@@ -82,9 +85,9 @@ export class VideoGenerationService {
       throw new Error('video_generate requires a prompt or an existing taskId. Reference-driven modes also require their source media URLs.');
     }
 
-    const provider = String(params.provider || 'fal').trim().toLowerCase();
-    if (provider !== 'fal') {
-      throw new Error(`Unsupported video provider: ${provider}`);
+    const provider = String(params.provider || 'hf').trim().toLowerCase();
+    if (provider !== 'fal' && provider !== 'hf') {
+      throw new Error(`Unsupported video provider: ${provider}. Supported: hf (free, HuggingFace), fal (paid).`);
     }
 
     const inputPayload = (this.buildInput(mode, params, prompt) as unknown) as Record<string, unknown>;
@@ -180,6 +183,9 @@ export class VideoGenerationService {
   }
 
   private async submitTask(task: VideoGenerationTask): Promise<VideoGenerationTask> {
+    if (task.provider === 'hf') {
+      return this.submitHfTask(task);
+    }
     const credentials = await this.resolveFalApiKey(task.userId);
     if (!credentials) {
       throw new Error('FAL video provider is not configured. Set FAL_KEY or VIDEO_FAL_API_KEY on the server.');
@@ -210,6 +216,10 @@ export class VideoGenerationService {
   }
 
   private async refreshTask(task: VideoGenerationTask): Promise<void> {
+    if (task.provider === 'hf') {
+      await this.refreshHfTask(task);
+      return;
+    }
     if (!task.providerRequestId) {
       await this.submitTask(task);
       return;
@@ -529,6 +539,101 @@ export class VideoGenerationService {
     }
 
     return null;
+  }
+
+  private async resolveHfApiKey(userId: string): Promise<string | null> {
+    const configured = this.configService.get<string>('HF_TOKEN')
+      || this.configService.get<string>('HUGGINGFACE_TOKEN')
+      || this.configService.get<string>('HUGGINGFACE_API_KEY');
+    if (configured) {
+      return configured;
+    }
+    for (const providerId of ['huggingface', 'hf']) {
+      const saved = await this.aiProviderService.getDecryptedKey(userId, providerId);
+      if (saved?.apiKey) {
+        return saved.apiKey;
+      }
+    }
+    return null;
+  }
+
+  private getVideoUploadsDir(): string {
+    return path.join(process.cwd(), 'uploads', 'video');
+  }
+
+  private getPublicApiBase(): string {
+    return this.configService.get<string>('APP_URL')
+      || this.configService.get<string>('PUBLIC_API_BASE')
+      || 'https://agentrix.top';
+  }
+
+  private async submitHfTask(task: VideoGenerationTask): Promise<VideoGenerationTask> {
+    const apiKey = await this.resolveHfApiKey(task.userId);
+    if (!apiKey) {
+      throw new Error('HuggingFace video provider is not configured. Set HF_TOKEN on the server, or save an api key under providerId="huggingface" for this user.');
+    }
+
+    const modelRef = resolveHfVideoModel(task.model);
+    task.model = modelRef.path;
+    task.status = VideoGenerationStatusEnum.SUBMITTING;
+    task.providerStatus = 'SUBMITTING';
+    task.error = null as any;
+    await this.taskRepo.save(task);
+    await this.syncDesktopTask(task);
+
+    const inputPayload = (task.input || {}) as Record<string, unknown>;
+    const prompt = typeof inputPayload.prompt === 'string' && inputPayload.prompt.trim()
+      ? inputPayload.prompt
+      : task.prompt;
+    const submission = this.hfProvider.submit(apiKey, modelRef.path, prompt);
+    task.providerRequestId = submission.request_id;
+    task.providerStatus = 'IN_PROGRESS';
+    task.status = VideoGenerationStatusEnum.PROCESSING;
+
+    const saved = await this.taskRepo.save(task);
+    await this.syncDesktopTask(saved);
+    return saved;
+  }
+
+  private async refreshHfTask(task: VideoGenerationTask): Promise<void> {
+    if (!task.providerRequestId) {
+      await this.submitHfTask(task);
+      return;
+    }
+    const snapshot = this.hfProvider.getStatus(task.providerRequestId);
+    task.metadata = {
+      ...(task.metadata || {}),
+      hfElapsedMs: snapshot.elapsedMs,
+    };
+    if (snapshot.status === 'IN_PROGRESS') {
+      task.providerStatus = 'IN_PROGRESS';
+      task.status = VideoGenerationStatusEnum.PROCESSING;
+      await this.taskRepo.save(task);
+      await this.syncDesktopTask(task);
+      return;
+    }
+    if (snapshot.status === 'FAILED') {
+      await this.markFailed(task.taskId, snapshot.error || 'HuggingFace inference failed');
+      return;
+    }
+    // COMPLETED — drain the binary and publish URL.
+    try {
+      const { outputUrl } = await this.hfProvider.saveResult(
+        task.providerRequestId,
+        this.getVideoUploadsDir(),
+        this.getPublicApiBase(),
+      );
+      task.status = VideoGenerationStatusEnum.COMPLETED;
+      task.providerStatus = 'COMPLETED';
+      task.outputUrl = outputUrl;
+      task.completedAt = new Date();
+      task.error = null as any;
+      const saved = await this.taskRepo.save(task);
+      await this.syncDesktopTask(saved);
+      await this.emitCompletion(saved);
+    } catch (err: any) {
+      await this.markFailed(task.taskId, err.message || 'Failed to persist HF video result');
+    }
   }
 
   private toDesktopTaskStatus(status: VideoGenerationStatusEnum): DesktopTaskStatus {

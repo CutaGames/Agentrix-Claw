@@ -48,6 +48,7 @@ import { MerchantTaskModule } from '../merchant-task/merchant-task.module';
 import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integration.module';
 import { OpenClawBridgeModule } from '../openclaw-bridge/openclaw-bridge.module';
 import { VideoGenerationModule } from '../video-generation/video-generation.module';
+import { VideoComposerModule } from '../video-composer/video-composer.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import { VideoGenerationModule } from '../video-generation/video-generation.modu
     forwardRef(() => ClaudeIntegrationModule),
     forwardRef(() => OpenClawBridgeModule),
     VideoGenerationModule,
+    VideoComposerModule,
   ],
   controllers: [SkillController, SkillAdminController, DeveloperRevenueController, OnboardingController],
   providers: [
