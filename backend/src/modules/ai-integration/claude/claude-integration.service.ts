@@ -967,6 +967,31 @@ export class ClaudeIntegrationService {
 
       // No tool calls → done
       if (!llmResult.functionCalls || llmResult.functionCalls.length === 0) {
+        // Safeguard: if the model ends with empty text after using tools in
+        // previous rounds, retry once without tools to force a summary.
+        if ((!lastText || !lastText.trim()) && allToolCalls.length > 0) {
+          this.logger.warn(`Bedrock agent loop: empty end_turn after ${allToolCalls.length} tool calls, forcing summary retry`);
+          try {
+            const retry = await this.bedrockService.chatWithFunctions(
+              [...currentMessages, { role: 'user' as const, content: [{ type: 'text', text: 'Please provide the analysis/summary now based on what you have gathered.' }] }],
+              {
+                model: modelId,
+                tools: [],
+                userCredentials,
+                onChunk: options?.onChunk,
+                maxTokens: continuationMaxTokens,
+              },
+            );
+            _lap(`LLM retry (empty end_turn safeguard)`);
+            return {
+              text: this.stripToolUseXml(retry.text || ''),
+              toolCalls: allToolCalls,
+              stopReason: retry.stopReason || 'end_turn',
+            };
+          } catch (err: any) {
+            this.logger.error(`Empty end_turn retry failed: ${err.message}`);
+          }
+        }
         return {
           text: this.stripToolUseXml(lastText),
           toolCalls: allToolCalls.length > 0 ? allToolCalls : null,
@@ -974,14 +999,68 @@ export class ClaudeIntegrationService {
         };
       }
 
-      // Max rounds reached → return what we have
+      // Max rounds reached → force a final tool-less summary call so the user
+      // always gets a substantive reply (otherwise lastText is typically empty
+      // because the final round tends to emit only tool_use blocks).
       if (round === maxToolRounds) {
-        this.logger.warn(`Bedrock agent loop: max ${maxToolRounds} tool rounds reached, returning partial result`);
-        return {
-          text: this.stripToolUseXml(lastText),
-          toolCalls: allToolCalls,
-          stopReason: lastStopReason,
-        };
+        this.logger.warn(`Bedrock agent loop: max ${maxToolRounds} tool rounds reached, forcing summary call`);
+        // Execute the pending tools from this final round so the model has
+        // their outputs for the summary, then call once more WITHOUT tools.
+        const finalToolResults: any[] = [];
+        for (const tc of llmResult.functionCalls) {
+          const fnName = tc.function?.name || tc.name;
+          const fnArgs = tc.function?.arguments
+            ? (typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments)
+            : tc.input || {};
+          try {
+            let result: any;
+            if (options?.onToolCall) result = await options.onToolCall(fnName, fnArgs);
+            if (result === undefined) result = await this.executeFunctionCall(fnName, fnArgs, options?.context || {});
+            finalToolResults.push({ type: 'tool_result', tool_use_id: tc.id, content: typeof result === 'string' ? result : JSON.stringify(result) });
+          } catch (err: any) {
+            finalToolResults.push({ type: 'tool_result', tool_use_id: tc.id, content: `Error: ${err.message}`, is_error: true });
+          }
+          allToolCalls.push(tc);
+        }
+        const assistantBlocks: any[] = [];
+        if (lastText) assistantBlocks.push({ type: 'text', text: lastText });
+        for (const tc of llmResult.functionCalls) {
+          assistantBlocks.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.function?.name || tc.name,
+            input: tc.function?.arguments
+              ? (typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments)
+              : (tc.input || {}),
+          });
+        }
+        const summaryMessages = [
+          ...currentMessages,
+          { role: 'assistant' as const, content: assistantBlocks },
+          { role: 'user' as const, content: finalToolResults.length > 0 ? finalToolResults : [{ type: 'text', text: 'Please summarize the findings now.' }] },
+        ];
+        try {
+          const summary = await this.bedrockService.chatWithFunctions(summaryMessages, {
+            model: modelId,
+            tools: [], // no tools → forces text reply
+            userCredentials,
+            onChunk: options?.onChunk,
+            maxTokens: continuationMaxTokens,
+          });
+          _lap(`LLM summary call after max rounds`);
+          return {
+            text: this.stripToolUseXml(summary.text || lastText),
+            toolCalls: allToolCalls,
+            stopReason: summary.stopReason || 'end_turn',
+          };
+        } catch (err: any) {
+          this.logger.error(`Summary call failed: ${err.message}`);
+          return {
+            text: this.stripToolUseXml(lastText),
+            toolCalls: allToolCalls,
+            stopReason: lastStopReason,
+          };
+        }
       }
 
       // Execute tool calls
