@@ -84,7 +84,7 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     id: 'gemma-4-2b',
     name: 'Gemma 4 E2B (Q4_K_M)',
     filename: 'gemma-4-E2B-it-Q4_K_M.gguf',
-    packageRevision: '2026-04-19-gemma4-e2b-r3',
+    packageRevision: '2026-04-21-gemma4-e2b-r4',
     sizeBytes: 3_110_000_000,
     sizeLabel: '3.1 GB',
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E2B-it-GGUF/resolve/main',
@@ -98,10 +98,12 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     },
     audioEncoder: {
       kind: 'audio-encoder',
-      filename: 'ggml-base-q5_1.gguf',
+      // whisper.cpp publishes quantized ggml weights as .bin; the hf-mirror/ggml-org/whisper-base
+      // repo does NOT host ggml-base-q5_1 (404). Pull from ggerganov/whisper.cpp instead.
+      filename: 'ggml-base-q5_1.bin',
       sizeBytes: 57_000_000,
       sizeLabel: '57 MB',
-      cdnBase: 'https://hf-mirror.com/ggml-org/whisper-base/resolve/main',
+      cdnBase: 'https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main',
     },
     multimodalProjector: {
       kind: 'mmproj',
@@ -114,7 +116,7 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     id: 'gemma-4-4b',
     name: 'Gemma 4 E4B (Q4_K_M)',
     filename: 'gemma-4-E4B-it-Q4_K_M.gguf',
-    packageRevision: '2026-04-19-gemma4-e4b-r3',
+    packageRevision: '2026-04-21-gemma4-e4b-r4',
     sizeBytes: 4_980_000_000,
     sizeLabel: '5.0 GB',
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E4B-it-GGUF/resolve/main',
@@ -126,10 +128,10 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     },
     audioEncoder: {
       kind: 'audio-encoder',
-      filename: 'ggml-base-q5_1.gguf',
+      filename: 'ggml-base-q5_1.bin',
       sizeBytes: 57_000_000,
       sizeLabel: '57 MB',
-      cdnBase: 'https://hf-mirror.com/ggml-org/whisper-base/resolve/main',
+      cdnBase: 'https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main',
     },
     multimodalProjector: {
       kind: 'mmproj',
