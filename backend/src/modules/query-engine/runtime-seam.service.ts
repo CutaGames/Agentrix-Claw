@@ -234,6 +234,13 @@ export class RuntimeSeamService {
       runtimeHints.push('- Installed skills are available in this chat via installed_* tools.');
     }
     if (runtimeHints.length > 0) {
+      // Post-tool-use completion discipline: many Claude models (esp. Opus via
+      // Bedrock) will stop with `end_turn` right after executing a batch of
+      // tools, producing only the short "let me analyze..." preamble without
+      // any actual analysis. Force the model to always deliver a substantive
+      // answer after reading/inspecting resources.
+      const completionDiscipline = `- After any tool use (reading files, listing directories, searching the web, executing commands, etc.), you MUST produce a substantive answer that directly addresses the user's request. Never stop immediately after tool results with only a transitional sentence like "let me analyze" / "让我深入分析". If you promised analysis or a plan, deliver it in the same turn. Only stop when the user's question has been answered or an explicit hand-off point (e.g. awaiting user confirmation) has been reached.`;
+      runtimeHints.push(completionDiscipline);
       const runtimeToolBlock = `\n## Runtime Tool Availability\n${runtimeHints.join('\n')}\nOnly claim lack of access if the relevant tool is absent from the callable tool list.\n`;
       systemPrompt += runtimeToolBlock;
       systemBlocks = [...systemBlocks, { type: 'text', text: runtimeToolBlock }];
