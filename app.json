@@ -142,7 +142,7 @@
         }
       ],
       [
-        "llama.rn",
+        "./scripts/build/with-llama-rn-plugin.cjs",
         {
           "enableEntitlements": true,
           "entitlementsProfile": "production",

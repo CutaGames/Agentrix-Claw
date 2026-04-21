@@ -185,14 +185,19 @@ const DEFAULT_DECLARED_CAPABILITIES: OtaModelDeclaredCapabilities = {
 
 /**
  * Mirror prefixes ordered by priority.
- * hf-mirror.com is primary (China mirror), huggingface.co is direct fallback.
+ *
+ * Note: huggingface.co is intentionally excluded — the mobile app targets
+ * China/SEA networks where huggingface.co is unreachable (SocketTimeout /
+ * connection reset). Falling back to it from a working hf-mirror.com only
+ * masks real retry opportunities and surfaces misleading errors to users.
+ * If additional mirrors are needed, prefer modelscope.cn with repo-specific
+ * URL rewriting.
  */
 const CDN_MIRROR_PREFIXES = [
   'https://hf-mirror.com/',
-  'https://huggingface.co/',
 ];
 
-const MAX_RETRIES_PER_URL = 2;
+const MAX_RETRIES_PER_URL = 3;
 
 function getDownloadUrls(cdnBase: string, filename: string): string[] {
   // ?download=true forces direct file serving, avoids XetHub CAS redirect
@@ -229,6 +234,8 @@ function isRetryableNetworkError(msg: string): boolean {
     lower.includes('econnrefused') ||
     lower.includes('econnreset') ||
     lower.includes('etimedout') ||
+    lower.includes('sockettimeoutexception') ||
+    lower.includes('timeout') ||
     lower.includes('enetunreach') ||
     lower.includes('connection refused') ||
     lower.includes('connection reset') ||
