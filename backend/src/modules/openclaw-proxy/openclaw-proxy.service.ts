@@ -2290,6 +2290,17 @@ export class OpenClawProxyService {
     }
 
     const startMs = Date.now();
+    // SSE heartbeat: emit a comment line (": ping") every 15s to keep
+    // nginx/Cloudflare idle timers alive during long LLM thinks or tool
+    // executions. Comment lines are ignored by EventSource parsers, carry
+    // zero tokens, and never reach the LLM — pure transport keepalive.
+    const heartbeat = setInterval(() => {
+      if (res.writableEnded) return;
+      try {
+        res.write(': ping\n\n');
+        if ((res as any).flush) (res as any).flush();
+      } catch { /* socket closed — next write will end cleanly */ }
+    }, 15_000);
     // Helper to emit both legacy chunk format AND structured event
     const emitStructured = (event: import('../query-engine/interfaces/stream-event.interface').StreamEvent) => {
       if (res.writableEnded) return;
@@ -2401,6 +2412,7 @@ export class OpenClawProxyService {
         res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
       }
     } finally {
+      clearInterval(heartbeat);
       if (!res.writableEnded) res.end();
     }
   }
@@ -2652,6 +2664,16 @@ export class OpenClawProxyService {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
+    // SSE heartbeat: keep intermediary proxies from timing out during long
+    // user-instance thinking. Comment line — no tokens, no LLM impact.
+    const heartbeat = setInterval(() => {
+      if (res.writableEnded) return;
+      try {
+        res.write(': ping\n\n');
+        if ((res as any).flush) (res as any).flush();
+      } catch { /* socket closed */ }
+    }, 15_000);
+
     try {
       const upstreamResp = await fetch(url, {
         method: 'POST',
@@ -2686,6 +2708,7 @@ export class OpenClawProxyService {
         res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
       }
     } finally {
+      clearInterval(heartbeat);
       if (!res.writableEnded) res.end();
     }
   }
