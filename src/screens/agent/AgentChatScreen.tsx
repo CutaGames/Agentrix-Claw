@@ -1886,8 +1886,11 @@ export function AgentChatScreen() {
           // doesn't need tools. Re-enable when model support stabilises.
           for await (const chunk of MobileLocalInferenceService.generateTextStream(localMessages, {
             model: effectiveModelId,
-            timeoutMs: 60_000,
-            stallTimeoutMs: 25_000,
+            // Gemma 4 2B on a mid-tier Android CPU can take 40–90s before the
+            // first token appears on a cold context. Bumping the watchdogs so
+            // we don't kill a perfectly healthy generation.
+            timeoutMs: 180_000,
+            stallTimeoutMs: 90_000,
             signal: localAbort.signal,
           })) {
             if (localAbort.signal.aborted || responseInterruptedRef.current) break;

@@ -1,10 +1,8 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuthStore } from '../stores/authStore';
 import { AuthStackParamList, OnboardingStackParamList, RootStackParamList } from './types';
 import { DrawerNavigator } from './DrawerNavigator';
-import { GlobalFloatingBall } from '../components/GlobalFloatingBall';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { AuthCallbackScreen } from '../screens/auth/AuthCallbackScreen';
 import { InvitationGateScreen } from '../screens/auth/InvitationGateScreen';
@@ -42,17 +40,13 @@ function OnboardingNavigator() {
 }
 
 function MainWithFloatingBall() {
-  return (
-    <View style={floatStyles.wrapper}>
-      <DrawerNavigator />
-      <GlobalFloatingBall />
-    </View>
-  );
+  // User requirement: NO in-app floating ball. The floating ball should
+  // only appear on the Android system desktop (via the foreground
+  // overlay service), not over the app UI. We used to wrap the
+  // navigator with <GlobalFloatingBall/>, which produced the overlay
+  // that the user saw inside the conversation screens — remove it.
+  return <DrawerNavigator />;
 }
-
-const floatStyles = StyleSheet.create({
-  wrapper: { flex: 1 },
-});
 
 export function RootNavigator() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);

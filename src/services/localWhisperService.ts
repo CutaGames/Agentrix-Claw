@@ -116,7 +116,15 @@ export const LocalWhisperService = {
     // Map language hint — whisper uses ISO-639-1 codes (e.g. 'zh', 'en')
     const language = languageHint && languageHint !== 'auto' ? languageHint : undefined;
 
-    const { stop, promise } = activeContext.transcribe(audioUri, language ? { language } : {});
+    // whisper.rn's `transcribe(audioPath)` expects a plain filesystem path,
+    // not a `file://` URI. Passing the URI as-is causes whisper.rn to treat
+    // it as an inline base64 string and fail with "Illegal base64 character
+    // 3a" (hex 3a = ':' in "file:"). Strip the scheme before handing off.
+    const audioPath = audioUri.startsWith('file://')
+      ? decodeURIComponent(audioUri.replace(/^file:\/+/, '/'))
+      : audioUri;
+
+    const { stop, promise } = activeContext.transcribe(audioPath, language ? { language } : {});
 
     addVoiceDiagnostic('local-whisper', 'transcribe-start', { modelId, language: language || 'auto' });
 
