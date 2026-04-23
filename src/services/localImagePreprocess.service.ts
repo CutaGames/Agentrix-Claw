@@ -6,18 +6,37 @@ import { addVoiceDiagnostic } from './voiceDiagnostics';
  * Aggressively downscale a device image before feeding it to the on-device
  * mmproj image encoder.
  *
- * Why: Gemma 4 mmproj runs at `image_max_tokens=512` → roughly a 448×448
- * patchified image. Feeding a 4000×3000 / 2.4 MB JPEG wastes a lot of CPU on
- * decode + resize that llama.cpp will throw away anyway. By the time we hand
- * mmproj a ~768px JPEG (~150-250 KB), the encode time on an 8-core Android
- * CPU drops from ~2-3 min to ~20-40 s for the first token, which is the
- * difference between "usable" and "users think it crashed".
+ * Why per-model tuning:
+ *   - Gemma 4 mmproj: `image_max_tokens=512` → ~448×448 patchified. 768px JPEG
+ *     Q0.85 gives ~20–40s first-token on 8-core Android CPU.
+ *   - Qwen2.5-Omni 3B / 3.5-Omni-Light: dynamic ViT packs up to ~1280 tokens
+ *     for a 768px image, which combined with the Q8 projector can push first
+ *     token past 240s on mid-tier Android. We cap these models at 512px JPEG
+ *     Q0.80 (≈60–100 KB), which together with `image_max_tokens=256` on the
+ *     native bridge keeps them in the 30–60s range.
  *
  * This only runs when the input URI points at a real file (file://, content://)
  * — we leave data: URIs alone because they are typically already pre-scaled.
  */
+const MODEL_PREPROCESS_PROFILE: Record<string, { width: number; quality: number }> = {
+  'qwen2.5-omni-3b': { width: 512, quality: 0.80 },
+  'qwen3.5-omni-light': { width: 512, quality: 0.80 },
+  // Gemma variants keep the historical 768/0.85 profile.
+  'gemma-4-2b': { width: 768, quality: 0.85 },
+  'gemma-4-4b': { width: 768, quality: 0.85 },
+  'gemma-nano-2b': { width: 768, quality: 0.85 },
+};
+const DEFAULT_PREPROCESS_PROFILE = { width: 768, quality: 0.85 } as const;
+
 export const LocalImagePreprocessService = {
-  async downscaleForLocalVision(uri: string): Promise<string> {
+  getProfile(modelId?: string | null): { width: number; quality: number } {
+    if (modelId && MODEL_PREPROCESS_PROFILE[modelId]) {
+      return MODEL_PREPROCESS_PROFILE[modelId];
+    }
+    return { ...DEFAULT_PREPROCESS_PROFILE };
+  },
+
+  async downscaleForLocalVision(uri: string, modelId?: string | null): Promise<string> {
     if (!uri) {
       return uri;
     }
@@ -28,13 +47,14 @@ export const LocalImagePreprocessService = {
       return uri;
     }
 
+    const profile = LocalImagePreprocessService.getProfile(modelId);
     const startedAt = Date.now();
     try {
       const result = await ImageManipulator.manipulateAsync(
         uri,
-        [{ resize: { width: 768 } }],
+        [{ resize: { width: profile.width } }],
         {
-          compress: 0.85,
+          compress: profile.quality,
           format: ImageManipulator.SaveFormat.JPEG,
         },
       );
@@ -49,6 +69,9 @@ export const LocalImagePreprocessService = {
 
       addVoiceDiagnostic('local-image-preprocess', 'downscale-ok', {
         from: uri.slice(0, 80),
+        modelId: modelId || null,
+        profileWidth: profile.width,
+        profileQuality: profile.quality,
         toWidth: result.width,
         toHeight: result.height,
         bytes,

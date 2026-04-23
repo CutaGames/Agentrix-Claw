@@ -207,11 +207,13 @@ export async function buildLocalUserContent(
       && isImageAttachment(attachment)
       && (!runtimeCapabilities || runtimeCapabilities.supportsVisionInput)
     ) {
-      // Downscale to ~768px JPEG before handing to mmproj. Gemma 4's image
-      // encoder only needs ≤512 tokens (~448×448), so a 4000×3000 phone photo
-      // is just wasted decode/resize work inside llama.cpp.
+      // Downscale before handing to mmproj. Per-model profile: Gemma stays at
+      // ~768px/Q0.85; Qwen2.5-Omni and Qwen3.5-Omni-Light drop to ~512px/Q0.80
+      // because their dynamic ViT + Q8 projector otherwise push first-token
+      // past 240s on mid-tier Android CPUs.
       const preparedUri = await LocalImagePreprocessService.downscaleForLocalVision(
         attachment.localUri!,
+        modelId,
       );
       content.push({
         type: 'image_url',
@@ -233,7 +235,7 @@ export async function buildLocalUserContent(
           text: `[Video: ${attachment.originalName}, ${frames.length} frames extracted at ~1fps]`,
         });
         for (const frame of frames) {
-          const preparedFrameUri = await LocalImagePreprocessService.downscaleForLocalVision(frame.uri);
+          const preparedFrameUri = await LocalImagePreprocessService.downscaleForLocalVision(frame.uri, modelId);
           content.push({
             type: 'image_url',
             image_url: { url: preparedFrameUri },

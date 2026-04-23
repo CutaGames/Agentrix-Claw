@@ -369,12 +369,22 @@ async function ensureMultimodalSupport(
         ? [{ use_gpu: false }]
         : [{ use_gpu: true }, { use_gpu: false }];
 
+      // Per-model `image_max_tokens`. Qwen2.5-Omni / 3.5-Omni-Light use a
+      // dynamic ViT that can pack ~1280 tokens per 768px image — in practice
+      // 256 tokens is more than enough for mobile-grade photos and cuts
+      // first-token latency roughly in half on Android CPU. Gemma 4 keeps the
+      // original 512 because its encoder saturates around 448×448.
+      const imageMaxTokens = modelId === 'qwen2.5-omni-3b' || modelId === 'qwen3.5-omni-light'
+        ? 256
+        : 512;
+
       const attemptDiagnostics: Array<{ candidate: string; use_gpu: boolean; ok: boolean; error?: string; ms: number }> = [];
       const initStartedAt = Date.now();
       addVoiceDiagnostic('local-model-runtime', 'multimodal-init-start', {
         modelId,
         projectorPath,
         candidates: projectorPathCandidates.length,
+        imageMaxTokens,
       });
 
       for (const candidate of projectorPathCandidates) {
@@ -384,7 +394,7 @@ async function ensureMultimodalSupport(
             activeMultimodalInitialized = await extendedContext.initMultimodal({
               path: candidate,
               use_gpu: attempt.use_gpu,
-              image_max_tokens: 512,
+              image_max_tokens: imageMaxTokens,
             });
             attemptDiagnostics.push({
               candidate,

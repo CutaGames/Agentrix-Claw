@@ -36,7 +36,7 @@ import { AgentOrchestrationService } from '../agent-orchestration/agent-orchestr
 import { LlmRouterService } from '../llm-router/llm-router.service';
 import { CostTrackerService } from '../cost-tracker/cost-tracker.service';
 import { RuntimeSeamService } from '../query-engine/runtime-seam.service';
-import { LOCAL_ONLY_MODEL_IDS, isLocalOnlyModel } from '../../common/llm/local-only-models';
+import { LOCAL_ONLY_MODEL_IDS, isLocalOnlyModel, getCloudTwinForLocalModel } from '../../common/llm/local-only-models';
 
 // Phase 4.2 — allow ops to tune the per-instance chat replay window via env.
 // Clamped to [1, 50] so an accidental 0 or runaway value can't bypass the
@@ -1886,6 +1886,17 @@ export class OpenClawProxyService {
       || sanitizedInstanceActiveModel
       || process.env.DEFAULT_MODEL
       || 'claude-haiku-4-5';
+
+    // Preserve 端云一致 (end-cloud consistency) for Qwen-Omni family: when the
+    // client requested a local-only Qwen model but we must fall back to cloud,
+    // prefer the Qwen cloud twin (qwen-vl-max-latest) over the tenant default.
+    if (localOnlyFallbackReason) {
+      const requestedLocal = rawDtoModel || rawPreferredModel || instanceActiveModel || null;
+      const twin = getCloudTwinForLocalModel(requestedLocal);
+      if (twin) {
+        resolvedModel = twin;
+      }
+    }
     let resolvedProvider = agentAccount?.preferredProvider || undefined;
     const requestedProvider = this.inferProviderFromModelId(sanitizedDtoModel);
     const modelBoundProvider = this.inferProviderFromModelId(resolvedModel);

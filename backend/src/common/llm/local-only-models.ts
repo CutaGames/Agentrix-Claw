@@ -29,3 +29,25 @@ export function sanitizeLocalOnlyModel<T extends string | null | undefined>(
   if (!modelId) return undefined as any;
   return (LOCAL_ONLY_MODEL_IDS.has(modelId as string) ? undefined : modelId) as any;
 }
+
+/**
+ * When a local-only model cannot execute server-side, pick a cloud "twin" that
+ * best matches the local model's capability profile. This keeps the cross-device
+ * (端云一致) experience: a user running `qwen2.5-omni-3b` on a phone with no
+ * local runtime still gets Qwen's multimodal behavior on the server instead of
+ * a Claude/GPT default which would break tone/language alignment.
+ *
+ * Returns `null` if no mapping exists — caller should fall back to the agent
+ * account's default model.
+ */
+const LOCAL_TO_CLOUD_TWIN: Record<string, string> = {
+  'qwen2.5-omni-3b': 'qwen-vl-max-latest',
+  'qwen3.5-omni-light': 'qwen-vl-max-latest',
+  // Gemma family has no Alibaba/Anthropic-free vision twin on par; leave
+  // unmapped so the agent account's preferred cloud model is used.
+};
+
+export function getCloudTwinForLocalModel(modelId?: string | null): string | null {
+  if (!modelId) return null;
+  return LOCAL_TO_CLOUD_TWIN[modelId] ?? null;
+}

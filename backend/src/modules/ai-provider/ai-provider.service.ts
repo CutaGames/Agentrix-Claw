@@ -310,6 +310,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     models: [
       { id: 'qwen-3.5-max', label: 'Qwen 3.5 Max (最强)', contextWindow: 252000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥2.5', outputPrice: '¥10.0', positioning: '开源榜第一/全能', freeApi: true, freeNote: '新用户100万免费' },
+      { id: 'qwen-vl-max-latest', label: 'Qwen VL Max (原生多模态)', contextWindow: 128000, costTier: 'medium', capabilities: ['chat', 'vision', 'audio_input', 'function_calling'], multimodal: true, inputPrice: '¥3.0', outputPrice: '¥9.0', positioning: '端云一致/图像+音频原生理解/Qwen2.5-Omni 3B 的云端孪生', freeApi: true, freeNote: '新用户100万免费' },
       { id: 'qwen-flash', label: 'Qwen Flash', contextWindow: 256000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '¥0.15', outputPrice: '¥1.5', positioning: '极速/超低成本' },
     ],
   },
