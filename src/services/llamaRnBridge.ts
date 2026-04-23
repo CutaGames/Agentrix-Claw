@@ -357,6 +357,10 @@ async function ensureMultimodalSupport(
     if (!activeMultimodalInitialized) {
       const projectorPath = OtaModelDownloadService.getMultimodalProjectorPath(modelId);
       if (!projectorPath) {
+        addVoiceDiagnostic('local-model-runtime', 'multimodal-init-skipped', {
+          modelId,
+          reason: 'projector-path-missing',
+        });
         return { vision: false, audio: false };
       }
 
@@ -365,16 +369,38 @@ async function ensureMultimodalSupport(
         ? [{ use_gpu: false }]
         : [{ use_gpu: true }, { use_gpu: false }];
 
+      const attemptDiagnostics: Array<{ candidate: string; use_gpu: boolean; ok: boolean; error?: string; ms: number }> = [];
+      const initStartedAt = Date.now();
+      addVoiceDiagnostic('local-model-runtime', 'multimodal-init-start', {
+        modelId,
+        projectorPath,
+        candidates: projectorPathCandidates.length,
+      });
+
       for (const candidate of projectorPathCandidates) {
         for (const attempt of multimodalInitAttempts) {
+          const attemptStartedAt = Date.now();
           try {
             activeMultimodalInitialized = await extendedContext.initMultimodal({
               path: candidate,
               use_gpu: attempt.use_gpu,
               image_max_tokens: 512,
             });
-          } catch {
+            attemptDiagnostics.push({
+              candidate,
+              use_gpu: attempt.use_gpu,
+              ok: activeMultimodalInitialized,
+              ms: Date.now() - attemptStartedAt,
+            });
+          } catch (error) {
             activeMultimodalInitialized = false;
+            attemptDiagnostics.push({
+              candidate,
+              use_gpu: attempt.use_gpu,
+              ok: false,
+              error: formatUnknownError(error) || 'initMultimodal-threw',
+              ms: Date.now() - attemptStartedAt,
+            });
           }
 
           if (activeMultimodalInitialized) {
@@ -386,15 +412,28 @@ async function ensureMultimodalSupport(
           break;
         }
       }
+
+      addVoiceDiagnostic('local-model-runtime', 'multimodal-init-result', {
+        modelId,
+        success: activeMultimodalInitialized,
+        totalMs: Date.now() - initStartedAt,
+        attempts: attemptDiagnostics,
+      });
     }
 
     if (!activeMultimodalInitialized) {
       return { vision: false, audio: false };
     }
 
-    return await extendedContext.getMultimodalSupport();
-  } catch {
+    const support = await extendedContext.getMultimodalSupport();
+    addVoiceDiagnostic('local-model-runtime', 'multimodal-support', { modelId, ...support });
+    return support;
+  } catch (error) {
     activeMultimodalInitialized = false;
+    addVoiceDiagnostic('local-model-runtime', 'multimodal-init-exception', {
+      modelId,
+      error: formatUnknownError(error) || 'unknown',
+    });
     return { vision: false, audio: false };
   }
 }

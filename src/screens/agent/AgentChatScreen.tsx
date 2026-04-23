@@ -1862,24 +1862,38 @@ export function AgentChatScreen() {
           setResolvedModelLabel(localModelLabel);
         }
         let localAssistantText = '';
-        const localUserContent = await buildLocalUserContent(text, attachments, localRuntimeSnapshot || undefined);
+        const localUserContent = await buildLocalUserContent(text, attachments, localRuntimeSnapshot || undefined, effectiveModelId);
 
         // Show a clear progress placeholder for multimodal turns so users
         // don't interpret the slow first-token path (mmproj image encoding
         // takes 1–3 min on a phone CPU) as the app being frozen.
         const placeholderIsMultimodal = Array.isArray(localUserContent)
           && localUserContent.some((p) => p.type === 'image_url' || p.type === 'input_audio');
+        const placeholderHasImage = Array.isArray(localUserContent)
+          && localUserContent.some((p) => p.type === 'image_url');
+        let progressTickerId: ReturnType<typeof setInterval> | null = null;
+        const progressStartedAt = Date.now();
         if (placeholderIsMultimodal) {
+          const renderPlaceholder = (elapsedSec: number) => {
+            const expected = placeholderHasImage
+              ? t({ en: 'image ~30–60 s after first run', zh: '图片首轮约 30-60 秒，已缓存后再发同张图会更快' })
+              : t({ en: 'audio ~10–25 s typical', zh: '音频通常 10-25 秒' });
+            return t({
+              en: `🖼️ Encoding on-device… ${elapsedSec}s elapsed (${expected}). Keep the app in the foreground for best speed.\n`,
+              zh: `🖼️ 正在端侧处理…已用 ${elapsedSec} 秒（${expected}）。请保持前台以获得最佳速度。\n`,
+            });
+          };
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId
-                ? { ...m, content: t({
-                    en: '🖼️ Encoding media on-device… this can take 1–3 min on phone CPU for the first turn.\n',
-                    zh: '🖼️ 正在端侧处理图片/音频…手机 CPU 首次编码约需 1-3 分钟，请耐心等待。\n',
-                  }), streaming: true }
-                : m
-            )
+            prev.map((m) => (m.id === assistantMsgId ? { ...m, content: renderPlaceholder(0), streaming: true } : m))
           );
+          progressTickerId = setInterval(() => {
+            const elapsedSec = Math.round((Date.now() - progressStartedAt) / 1000);
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantMsgId && !m.error
+                ? { ...m, content: renderPlaceholder(elapsedSec), streaming: true }
+                : m))
+            );
+          }, 2000);
         }
 
         const rawLocalHistory = currentMsgs
@@ -1894,7 +1908,7 @@ export function AgentChatScreen() {
         const localHistory = await Promise.all(trimmedHistory.map(async (message) => ({
           role: message.role as 'user' | 'assistant',
           content: message.role === 'user'
-            ? await buildLocalUserContent(message.content, [], localRuntimeSnapshot || undefined)
+            ? await buildLocalUserContent(message.content, [], localRuntimeSnapshot || undefined, effectiveModelId)
             : message.content,
         })));
 
@@ -1926,8 +1940,15 @@ export function AgentChatScreen() {
           // turns keep the tighter bounds so stuck runs still get aborted.
           const isMultimodalTurn = Array.isArray(localUserContent)
             && localUserContent.some((p) => p.type === 'image_url' || p.type === 'input_audio');
-          const localTurnTimeoutMs = isMultimodalTurn ? 600_000 : 180_000;
-          const localTurnStallMs = isMultimodalTurn ? 300_000 : 90_000;
+          // In 'auto' mode with cloud fallback available, fail fast to cloud
+          // instead of making the user wait the full 5-min stall budget.
+          const canFailFastToCloud = tierDecision.allowCloudFallback && executionMode === 'auto';
+          const localTurnTimeoutMs = isMultimodalTurn
+            ? (canFailFastToCloud ? 240_000 : 600_000)
+            : 180_000;
+          const localTurnStallMs = isMultimodalTurn
+            ? (canFailFastToCloud ? 120_000 : 300_000)
+            : 90_000;
 
           // Direct streaming — the primary local inference path.
           // Tool calling is disabled for now: Gemma 4's Generic format handler
@@ -1946,6 +1967,10 @@ export function AgentChatScreen() {
             // On the first real visible token, clear the multimodal
             // "encoding…" placeholder so we don't prepend it to the answer.
             if (!localProducedOutput && placeholderIsMultimodal) {
+              if (progressTickerId) {
+                clearInterval(progressTickerId);
+                progressTickerId = null;
+              }
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantMsgId ? { ...m, content: '', streaming: true } : m
@@ -2008,6 +2033,10 @@ export function AgentChatScreen() {
             reason: finalAssistant ? 'ok' : 'empty-output',
           });
         } catch (error: any) {
+          if (progressTickerId) {
+            clearInterval(progressTickerId);
+            progressTickerId = null;
+          }
           if (responseInterruptedRef.current || localAbort.signal.aborted) {
             trackLocalInferenceOutcome({
               platform: 'mobile',

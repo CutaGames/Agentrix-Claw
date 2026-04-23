@@ -5,6 +5,7 @@ import type {
   MobileLocalRuntimeCapabilities,
 } from './mobileLocalInference.service';
 import { extractVideoFrames, isVideoFrameExtractionAvailable } from './videoFrameExtraction.service';
+import { LocalImagePreprocessService } from './localImagePreprocess.service';
 
 
 
@@ -186,6 +187,7 @@ export async function buildLocalUserContent(
   text: string,
   attachments: UploadedChatAttachment[],
   runtimeCapabilities?: MobileLocalRuntimeCapabilities,
+  modelId?: string,
 ): Promise<MobileLocalChatContent> {
   const trimmed = text.trim();
   if (attachments.length === 0) {
@@ -205,9 +207,15 @@ export async function buildLocalUserContent(
       && isImageAttachment(attachment)
       && (!runtimeCapabilities || runtimeCapabilities.supportsVisionInput)
     ) {
+      // Downscale to ~768px JPEG before handing to mmproj. Gemma 4's image
+      // encoder only needs ≤512 tokens (~448×448), so a 4000×3000 phone photo
+      // is just wasted decode/resize work inside llama.cpp.
+      const preparedUri = await LocalImagePreprocessService.downscaleForLocalVision(
+        attachment.localUri!,
+      );
       content.push({
         type: 'image_url',
-        image_url: { url: attachment.localUri },
+        image_url: { url: preparedUri },
       });
       continue;
     }
@@ -225,9 +233,10 @@ export async function buildLocalUserContent(
           text: `[Video: ${attachment.originalName}, ${frames.length} frames extracted at ~1fps]`,
         });
         for (const frame of frames) {
+          const preparedFrameUri = await LocalImagePreprocessService.downscaleForLocalVision(frame.uri);
           content.push({
             type: 'image_url',
-            image_url: { url: frame.uri },
+            image_url: { url: preparedFrameUri },
           });
         }
         continue;
@@ -259,9 +268,15 @@ export async function buildLocalUserContent(
     if (hasUsableLocalUri(attachment) && isAudioAttachment(attachment)) {
       try {
         const { LocalWhisperService } = await import('./localWhisperService');
-        if (LocalWhisperService.isAvailableForModel('gemma-4-2b')) {
+        // Resolve the right on-device whisper encoder for the active model
+        // (gemma-4-2b / gemma-4-4b / qwen2.5-omni-3b all ship their own copy).
+        // Fall back to gemma-4-2b because that's the one we ship by default.
+        const candidateModelIds = Array.from(new Set([modelId, 'gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b']
+          .filter((m): m is string => typeof m === 'string' && m.length > 0)));
+        const whisperModelId = candidateModelIds.find((m) => LocalWhisperService.isAvailableForModel(m));
+        if (whisperModelId) {
           const transcript = await LocalWhisperService.transcribe(
-            'gemma-4-2b',
+            whisperModelId,
             attachment.localUri!,
           );
           if (transcript && transcript.trim()) {
