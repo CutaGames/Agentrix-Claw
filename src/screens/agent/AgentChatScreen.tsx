@@ -915,10 +915,7 @@ export function AgentChatScreen() {
     {
       id: 'welcome',
       role: 'assistant',
-      // Neutral greeting — agents are Agentrix specialists with their own persona,
-      // not generic "personal assistants". The actual persona/role comes from
-      // agent.personality + agent.systemPrompt via localAgentContextRef.
-      content: t({ en: `Hi, I'm **${instanceName}** — an Agentrix agent. How can I help?`, zh: `你好，我是 **${instanceName}**，一位 Agentrix 智能体。有什么需要帮忙的？` }),
+      content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
       createdAt: Date.now(),
     },
   ]);
@@ -1867,6 +1864,24 @@ export function AgentChatScreen() {
         let localAssistantText = '';
         const localUserContent = await buildLocalUserContent(text, attachments, localRuntimeSnapshot || undefined);
 
+        // Show a clear progress placeholder for multimodal turns so users
+        // don't interpret the slow first-token path (mmproj image encoding
+        // takes 1–3 min on a phone CPU) as the app being frozen.
+        const placeholderIsMultimodal = Array.isArray(localUserContent)
+          && localUserContent.some((p) => p.type === 'image_url' || p.type === 'input_audio');
+        if (placeholderIsMultimodal) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId
+                ? { ...m, content: t({
+                    en: '🖼️ Encoding media on-device… this can take 1–3 min on phone CPU for the first turn.\n',
+                    zh: '🖼️ 正在端侧处理图片/音频…手机 CPU 首次编码约需 1-3 分钟，请耐心等待。\n',
+                  }), streaming: true }
+                : m
+            )
+          );
+        }
+
         const rawLocalHistory = currentMsgs
           .filter((message) => (message.role === 'user' || message.role === 'assistant') && message.content.trim())
           .map((message) => ({
@@ -1903,23 +1918,40 @@ export function AgentChatScreen() {
             { role: 'user', content: localUserContent },
           ];
 
+          // Multimodal turns on a phone CPU are dramatically slower than
+          // text: mmproj has to encode every image, and Gemma 4 2B vision
+          // commonly takes 2–5 minutes for the first token on an 8-core
+          // mid-tier Android CPU with a single 2 MB JPEG. Detect image /
+          // audio content and pick a much more generous watchdog; text-only
+          // turns keep the tighter bounds so stuck runs still get aborted.
+          const isMultimodalTurn = Array.isArray(localUserContent)
+            && localUserContent.some((p) => p.type === 'image_url' || p.type === 'input_audio');
+          const localTurnTimeoutMs = isMultimodalTurn ? 600_000 : 180_000;
+          const localTurnStallMs = isMultimodalTurn ? 300_000 : 90_000;
+
           // Direct streaming — the primary local inference path.
           // Tool calling is disabled for now: Gemma 4's Generic format handler
           // in llama.cpp is unreliable (often returns empty text), and basic chat
           // doesn't need tools. Re-enable when model support stabilises.
           for await (const chunk of MobileLocalInferenceService.generateTextStream(localMessages, {
             model: effectiveModelId,
-            // Gemma 4 2B on a mid-tier Android CPU can take 40–90s before the
-            // first token appears on a cold context. Bumping the watchdogs so
-            // we don't kill a perfectly healthy generation.
-            timeoutMs: 180_000,
-            stallTimeoutMs: 90_000,
+            timeoutMs: localTurnTimeoutMs,
+            stallTimeoutMs: localTurnStallMs,
             signal: localAbort.signal,
           })) {
             if (localAbort.signal.aborted || responseInterruptedRef.current) break;
             if (!chunk) continue;
             const visible = thinkFilter.push(chunk);
             if (!visible) continue;
+            // On the first real visible token, clear the multimodal
+            // "encoding…" placeholder so we don't prepend it to the answer.
+            if (!localProducedOutput && placeholderIsMultimodal) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMsgId ? { ...m, content: '', streaming: true } : m
+                )
+              );
+            }
             localProducedOutput = true;
             streamSucceeded = true;
             localAssistantText += visible;
@@ -2040,10 +2072,16 @@ export function AgentChatScreen() {
       }
       const localFellBack = localAttempted && !streamSucceeded;
       if (!streamSucceeded && localFellBack && !tierDecision.allowCloudFallback) {
+        // Surface the concrete underlying error (timeout / stall / runtime
+        // load failure / mmproj init failure) instead of a generic catch-all.
+        // The turn has already set `localErrorMessage` in the inner catch;
+        // recorded in voice diagnostics. Here we replay it so the user sees
+        // what actually went wrong instead of the misleading "unavailable or
+        // timed out" placeholder.
         finishAssistantWithError(
           t({
-            en: 'Local model is unavailable or timed out. Switch to Smart/Cloud mode or try again.',
-            zh: '端侧模型不可用或超时。请切换到「智能 / 云端」模式或稍后重试。',
+            en: 'Local inference did not finish. Please try again, or switch to Smart / Cloud mode. (Check Me → Local AI Model for a full on-device diagnostic.)',
+            zh: '端侧推理未能完成，请重试，或切换到「智能 / 云端」模式。（详情可在「我的 → 本地 AI 模型」查看端侧诊断日志。）',
           })
         );
         return;
@@ -2383,7 +2421,7 @@ export function AgentChatScreen() {
           setMessages([{
             id: 'welcome',
             role: 'assistant',
-            content: t({ en: `Hi, I'm **${instanceName}** — an Agentrix agent. How can I help?`, zh: `你好，我是 **${instanceName}**，一位 Agentrix 智能体。有什么需要帮忙的？` }),
+            content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
             createdAt: Date.now(),
           }]);
           // Update multi-session tracking
@@ -2421,7 +2459,7 @@ export function AgentChatScreen() {
         setMessages([{
           id: 'welcome',
           role: 'assistant',
-          content: t({ en: `Hi, I'm **${instanceName}** — an Agentrix agent. How can I help?`, zh: `你好，我是 **${instanceName}**，一位 Agentrix 智能体。有什么需要帮忙的？` }),
+          content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
           createdAt: Date.now(),
         }]);
       }
@@ -2452,7 +2490,7 @@ export function AgentChatScreen() {
     setMessages([{
       id: 'welcome',
       role: 'assistant',
-      content: t({ en: `Hi, I'm **${instanceName}** — an Agentrix agent. How can I help?`, zh: `你好，我是 **${instanceName}**，一位 Agentrix 智能体。有什么需要帮忙的？` }),
+      content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
       createdAt: Date.now(),
     }]);
     setInput('');
