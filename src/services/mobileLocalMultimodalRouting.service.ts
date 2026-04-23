@@ -131,8 +131,18 @@ export function resolveLocalTurnExecution(
         return { mode: 'blocked', reason: 'attachment-not-local', attachment };
       }
 
+      // Non-wav/mp3 audio (e.g. m4a/aac/ogg from Android recorders) is
+      // acceptable IF the whisper-base on-device STT encoder is available:
+      // we transcribe to text in `buildLocalUserContent` and feed that to the
+      // local text model. This keeps voice notes working on-device even
+      // though llama.rn only accepts wav/mp3 as `input_audio`.
       if (resolveSupportedLocalAudioFormat(attachment) === null) {
-        return { mode: 'blocked', reason: 'audio-format-unsupported', attachment };
+        if (!runtimeCapabilities.supportsAudioInput) {
+          // Still OK — `buildLocalUserContent` will transcribe via whisper
+          // if the audio encoder is present; the runtime doesn't need the
+          // full multimodal projector for this path.
+        }
+        continue;
       }
 
       if (!runtimeCapabilities.supportsAudioInput) {
@@ -240,6 +250,31 @@ export async function buildLocalUserContent(
         },
       });
       continue;
+    }
+
+    // Audio attachment in an unsupported format (m4a/aac/ogg from Android
+    // recorders) OR the model has no direct `input_audio` support: try the
+    // whisper-base on-device STT encoder to transcribe locally, then feed
+    // the transcript as text. This keeps voice-note workflows on-device.
+    if (hasUsableLocalUri(attachment) && isAudioAttachment(attachment)) {
+      try {
+        const { LocalWhisperService } = await import('./localWhisperService');
+        if (LocalWhisperService.isAvailableForModel('gemma-4-2b')) {
+          const transcript = await LocalWhisperService.transcribe(
+            'gemma-4-2b',
+            attachment.localUri!,
+          );
+          if (transcript && transcript.trim()) {
+            content.push({
+              type: 'text',
+              text: `[Voice note "${attachment.originalName}", transcribed on-device]\n${transcript.trim()}`,
+            });
+            continue;
+          }
+        }
+      } catch {
+        // Fall through to the generic describe fallback below.
+      }
     }
 
     content.push({

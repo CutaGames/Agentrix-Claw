@@ -915,7 +915,10 @@ export function AgentChatScreen() {
     {
       id: 'welcome',
       role: 'assistant',
-      content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
+      // Neutral greeting — agents are Agentrix specialists with their own persona,
+      // not generic "personal assistants". The actual persona/role comes from
+      // agent.personality + agent.systemPrompt via localAgentContextRef.
+      content: t({ en: `Hi, I'm **${instanceName}** — an Agentrix agent. How can I help?`, zh: `你好，我是 **${instanceName}**，一位 Agentrix 智能体。有什么需要帮忙的？` }),
       createdAt: Date.now(),
     },
   ]);
@@ -1817,12 +1820,32 @@ export function AgentChatScreen() {
           reason: `local-turn-blocked:${localTurnDecision.reason}`,
         });
         if (!tierDecision.allowCloudFallback) {
-          finishAssistantWithError(
-            t({
-              en: 'This local model cannot handle this turn. Switch to Smart/Cloud mode or adjust the request.',
-              zh: '当前端侧模型无法处理此轮。请切换到「智能 / 云端」模式或调整输入。',
-            })
-          );
+          const reason = localTurnDecision.reason;
+          const blockedMessage = reason === 'projector-required'
+            ? t({
+                en: 'This local model cannot see images yet — the vision add-on (≈986 MB) has not been downloaded. Open "Me → Local AI Model" to download it, or switch to Smart / Cloud mode.',
+                zh: '端侧模型暂时看不到图片：尚未下载视觉插件（约 986 MB）。请到「我的 → 本地 AI 模型」下载完整包，或切换到「智能 / 云端」模式。',
+              })
+            : reason === 'audio-format-unsupported'
+            ? t({
+                en: 'This audio format isn\'t supported on-device yet. Record or convert to wav/mp3, or switch to Smart / Cloud mode.',
+                zh: '端侧模型暂时不支持该音频格式，请使用 wav/mp3，或切换到「智能 / 云端」模式。',
+              })
+            : reason === 'audio-input-unavailable'
+            ? t({
+                en: 'On-device audio input is not enabled for this local model. Download the full multimodal package or switch to Smart / Cloud mode.',
+                zh: '当前端侧模型未启用直连音频输入。请下载完整多模态包，或切换到「智能 / 云端」模式。',
+              })
+            : reason === 'attachment-not-local'
+            ? t({
+                en: 'This attachment can\'t be read locally. Pick it from your device library or switch to Smart / Cloud mode.',
+                zh: '该附件无法在本地读取，请从设备相册/文件选择，或切换到「智能 / 云端」模式。',
+              })
+            : t({
+                en: 'This local model cannot handle this turn. Switch to Smart / Cloud mode or adjust the request.',
+                zh: '当前端侧模型无法处理此轮。请切换到「智能 / 云端」模式或调整输入。',
+              });
+          finishAssistantWithError(blockedMessage);
           return;
         }
         setMessages((prev) =>
@@ -2360,7 +2383,7 @@ export function AgentChatScreen() {
           setMessages([{
             id: 'welcome',
             role: 'assistant',
-            content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
+            content: t({ en: `Hi, I'm **${instanceName}** — an Agentrix agent. How can I help?`, zh: `你好，我是 **${instanceName}**，一位 Agentrix 智能体。有什么需要帮忙的？` }),
             createdAt: Date.now(),
           }]);
           // Update multi-session tracking
@@ -2398,7 +2421,7 @@ export function AgentChatScreen() {
         setMessages([{
           id: 'welcome',
           role: 'assistant',
-          content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
+          content: t({ en: `Hi, I'm **${instanceName}** — an Agentrix agent. How can I help?`, zh: `你好，我是 **${instanceName}**，一位 Agentrix 智能体。有什么需要帮忙的？` }),
           createdAt: Date.now(),
         }]);
       }
@@ -2429,7 +2452,7 @@ export function AgentChatScreen() {
     setMessages([{
       id: 'welcome',
       role: 'assistant',
-      content: t({ en: `Hi! I'm **${instanceName}**, your personal AI agent. What would you like to do next?`, zh: `你好！我是 **${instanceName}**，你的个人智能体。接下来想让我帮你做什么？` }),
+      content: t({ en: `Hi, I'm **${instanceName}** — an Agentrix agent. How can I help?`, zh: `你好，我是 **${instanceName}**，一位 Agentrix 智能体。有什么需要帮忙的？` }),
       createdAt: Date.now(),
     }]);
     setInput('');
