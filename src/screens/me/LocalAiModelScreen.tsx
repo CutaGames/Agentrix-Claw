@@ -46,6 +46,12 @@ const AVAILABLE_MODELS: LocalModelInfo[] = [
     tier: 'LOCAL',
   },
   {
+    id: 'qwen3.5-omni-light',
+    name: 'Qwen 3.5 Omni Light (Beta)',
+    parameters: '～3B',
+    description: '端侧多模态对话模型（占位，等待官方 GGUF 发布）',
+  },
+  {
     id: 'qwen2.5-omni-3b',
     name: 'Qwen 2.5 Omni 3B',
     descriptionEn: 'Audio-first local multimodal package. The full bundle adds wav/mp3 audio input plus a real on-device speech-output stack (OuteTTS + WavTokenizer) instead of the old Expo speech fallback.',

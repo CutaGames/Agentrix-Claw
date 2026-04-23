@@ -269,9 +269,9 @@ export async function buildLocalUserContent(
       try {
         const { LocalWhisperService } = await import('./localWhisperService');
         // Resolve the right on-device whisper encoder for the active model
-        // (gemma-4-2b / gemma-4-4b / qwen2.5-omni-3b all ship their own copy).
+        // (gemma-4-2b / gemma-4-4b / qwen2.5-omni-3b / qwen3.5-omni-light all ship their own copy).
         // Fall back to gemma-4-2b because that's the one we ship by default.
-        const candidateModelIds = Array.from(new Set([modelId, 'gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b']
+        const candidateModelIds = Array.from(new Set([modelId, 'gemma-4-2b', 'gemma-4-4b', 'qwen3.5-omni-light', 'qwen2.5-omni-3b']
           .filter((m): m is string => typeof m === 'string' && m.length > 0)));
         const whisperModelId = candidateModelIds.find((m) => LocalWhisperService.isAvailableForModel(m));
         if (whisperModelId) {

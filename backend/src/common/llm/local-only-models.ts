@@ -14,6 +14,7 @@ export const LOCAL_ONLY_MODEL_IDS: ReadonlySet<string> = new Set([
   'gemma-nano-2b',
   'gemma-4-2b',
   'gemma-4-4b',
+  'qwen3.5-omni-light',
   'qwen2.5-omni-3b',
   'gemma-nano-2b-local',
 ]);

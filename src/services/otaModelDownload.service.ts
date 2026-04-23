@@ -140,6 +140,22 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
       sizeLabel: '990 MB',
     },
   },
+  'qwen3.5-omni-light': {
+    id: 'qwen3.5-omni-light',
+    name: 'Qwen3.5 Omni Light (Coming Soon)',
+    filename: 'Qwen3.5-Omni-3B-Q4_K_M.gguf', // Placeholder, await HF release
+    parameters: '～3B',
+    format: 'GGUF',
+    cdnBase: 'https://hf-mirror.com/ggml-org/Qwen3.5-Omni-3B-GGUF/resolve/main',
+    mmproj: {
+      filename: 'mmproj-Qwen3.5-Omni-3B-Q8_0.gguf',
+      cdnBase: 'https://hf-mirror.com/ggml-org/Qwen3.5-Omni-3B-GGUF/resolve/main',
+    },
+    audioEncoder: {
+      filename: 'ggml-base-q5_1.bin',
+      cdnBase: 'https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main',
+    }
+  },
   'qwen2.5-omni-3b': {
     id: 'qwen2.5-omni-3b',
     name: 'Qwen2.5 Omni 3B (Q4_K_M)',

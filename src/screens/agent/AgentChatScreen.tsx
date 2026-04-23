@@ -72,6 +72,7 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
   MobileLocalInferenceService.modelId,
   'gemma-4-2b',
   'gemma-4-4b',
+  'qwen3.5-omni-light', // placeholder for future official release or community 3B
   'qwen2.5-omni-3b',
   'gemma-nano-2b',
   'gemma-nano-2b-local',
@@ -118,6 +119,8 @@ function isLocalOnlyModelId(modelId?: string | null) {
 
 function getLocalModelLabel(modelId: string) {
   switch (modelId) {
+    case 'qwen3.5-omni-light':
+      return 'Qwen 3.5 Omni Light (Local)';
     case 'qwen2.5-omni-3b':
       return 'Qwen 2.5 Omni 3B (Local)';
     case 'gemma-4-4b':

@@ -20,7 +20,7 @@ import { useI18n } from '../../stores/i18nStore';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentConsole'>;
 
-const LOCAL_ONLY_MODEL_IDS = new Set(['gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b', 'gemma-nano-2b', 'gemma-nano-2b-local']);
+const LOCAL_ONLY_MODEL_IDS = new Set(['gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b', 'qwen3.5-omni-light', 'gemma-nano-2b', 'gemma-nano-2b-local']);
 
 function isLocalOnlyModelId(modelId?: string | null) {
   return !!modelId && LOCAL_ONLY_MODEL_IDS.has(modelId);

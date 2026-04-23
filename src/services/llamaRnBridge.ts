@@ -574,7 +574,7 @@ async function toNormalizedCompletionMessages(
 
 // ── Bridge Implementation ──────────────────────────────
 
-const KNOWN_MODEL_IDS = ['gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b'];
+const KNOWN_MODEL_IDS = ['gemma-4-2b', 'gemma-4-4b', 'qwen2.5-omni-3b', 'qwen3.5-omni-light'];
 
 function getBridgeCapabilities(options?: { model?: string }): Partial<MobileLocalRuntimeCapabilities> {
   const modelId = resolveCapabilityModelId(options?.model);
