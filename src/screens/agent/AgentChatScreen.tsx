@@ -1614,6 +1614,18 @@ export function AgentChatScreen() {
   }) => {
     try {
       setUploadingAttachment(true);
+
+      // Kick off mmproj projector pre-warming in parallel with the upload.
+      // For image / audio attachments on a local multimodal model, this
+      // overlaps the ~10–20 s projector load with the user still composing
+      // their prompt, removing it from the first-token critical path.
+      const isImage = localAttachment.mimeType.startsWith('image/');
+      const isAudio = localAttachment.mimeType.startsWith('audio/');
+      const activeLocalModel = localAiModelId;
+      if ((isImage || isAudio) && activeLocalModel && isLocalOnlyModelId(activeLocalModel)) {
+        MobileLocalInferenceService.prewarmMultimodal(activeLocalModel);
+      }
+
       const uploaded = await uploadChatAttachment({
         uri: localAttachment.uri,
         name: localAttachment.fileName,
@@ -1626,7 +1638,7 @@ export function AgentChatScreen() {
     } finally {
       setUploadingAttachment(false);
     }
-  }, [t]);
+  }, [t, localAiModelId]);
 
   const removePendingAttachment = useCallback((fileName: string) => {
     setPendingAttachments((prev) => prev.filter((attachment) => attachment.fileName !== fileName));
@@ -1906,8 +1918,19 @@ export function AgentChatScreen() {
             content: message.content,
           }));
 
+        // Multimodal turns (image / audio): skip all prior chat history.
+        // Rationale: image+history can easily exceed 2k context tokens, and
+        // each extra token adds ~30–80 ms on Android CPU for Qwen2.5-Omni 3B
+        // before the first output token. History almost never helps a vision
+        // answer; the visible question + the image is what matters. For
+        // text-only turns keep the normal budget so conversation continuity
+        // stays intact.
+        const isMultimodalUserTurn = Array.isArray(localUserContent)
+          && localUserContent.some((p) => p.type === 'image_url' || p.type === 'input_audio');
         const userTokens = estimateTokens(typeof localUserContent === 'string' ? localUserContent : text);
-        const trimmedHistory = trimHistoryToTokenBudget(rawLocalHistory, userTokens);
+        const trimmedHistory = isMultimodalUserTurn
+          ? []
+          : trimHistoryToTokenBudget(rawLocalHistory, userTokens);
         const localHistory = await Promise.all(trimmedHistory.map(async (message) => ({
           role: message.role as 'user' | 'assistant',
           content: message.role === 'user'
@@ -1957,10 +1980,17 @@ export function AgentChatScreen() {
           // Tool calling is disabled for now: Gemma 4's Generic format handler
           // in llama.cpp is unreliable (often returns empty text), and basic chat
           // doesn't need tools. Re-enable when model support stabilises.
+          //
+          // Multimodal output cap: a phone doesn't need a 2000-token essay
+          // about a photo. Capping image / audio turns at 384 output tokens
+          // saves ~30s of generation time on Android CPU and keeps answers
+          // chat-appropriate.
+          const localMaxTokens = isMultimodalTurn ? 384 : undefined;
           for await (const chunk of MobileLocalInferenceService.generateTextStream(localMessages, {
             model: effectiveModelId,
             timeoutMs: localTurnTimeoutMs,
             stallTimeoutMs: localTurnStallMs,
+            maxTokens: localMaxTokens,
             signal: localAbort.signal,
           })) {
             if (localAbort.signal.aborted || responseInterruptedRef.current) break;

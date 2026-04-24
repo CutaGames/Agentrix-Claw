@@ -255,6 +255,41 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     };
   }, []);
 
+  // Global watchdog: if `voicePhase` is stuck on 'transcribing' for more than
+  // 20s — typical causes are a silently-dropped speech-recognition callback,
+  // a stalled cloud STT request where the timeout promise never won the race,
+  // or a local Whisper context that never returned — force the UI back to
+  // idle with a clear error so the user isn't staring at "正在转写你的语音…"
+  // forever. If there is an interim preview transcript, promote it to the
+  // final message instead of dropping the turn.
+  useEffect(() => {
+    if (voicePhase !== 'transcribing') return;
+    const timer = setTimeout(() => {
+      if (!isMountedRef.current) return;
+      if (voicePhase !== 'transcribing') return;
+      const interim = transcriptPreview?.trim() || '';
+      addVoiceDiagnostic('voice-session', 'transcribing-watchdog-fired', {
+        hasInterim: interim.length > 0,
+        interimChars: interim.length,
+      });
+      if (interim && interim !== '[Local voice message]' && interim !== '[本地语音消息]') {
+        setVoicePhase('thinking');
+        setTimeout(() => onSendMessageRef.current(interim), 40);
+        return;
+      }
+      setVoicePhase('idle');
+      setTranscriptPreview('');
+      try { Alert.alert(
+        t({ en: 'Transcription Timeout', zh: '转写超时' }),
+        t({
+          en: 'Transcription took too long. Please try again or type your message.',
+          zh: '语音转写耗时过长，请重试或直接输入文字。',
+        }),
+      ); } catch {}
+    }, 20_000);
+    return () => clearTimeout(timer);
+  }, [voicePhase, transcriptPreview, t]);
+
   const liveVoiceAvailableRef = useRef(false);
   const sendingRef = useRef(false);
   const backgroundVoiceRef = useRef<BackgroundVoiceService | null>(null);
@@ -1812,6 +1847,28 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         });
 
         const wavUri = await persistDirectLocalAudioCaptureAsWav(directCapture.pcmChunks);
+
+        // ── Native audio path (Qwen2.5-Omni / qwen3.5-omni-light) ─────────
+        // When the on-device model accepts raw audio as an input_audio content
+        // part, bypass STT entirely: hand the WAV straight to the model.
+        // This is the "真正的端云一致原生链路" — no STT round-trip, no
+        // transcription latency, and the model hears the user's actual voice
+        // (tone, pause, language mixing) instead of a lossy text rendering.
+        if (localModelSelected && localAudioInputAvailable) {
+          try {
+            const localAudioAttachment = await buildLocalRecordedAudioAttachment(wavUri);
+            setTranscriptPreview(t({ en: '[Local voice message]', zh: '[本地语音消息]' }));
+            setVoicePhase('thinking');
+            setTimeout(() => onSendMessageRef.current('', [localAudioAttachment]), 60);
+            return;
+          } catch (nativeAudioErr: any) {
+            addVoiceDiagnostic('voice-session', 'hold-local-native-audio-failed', {
+              model: localModelId || 'local-model',
+              error: String(nativeAudioErr?.message || nativeAudioErr),
+            });
+            // Fall through to Whisper / cloud STT below.
+          }
+        }
 
         // ── On-device STT (whisper.rn) ────────────────────────
         // If the whisper-base audio encoder is downloaded alongside the model,

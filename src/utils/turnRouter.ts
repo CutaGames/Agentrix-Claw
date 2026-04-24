@@ -171,12 +171,9 @@ export function classifyTurnForAuto(input: TurnClassificationInput): ExecutionTi
   // Any non-image attachment (PDF, spreadsheet, audio file) → cloud for proper parsing.
   if (input.hasNonImageAttachment) return 'cloud';
 
-  // Image attachments → cloud in auto mode. On-device mmproj for Qwen2.5-Omni 3B
-  // and Gemma 4 2B routinely takes 30–120s for first token on mid-tier Android
-  // CPUs; the Qwen VL Max cloud twin returns in <2s with strictly better
-  // recognition quality. Users who explicitly want on-device image processing
-  // can still force it via the "端侧" execution mode or @local hint.
-  if (input.attachmentCount > 0) return 'cloud';
+  // Images stay on-device: the local Qwen2.5-Omni / Gemma 4 vision path is the
+  // whole point of shipping mmproj. Cloud fallback only happens when the local
+  // runtime isn't ready, via resolveExecutionTier() — not as a default route.
 
   // Very long prompts → cloud context window is larger.
   if (input.approxContextTokens > 6000) return 'cloud';

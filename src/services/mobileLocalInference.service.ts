@@ -51,6 +51,7 @@ type LocalBridgeGenerateResult =
 type LocalBridge = {
   isAvailable?: (options?: { model?: string }) => boolean | Promise<boolean>;
   getCapabilities?: (options?: { model?: string }) => Partial<MobileLocalRuntimeCapabilities> | Promise<Partial<MobileLocalRuntimeCapabilities>>;
+  prewarmMultimodal?: (modelId: string) => Promise<void>;
   generate?: (payload: {
     model?: string;
     messages: MobileLocalChatMessage[];
@@ -355,6 +356,19 @@ export class MobileLocalInferenceService {
     }
 
     return mergeCapabilities(declared, capabilityOverride);
+  }
+
+  /**
+   * Fire-and-forget: pre-load the on-device context + multimodal projector
+   * for `modelId` so subsequent image / audio turns do not pay the 10–20 s
+   * projector-load cost on the critical path. Safe to call repeatedly.
+   */
+  static prewarmMultimodal(modelId: string): void {
+    const resolvedBridge = resolveBridge();
+    const prewarm = resolvedBridge?.bridge.prewarmMultimodal;
+    if (!prewarm) return;
+    // Do not await — the whole point is to overlap with user input.
+    Promise.resolve(prewarm(modelId)).catch(() => {/* best-effort */});
   }
 
   static async getCapabilities(options?: { model?: string }): Promise<MobileLocalRuntimeCapabilities> {

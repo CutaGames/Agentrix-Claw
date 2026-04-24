@@ -370,13 +370,13 @@ async function ensureMultimodalSupport(
         : [{ use_gpu: true }, { use_gpu: false }];
 
       // Per-model `image_max_tokens`. Qwen2.5-Omni / 3.5-Omni-Light use a
-      // dynamic ViT that can pack ~1280 tokens per 768px image — in practice
-      // 256 tokens is more than enough for mobile-grade photos and cuts
-      // first-token latency roughly in half on Android CPU. Gemma 4 keeps the
-      // original 512 because its encoder saturates around 448×448.
+      // dynamic ViT; capping at 128 tokens (paired with the 384px preprocess
+      // profile) gives ~8–15s first-token on Android CPU. Gemma 4 keeps the
+      // larger 384 budget because its encoder saturates at a fixed 448×448
+      // patch grid.
       const imageMaxTokens = modelId === 'qwen2.5-omni-3b' || modelId === 'qwen3.5-omni-light'
-        ? 256
-        : 512;
+        ? 128
+        : 384;
 
       const attemptDiagnostics: Array<{ candidate: string; use_gpu: boolean; ok: boolean; error?: string; ms: number }> = [];
       const initStartedAt = Date.now();
@@ -618,6 +618,34 @@ const bridge = {
       return await ensureRuntimeCapabilities(modelId);
     } catch {
       return getBridgeCapabilities({ model: modelId });
+    }
+  },
+
+  /**
+   * Pre-load the llama context + multimodal projector for a model BEFORE the
+   * user sends their message. Called when an image / audio attachment is
+   * added to the composer so the ~986 MB mmproj load (~10–20 s on Android)
+   * overlaps with the user still typing / thinking.
+   *
+   * Safe to call repeatedly: `getOrLoadContext` and `ensureMultimodalSupport`
+   * are both idempotent (guarded by `activeContext` and `activeMultimodalInitialized`).
+   * Errors are swallowed — this is best-effort warmup, the real inference
+   * path will still retry if prewarm failed.
+   */
+  async prewarmMultimodal(modelId: string): Promise<void> {
+    if (Platform.OS === 'web') return;
+    if (!modelId || !OtaModelDownloadService.isModelDownloaded(modelId)) return;
+    if (!OtaModelDownloadService.hasMultimodalAssets(modelId)) return;
+    try {
+      addVoiceDiagnostic('local-model-runtime', 'multimodal-prewarm-start', { modelId });
+      const context = await getOrLoadContext(modelId, 'multimodal');
+      await ensureMultimodalSupport(context, modelId);
+      addVoiceDiagnostic('local-model-runtime', 'multimodal-prewarm-ok', { modelId });
+    } catch (error) {
+      addVoiceDiagnostic('local-model-runtime', 'multimodal-prewarm-failed', {
+        modelId,
+        error: formatUnknownError(error) || 'prewarm-threw',
+      });
     }
   },
 

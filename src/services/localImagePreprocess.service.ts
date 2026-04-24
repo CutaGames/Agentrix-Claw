@@ -19,14 +19,17 @@ import { addVoiceDiagnostic } from './voiceDiagnostics';
  * — we leave data: URIs alone because they are typically already pre-scaled.
  */
 const MODEL_PREPROCESS_PROFILE: Record<string, { width: number; quality: number }> = {
-  'qwen2.5-omni-3b': { width: 512, quality: 0.80 },
-  'qwen3.5-omni-light': { width: 512, quality: 0.80 },
-  // Gemma variants keep the historical 768/0.85 profile.
-  'gemma-4-2b': { width: 768, quality: 0.85 },
-  'gemma-4-4b': { width: 768, quality: 0.85 },
-  'gemma-nano-2b': { width: 768, quality: 0.85 },
+  // Qwen dynamic ViT: a 384px JPEG → ~64–128 image tokens after patching,
+  // which pairs with `image_max_tokens: 128` in the native bridge to give
+  // ~8–15s first-token on Android CPU (down from 240s+).
+  'qwen2.5-omni-3b': { width: 384, quality: 0.75 },
+  'qwen3.5-omni-light': { width: 384, quality: 0.75 },
+  // Gemma's encoder saturates around 448×448; keep a slightly larger buffer.
+  'gemma-4-2b': { width: 640, quality: 0.80 },
+  'gemma-4-4b': { width: 640, quality: 0.80 },
+  'gemma-nano-2b': { width: 640, quality: 0.80 },
 };
-const DEFAULT_PREPROCESS_PROFILE = { width: 768, quality: 0.85 } as const;
+const DEFAULT_PREPROCESS_PROFILE = { width: 640, quality: 0.80 } as const;
 
 export const LocalImagePreprocessService = {
   getProfile(modelId?: string | null): { width: number; quality: number } {
