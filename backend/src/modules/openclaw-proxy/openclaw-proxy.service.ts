@@ -898,6 +898,19 @@ export class OpenClawProxyService {
           ? { apiKey, baseUrl: process.env.OPENAI_BASE_URL || providerBaseUrl, providerId }
           : undefined;
       }
+      case 'alibaba':
+      case 'bailian-plan': {
+        // Platform-default Qwen key (DashScope, OpenAI-compatible). Set via
+        // `ALIBABA_API_KEY` (preferred) or `DASHSCOPE_API_KEY` in the server
+        // env so Qwen VL Max / Qwen 3.5 Max / Qwen Flash work out-of-the-box
+        // when a user has not configured their own provider credentials.
+        // Critical for mobile end-cloud consistency: qwen2.5-omni-3b local-only
+        // falls back to qwen-vl-max-latest on this provider.
+        const apiKey = process.env.ALIBABA_API_KEY || process.env.DASHSCOPE_API_KEY;
+        return apiKey
+          ? { apiKey, baseUrl: process.env.DASHSCOPE_BASE_URL || providerBaseUrl, providerId }
+          : undefined;
+      }
       default:
         return undefined;
     }

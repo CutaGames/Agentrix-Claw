@@ -114,6 +114,10 @@ export interface TurnClassificationInput {
 export function classifyTurnForAuto(input: TurnClassificationInput): ExecutionTier {
   if (input.explicitTierHint) return input.explicitTierHint;
   if (input.hasNonImageAttachment) return 'cloud';
+  // Image attachments → cloud in auto mode: on-device mmproj is too slow on
+  // mobile/desktop CPUs compared to the Qwen VL Max cloud twin. Force @local
+  // if the user really wants on-device image processing.
+  if (input.attachmentCount > 0) return 'cloud';
   if (input.approxContextTokens > 6000) return 'cloud';
   const text = input.text.trim();
   if (!text) return 'local';
