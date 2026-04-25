@@ -333,6 +333,23 @@ export class OpenClawProxyService {
     return /(\bwhat\b|\bwhich\b|\blist\b|\bshow\b|available|can you|could you|你能|你可以|能调用|可以调用|能使用|可以使用|有哪些|哪些|支持哪些|权限是什么|能做什么|可以做什么)/i.test(text);
   }
 
+  private buildAssistantCapabilityReply(instance: OpenClawInstance, dto: ChatMessageDto): string {
+    const mode = dto.mode || 'ask';
+    const platform = dto.platform || 'web';
+    const activeModel = dto.model
+      || (instance.capabilities as any)?.activeModel
+      || instance.defaultModel
+      || process.env.DEFAULT_MODEL
+      || 'platform default';
+
+    return [
+      `当前模式：${mode}，平台：${platform}，模型：${activeModel}。`,
+      '我可以在 Ask / Agent / Plan 三种模式下工作：Ask 用于快速对话和解释；Agent 用于执行需要工具的任务；Plan 用于拆解复杂任务、保留上下文并继续推进。',
+      '可用能力会根据你的实例、设备和权限动态启用，包括云端对话、多模态内容理解、已安装技能、团队协作，以及桌面端授权后的文件、搜索、命令和工作区桥接能力。',
+      'Ask 模式默认不会主动调用工具；Agent/Plan 模式会在任务需要且权限允许时调用。涉及文件修改、命令执行、支付、部署等高风险操作时，会按权限策略要求确认。',
+    ].join('\n');
+  }
+
   private async getOrCreatePlatformHostedSession(
     userId: string,
     instance: OpenClawInstance,
@@ -1824,6 +1841,39 @@ export class OpenClawProxyService {
     const messageText = this.extractTextContent(dto.message);
     const session = await this.getOrCreatePlatformHostedSession(userId, instance, sessionId);
     _lap('getOrCreateSession');
+    if (this.isAssistantCapabilityQuestion(messageText)) {
+      const content = this.buildAssistantCapabilityReply(instance, dto);
+      await this.savePlatformHostedMessage(session, userId, MessageRole.USER, messageText, {
+        source: 'platform-hosted-chat',
+        instanceId: instance.id,
+        capabilityQuestion: true,
+      });
+      await this.savePlatformHostedMessage(session, userId, MessageRole.ASSISTANT, content, {
+        source: 'platform-hosted-chat',
+        instanceId: instance.id,
+        deterministicCapabilityReply: true,
+      });
+      return {
+        sessionId,
+        resolvedModel: dto.model || (instance.capabilities as any)?.activeModel || instance.defaultModel || process.env.DEFAULT_MODEL || null,
+        resolvedModelLabel: dto.model || (instance.capabilities as any)?.activeModel || instance.defaultModel || process.env.DEFAULT_MODEL || null,
+        taskTier: 'light',
+        routingReason: 'capability_question',
+        toolBudget: 0,
+        tokenBudget: 0,
+        usage: { inputTokens: estimateTokens(messageText), outputTokens: estimateTokens(content), totalCostUsd: 0 },
+        reply: {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content,
+          createdAt: new Date().toISOString(),
+        },
+        toolCalls: null,
+        stopReason: 'end_turn',
+        plan: null,
+        platformHosted: true,
+      };
+    }
     const directSkillIntent = await this.tryHandleDirectSkillIntent(userId, instance, messageText, sessionId);
     _lap('tryHandleDirectSkillIntent');
     if (directSkillIntent) {
