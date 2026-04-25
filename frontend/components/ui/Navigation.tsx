@@ -15,6 +15,7 @@ import { Store, Smartphone, Sparkles, ChevronDown } from 'lucide-react'
 const primaryNavItems = [
   { href: '/claw', label: { zh: 'Agentrix Claw', en: 'Agentrix Claw' }, isClaw: true },
   { href: '/marketplace', label: { zh: '市场', en: 'Marketplace' }, highlight: true },
+  { href: '/predict', label: { zh: '🎯 预测', en: '🎯 Predict' } },
   { href: '/agent-enhanced', label: { zh: 'Agent 工作台', en: 'Workspace' } },
 ]
 

@@ -20,6 +20,9 @@ import { ModelRouterService, ModelType } from '../model-router/model-router.serv
 import { BedrockIntegrationService, BedrockUserCredentials } from '../bedrock/bedrock-integration.service';
 import { OpenAIIntegrationService } from '../openai/openai-integration.service';
 import { AiProviderService } from '../../ai-provider/ai-provider.service';
+import { PredictionMarketService } from '../../prediction-market/prediction-market.service';
+import { PredictionAsset } from '../../../entities/prediction-round.entity';
+import { PredictionBetSide } from '../../../entities/prediction-bet.entity';
 
 /** Credentials resolved from the user's provider config */
 export interface UserProviderCredentials {
@@ -626,7 +629,140 @@ export class ClaudeIntegrationService {
       },
     ];
 
-    return [...claudeTools, ...basicTools, ...skillTools, ...taskTools, ...publishTools, ...shareTools, ...walletTools, ...agentTools, ...advancedCommerceTools];
+    // Prediction market tools (BTC 5min up/down) — demo USDC mode.
+    const predictionTools = [
+      {
+        name: 'btc_predict_buy_up',
+        description: 'Bet that BTC price will be HIGHER 5 minutes from now (UP). Uses the user\'s virtual USDC balance on Agentrix Predict. Returns the round info, your bet record, and remaining balance. Always call btc_predict_my_status first if the user has not specified an amount.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            amount: { type: 'number', description: 'Amount of demo USDC to wager (1-500). Default 25.' },
+            asset: { type: 'string', enum: ['BTC', 'ETH', 'SOL'], description: 'Asset to bet on (default BTC)' },
+          },
+        },
+      },
+      {
+        name: 'btc_predict_buy_down',
+        description: 'Bet that BTC price will be LOWER 5 minutes from now (DOWN). Uses the user\'s virtual USDC balance.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            amount: { type: 'number', description: 'Amount of demo USDC to wager (1-500). Default 25.' },
+            asset: { type: 'string', enum: ['BTC', 'ETH', 'SOL'], description: 'Asset to bet on (default BTC)' },
+          },
+        },
+      },
+      {
+        name: 'btc_predict_my_status',
+        description: 'Get the user\'s current Predict status: virtual USDC balance, win/loss stats, current open round (with countdown to lock), and recent bets. Call this before placing a bet or whenever the user asks how they are doing.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            asset: { type: 'string', enum: ['BTC', 'ETH', 'SOL'], description: 'Asset to query (default BTC)' },
+          },
+        },
+      },
+    ];
+
+    return [...claudeTools, ...basicTools, ...skillTools, ...taskTools, ...publishTools, ...shareTools, ...walletTools, ...agentTools, ...advancedCommerceTools, ...predictionTools];
+  }
+
+  /** Lazily resolve PredictionMarketService to avoid optional/circular import issues */
+  private getPredictionService(): PredictionMarketService | null {
+    try {
+      return this.moduleRef.get(PredictionMarketService, { strict: false });
+    } catch {
+      return null;
+    }
+  }
+
+  private async executePredictionBet(
+    side: PredictionBetSide,
+    parameters: Record<string, any>,
+    context: { userId?: string },
+  ): Promise<any> {
+    if (!context.userId) {
+      return { success: false, error: '请先登录后再下注。' };
+    }
+    const svc = this.getPredictionService();
+    if (!svc) return { success: false, error: 'Prediction market service unavailable' };
+    const asset = (parameters.asset as PredictionAsset) || PredictionAsset.BTC;
+    const amount = Number.isFinite(parameters.amount) ? Number(parameters.amount) : 25;
+    try {
+      const live = await svc.listLiveRounds(asset, 4);
+      const open = live.find((r: any) => r.status === 'open');
+      if (!open) return { success: false, error: 'No open round available right now, please retry shortly.' };
+      const result = await svc.placeBet({ userId: context.userId, roundId: open.id, side, amount });
+      return {
+        success: true,
+        data: {
+          side,
+          amount,
+          asset,
+          round: result.round,
+          bet: { id: result.bet.id, side: result.bet.side, amount: Number(result.bet.amount) },
+          balance: Number(result.balance.balance),
+          message: `Bet ${amount} USDC on ${side.toUpperCase()} for ${asset} round ${open.id.slice(0, 8)}. Settles in ~5 minutes.`,
+        },
+      };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'placeBet failed' };
+    }
+  }
+
+  private async executePredictionStatus(
+    parameters: Record<string, any>,
+    context: { userId?: string },
+  ): Promise<any> {
+    const svc = this.getPredictionService();
+    if (!svc) return { success: false, error: 'Prediction market service unavailable' };
+    const asset = (parameters.asset as PredictionAsset) || PredictionAsset.BTC;
+    try {
+      const [live, recent] = await Promise.all([
+        svc.listLiveRounds(asset, 4),
+        svc.listRecentSettled(asset, 5),
+      ]);
+      let balance: any = null;
+      let myBets: any[] = [];
+      if (context.userId) {
+        const [bal, bets] = await Promise.all([
+          svc.getOrCreateBalance(context.userId),
+          svc.getMyBets(context.userId, 5),
+        ]);
+        balance = {
+          balance: Number(bal.balance),
+          netPnl: Number(bal.netPnl),
+          totalBets: bal.totalBets,
+          winsCount: bal.winsCount,
+          lossesCount: bal.lossesCount,
+          currentStreak: bal.currentStreak,
+          bestStreak: bal.bestStreak,
+          winRate: bal.totalBets > 0 ? Number(((bal.winsCount / bal.totalBets) * 100).toFixed(1)) : 0,
+        };
+        myBets = bets;
+      }
+      const open = live.find((r: any) => r.status === 'open');
+      const locked = live.find((r: any) => r.status === 'locked');
+      return {
+        success: true,
+        data: {
+          asset,
+          authenticated: !!context.userId,
+          balance,
+          currentRound: open
+            ? { id: open.id, lockTime: open.lockTime, expiryTime: open.expiryTime, secondsToLock: Math.max(0, Math.round((new Date(open.lockTime).getTime() - Date.now()) / 1000)), upPct: open.upPct, downPct: open.downPct, upOdds: open.upOdds, downOdds: open.downOdds, totalPool: open.totalPool }
+            : null,
+          lockedRound: locked
+            ? { id: locked.id, lockPrice: locked.lockPrice, expiryTime: locked.expiryTime, secondsToSettle: Math.max(0, Math.round((new Date(locked.expiryTime).getTime() - Date.now()) / 1000)) }
+            : null,
+          recentResults: recent.slice(0, 5).map((r: any) => ({ id: r.id, outcome: r.outcome, lockPrice: r.lockPrice, closePrice: r.closePrice })),
+          myRecentBets: myBets,
+        },
+      };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'status query failed' };
+    }
   }
 
   /** Lazily get SkillExecutorService to avoid circular dependency */
@@ -952,6 +1088,15 @@ export class ClaudeIntegrationService {
             return { success: false, error: skillErr.message };
           }
         }
+
+        case 'btc_predict_buy_up':
+          return await this.executePredictionBet(PredictionBetSide.UP, parameters, context);
+
+        case 'btc_predict_buy_down':
+          return await this.executePredictionBet(PredictionBetSide.DOWN, parameters, context);
+
+        case 'btc_predict_my_status':
+          return await this.executePredictionStatus(parameters, context);
 
         case 'share_content': {
           const { itemType, itemId, title, description, format = 'both' } = parameters;

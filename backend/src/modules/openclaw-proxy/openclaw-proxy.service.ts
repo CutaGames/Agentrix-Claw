@@ -37,6 +37,9 @@ import { LlmRouterService } from '../llm-router/llm-router.service';
 import { CostTrackerService } from '../cost-tracker/cost-tracker.service';
 import { RuntimeSeamService } from '../query-engine/runtime-seam.service';
 import { LOCAL_ONLY_MODEL_IDS, isLocalOnlyModel, getCloudTwinForLocalModel } from '../../common/llm/local-only-models';
+import { PredictionMarketService } from '../prediction-market/prediction-market.service';
+import { PredictionAsset } from '../../entities/prediction-round.entity';
+import { PredictionBetSide } from '../../entities/prediction-bet.entity';
 
 // Phase 4.2 — allow ops to tune the per-instance chat replay window via env.
 // Clamped to [1, 50] so an accidental 0 or runaway value can't bypass the
@@ -143,6 +146,7 @@ export class OpenClawProxyService {
     private readonly costTrackerService: CostTrackerService,
     @Inject(forwardRef(() => RuntimeSeamService))
     private readonly runtimeSeamService: RuntimeSeamService,
+    private readonly predictionMarketService: PredictionMarketService,
   ) {}
 
   private async ensureOwnedInstance(userId: string, instanceId: string): Promise<OpenClawInstance> {
@@ -1452,6 +1456,38 @@ export class OpenClawProxyService {
           required: ['to', 'message'],
         },
       },
+      {
+        name: 'btc_predict_buy_up',
+        description: 'Bet that BTC price will be HIGHER 5 minutes from now (UP). Uses the user\'s virtual USDC balance on Agentrix Predict.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            amount: { type: 'number', description: 'Amount of demo USDC to wager (1-500). Default 25.' },
+            asset: { type: 'string', enum: ['BTC', 'ETH', 'SOL'], description: 'Asset (default BTC)' },
+          },
+        },
+      },
+      {
+        name: 'btc_predict_buy_down',
+        description: 'Bet that BTC price will be LOWER 5 minutes from now (DOWN). Uses virtual USDC.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            amount: { type: 'number', description: 'Amount (1-500). Default 25.' },
+            asset: { type: 'string', enum: ['BTC', 'ETH', 'SOL'], description: 'Asset (default BTC)' },
+          },
+        },
+      },
+      {
+        name: 'btc_predict_my_status',
+        description: 'Get the user\'s current Predict status: virtual USDC balance, win/loss stats, current open round (with countdown), and recent bets. Call before placing a bet.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            asset: { type: 'string', enum: ['BTC', 'ETH', 'SOL'], description: 'Asset (default BTC)' },
+          },
+        },
+      },
     ];
 
     return {
@@ -1608,6 +1644,72 @@ export class OpenClawProxyService {
             args.message,
           );
           return { sent: true, to: args.to };
+        }
+
+        if (name === 'btc_predict_buy_up' || name === 'btc_predict_buy_down') {
+          const side = name === 'btc_predict_buy_up' ? PredictionBetSide.UP : PredictionBetSide.DOWN;
+          const asset = (args.asset as PredictionAsset) || PredictionAsset.BTC;
+          const amount = Number.isFinite(args.amount) ? Number(args.amount) : 25;
+          try {
+            const live = await this.predictionMarketService.listLiveRounds(asset, 4);
+            const open = live.find((r: any) => r.status === 'open');
+            if (!open) return { success: false, error: 'No open round available right now, please retry shortly.' };
+            const result = await this.predictionMarketService.placeBet({ userId, roundId: open.id, side, amount });
+            return {
+              success: true,
+              data: {
+                side,
+                amount,
+                asset,
+                round: result.round,
+                bet: { id: result.bet.id, side: result.bet.side, amount: Number(result.bet.amount) },
+                balance: Number(result.balance.balance),
+                message: `Bet ${amount} USDC on ${side.toUpperCase()} for ${asset} round ${open.id.slice(0, 8)}. Settles in ~5 minutes.`,
+              },
+            };
+          } catch (e: any) {
+            return { success: false, error: e?.message || 'placeBet failed' };
+          }
+        }
+
+        if (name === 'btc_predict_my_status') {
+          const asset = (args.asset as PredictionAsset) || PredictionAsset.BTC;
+          try {
+            const [live, recent, bal, bets] = await Promise.all([
+              this.predictionMarketService.listLiveRounds(asset, 4),
+              this.predictionMarketService.listRecentSettled(asset, 5),
+              this.predictionMarketService.getOrCreateBalance(userId),
+              this.predictionMarketService.getMyBets(userId, 5),
+            ]);
+            const open = live.find((r: any) => r.status === 'open');
+            const locked = live.find((r: any) => r.status === 'locked');
+            return {
+              success: true,
+              data: {
+                asset,
+                balance: {
+                  balance: Number(bal.balance),
+                  netPnl: Number(bal.netPnl),
+                  totalBets: bal.totalBets,
+                  winsCount: bal.winsCount,
+                  lossesCount: bal.lossesCount,
+                  currentStreak: bal.currentStreak,
+                  bestStreak: bal.bestStreak,
+                  winRate: bal.totalBets > 0 ? Number(((bal.winsCount / bal.totalBets) * 100).toFixed(1)) : 0,
+                },
+                currentRound: open
+                  ? { id: open.id, lockTime: open.lockTime, expiryTime: open.expiryTime, secondsToLock: Math.max(0, Math.round((new Date(open.lockTime).getTime() - Date.now()) / 1000)), upPct: open.upPct, downPct: open.downPct, upOdds: open.upOdds, downOdds: open.downOdds, totalPool: open.totalPool }
+                  : null,
+                lockedRound: locked
+                  ? { id: locked.id, lockPrice: locked.lockPrice, expiryTime: locked.expiryTime, secondsToSettle: Math.max(0, Math.round((new Date(locked.expiryTime).getTime() - Date.now()) / 1000)) }
+                  : null,
+                recentResults: recent.slice(0, 5).map((r: any) => ({ id: r.id, outcome: r.outcome, lockPrice: r.lockPrice, closePrice: r.closePrice })),
+                myRecentBets: bets,
+              },
+            };
+          } catch (e: any) {
+            return { success: false, error: e?.message || 'status query failed' };
+          }
         }
 
         if (preset) {

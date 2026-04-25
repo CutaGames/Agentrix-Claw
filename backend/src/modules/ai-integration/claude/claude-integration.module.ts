@@ -20,6 +20,7 @@ import { OpenClawProxyModule } from '../../openclaw-proxy/openclaw-proxy.module'
 import { AgentContextModule } from '../../agent-context/agent-context.module';
 import { AgentIntelligenceModule } from '../../agent-intelligence/agent-intelligence.module';
 import { QueryEngineModule } from '../../query-engine/query-engine.module';
+import { PredictionMarketModule } from '../../prediction-market/prediction-market.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { QueryEngineModule } from '../../query-engine/query-engine.module';
     AgentContextModule,
     AgentIntelligenceModule,
     forwardRef(() => QueryEngineModule),
+    PredictionMarketModule,
   ],
   controllers: [ClaudeIntegrationController],
   providers: [ClaudeIntegrationService],

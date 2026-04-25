@@ -124,6 +124,8 @@ import { LlmRouterModule } from './modules/llm-router/llm-router.module';
 // OpenClaw 4.5: Dreaming Engine, Memory-Wiki
 import { DreamingModule } from './modules/dreaming/dreaming.module';
 import { MemoryWikiModule } from './modules/memory-wiki/memory-wiki.module';
+// Prediction Market: BTC 5min up/down + Polymarket trending feed
+import { PredictionMarketModule } from './modules/prediction-market/prediction-market.module';
 
 @Module({
   imports: [
@@ -255,6 +257,8 @@ import { MemoryWikiModule } from './modules/memory-wiki/memory-wiki.module';
     // OpenClaw 4.5: Dreaming Engine, Memory-Wiki
     DreamingModule,
     MemoryWikiModule,
+    // Prediction Market (BTC 5min + Polymarket feed)
+    PredictionMarketModule,
   ],
   controllers: [AppController],
   providers: [

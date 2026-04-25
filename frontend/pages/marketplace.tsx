@@ -194,6 +194,40 @@ export default function MarketplacePage() {
           </div>
         </section>
 
+        {/* ── PREDICTION MARKET PROMO（杀手级应用入口） ── */}
+        <section className="container mx-auto px-6 pt-6">
+          <button onClick={() => router.push('/predict')}
+            className="w-full group relative overflow-hidden rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-900/30 via-orange-900/40 to-pink-900/30 hover:border-amber-400 transition-colors">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_50%,rgba(245,158,11,0.18),transparent_55%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_50%,rgba(236,72,153,0.12),transparent_55%)]" />
+            <div className="relative px-6 py-5 md:px-8 md:py-6 flex flex-col md:flex-row items-start md:items-center gap-4 text-left">
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <div className="text-4xl">🎯</div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2.5 py-0.5 bg-amber-500/20 border border-amber-500/40 rounded-full text-[10px] font-bold text-amber-300 uppercase tracking-wider animate-pulse">🔥 NEW</span>
+                    <span className="text-xs text-slate-400">{t({ zh: '杀手级应用', en: 'Killer App' })}</span>
+                  </div>
+                  <h3 className="text-lg md:text-xl font-bold text-white">
+                    {t({ zh: '5 分钟决定 — BTC 涨还是跌？', en: '5 Minutes — Will BTC Go Up or Down?' })}
+                  </h3>
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-slate-300">
+                  {t({
+                    zh: '🎁 免费送 1000 USDC 试玩 · ⚡ 5 分钟开奖 · 🌐 接入 Polymarket 全球热点',
+                    en: '🎁 Free 1000 USDC demo · ⚡ 5min rounds · 🌐 Polymarket trending events',
+                  })}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0 px-4 py-2 bg-amber-500 text-black text-sm font-bold rounded-xl group-hover:bg-amber-400 transition-colors">
+                {t({ zh: '立即玩', en: 'Play Now' })} <ArrowRight size={14} />
+              </div>
+            </div>
+          </button>
+        </section>
+
         {/* ── LAUNCH ACTIVITY BANNER ── */}
         <section className="container mx-auto px-6 pt-6">
           <div className="relative overflow-hidden rounded-2xl border border-blue-500/30 bg-gradient-to-r from-blue-900/40 via-indigo-900/40 to-purple-900/40">

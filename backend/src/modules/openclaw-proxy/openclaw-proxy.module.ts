@@ -24,6 +24,7 @@ import { DesktopSyncModule } from '../desktop-sync/desktop-sync.module';
 import { LlmRouterModule } from '../llm-router/llm-router.module';
 import { CostTrackerModule } from '../cost-tracker/cost-tracker.module';
 import { QueryEngineModule } from '../query-engine/query-engine.module';
+import { PredictionMarketModule } from '../prediction-market/prediction-market.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { QueryEngineModule } from '../query-engine/query-engine.module';
     LlmRouterModule,
     CostTrackerModule,
     forwardRef(() => QueryEngineModule),
+    PredictionMarketModule,
   ],
   providers: [OpenClawProxyService],
   controllers: [OpenClawProxyController],
