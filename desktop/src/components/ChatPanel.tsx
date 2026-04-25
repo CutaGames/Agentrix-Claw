@@ -497,6 +497,7 @@ export default function ChatPanel({
   const abortRef = useRef<AbortController | null>(null);
   const sessionAbortControllersRef = useRef<Record<string, AbortController | null>>({});
   const responseInterruptedRef = useRef(false);
+  const sessionPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
@@ -1315,22 +1316,44 @@ export default function ChatPanel({
     void saveActiveTabId(activeTabId);
   }, [tabs, activeTabId, tabsHydrated]);
 
-  // Persist current session to localStorage + push to cross-device sync
+  // Persist current session after the UI has settled. Streaming can update the
+  // active assistant message every frame, so immediate disk/sync work here makes
+  // typing and native window dragging stutter in WebView2.
   useEffect(() => {
     if (!tabsHydrated) {
       return;
     }
-    if (messages.length > 0) {
-      void persistSession(sessionIdRef.current, messages).then(() => refreshHistory());
-      // Update current tab title
-      const firstUser = messages.find(m => m.role === "user");
-      const title = firstUser?.content?.slice(0, 50) || "New Chat";
-      setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, title } : t));
-      // Update cache
-      tabMessagesCache.current[sessionIdRef.current] = messages;
-      // Push to cross-device sync
-      pushSessionSync(sessionIdRef.current, messages, title);
+
+    if (messages.length === 0) {
+      return;
     }
+
+    const sessionId = sessionIdRef.current;
+    const firstUser = messages.find(m => m.role === "user");
+    const title = firstUser?.content?.slice(0, 50) || "New Chat";
+    tabMessagesCache.current[sessionId] = messages;
+
+    setTabs(prev => prev.map(t => (
+      t.id === activeTabId && t.title !== title ? { ...t, title } : t
+    )));
+
+    if (sessionPersistTimerRef.current) {
+      clearTimeout(sessionPersistTimerRef.current);
+    }
+
+    const snapshot = messages;
+    sessionPersistTimerRef.current = setTimeout(() => {
+      sessionPersistTimerRef.current = null;
+      void persistSession(sessionId, snapshot).then(() => refreshHistory());
+      pushSessionSync(sessionId, snapshot, title);
+    }, 900);
+
+    return () => {
+      if (sessionPersistTimerRef.current) {
+        clearTimeout(sessionPersistTimerRef.current);
+        sessionPersistTimerRef.current = null;
+      }
+    };
   }, [messages, refreshHistory, activeTabId, tabsHydrated]);
 
   useEffect(() => {

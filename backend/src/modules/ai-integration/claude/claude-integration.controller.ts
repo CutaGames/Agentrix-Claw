@@ -57,6 +57,48 @@ export class ClaudeIntegrationController {
     }
   }
 
+  private extractMessageText(content: string | any[] | undefined): string {
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return '';
+    return content
+      .map((block: any) => typeof block === 'string' ? block : block?.text || '')
+      .join(' ')
+      .trim();
+  }
+
+  private isAssistantCapabilityQuestion(message: string): boolean {
+    const text = message.trim().toLowerCase();
+    if (!text) return false;
+
+    const marketplaceDiscovery = /(市场|marketplace|openclaw|clawhub|hub|搜索|查找|推荐|发现|安装|购买|find|search|discover|recommend|install|buy)/i.test(text);
+    const currentSurfaceHint = /(你|你们|当前|现在|已有|已安装|可用|权限|mode|模式|assistant|agent|you|your|available|current|permission)/i.test(text);
+    if (marketplaceDiscovery && !currentSurfaceHint) {
+      return false;
+    }
+
+    const capabilityTopic = /(工具|技能|权限|能力|功能|模式|tool|tools|skill|skills|permission|permissions|capabilit|modes?)/i.test(text);
+    if (!capabilityTopic) return false;
+
+    return /(\bwhat\b|\bwhich\b|\blist\b|\bshow\b|available|can you|could you|你能|你可以|能调用|可以调用|能使用|可以使用|有哪些|哪些|支持哪些|权限是什么|能做什么|可以做什么)/i.test(text);
+  }
+
+  private buildCapabilityReply(args: { mode?: string; platform?: string; model?: string }): string {
+    const mode = args.mode || 'ask';
+    const platform = args.platform || 'web';
+    const model = args.model || '当前选择模型';
+    const desktopLine = platform === 'desktop'
+      ? '桌面端在 Agent/Plan 模式且授权后，可以使用桌面工作区工具，例如读取文件、列目录、检查代码、执行允许的命令、浏览器/网页、git/构建/测试等。'
+      : '在移动端/网页端，我会按当前实例权限使用平台工具、技能、记忆、团队和多模态能力。';
+
+    return [
+      `当前入口：/claude/chat，模式：${mode}，平台：${platform}，模型：${model}。`,
+      'Ask 模式用于快速问答，默认不执行外部工具；Agent 模式用于需要工具的任务；Plan 模式用于长任务拆解和持续执行。',
+      desktopLine,
+      '平台工具包括：技能搜索/安装/执行（需要明确技能名或 skillId）、任务市场、订单/支付/钱包、资源/商品搜索、A2A agent 调用、内容分享，以及实例启用的 marketplace skills。',
+      '普通“你能调用哪些工具/技能/权限？”这类能力问题只会返回说明，不会触发 skill_execute。',
+    ].join('\n');
+  }
+
   /**
    * 获取 Claude Function Schemas
    * GET /api/claude/functions
@@ -192,6 +234,47 @@ export class ClaudeIntegrationController {
       context.userId = this.extractUserIdFromToken(req);
     }
 
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'messages array is required and must not be empty' });
+    }
+
+    const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
+    const lastUserText = this.extractMessageText(lastUserMessage?.content);
+
+    if (this.isAssistantCapabilityQuestion(lastUserText)) {
+      const text = this.buildCapabilityReply({ mode, platform, model: options?.model });
+      if (wantsStream) {
+        this.initSse(res);
+        emitStructured({ type: 'text_delta', text });
+        emitStructured({
+          type: 'done',
+          reason: 'end_turn',
+          totalDurationMs: Date.now() - startMs,
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+        });
+        this.writeSse(res, formatSSEDone());
+        res.end();
+        return;
+      }
+
+      return res.json({
+        text,
+        content: text,
+        message: text,
+        reply: {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: text,
+          createdAt: new Date().toISOString(),
+        },
+        routingReason: 'capability_question',
+        toolCalls: null,
+        stopReason: 'end_turn',
+        via: 'claude-compat-capability-reply',
+      });
+    }
+
     if (context.userId) {
       const compatibilityPayload: UnifiedChatRequestDto = {
         ...body,
@@ -225,19 +308,6 @@ export class ClaudeIntegrationController {
         via: 'openclaw-proxy',
       });
     }
-
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({ error: 'messages array is required and must not be empty' });
-    }
-
-    const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
-    const lastUserText = typeof lastUserMessage?.content === 'string'
-      ? lastUserMessage.content
-      : Array.isArray(lastUserMessage?.content)
-        ? lastUserMessage.content
-          .map((block: any) => typeof block === 'string' ? block : block?.text || '')
-          .join(' ')
-        : '';
 
     // If the client already provides a system message, use it as-is.
     // Otherwise inject the layered context via RuntimeSeamService (P0 unified contract).

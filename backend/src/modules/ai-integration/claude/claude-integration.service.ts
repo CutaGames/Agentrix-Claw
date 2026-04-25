@@ -898,7 +898,6 @@ export class ClaudeIntegrationService {
 
         case 'skill_search':
         case 'skill_install':
-        case 'skill_execute':
         case 'task_search':
         case 'task_post':
         case 'task_accept':
@@ -908,6 +907,34 @@ export class ClaudeIntegrationService {
         case 'marketplace_purchase':
         case 'video_generate':
         case 'video_compose': {
+          const executor = this.getSkillExecutor();
+          if (!executor) {
+            return { success: false, error: 'Skill service unavailable' };
+          }
+          try {
+            const result = await executor.executeInternal(functionName, parameters, {
+              userId: context.userId,
+              sessionId: (context as any).sessionId,
+              metadata: {
+                deviceId: (context as any).deviceId,
+              },
+            });
+            return { success: true, data: result };
+          } catch (skillErr: any) {
+            return { success: false, error: skillErr.message };
+          }
+        }
+
+        case 'skill_execute': {
+          const skillId = typeof parameters.skillId === 'string' ? parameters.skillId.trim() : '';
+          const query = typeof parameters.query === 'string' ? parameters.query.trim() : '';
+          if (!skillId && !query) {
+            return {
+              success: false,
+              error: 'skill_execute 需要明确的 skillId 或技能名称；能力/工具列表问题不会执行技能。',
+            };
+          }
+
           const executor = this.getSkillExecutor();
           if (!executor) {
             return { success: false, error: 'Skill service unavailable' };
