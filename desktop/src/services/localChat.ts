@@ -139,10 +139,14 @@ export async function ensureDesktopLocalSidecar(sidecar: LocalLLMSidecar): Promi
   }
 
   if (!sidecar.isRunning) {
+    // Use GPU offloading when available for faster inference. CPU thread count
+    // defaults to hardware concurrency minus 1 to keep the UI responsive.
+    const threads = Math.max(1, (navigator.hardwareConcurrency || 4) - 1);
     await sidecar.start({
       modelPath,
-      contextSize: 8192,
-      nGpuLayers: 0,
+      contextSize: 4096,
+      nGpuLayers: 99,
+      threads,
     });
   }
 

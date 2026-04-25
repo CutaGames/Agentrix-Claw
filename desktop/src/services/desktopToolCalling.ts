@@ -13,6 +13,7 @@
  */
 
 import type { LocalLLMSidecar, ChatMessage, ToolDef, ToolCallResult } from "./localLLM";
+import { API_BASE } from "./store";
 
 // ── Tool Definitions (OpenAI format) ───────────────────
 
@@ -244,7 +245,6 @@ async function executeSearchSkills(
 
   try {
     // Desktop doesn't have a dedicated skill search API yet — use backend
-    const API_BASE = (window as any).__AGENTRIX_API_BASE__ || 'https://api.agentrix.top';
     const res = await fetch(`${API_BASE}/skills/search?q=${encodeURIComponent(query)}&limit=5`, {
       headers: context.authToken ? { Authorization: `Bearer ${context.authToken}` } : {},
     });
@@ -282,7 +282,6 @@ async function executeGetInstalledSkills(
 
   try {
     // Desktop doesn't have a dedicated instance skills API yet — use backend
-    const API_BASE = (window as any).__AGENTRIX_API_BASE__ || 'https://api.agentrix.top';
     const res = await fetch(`${API_BASE}/openclaw/proxy/${context.instanceId}/skills`, {
       headers: context.authToken ? { Authorization: `Bearer ${context.authToken}` } : {},
     });

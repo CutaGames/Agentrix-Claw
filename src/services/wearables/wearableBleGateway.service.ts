@@ -32,13 +32,14 @@ export class WearableBleGatewayService {
       };
     }
 
+    const androidPermissions = PermissionsAndroid.PERMISSIONS;
     const requestedPermissions = Platform.Version >= 31
       ? [
-          'android.permission.BLUETOOTH_SCAN',
-          'android.permission.BLUETOOTH_CONNECT',
-          'android.permission.ACCESS_FINE_LOCATION',
+          androidPermissions.BLUETOOTH_SCAN,
+          androidPermissions.BLUETOOTH_CONNECT,
+          androidPermissions.ACCESS_FINE_LOCATION,
         ]
-      : ['android.permission.ACCESS_FINE_LOCATION'];
+      : [androidPermissions.ACCESS_FINE_LOCATION];
 
     const result = await PermissionsAndroid.requestMultiple(requestedPermissions);
     const isGranted = (permission: string) => result[permission] === PermissionsAndroid.RESULTS.GRANTED;

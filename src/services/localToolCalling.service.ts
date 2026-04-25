@@ -129,7 +129,7 @@ export async function executeToolCall(
         );
 
       case 'search_skills':
-        return await executeSearchSkills(String(args.query || ''));
+        return await executeSearchSkills(String(args.query || ''), context);
 
       case 'get_installed_skills':
         return await executeGetInstalledSkills(context);
@@ -205,12 +205,22 @@ async function executeSaveMemory(
   return JSON.stringify({ saved: true, key });
 }
 
-async function executeSearchSkills(query: string): Promise<string> {
+async function executeSearchSkills(query: string, context: ToolExecutionContext): Promise<string> {
+  if (!context.instanceId) {
+    return JSON.stringify({ skills: [], note: 'No instance context available for skill search' });
+  }
+
   const { agentSkillSearch } = await import('./openclaw.service');
-  const results = await agentSkillSearch(query, { limit: 5 });
+  const result = await agentSkillSearch(context.instanceId, query, undefined, 5);
+  const results = Array.isArray(result.result)
+    ? result.result
+    : (Array.isArray(result.result?.skills) ? result.result.skills : []);
 
   if (!results?.length) {
-    return JSON.stringify({ skills: [], note: `No skills found for "${query}"` });
+    return JSON.stringify({
+      skills: [],
+      note: result.success === false ? (result.error || 'Skill search failed') : `No skills found for "${query}"`,
+    });
   }
 
   return JSON.stringify({

@@ -146,7 +146,7 @@ test.describe('Desktop Frontend Smoke Tests', () => {
     await page.evaluate(() => {
       localStorage.setItem('agentrix_onboarded', '1');
     });
-    await page.goto('http://localhost:1420', { timeout: 30000 });
+    await page.goto('http://127.0.0.1:1420', { timeout: 30000 });
     await expect(page.locator('text=Agentrix Desktop')).toBeVisible({ timeout: 20000 });
     
     await page.getByRole('button', { name: /Skip as Guest/i }).dispatchEvent('click');

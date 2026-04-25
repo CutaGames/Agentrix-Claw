@@ -28,6 +28,7 @@ export interface MemoryEntry {
 export interface RecallOptions {
   agentId?: string;
   sessionId?: string;
+  query?: string;
   limit?: number;
   scopes?: MemoryScope[];
   types?: MemoryType[];

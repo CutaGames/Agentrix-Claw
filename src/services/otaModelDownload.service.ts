@@ -19,6 +19,8 @@ export interface OtaModelEntry {
   id: string;
   name: string;
   filename: string;
+  parameters?: string;
+  format?: string;
   packageRevision?: string;
   /** Download size in bytes */
   sizeBytes: number;
@@ -146,13 +148,27 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     filename: 'Qwen3.5-Omni-3B-Q4_K_M.gguf', // Placeholder, await HF release
     parameters: '～3B',
     format: 'GGUF',
+    sizeBytes: 2_100_000_000,
+    sizeLabel: '2.1 GB',
     cdnBase: 'https://hf-mirror.com/ggml-org/Qwen3.5-Omni-3B-GGUF/resolve/main',
-    mmproj: {
+    declaredCapabilities: {
+      visionInput: true,
+      audioInput: true,
+      videoInput: true,
+      onDeviceAudioOutput: false,
+    },
+    multimodalProjector: {
+      kind: 'mmproj',
       filename: 'mmproj-Qwen3.5-Omni-3B-Q8_0.gguf',
+      sizeBytes: 1_540_000_000,
+      sizeLabel: '1.5 GB',
       cdnBase: 'https://hf-mirror.com/ggml-org/Qwen3.5-Omni-3B-GGUF/resolve/main',
     },
     audioEncoder: {
+      kind: 'audio-encoder',
       filename: 'ggml-base-q5_1.bin',
+      sizeBytes: 57_000_000,
+      sizeLabel: '57 MB',
       cdnBase: 'https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main',
     }
   },

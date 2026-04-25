@@ -23,6 +23,8 @@ interface DownloadRequestOptions {
 interface LocalModelInfo {
   id: string;
   name: string;
+  parameters?: string;
+  description?: string;
   descriptionEn: string;
   descriptionZh: string;
   tier: string;
@@ -50,6 +52,9 @@ const AVAILABLE_MODELS: LocalModelInfo[] = [
     name: 'Qwen 3.5 Omni Light (Beta)',
     parameters: '～3B',
     description: '端侧多模态对话模型（占位，等待官方 GGUF 发布）',
+    descriptionEn: 'Preview local multimodal model package. The registry entry is prepared, but the official GGUF release is still pending.',
+    descriptionZh: '预览版端侧多模态模型包。下载注册表已预置，但仍在等待官方 GGUF 发布。',
+    tier: 'LOCAL BETA',
   },
   {
     id: 'qwen2.5-omni-3b',

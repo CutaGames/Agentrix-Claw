@@ -39,8 +39,8 @@ export function AgentToolsScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { t } = useI18n();
-  const { token, activeInstanceId } = useAuthStore();
-  const instanceId = route.params?.instanceId || activeInstanceId;
+  const { token, user, activeInstance } = useAuthStore();
+  const instanceId = route.params?.instanceId || activeInstance?.id || user?.activeInstanceId;
 
   const [tab, setTab] = useState<ToolTab>('terminal');
 

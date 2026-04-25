@@ -11,7 +11,7 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Alert, Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { BleManager } from 'react-native-ble-plx';
 import { AudioQueuePlayer } from '../services/AudioQueuePlayer';
 import {

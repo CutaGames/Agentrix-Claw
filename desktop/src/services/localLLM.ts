@@ -134,7 +134,7 @@ export class LocalLLMSidecar {
       });
 
       // Wait for server to become healthy
-      await this.waitForHealth(45000);
+      await this.waitForHealth(30000);
       this.setStatus("running");
 
       // Start health check polling
@@ -247,7 +247,7 @@ export class LocalLLMSidecar {
       body: JSON.stringify({
         messages,
         temperature: options?.temperature ?? 0.7,
-        max_tokens: options?.maxTokens ?? 2048,
+        max_tokens: options?.maxTokens ?? 1024,
         stream: true,
         cache_prompt: true,
       }),

@@ -295,7 +295,7 @@ function ProvisionModal({
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
             <p className="text-xs text-gray-500 mt-1">
-              留空则直接使用角色名。填写后会显示为 "前缀 — 角色名"。
+              留空则直接使用角色名。填写后会显示为 &quot;前缀 — 角色名&quot;。
             </p>
           </div>
 

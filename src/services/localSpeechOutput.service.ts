@@ -1,5 +1,5 @@
 import { Buffer } from 'buffer';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { LlamaContext } from 'llama.rn';
 import { Platform } from 'react-native';
 

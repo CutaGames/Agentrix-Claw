@@ -15,6 +15,7 @@ import {
   Modal,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import * as ExpoLinking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { colors } from '../theme/colors';
 import { useAuthStore } from '../stores/authStore';
@@ -118,24 +119,6 @@ export const WalletConnectScreen: React.FC<{ navigation?: any; route?: { params?
       setDetecting(false);
     })();
   }, []);
-
-  // 自动处理来自导航参数的 walletId
-  useEffect(() => {
-    if (detecting || step !== 'select' || !requestedWalletId) return;
-
-    const normalizedId = WALLET_ID_ALIASES[requestedWalletId.toLowerCase()];
-    if (!normalizedId || autoHandledWalletRef.current === normalizedId) return;
-
-    const targetWallet = wallets.find((wallet) => wallet.id === normalizedId);
-    if (!targetWallet) return;
-
-    autoHandledWalletRef.current = normalizedId;
-    if (targetWallet.installed) {
-      void handleInstalledWallet(targetWallet);
-    } else {
-      handleInstallWallet(targetWallet);
-    }
-  }, [detecting, handleInstallWallet, handleInstalledWallet, requestedWalletId, step, wallets]);
 
   const installedWallets = wallets.filter(w => w.installed);
   const uninstalledWallets = wallets.filter(w => !w.installed);
@@ -266,6 +249,24 @@ export const WalletConnectScreen: React.FC<{ navigation?: any; route?: { params?
     setStep('install-guide');
   }, []);
 
+  // 自动处理来自导航参数的 walletId
+  useEffect(() => {
+    if (detecting || step !== 'select' || !requestedWalletId) return;
+
+    const normalizedId = WALLET_ID_ALIASES[requestedWalletId.toLowerCase()];
+    if (!normalizedId || autoHandledWalletRef.current === normalizedId) return;
+
+    const targetWallet = wallets.find((wallet) => wallet.id === normalizedId);
+    if (!targetWallet) return;
+
+    autoHandledWalletRef.current = normalizedId;
+    if (targetWallet.installed) {
+      void handleInstalledWallet(targetWallet);
+    } else {
+      handleInstallWallet(targetWallet);
+    }
+  }, [detecting, handleInstallWallet, handleInstalledWallet, requestedWalletId, step, wallets]);
+
   // WalletConnect — 通过 WebBrowser 打开前端页面扫码
   const handleWalletConnect = useCallback(async () => {
     setStep('walletconnect');
@@ -278,7 +279,7 @@ export const WalletConnectScreen: React.FC<{ navigation?: any; route?: { params?
       });
 
       if (result.type === 'success' && result.url) {
-        const parsed = Linking.parse(result.url);
+        const parsed = ExpoLinking.parse(result.url);
         const token = typeof parsed.queryParams?.token === 'string' ? parsed.queryParams.token : undefined;
         const code = typeof parsed.queryParams?.code === 'string' ? parsed.queryParams.code : undefined;
         const provider = typeof parsed.queryParams?.provider === 'string' ? parsed.queryParams.provider : 'wallet';

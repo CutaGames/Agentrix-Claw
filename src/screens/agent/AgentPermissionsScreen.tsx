@@ -323,7 +323,7 @@ export function AgentPermissionsScreen() {
       }
 
       const verified = await getUnifiedAgent(activeAgent.id);
-      const verifiedPermissions = normalizePermissions(verified.spendingLimits ? { allowedToolNames: [] } : undefined);
+      const verifiedPermissions = normalizePermissions(verified.permissions as Partial<PermissionState> | undefined);
       if (JSON.stringify(verifiedPermissions) !== expectedPermissionsJson) {
         throw new Error(t({ en: 'Server response did not match the saved permissions.', zh: '服务器回读结果与保存内容不一致。' }));
       }
