@@ -140,7 +140,7 @@ const LONG_LOCAL_PREFILL_TOKEN_THRESHOLD = 3000;
 const MANUAL_MODEL_SELECTION_GRACE_MS = 20_000;
 const STALE_DESKTOP_TASK_WINDOW_MS = 45_000;
 const RECENT_DESKTOP_FAILURE_WINDOW_MS = 15_000;
-const CHAT_AUTO_CONTINUE_LIMIT = 3;
+const CHAT_AUTO_CONTINUE_LIMIT = 6;
 const CHECKPOINT_CONTINUE_PROMPT = "Continue from the latest checkpoint. Preserve the active plan, task progress, and any pending background results.";
 const TASK_LIKE_PROMPT_PATTERN = /([a-z]:\\|\\|\/|\.tsx?\b|\.jsx?\b|\.json\b|\.md\b|package\.json|readme|src\/|backend\/|desktop\/|```|\n)|\b(search|find|install|run|execute|debug|fix|edit|write|read|open|grep|list|analy[sz]e|inspect|deploy|build|test|git|ssh|workspace|file|folder|directory|project|repo|code|patch|benchmark|profile|trace|continue|resume)\b|搜索|安装|运行|执行|修复|修改|查看|列出|分析|排查|部署|构建|测试|工作区|文件|目录|项目|仓库|代码/i;
 
@@ -185,6 +185,57 @@ function getConversationModelLabel(
   }
 
   return modelId || activeInstance?.resolvedModel || null;
+}
+
+function isDesktopCapabilityQuestion(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return false;
+  const topic = /(工具|技能|权限|能力|功能|模式|tools?|skills?|permissions?|capabilit|modes?)/i.test(normalized);
+  if (!topic) return false;
+  return /(你能|你可以|能调用|可以调用|能使用|可以使用|有哪些|哪些|支持哪些|能做什么|可以做什么|what|which|list|show|available|can you|could you)/i.test(normalized);
+}
+
+function formatInstalledSkillSummary(skills: Array<{ id?: string; name?: string; version?: string }> | null): string {
+  if (skills === null) {
+    return "已安装技能：登录并选择实例后可以读取；当前先按内置桌面工具和平台工具回答。";
+  }
+  if (skills.length === 0) {
+    return "已安装技能：当前实例没有启用额外 marketplace skills。";
+  }
+  const listed = skills
+    .slice(0, 12)
+    .map((skill) => skill.name || skill.id)
+    .filter(Boolean)
+    .join(", ");
+  const suffix = skills.length > 12 ? ` 等 ${skills.length} 个` : "";
+  return `已安装技能：${listed}${suffix}。`;
+}
+
+function buildDesktopCapabilityAnswer(args: {
+  chatMode: ChatMode;
+  executionMode: ExecutionMode;
+  modelLabel: string | null;
+  useLocalTier: boolean;
+  activeLocalModelId: string;
+  skills: Array<{ id?: string; name?: string; version?: string }> | null;
+}): string {
+  const modeLabel = args.chatMode === "ask" ? "Ask 快速问答" : args.chatMode === "agent" ? "Agent 工具执行" : "Plan 复杂任务规划";
+  const executionLabel = args.executionMode === "local-only" ? "Local-only 本地优先且不回退云端" : args.executionMode === "cloud-only" ? "Cloud-only 云端模型" : "Auto 智能路由";
+  const modelLine = args.useLocalTier
+    ? `当前模型：${getDesktopLocalModelLabel(args.activeLocalModelId)}（本地 sidecar）。`
+    : `当前模型：${args.modelLabel || "云端默认模型"}。`;
+
+  return [
+    `可以。当前是 ${modeLabel}，执行策略是 ${executionLabel}。`,
+    modelLine,
+    "",
+    "可用能力按模式分层：",
+    "- Ask：快速对话、上下文问答、模型身份/能力说明；默认不执行外部工具，首 token 最快。",
+    "- Agent：可进入云端工具编排，使用桌面文件/目录、workspace、git、命令、浏览器/网页、记忆、技能、钱包/订单/团队等工具；写文件、命令、支付等高风险动作需要审批。",
+    "- Plan：先拆解复杂任务，再按步骤执行；适合长任务、跨文件修复、构建测试、部署前检查，会自动续写并保留 checkpoint。",
+    "- Local：本地模型可离线直答；在本地 agent/plan 时只使用轻量本地工具（时间、记忆、已安装技能查询/搜索），复杂桌面任务会在 Auto/Agent/Plan 下升级到云端编排。",
+    formatInstalledSkillSummary(args.skills),
+  ].join("\n");
 }
 
 // Tiny TTL cache so we don't re-hit /openclaw/proxy/:id/skills on every keystroke.
@@ -2105,13 +2156,16 @@ export default function ChatPanel({
       const fallbackCloudModel = activeInst?.resolvedModel && !isDesktopLocalModelId(activeInst.resolvedModel)
         ? activeInst.resolvedModel
         : undefined;
+      const routedSelectedModel = executionMode === "local-only" && !isDesktopLocalModelId(selectedModel)
+        ? DESKTOP_LOCAL_MODEL_ID
+        : selectedModel;
 
       // Tri-tier router: unified source of truth for local-vs-cloud routing.
       // `useDesktopLocalModel` used to be derived from `isDesktopLocalModelId(selectedModel)` alone,
       // which meant a user picking "cloud-only" mode could still silently hit the sidecar if the
       // dropdown still pointed at a local model. Routing decisions now go through one helper.
       const tierDecision = resolveExecutionTier({
-        selectedModelId: selectedModel,
+        selectedModelId: routedSelectedModel,
         executionMode,
         agentPreferredModel: null,
         instanceResolvedModel: activeInst?.resolvedModel || null,
@@ -2126,7 +2180,10 @@ export default function ChatPanel({
           explicitTierHint: parseExplicitTierHint(text),
         }),
       });
-      const useDesktopLocalModel = tierDecision.tier === "local" && isDesktopLocalModelId(selectedModel);
+      const useDesktopLocalModel = tierDecision.tier === "local";
+      const activeLocalModelId = useDesktopLocalModel
+        ? normalizeDesktopLocalModelId(tierDecision.activeModelId || routedSelectedModel)
+        : DESKTOP_LOCAL_MODEL_ID;
 
       if ((!text && pendingAttachments.length === 0) || targetRuntime.sending || uploadingAttachments) {
         return;
@@ -2149,6 +2206,50 @@ export default function ChatPanel({
         }
       }
 
+      if (!overrideText && pendingAttachments.length === 0 && isDesktopCapabilityQuestion(text)) {
+        const skills = activeInstanceId && token
+          ? await fetchInstalledSkillsCached(activeInstanceId, token)
+          : null;
+        const modelLabel = useDesktopLocalModel
+          ? getDesktopLocalModelLabel(activeLocalModelId)
+          : getConversationModelLabel(tierDecision.activeModelId || selectedModel, models, activeInst);
+        const userMsg: ChatMessage = {
+          id: `u-${Date.now()}`,
+          role: "user",
+          content: text,
+          createdAt: Date.now(),
+        };
+        const assistantMsg: ChatMessage = {
+          id: `a-${Date.now()}`,
+          role: "assistant",
+          content: buildDesktopCapabilityAnswer({
+            chatMode,
+            executionMode,
+            modelLabel,
+            useLocalTier: useDesktopLocalModel,
+            activeLocalModelId,
+            skills,
+          }),
+          streaming: false,
+          createdAt: Date.now(),
+          meta: {
+            resolvedModel: useDesktopLocalModel ? activeLocalModelId : tierDecision.activeModelId,
+            resolvedModelLabel: modelLabel || undefined,
+          },
+        };
+        updateSessionMessages(targetSessionId, (prev) => [...prev, userMsg, assistantMsg], { persist: true });
+        setPendingAttachments([]);
+        setContinuePrompt(null);
+        setStreamFeedback(null);
+        trackEvent("desktop_capability_answer", {
+          mode: chatMode,
+          executionMode,
+          tier: tierDecision.tier,
+          hasInstalledSkills: Boolean(skills?.length),
+        });
+        return;
+      }
+
       const outboundText = serializeMessageForModel(text, pendingAttachments);
       const effectiveChatMode = resolveEffectiveChatMode(
         chatMode,
@@ -2157,6 +2258,7 @@ export default function ChatPanel({
         Boolean(activePlan),
       );
       const shouldEscalateLocalTurn = useDesktopLocalModel
+        && executionMode !== "local-only"
         && shouldEscalateDesktopLocalTurn(effectiveChatMode, Boolean(token));
       const currentMessagesForSession = tabMessagesCache.current[targetSessionId] || messages;
 
@@ -2200,7 +2302,7 @@ export default function ChatPanel({
 
       trackEvent("chat_send", {
         hasAttachments: pendingAttachments.length > 0,
-        model: selectedModel,
+        model: tierDecision.activeModelId || selectedModel,
         mode: effectiveChatMode,
         requestedMode: chatMode,
       });
@@ -2242,7 +2344,9 @@ export default function ChatPanel({
           role: message.role,
           content: serializeMessageForModel(message.content, message.attachments || []),
         }));
-        const currentModelLabel = getConversationModelLabel(selectedModel, models, activeInst);
+        const currentModelLabel = useDesktopLocalModel
+          ? getDesktopLocalModelLabel(activeLocalModelId)
+          : getConversationModelLabel(tierDecision.activeModelId || selectedModel, models, activeInst);
         let installedSkillsForPrompt: Array<{ id?: string; name?: string; version?: string }> | null = null;
         if (useDesktopLocalModel && activeInstanceId && authToken) {
           installedSkillsForPrompt = await fetchInstalledSkillsCached(activeInstanceId, authToken);
@@ -2525,7 +2629,7 @@ export default function ChatPanel({
                   ? {
                       ...message,
                       meta: {
-                        resolvedModel: fallbackCloudModel || selectedModel,
+                        resolvedModel: fallbackCloudModel || activeInst?.resolvedModel || "claude-haiku-4-5",
                         resolvedModelLabel: fallbackCloudModel
                           ? getConversationModelLabel(fallbackCloudModel, models, activeInst) || undefined
                           : "Cloud Tool Orchestration",
@@ -2550,7 +2654,7 @@ export default function ChatPanel({
                 platform: 'desktop',
                 tier: 'local',
                 outcome: shouldFallbackToCloud ? 'fallback-to-cloud' : 'error',
-                modelId: selectedModel,
+                modelId: activeLocalModelId,
                 durationMs: Date.now() - localStartedAt,
                 reason: readiness.message || 'local-runtime-not-ready',
               });
@@ -2614,8 +2718,8 @@ export default function ChatPanel({
                     ? {
                         ...message,
                         meta: {
-                          resolvedModel: normalizeDesktopLocalModelId(selectedModel),
-                          resolvedModelLabel: getDesktopLocalModelLabel(selectedModel),
+                          resolvedModel: activeLocalModelId,
+                          resolvedModelLabel: getDesktopLocalModelLabel(activeLocalModelId),
                         },
                       }
                     : message
@@ -2625,7 +2729,7 @@ export default function ChatPanel({
               try {
                 const localSidecar = localSidecarRef.current || new LocalLLMSidecar();
                 localSidecarRef.current = localSidecar;
-                const localModelLabel = getDesktopLocalModelLabel(selectedModel);
+                const localModelLabel = getDesktopLocalModelLabel(activeLocalModelId);
                 if (localSidecar.currentStatus !== "running") {
                   setStreamFeedback({
                     tone: "info",
@@ -2715,14 +2819,14 @@ export default function ChatPanel({
                       return prev;
                     });
                     if (syncMessages.length > 1) {
-                      void syncLocalConversation(authToken, targetSessionId, syncMessages, normalizeDesktopLocalModelId(selectedModel));
+                      void syncLocalConversation(authToken, targetSessionId, syncMessages, activeLocalModelId);
                     }
                   }
                   trackLocalInferenceOutcome({
                     platform: 'desktop',
                     tier: 'local',
                     outcome: 'success',
-                    modelId: selectedModel,
+                    modelId: activeLocalModelId,
                     durationMs: Date.now() - localStartedAt,
                     tokensOut: localTokensOut,
                   });
@@ -2736,7 +2840,7 @@ export default function ChatPanel({
                   platform: 'desktop',
                   tier: 'local',
                   outcome: aborted ? 'aborted' : timedOut ? 'timeout' : stalled ? 'stall' : 'error',
-                  modelId: selectedModel,
+                  modelId: activeLocalModelId,
                   durationMs: Date.now() - localStartedAt,
                   reason: message.slice(0, 160),
                 });
@@ -2830,6 +2934,10 @@ export default function ChatPanel({
           return;
         }
 
+        const cloudModelForTurn = useDesktopLocalModel
+          ? (fallbackCloudModel || activeInst?.resolvedModel || "claude-haiku-4-5")
+          : (tierDecision.activeModelId || selectedModel || undefined);
+
         await new Promise<void>((resolve) => {
           let controller: AbortController;
           if (activeInstanceId) {
@@ -2838,7 +2946,7 @@ export default function ChatPanel({
               message: outboundText,
               sessionId: targetSessionId,
               token: authToken,
-              model: useDesktopLocalModel ? fallbackCloudModel : selectedModel || undefined,
+              model: cloudModelForTurn,
               mode: effectiveChatMode,
               onChunk: chunkHandler,
               onMeta: metaHandler,
@@ -2852,7 +2960,7 @@ export default function ChatPanel({
               sessionId: targetSessionId,
               agentId: activeAgentId,
               token: authToken,
-              model: useDesktopLocalModel ? fallbackCloudModel : selectedModel || undefined,
+              model: cloudModelForTurn,
               mode: effectiveChatMode,
               onChunk: chunkHandler,
               onEvent: eventHandler,

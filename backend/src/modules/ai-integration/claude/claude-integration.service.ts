@@ -352,7 +352,7 @@ export class ClaudeIntegrationService {
     const skillTools = [
       {
         name: 'skill_search',
-        description: 'Search for installable AI skills, tools, and plugins across the marketplace and OpenClaw Hub. ALWAYS use this when the user asks about skills, tools, or capabilities.',
+        description: 'Search marketplace/OpenClaw Hub for installable AI skills, tools, and plugins only when the user asks to find, discover, recommend, or install marketplace skills. Do not use for questions about current assistant capabilities, available tools, permissions, or modes.',
         input_schema: {
           type: 'object',
           properties: {
@@ -376,11 +376,11 @@ export class ClaudeIntegrationService {
       },
       {
         name: 'skill_execute',
-        description: 'Execute an installed or hub skill directly. Call skill_search first if you need to find it.',
+        description: 'Execute a specific installed or hub skill only when the user explicitly asks to run a named skill or provides a skillId. Never use for generic capability questions such as what tools can you use.',
         input_schema: {
           type: 'object',
           properties: {
-            query: { type: 'string', description: 'Skill name or search query to find and execute' },
+            query: { type: 'string', description: 'Exact skill name to execute. Do not place generic capability questions in this field.' },
             skillId: { type: 'string', description: 'Direct skill ID if known' },
             prompt: { type: 'string', description: 'Natural-language prompt for the skill' },
             input: { type: 'object', description: 'Structured input payload for the skill' },

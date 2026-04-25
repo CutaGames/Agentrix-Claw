@@ -190,6 +190,16 @@ export class LlmRouterService {
       supportsVision: true,
     },
     {
+      id: 'gpt-5.5',
+      provider: 'openai',
+      name: 'GPT-5.5',
+      inputCostPer1M: 10.00,
+      outputCostPer1M: 30.00,
+      maxTokens: 1_000_000,
+      tiers: [TaskTier.ULTRA],
+      supportsVision: true,
+    },
+    {
       id: 'gpt-5.4',
       provider: 'openai',
       name: 'GPT-5.4',

@@ -51,6 +51,7 @@ const PLATFORM_MODEL_ALIASES: Record<string, { label: string; multimodal: boolea
 };
 
 const SUBSCRIPTION_MODEL_ALIASES: Record<string, string> = {
+  'chatgpt-sub-gpt-5.5': 'gpt-5.5',
   'chatgpt-sub-gpt-5.4': 'gpt-5.4',
   'chatgpt-sub-gpt-5.3-instant': 'gpt-5.3-instant',
   'chatgpt-sub-gpt-5-mini': 'gpt-5-mini',
@@ -67,6 +68,7 @@ const SUBSCRIPTION_MODEL_ALIASES: Record<string, string> = {
   'copilot-sub-gpt-5.2': 'gpt-5.2',
   'copilot-sub-gpt-5.2-codex': 'gpt-5.2-codex',
   'copilot-sub-gpt-5.3-codex': 'gpt-5.3-codex',
+  'copilot-sub-gpt-5.5': 'gpt-5.5',
   'copilot-sub-gpt-5.4': 'gpt-5.4',
   'copilot-sub-claude-sonnet-4': 'claude-sonnet-4',
   'copilot-sub-claude-sonnet-4.5': 'claude-sonnet-4.5',
@@ -102,6 +104,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
     requiredFields: ['apiKey'], optionalFields: ['baseUrl'],
     placeholder: { apiKey: 'sk-proj-...' },
     models: [
+      { id: 'gpt-5.5', label: 'GPT-5.5 (最新旗舰)', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$2.50', outputPrice: '$15.00', positioning: '最新旗舰/复杂任务/桌面Agent' },
       { id: 'gpt-5.4', label: 'GPT-5.4 (旗舰)', contextWindow: 1000000, costTier: 'high', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$2.50', outputPrice: '$15.00', positioning: '全能旗舰/电脑操作/Agent' },
       { id: 'gpt-5.3-instant', label: 'GPT-5.3 Instant', contextWindow: 270000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$1.75', outputPrice: '$14.00', positioning: '日常对话/性价比' },
       { id: 'gpt-5-mini', label: 'GPT-5 mini', contextWindow: 270000, costTier: 'low', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, inputPrice: '$0.25', outputPrice: '$2.00', positioning: '极致低成本/高并发' },
@@ -116,6 +119,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
       baseUrl: 'https://your-openclaw-relay.example.com/v1',
     },
     models: [
+      { id: 'chatgpt-sub-gpt-5.5', label: 'GPT-5.5 via ChatGPT Subscription', contextWindow: 1000000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '使用你的 ChatGPT 订阅额度 / 最新旗舰' },
       { id: 'chatgpt-sub-gpt-5.4', label: 'GPT-5.4 via ChatGPT Subscription', contextWindow: 1000000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '使用你的 ChatGPT 订阅额度' },
       { id: 'chatgpt-sub-gpt-5.3-instant', label: 'GPT-5.3 Instant via ChatGPT Subscription', contextWindow: 270000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '订阅直连/快速响应' },
       { id: 'chatgpt-sub-gpt-5-mini', label: 'GPT-5 mini via ChatGPT Subscription', contextWindow: 270000, costTier: 'free', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, positioning: '订阅低成本高并发' },
@@ -146,6 +150,7 @@ export const PROVIDER_CATALOG: ProviderDef[] = [
       { id: 'copilot-sub-gpt-5.2', label: 'GPT-5.2', contextWindow: 270000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 1, positioning: '🔥 1x · 代码+推理/均衡' },
       { id: 'copilot-sub-gpt-5.2-codex', label: 'GPT-5.2 Codex', contextWindow: 270000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, premiumMultiplier: 1, positioning: '🔥 1x · 代码生成专用' },
       { id: 'copilot-sub-gpt-5.3-codex', label: 'GPT-5.3 Codex', contextWindow: 270000, costTier: 'medium', capabilities: ['chat', 'function_calling'], multimodal: false, premiumMultiplier: 1, positioning: '🔥 1x · 最新Codex/代码专精' },
+      { id: 'copilot-sub-gpt-5.5', label: 'GPT-5.5', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 1, positioning: '🔥 1x · 最新OpenAI旗舰/复杂任务/桌面Agent' },
       { id: 'copilot-sub-gpt-5.4', label: 'GPT-5.4', contextWindow: 1000000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 1, positioning: '🔥 1x · OpenAI旗舰/电脑操作/Agent' },
       { id: 'copilot-sub-claude-sonnet-4', label: 'Claude Sonnet 4', contextWindow: 200000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 1, positioning: '🔥 1x · Anthropic均衡/工具调用' },
       { id: 'copilot-sub-claude-sonnet-4.5', label: 'Claude Sonnet 4.5', contextWindow: 200000, costTier: 'medium', capabilities: ['chat', 'vision', 'function_calling'], multimodal: true, premiumMultiplier: 1, positioning: '🔥 1x · 混合推理/创意写作' },
@@ -836,8 +841,8 @@ export class AiProviderService {
           }
 
           this.logger.log(`Testing ${dto.providerId} model: ${dto.model} -> resolved: ${resolvedModel} at ${base}`);
-          // GPT-5.4 models require the /responses API instead of /chat/completions
-          const useResponsesApi = resolvedModel.includes('gpt-5.4');
+          // GPT-5.4+ models require the /responses API instead of /chat/completions
+          const useResponsesApi = /gpt-5\.(4|5)/i.test(resolvedModel);
           const copilotHeaders: Record<string, string> = {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${dto.apiKey}`,

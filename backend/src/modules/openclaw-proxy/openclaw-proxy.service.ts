@@ -299,6 +299,9 @@ export class OpenClawProxyService {
    */
   private messageNeedsTools(text: string): boolean {
     const lower = text.toLowerCase().trim();
+    if (this.isAssistantCapabilityQuestion(text)) {
+      return false;
+    }
     const pathLikePattern = /([a-z]:\\|\\|\/|\.tsx?\b|\.jsx?\b|\.json\b|\.md\b|package\.json|readme|src\/|backend\/|desktop\/)/i;
     const actionWords = /search|find|buy|pay|install|execute|run|publish|balance|order|skill|product|task|airdrop|token|wallet|price|send|transfer|discover|recommend|marketplace|read|write|edit|modify|change|fix|analy[sz]e|inspect|debug|list|open|grep|workspace|file|folder|directory|project|repo|code|patch|continue|resume|benchmark|profile|trace|deploy|build|test|browser|terminal|git|ssh|资金|余额|搜索|安装|执行|购买|支付|发布|查询|技能|商品|任务|继续|接着|下一步|修复|修改|查看|检查|分析|目录|文件夹|文件|代码|工作区|项目|仓库|编辑|列出|运行|命令|部署|构建|测试|浏览器/;
     const structuredTaskPattern = /```|\n\s*[-*\d]+\.|\b(step|steps|todo|plan|investigate|diagnose|implement|refactor|migrate|compare)\b|步骤|方案|计划|排查|定位|实现|重构|迁移|对比/i;
@@ -312,6 +315,22 @@ export class OpenClawProxyService {
       return false;
     }
     return /workspace|repository|codebase|instance|provider|deployment|session|memory|approval|desktop tool/i.test(lower);
+  }
+
+  private isAssistantCapabilityQuestion(message: string): boolean {
+    const text = message.trim().toLowerCase();
+    if (!text) return false;
+
+    const marketplaceDiscovery = /(市场|marketplace|openclaw|clawhub|hub|搜索|查找|推荐|发现|安装|购买|find|search|discover|recommend|install|buy)/i.test(text);
+    const currentSurfaceHint = /(你|你们|当前|现在|已有|已安装|可用|权限|mode|模式|assistant|agent|you|your|available|current|permission)/i.test(text);
+    if (marketplaceDiscovery && !currentSurfaceHint) {
+      return false;
+    }
+
+    const capabilityTopic = /(工具|技能|权限|能力|功能|模式|tool|tools|skill|skills|permission|permissions|capabilit|modes?)/i.test(text);
+    if (!capabilityTopic) return false;
+
+    return /(\bwhat\b|\bwhich\b|\blist\b|\bshow\b|available|can you|could you|你能|你可以|能调用|可以调用|能使用|可以使用|有哪些|哪些|支持哪些|权限是什么|能做什么|可以做什么)/i.test(text);
   }
 
   private async getOrCreatePlatformHostedSession(
@@ -558,7 +577,7 @@ export class OpenClawProxyService {
     const schemas: Record<string, { properties: Record<string, any>; required?: string[] }> = {
       skill_search: {
         properties: {
-          query: { type: 'string', description: 'Search query — keyword, skill name, or description' },
+          query: { type: 'string', description: 'Marketplace/OpenClaw Hub search query — keyword, skill name, or description. Do not use for questions about current assistant tools, permissions, or capabilities.' },
           category: { type: 'string', description: 'Filter by category (e.g. utility, social, finance)' },
           limit: { type: 'number', description: 'Max results to return (default 10)' },
         },
@@ -572,7 +591,7 @@ export class OpenClawProxyService {
       },
       skill_execute: {
         properties: {
-          query: { type: 'string', description: 'Skill name or search query to find and execute' },
+          query: { type: 'string', description: 'Exact installed/marketplace skill name to execute. Never use generic capability questions such as "what tools can you use?" as a skill query.' },
           skillId: { type: 'string', description: 'Direct skill ID or slug if known' },
           input: { type: 'object', description: 'Structured input payload for the skill' },
           prompt: { type: 'string', description: 'Natural-language prompt for prompt-based skills' },
@@ -757,9 +776,13 @@ export class OpenClawProxyService {
     };
 
     const specific = schemas[skill.handlerName];
+    const guardedDescriptions: Record<string, string> = {
+      skill_search: 'Search marketplace/OpenClaw Hub for installable skills, tools, and plugins only when the user asks to find, discover, recommend, or install marketplace skills. Do not use for questions about current assistant capabilities, available tools, permissions, or modes.',
+      skill_execute: 'Execute a specific installed or marketplace skill only when the user explicitly asks to run a named skill or provides a skillId. Never execute generic capability questions such as "what tools can you use?".',
+    };
     return {
       name: skill.handlerName,
-      description: skill.description,
+      description: guardedDescriptions[skill.handlerName] || skill.description,
       input_schema: {
         type: 'object' as const,
         properties: specific?.properties ?? {
@@ -1648,6 +1671,10 @@ export class OpenClawProxyService {
     platformHosted: true;
   } | null> {
     const normalized = String(message || '').toLowerCase();
+    if (this.isAssistantCapabilityQuestion(message)) {
+      return null;
+    }
+
     const mentionsMarketplace = /(openclaw|clawhub|技能|skill|市场|marketplace|hub|任务|task|resources?|资源)/i.test(message);
     if (!mentionsMarketplace) return null;
 

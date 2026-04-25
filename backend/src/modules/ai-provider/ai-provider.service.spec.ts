@@ -54,4 +54,28 @@ describe('AiProviderService — Claude Opus 4.7 catalog coverage', () => {
     expect(resolved.model).toBeDefined();
     expect(resolved.model!.id).toBe('copilot-sub-claude-opus-4.7');
   });
+
+  it('getCatalog() exposes GPT-5.5 for OpenAI API and subscription providers', () => {
+    const catalog = service.getCatalog();
+
+    const openai = catalog.find((p) => p.id === 'openai');
+    expect(openai?.models.find((m) => m.id === 'gpt-5.5')).toMatchObject({
+      multimodal: true,
+      contextWindow: 1_000_000,
+    });
+
+    const chatgpt = catalog.find((p) => p.id === 'chatgpt-subscription');
+    expect(chatgpt?.models.find((m) => m.id === 'chatgpt-sub-gpt-5.5')).toBeDefined();
+
+    const copilot = catalog.find((p) => p.id === 'copilot-subscription');
+    expect(copilot?.models.find((m) => m.id === 'copilot-sub-gpt-5.5')).toMatchObject({
+      multimodal: true,
+      premiumMultiplier: 1,
+    });
+  });
+
+  it('resolveExecutionModelId() maps GPT-5.5 subscription aliases to execution IDs', () => {
+    expect(service.resolveExecutionModelId('chatgpt-sub-gpt-5.5')).toBe('gpt-5.5');
+    expect(service.resolveExecutionModelId('copilot-sub-gpt-5.5')).toBe('gpt-5.5');
+  });
 });

@@ -33,7 +33,7 @@ export const AGENT_PRESET_SKILLS: PresetSkill[] = [
   {
     handlerName: 'skill_search',
     displayName: 'Skill Search',
-    description: 'Search for installable skills, tools, and plugins across the marketplace and OpenClaw Hub — ALWAYS use this when looking for skills or capabilities',
+    description: 'Search for installable skills, tools, and plugins across the marketplace and OpenClaw Hub. Do not use for questions about the current assistant capabilities or permissions.',
     category: 'core',
     enabledByDefault: true,
     icon: '🔍',
@@ -49,7 +49,7 @@ export const AGENT_PRESET_SKILLS: PresetSkill[] = [
   {
     handlerName: 'skill_execute',
     displayName: 'Skill Execute',
-    description: 'Execute a marketplace skill directly from the claw',
+    description: 'Execute a specific installed or marketplace skill directly from the claw when the user names the skill or provides a skillId',
     category: 'core',
     enabledByDefault: true,
     icon: '▶️',

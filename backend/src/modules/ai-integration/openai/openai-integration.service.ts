@@ -671,9 +671,9 @@ export class OpenAIIntegrationService {
       // 调用 OpenAI API
       // 注意：新版本 OpenAI API 使用 tools，旧版本使用 functions
       // 为了兼容性，我们使用 tools（推荐）
-      // GPT-5.4 and GPT-5.4-mini require the /responses API endpoint
+      // GPT-5.4+ require the /responses API endpoint
       const modelName = options?.model || this.defaultModel;
-      const useResponsesApi = modelName.includes('gpt-5.4');
+      const useResponsesApi = /gpt-5\.(4|5)/i.test(modelName);
 
       if (useResponsesApi) {
         return await this.chatWithResponsesApi(openai, messages, tools, options);
@@ -859,7 +859,7 @@ export class OpenAIIntegrationService {
   }
 
   /**
-   * GPT-5.4/5.4-mini use OpenAI's Responses API (/responses) instead of Chat Completions.
+  * GPT-5.4+ use OpenAI's Responses API (/responses) instead of Chat Completions.
    * The Responses API has a different request/response format.
    */
   private async chatWithResponsesApi(
@@ -967,7 +967,9 @@ export class OpenAIIntegrationService {
 
       // Check for function calls
       const functionCalls = outputItems.filter((item: any) => item.type === 'function_call');
-      const lastStopReason = functionCalls.length > 0 ? 'tool_use' : 'end_turn';
+      const incompleteReason = String(response.incomplete_details?.reason || response.status_details?.reason || '');
+      const hitTokenLimit = response.status === 'incomplete' && /max(_output)?_tokens|token/i.test(incompleteReason);
+      const lastStopReason = hitTokenLimit ? 'max_tokens' : functionCalls.length > 0 ? 'tool_use' : 'end_turn';
       if (functionCalls.length === 0) {
         return {
           text: responseText,
