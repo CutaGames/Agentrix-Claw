@@ -111,6 +111,7 @@ function trimHistoryToTokenBudget(
   return result;
 }
 const MOBILE_AUTO_CONTINUE_LIMIT = 3;
+const MOBILE_STREAM_CHUNK_FLUSH_MS = 50;
 const MOBILE_CONTINUE_PROMPT = 'Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting. If you were in the middle of a tool-driven task, resume the unfinished steps first and only summarize after the task is complete.';
 
 function isLocalOnlyModelId(modelId?: string | null) {
@@ -556,7 +557,7 @@ const ThoughtRibbon = ({ thoughts, streaming }: { thoughts: string[]; streaming?
 };
 
 // ─── MessageBubble — Spatial Flow borderless design with swipe actions ──────
-const MessageBubble = ({
+const MessageBubble = React.memo(({ 
   item,
   onSpeak,
   onStopSpeaking,
@@ -834,7 +835,20 @@ const MessageBubble = ({
       {messageContent}
     </Swipeable>
   );
-};
+}, (prev, next) => (
+  prev.item.id === next.item.id &&
+  prev.item.content === next.item.content &&
+  prev.item.streaming === next.item.streaming &&
+  prev.item.error === next.item.error &&
+  prev.item.thoughts === next.item.thoughts &&
+  prev.item.attachments === next.item.attachments &&
+  prev.speakingMessageId === next.speakingMessageId &&
+  prev.onSpeak === next.onSpeak &&
+  prev.onStopSpeaking === next.onStopSpeaking &&
+  prev.onPreviewImage === next.onPreviewImage &&
+  prev.onQuoteMessage === next.onQuoteMessage &&
+  prev.onExportNote === next.onExportNote
+));
 
 export function AgentChatScreen() {
   const route = useRoute<RouteT>();
@@ -938,6 +952,8 @@ export function AgentChatScreen() {
   const isNearBottomRef = useRef(true);
   const activeAssistantMessageIdRef = useRef<string | null>(null);
   const responseInterruptedRef = useRef(false);
+  const streamChunkBufferRef = useRef<Map<string, string[]>>(new Map());
+  const streamChunkFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSendRef = useRef<(overrideText?: string | any, overrideAttachments?: UploadedChatAttachment[]) => Promise<void>>(async () => {});
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   // Token quota for energy bar
@@ -1307,16 +1323,39 @@ export function AgentChatScreen() {
     );
   }, [remoteClipboard, t]);
 
-  const scrollToBottom = useCallback((force = false) => {
+  const scrollToBottom = useCallback((force = false, animated = false) => {
     if (!force && !isNearBottomRef.current) return;
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated }), 50);
   }, []);
 
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
     if (!lastMessage) return;
-    scrollToBottom(lastMessage.role === 'user');
+    scrollToBottom(lastMessage.role === 'user', lastMessage.role === 'user');
   }, [messages.length, scrollToBottom]);
+
+  const flushBufferedStreamChunks = useCallback(() => {
+    streamChunkFlushTimerRef.current = null;
+    const entries = Array.from(streamChunkBufferRef.current.entries());
+    streamChunkBufferRef.current.clear();
+    if (entries.length === 0) return;
+
+    setMessages((prev) =>
+      prev.map((m) => {
+        const chunks = entries.find(([id]) => id === m.id)?.[1];
+        if (!chunks?.length) return m;
+        return { ...m, content: m.content + chunks.join('') };
+      })
+    );
+  }, []);
+
+  useEffect(() => () => {
+    if (streamChunkFlushTimerRef.current) {
+      clearTimeout(streamChunkFlushTimerRef.current);
+      streamChunkFlushTimerRef.current = null;
+    }
+    streamChunkBufferRef.current.clear();
+  }, []);
 
   const stopCurrentResponse = useCallback((showInterruptedHint = false) => {
     responseInterruptedRef.current = true;
@@ -1333,6 +1372,8 @@ export function AgentChatScreen() {
     const activeMessageId = activeAssistantMessageIdRef.current;
     if (!activeMessageId) return;
 
+    flushBufferedStreamChunks();
+
     setMessages((prev) => prev.map((m) => {
       if (m.id !== activeMessageId || !m.streaming) return m;
       if (m.content || m.thoughts?.length) {
@@ -1348,7 +1389,7 @@ export function AgentChatScreen() {
     }));
 
     activeAssistantMessageIdRef.current = null;
-  }, [t]);
+  }, [flushBufferedStreamChunks, t]);
 
   const clearAutoContinueTimer = useCallback(() => {
     if (autoContinueTimerRef.current) {
@@ -1385,22 +1426,29 @@ export function AgentChatScreen() {
   useEffect(() => () => clearAutoContinueTimer(), [clearAutoContinueTimer]);
 
   const appendToStreamingMessage = useCallback((msgId: string, chunk: string) => {
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== msgId) return m;
-
-        let newContent = m.content + chunk;
-        let newThoughts = m.thoughts || [];
-
-        if (chunk.includes('[Tool Call]') || chunk.includes('Thinking...')) {
-          newThoughts = [...newThoughts, chunk.trim()];
+    if (chunk.includes('[Tool Call]') || chunk.includes('Thinking...')) {
+      flushBufferedStreamChunks();
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== msgId) return m;
+          const newThoughts = [...(m.thoughts || []), chunk.trim()];
           return { ...m, thoughts: newThoughts };
-        }
+        })
+      );
+      return;
+    }
 
-        return { ...m, content: newContent };
-      })
-    );
-  }, []);
+    const existing = streamChunkBufferRef.current.get(msgId);
+    if (existing) {
+      existing.push(chunk);
+    } else {
+      streamChunkBufferRef.current.set(msgId, [chunk]);
+    }
+
+    if (!streamChunkFlushTimerRef.current) {
+      streamChunkFlushTimerRef.current = setTimeout(flushBufferedStreamChunks, MOBILE_STREAM_CHUNK_FLUSH_MS);
+    }
+  }, [flushBufferedStreamChunks]);
 
   const completeStreamingAssistantMessage = useCallback((errorMessage?: string) => {
     const activeMessageId = activeAssistantMessageIdRef.current;
@@ -1410,6 +1458,12 @@ export function AgentChatScreen() {
     if (!activeMessageId) {
       return;
     }
+
+    if (streamChunkFlushTimerRef.current) {
+      clearTimeout(streamChunkFlushTimerRef.current);
+      streamChunkFlushTimerRef.current = null;
+    }
+    flushBufferedStreamChunks();
 
     setMessages((prev) => prev.map((message) => {
       if (message.id !== activeMessageId) {
@@ -2252,6 +2306,12 @@ export function AgentChatScreen() {
 
       if (responseInterruptedRef.current) return;
 
+      if (streamChunkFlushTimerRef.current) {
+        clearTimeout(streamChunkFlushTimerRef.current);
+        streamChunkFlushTimerRef.current = null;
+      }
+      flushBufferedStreamChunks();
+
       // If stream ran but produced no content, show a friendly error
       setMessages((prev) => {
         let finalContent = '';
@@ -2596,19 +2656,23 @@ export function AgentChatScreen() {
     }
   }, [t]);
 
-  const renderMessage = ({ item }: { item: Message }) => {
+  const handlePreviewImage = useCallback((uri: string) => {
+    setPreviewImageUri(uri);
+  }, []);
+
+  const renderMessage = useCallback(({ item }: { item: Message }) => {
     return (
       <MessageBubble
         item={item}
         onSpeak={handleSpeakMessage}
         onStopSpeaking={stopSpeaking}
         speakingMessageId={speakingMessageId}
-        onPreviewImage={(uri) => setPreviewImageUri(uri)}
+        onPreviewImage={handlePreviewImage}
         onQuoteMessage={handleQuoteMessage}
         onExportNote={handleExportNote}
       />
     );
-  };
+  }, [handleExportNote, handlePreviewImage, handleQuoteMessage, handleSpeakMessage, speakingMessageId, stopSpeaking]);
 
   // Sprint 2: Auto-provision — when no agent instance exists, show friendly welcome
   const handleAutoProvision = useCallback(async () => {
@@ -2792,7 +2856,7 @@ export function AgentChatScreen() {
         renderItem={renderMessage}
         contentContainerStyle={styles.messageList}
         showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => scrollToBottom()}
+        onContentSizeChange={() => scrollToBottom(false, false)}
         onScroll={(event) => {
           const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
           const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
@@ -2801,7 +2865,10 @@ export function AgentChatScreen() {
         scrollEventThrottle={16}
         initialNumToRender={PAGE_SIZE}
         maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
         windowSize={5}
+        removeClippedSubviews
+        keyboardShouldPersistTaps="handled"
         onStartReached={loadOlderMessages}
         onStartReachedThreshold={0.3}
         ListHeaderComponent={

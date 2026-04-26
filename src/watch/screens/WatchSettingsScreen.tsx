@@ -9,14 +9,15 @@ import {
 } from 'react-native';
 import { watchColors } from '../theme/watchColors';
 import { watchLayout } from '../theme/watchLayout';
+import { useWatchAuth } from '../hooks/useWatchAuth';
 
 type SyncInterval = 30 | 60 | 300;
 
 export function WatchSettingsScreen() {
+  const { isLoggedIn, requestAuthState, logout } = useWatchAuth();
   const [syncInterval, setSyncInterval] = useState<SyncInterval>(60);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [hapticEnabled, setHapticEnabled] = useState(true);
-  const [isLoggedIn] = useState(false); // MVP: placeholder
 
   const intervalOptions: { value: SyncInterval; label: string }[] = [
     { value: 30, label: '30秒' },
@@ -42,8 +43,13 @@ export function WatchSettingsScreen() {
           </Text>
         </View>
         {!isLoggedIn && (
-          <TouchableOpacity style={styles.loginBtn}>
-            <Text style={styles.loginBtnText}>扫码登录</Text>
+          <TouchableOpacity style={styles.loginBtn} onPress={() => { void requestAuthState(); }}>
+            <Text style={styles.loginBtnText}>从手机同步登录</Text>
+          </TouchableOpacity>
+        )}
+        {isLoggedIn && (
+          <TouchableOpacity style={styles.loginBtn} onPress={() => { void logout(); }}>
+            <Text style={styles.loginBtnText}>退出手表登录</Text>
           </TouchableOpacity>
         )}
       </View>

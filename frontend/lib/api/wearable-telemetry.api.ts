@@ -62,6 +62,18 @@ export interface LatestReadings {
   [channel: string]: { value: number; unit: string; timestamp: string };
 }
 
+export interface WearableVerificationEventDto {
+  type: 'wearable.phase1_verified';
+  source?: string;
+  deviceId: string;
+  deviceName: string;
+  services: string[];
+  firstReadableCharacteristicUuid?: string | null;
+  payloadPreview?: string | null;
+  kind?: string;
+  supportTier?: string;
+}
+
 // ── API ──────────────────────────────────────────────────────────────────────
 
 export const wearableTelemetryApi = {
@@ -83,6 +95,12 @@ export const wearableTelemetryApi = {
   }): Promise<{ inserted: number }> => {
     const result = await apiClient.post<{ inserted: number }>('/wearable-telemetry/upload', dto);
     return result ?? { inserted: 0 };
+  },
+
+  registerVerification: async (dto: WearableVerificationEventDto): Promise<TriggerEvent> => {
+    const result = await apiClient.post<TriggerEvent>('/wearable-telemetry/verification', dto);
+    if (!result) throw new Error('Failed to register wearable verification');
+    return result;
   },
 
   querySamples: async (query?: {

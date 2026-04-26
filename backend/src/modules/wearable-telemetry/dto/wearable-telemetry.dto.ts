@@ -64,6 +64,18 @@ export class UploadTelemetryDto {
   samples: TelemetrySampleDto[];
 }
 
+export class RegisterWearableVerificationDto {
+  @ApiProperty({ example: 'wearable.phase1_verified' }) @IsString() @IsNotEmpty() type: 'wearable.phase1_verified';
+  @ApiPropertyOptional({ example: 'wearable' }) @IsOptional() @IsString() source?: string;
+  @ApiProperty() @IsString() @IsNotEmpty() deviceId: string;
+  @ApiProperty() @IsString() @IsNotEmpty() deviceName: string;
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) services: string[];
+  @ApiPropertyOptional() @IsOptional() @IsString() firstReadableCharacteristicUuid?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() payloadPreview?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() kind?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() supportTier?: string;
+}
+
 export class CreateAutomationRuleDto {
   @ApiProperty() @IsString() @IsNotEmpty() name: string;
   @ApiProperty() @IsString() @IsNotEmpty() deviceId: string;

@@ -141,6 +141,7 @@ const MANUAL_MODEL_SELECTION_GRACE_MS = 20_000;
 const STALE_DESKTOP_TASK_WINDOW_MS = 45_000;
 const RECENT_DESKTOP_FAILURE_WINDOW_MS = 15_000;
 const CHAT_AUTO_CONTINUE_LIMIT = 6;
+const STREAM_CHUNK_FLUSH_MS = 50;
 const CHECKPOINT_CONTINUE_PROMPT = "Continue from the latest checkpoint. Preserve the active plan, task progress, and any pending background results.";
 const TASK_LIKE_PROMPT_PATTERN = /([a-z]:\\|\\|\/|\.tsx?\b|\.jsx?\b|\.json\b|\.md\b|package\.json|readme|src\/|backend\/|desktop\/|```|\n)|\b(search|find|install|run|execute|debug|fix|edit|write|read|open|grep|list|analy[sz]e|inspect|deploy|build|test|git|ssh|workspace|file|folder|directory|project|repo|code|patch|benchmark|profile|trace|continue|resume)\b|搜索|安装|运行|执行|修复|修改|查看|列出|分析|排查|部署|构建|测试|工作区|文件|目录|项目|仓库|代码/i;
 
@@ -498,6 +499,8 @@ export default function ChatPanel({
   const sessionAbortControllersRef = useRef<Record<string, AbortController | null>>({});
   const responseInterruptedRef = useRef(false);
   const sessionPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
+  const shouldStickToBottomRef = useRef(true);
   const listEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const audioPlayerRef = useRef<AudioQueuePlayer | null>(null);
@@ -1166,8 +1169,25 @@ export default function ChatPanel({
     };
   }, []);
 
+  const handleMessagesScroll = useCallback(() => {
+    const el = messageListRef.current;
+    if (!el) return;
+    shouldStickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 180;
+  }, []);
+
   useEffect(() => {
-    listEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!shouldStickToBottomRef.current) {
+      return;
+    }
+
+    const lastMessage = messages[messages.length - 1];
+    const raf = requestAnimationFrame(() => {
+      listEndRef.current?.scrollIntoView({
+        behavior: lastMessage?.streaming ? "auto" : "smooth",
+        block: "end",
+      });
+    });
+    return () => cancelAnimationFrame(raf);
   }, [messages]);
 
   // ── Tab initialization from persistence ──────────────
@@ -1458,13 +1478,13 @@ export default function ChatPanel({
     [workspaceDir],
   );
 
-  // Batch SSE chunks via requestAnimationFrame to avoid per-chunk re-renders.
-  // Accumulates text in a ref and flushes once per animation frame.
+  // Batch SSE chunks so WebView2 does not re-render markdown on every token.
   const chunkBufferRef = useRef<Map<string, { sessionId: string; chunks: string[] }>>(new Map());
-  const chunkFlushRafRef = useRef<number | null>(null);
+  const chunkFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const streamingResponseStartedRef = useRef<Set<string>>(new Set());
 
   const flushChunkBuffer = useCallback(() => {
-    chunkFlushRafRef.current = null;
+    chunkFlushTimerRef.current = null;
     const entries = Array.from(chunkBufferRef.current.entries());
     chunkBufferRef.current.clear();
     for (const [msgId, { sessionId, chunks }] of entries) {
@@ -1485,17 +1505,27 @@ export default function ChatPanel({
     } else {
       chunkBufferRef.current.set(msgId, { sessionId, chunks: [chunk] });
     }
-    if (chunkFlushRafRef.current === null) {
-      chunkFlushRafRef.current = requestAnimationFrame(flushChunkBuffer);
+    if (chunkFlushTimerRef.current === null) {
+      chunkFlushTimerRef.current = setTimeout(flushChunkBuffer, STREAM_CHUNK_FLUSH_MS);
     }
   }, [flushChunkBuffer]);
 
+  useEffect(() => () => {
+    if (chunkFlushTimerRef.current) {
+      clearTimeout(chunkFlushTimerRef.current);
+      chunkFlushTimerRef.current = null;
+    }
+    chunkBufferRef.current.clear();
+    streamingResponseStartedRef.current.clear();
+  }, []);
+
   const finalizeMessage = useCallback((sessionId: string, msgId: string) => {
     // Flush any pending batched chunks before marking the message as done.
-    if (chunkFlushRafRef.current !== null) {
-      cancelAnimationFrame(chunkFlushRafRef.current);
-      chunkFlushRafRef.current = null;
+    if (chunkFlushTimerRef.current !== null) {
+      clearTimeout(chunkFlushTimerRef.current);
+      chunkFlushTimerRef.current = null;
     }
+    streamingResponseStartedRef.current.delete(`${sessionId}:${msgId}`);
     flushChunkBuffer();
 
     const updated = updateSessionMessages(
@@ -2387,18 +2417,21 @@ export default function ChatPanel({
         history.push({ role: "user", content: outboundText });
 
         const chunkHandler = (chunk: string) => {
-          if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
-            setBallState("speaking");
+          const responseKey = `${targetSessionId}:${assistantId}`;
+          if (!streamingResponseStartedRef.current.has(responseKey)) {
+            streamingResponseStartedRef.current.add(responseKey);
+            if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
+              setBallState("speaking");
+            }
+            setStreamFeedback((current) => {
+              if (current?.tone === "error") return current;
+              return {
+                tone: "info",
+                label: "正在输出回复",
+                detail: "内容持续生成中",
+              };
+            });
           }
-          setStreamFeedback((current) => {
-            if (current?.tone === "error") return current;
-            if (current?.label === "正在输出回复") return current;
-            return {
-              tone: "info",
-              label: "正在输出回复",
-              detail: "内容持续生成中",
-            };
-          });
           appendChunk(targetSessionId, assistantId, chunk);
           sentenceAcc?.push(chunk);
         };
@@ -2595,6 +2628,7 @@ export default function ChatPanel({
         };
 
         const errorHandler = (resolve: () => void) => (err: string) => {
+          streamingResponseStartedRef.current.delete(`${targetSessionId}:${assistantId}`);
           updateSessionMessages(
             targetSessionId,
             (prev) => prev.map((message) => (
@@ -4107,6 +4141,8 @@ export default function ChatPanel({
 
       {/* Messages */}
       <div
+        ref={messageListRef}
+        onScroll={handleMessagesScroll}
         style={{
           flex: 1,
           overflowY: "auto",

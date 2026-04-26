@@ -142,14 +142,15 @@
         }
       ],
       [
-        "llama.rn",
+        "./plugins/withLlamaRN",
         {
           "enableEntitlements": true,
           "entitlementsProfile": "production",
           "forceCxx20": true,
           "enableOpenCL": true
         }
-      ]
+      ],
+      "expo-localization"
     ],
     "extra": {
       "wakeWord": {

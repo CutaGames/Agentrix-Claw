@@ -11,35 +11,39 @@ import { watchColors } from '../theme/watchColors';
 import { watchLayout } from '../theme/watchLayout';
 import { API_BASE } from '../../config/env';
 import type { TriggerEvent } from '../../services/wearables/wearableTypes';
+import { useWatchAuth } from '../hooks/useWatchAuth';
 
 export function WatchAlertsScreen() {
+  const { authFetch, loading: authLoading, requestAuthState } = useWatchAuth();
   const [alerts, setAlerts] = useState<TriggerEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchAlerts = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/wearable-telemetry/triggers?limit=20`, {
+      const res = await authFetch(`${API_BASE}/wearable-telemetry/triggers?limit=20`, {
         headers: { 'Content-Type': 'application/json' },
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setAlerts(Array.isArray(data) ? data : data.items ?? []);
     } catch {
+      void requestAuthState();
       // silent on watch
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authFetch, requestAuthState]);
 
   useEffect(() => {
+    if (authLoading) return;
     fetchAlerts();
     const timer = setInterval(fetchAlerts, 30_000);
     return () => clearInterval(timer);
-  }, [fetchAlerts]);
+  }, [authLoading, fetchAlerts]);
 
   const acknowledge = useCallback(async (eventId: string) => {
     try {
-      await fetch(`${API_BASE}/wearable-telemetry/triggers/${eventId}/acknowledge`, {
+      await authFetch(`${API_BASE}/wearable-telemetry/triggers/${eventId}/acknowledge`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -49,7 +53,7 @@ export function WatchAlertsScreen() {
     } catch {
       // silent
     }
-  }, []);
+  }, [authFetch]);
 
   if (loading) {
     return (

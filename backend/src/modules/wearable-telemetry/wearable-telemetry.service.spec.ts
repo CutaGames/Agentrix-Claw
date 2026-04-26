@@ -411,6 +411,39 @@ describe('WearableTelemetryService', () => {
     });
   });
 
+  describe('registerVerificationEvent', () => {
+    it('should create an agent-facing trigger event from wearable verification', async () => {
+      const result = await service.registerVerificationEvent('user-1', {
+        type: 'wearable.phase1_verified',
+        source: 'wearable',
+        deviceId: 'ring-1',
+        deviceName: 'Smart Ring',
+        services: ['Battery', 'Heart Rate'],
+        firstReadableCharacteristicUuid: '2a19',
+        payloadPreview: 'AQID',
+        kind: 'ring',
+        supportTier: 'ready',
+      });
+
+      expect(result).toBeDefined();
+      expect(triggerRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'user-1',
+          ruleName: 'Wearable verification',
+          deviceId: 'ring-1',
+          channel: 'custom',
+          action: 'update_context',
+          actionPayload: expect.objectContaining({
+            eventType: 'wearable.phase1_verified',
+            deviceName: 'Smart Ring',
+            services: ['Battery', 'Heart Rate'],
+          }),
+        }),
+      );
+      expect(triggerRepo.save).toHaveBeenCalled();
+    });
+  });
+
   describe('acknowledgeTrigger', () => {
     it('should acknowledge a trigger event', async () => {
       triggerRepo.update.mockResolvedValue({ affected: 1 });

@@ -9,6 +9,7 @@ import {
 import {
   CreateAutomationRuleDto,
   QueryTelemetryDto,
+  RegisterWearableVerificationDto,
   UpdateAutomationRuleDto,
   UploadTelemetryDto,
 } from './dto/wearable-telemetry.dto';
@@ -51,6 +52,38 @@ export class WearableTelemetryService {
     await this.evaluateRules(userId, dto.deviceId, dto.samples);
 
     return { inserted: saved.length };
+  }
+
+  async registerVerificationEvent(userId: string, dto: RegisterWearableVerificationDto): Promise<WearableTriggerEvent> {
+    const now = new Date();
+    const event = this.triggerRepo.create({
+      userId,
+      ruleId: '00000000-0000-0000-0000-000000000000',
+      ruleName: 'Wearable verification',
+      deviceId: dto.deviceId,
+      channel: 'custom',
+      value: 1,
+      condition: 'eq',
+      threshold: 1,
+      action: 'update_context',
+      actionPayload: {
+        eventType: dto.type,
+        source: dto.source ?? 'wearable',
+        deviceName: dto.deviceName,
+        services: dto.services ?? [],
+        firstReadableCharacteristicUuid: dto.firstReadableCharacteristicUuid ?? null,
+        payloadPreview: dto.payloadPreview ?? null,
+        kind: dto.kind ?? null,
+        supportTier: dto.supportTier ?? null,
+        receivedAt: now.toISOString(),
+      },
+      acknowledged: false,
+      triggeredAt: now,
+    });
+
+    const saved = await this.triggerRepo.save(event);
+    this.logger.log(`Registered wearable verification event for device ${dto.deviceId}`);
+    return saved;
   }
 
   // ── Telemetry Query ────────────────────────────────────────────────────────

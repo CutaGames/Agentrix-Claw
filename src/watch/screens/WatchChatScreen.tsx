@@ -13,7 +13,7 @@ import {
 import { watchColors } from '../theme/watchColors';
 import { watchLayout } from '../theme/watchLayout';
 import { API_BASE } from '../../config/env';
-import { getApiConfig } from '../../services/api';
+import { useWatchAuth } from '../hooks/useWatchAuth';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -25,6 +25,7 @@ const QUICK_REPLIES = ['好的', '稍后再说', '取消', '详细说'];
 const MAX_DISPLAY_CHARS = 200; // truncate long Agent replies for watch
 
 export function WatchChatScreen() {
+  const { token, authFetch, requestAuthState } = useWatchAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -45,14 +46,10 @@ export function WatchChatScreen() {
       setSending(true);
 
       try {
-        const token = getApiConfig().token;
         const endpoint = token ? `${API_BASE}/openclaw/proxy/chat` : `${API_BASE}/claude/chat`;
-        const res = await fetch(endpoint, {
+        const res = await authFetch(endpoint, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: trimmed,
             source: 'watch',
@@ -71,6 +68,7 @@ export function WatchChatScreen() {
         };
         setMessages((prev) => [...prev, assistantMsg]);
       } catch {
+        void requestAuthState();
         setMessages((prev) => [
           ...prev,
           { role: 'assistant', content: '⚠ 连接失败', timestamp: new Date().toISOString() },
@@ -80,7 +78,7 @@ export function WatchChatScreen() {
         setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
       }
     },
-    [sending],
+    [authFetch, requestAuthState, sending, token],
   );
 
   return (

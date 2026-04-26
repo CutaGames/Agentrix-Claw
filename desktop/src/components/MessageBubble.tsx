@@ -24,6 +24,7 @@ function MessageBubbleImpl({ message, onRetry }: Props) {
   const [hovering, setHovering] = useState(false);
   const isUser = message.role === "user";
   const isError = message.error;
+  const renderPlainText = isUser || message.streaming;
 
   // Extract <think>...</think> and [Thinking]...[/Thinking] blocks, plus tool markers, diff blocks, terminal output
   const { thinkContent, displayContent, toolCalls, toolProgress, diffBlocks, terminalBlocks } = useMemo(() => {
@@ -198,9 +199,9 @@ function MessageBubbleImpl({ message, onRetry }: Props) {
         </div>
       )}
 
-      {/* Markdown content — user messages render as plain text, assistant uses full markdown */}
+      {/* Keep streaming lightweight; markdown/highlight runs once the turn settles. */}
       {displayContent && (
-        isUser ? (
+        renderPlainText ? (
           <span style={{ whiteSpace: "pre-wrap" }}>{displayContent}</span>
         ) : (
           <div className="md-body">

@@ -16,6 +16,7 @@ import { WearableTelemetryService } from './wearable-telemetry.service';
 import {
   CreateAutomationRuleDto,
   QueryTelemetryDto,
+  RegisterWearableVerificationDto,
   UpdateAutomationRuleDto,
   UploadTelemetryDto,
 } from './dto/wearable-telemetry.dto';
@@ -34,6 +35,13 @@ export class WearableTelemetryController {
   @ApiResponse({ status: 201, description: 'Samples uploaded and rules evaluated' })
   async uploadSamples(@Request() req, @Body() dto: UploadTelemetryDto) {
     return this.service.uploadSamples(req.user.id, dto);
+  }
+
+  @Post('verification')
+  @ApiOperation({ summary: 'Register a paired wearable verification event for agent routing' })
+  @ApiResponse({ status: 201, description: 'Verification event registered' })
+  async registerVerification(@Request() req, @Body() dto: RegisterWearableVerificationDto) {
+    return this.service.registerVerificationEvent(req.user.id, dto);
   }
 
   @Get('samples')

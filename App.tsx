@@ -27,6 +27,7 @@ import {
 } from './src/services/androidBackgroundWakeWord.service';
 import { initLlamaBridge } from './src/services/llamaRnBridge';
 import { OtaModelDownloadService } from './src/services/otaModelDownload.service';
+import { WatchDataLayerService } from './src/services/wearables/watchDataLayerBridge.service';
 
 // Register llama.rn bridge for on-device LLM inference
 initLlamaBridge();
@@ -292,6 +293,38 @@ function AppNavigator() {
       appStateSub.remove();
     };
   }, [clearAuth, isVoiceUiE2E, setAuth, setInitialized]);
+
+  useEffect(() => {
+    if (isVoiceUiE2E || Platform.OS !== 'android') {
+      return;
+    }
+
+    const syncCurrentAuth = () => {
+      const currentState = useAuthStore.getState();
+      if (!currentState.token) {
+        return;
+      }
+      void WatchDataLayerService.syncAuthState({
+        accessToken: currentState.token,
+        userId: currentState.user?.id ?? null,
+        expiresAt: null,
+      }).catch((error) => {
+        console.warn('Failed to sync watch auth state:', error);
+      });
+    };
+
+    void WatchDataLayerService.startListening()
+      .then(syncCurrentAuth)
+      .catch((error) => {
+        console.warn('Failed to start Wear Data Layer listener:', error);
+      });
+
+    const unsubscribeAuthRequest = WatchDataLayerService.onMessage('/agentrix/auth/request', syncCurrentAuth);
+    return () => {
+      unsubscribeAuthRequest();
+      void WatchDataLayerService.stopListening().catch(() => {});
+    };
+  }, [isAuthenticated, isVoiceUiE2E, token]);
 
   useEffect(() => {
     if (isVoiceUiE2E) {
