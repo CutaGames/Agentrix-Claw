@@ -127,6 +127,7 @@ export type MeStackParamList = {
 
 export type DiscoverStackParamList = {
   DiscoverHome: undefined;
+  Predict: undefined;
   // Market screens
   Marketplace: undefined;
   SkillDetail: { skillId: string; skillName: string };

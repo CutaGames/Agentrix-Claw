@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { DiscoverStackParamList } from './types';
 import { colors } from '../theme/colors';
 import { DiscoverScreen } from '../screens/discover/DiscoverScreen';
+import { PredictScreen } from '../screens/discover/PredictScreen';
 // Market screens
 import { ClawMarketplaceScreen } from '../screens/market/ClawMarketplaceScreen';
 import { ClawSkillDetailScreen } from '../screens/market/ClawSkillDetailScreen';
@@ -35,6 +36,7 @@ export function DiscoverStackNavigator() {
       }}
     >
       <Stack.Screen name="DiscoverHome" component={DiscoverScreen} options={{ title: t({ en: 'Discover', zh: '发现' }) }} />
+      <Stack.Screen name="Predict" component={PredictScreen} options={{ title: t({ en: '🎯 Predict', zh: '🎯 预测' }) }} />
       {/* Market screens */}
       <Stack.Screen name="Marketplace" component={ClawMarketplaceScreen} options={{ title: t({ en: 'Skill Market', zh: '技能市场' }) }} />
       <Stack.Screen name="SkillDetail" component={ClawSkillDetailScreen} options={({ route }) => ({ title: route.params.skillName })} />
