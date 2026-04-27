@@ -111,6 +111,7 @@ export class User {
     sessionSummaries?: Array<{
       sessionId: string;
       summary: string;
+      source?: string;
       timestamp: Date;
     }>;
     [key: string]: any;

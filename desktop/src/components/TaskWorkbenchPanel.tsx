@@ -3,6 +3,7 @@ import TaskTimeline, { type TaskRunState, type TaskTimelineEntry } from "./TaskT
 import PlanPanel from "./PlanPanel";
 import type { AgentPlan } from "../services/agentIntelligence";
 import type { DesktopRemoteApproval } from "../services/desktopSync";
+import type { OperationsContinuity, OperationsOverview } from "../services/operations";
 
 export interface TaskWorkbenchEvent {
   id: string;
@@ -30,6 +31,8 @@ interface Props {
   pendingApproval: DesktopRemoteApproval | null;
   events: TaskWorkbenchEvent[];
   checkpoint: TaskCheckpoint | null;
+  operationsOverview?: OperationsOverview | null;
+  operationsContinuity?: OperationsContinuity | null;
   onApprovePlan: () => void | Promise<void>;
   onRejectPlan: () => void | Promise<void>;
   onOpenApprovals: () => void;
@@ -63,6 +66,8 @@ export default function TaskWorkbenchPanel({
   pendingApproval,
   events,
   checkpoint,
+  operationsOverview,
+  operationsContinuity,
   onApprovePlan,
   onRejectPlan,
   onOpenApprovals,
@@ -186,6 +191,41 @@ export default function TaskWorkbenchPanel({
             <div style={overviewSubtle}>{checkpoint ? `${checkpoint.messageCount} messages captured` : "No server-backed checkpoint yet."}</div>
           </div>
         </div>
+
+        {(operationsOverview || operationsContinuity) && (
+          <div style={opsControlCard} data-testid="desktop-operations-control-summary">
+            <div style={opsControlHeader}>
+              <div>
+                <div style={sectionTitle}>Operations Control</div>
+                <div style={opsControlTitle}>
+                  {operationsOverview?.status || "active"} · {operationsOverview?.toolPolicy?.status || "tool policy pending"}
+                </div>
+              </div>
+              <div style={opsControlBadge}>{operationsContinuity?.wearableSummary?.onlineDeviceCount || 0} devices</div>
+            </div>
+            <div style={opsMetricGrid}>
+              <div style={opsMetricCard}>
+                <div style={metricLabel}>Pending Approval</div>
+                <div style={metricValue}>{operationsOverview?.counts?.pendingApprovals ?? 0}</div>
+              </div>
+              <div style={opsMetricCard}>
+                <div style={metricLabel}>Running Tasks</div>
+                <div style={metricValue}>{operationsOverview?.counts?.runningTasks ?? 0}</div>
+              </div>
+              <div style={opsMetricCard}>
+                <div style={metricLabel}>Lane Jobs</div>
+                <div style={metricValue}>{operationsOverview?.counts?.laneJobs ?? 0}</div>
+              </div>
+              <div style={opsMetricCard}>
+                <div style={metricLabel}>Tool Collisions</div>
+                <div style={metricValue}>{operationsOverview?.toolPolicy?.summary?.duplicateNameCount ?? 0}</div>
+              </div>
+            </div>
+            {operationsOverview?.toolPolicy?.recommendations?.[0] && (
+              <div style={opsHint}>{operationsOverview.toolPolicy.recommendations[0]}</div>
+            )}
+          </div>
+        )}
 
         {pendingApproval && (
           <div style={approvalCard}>
@@ -575,6 +615,64 @@ const resumeButton: CSSProperties = {
   color: "#082f49",
   fontWeight: 700,
   cursor: "pointer",
+};
+
+const opsControlCard: CSSProperties = {
+  padding: 16,
+  borderRadius: 16,
+  background: "rgba(134,239,172,0.06)",
+  border: "1px solid rgba(134,239,172,0.16)",
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+};
+
+const opsControlHeader: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+};
+
+const opsControlTitle: CSSProperties = {
+  marginTop: 4,
+  color: "#f8fafc",
+  fontSize: 14,
+  fontWeight: 700,
+  textTransform: "capitalize",
+};
+
+const opsControlBadge: CSSProperties = {
+  border: "1px solid rgba(134,239,172,0.26)",
+  borderRadius: 999,
+  padding: "7px 10px",
+  color: "#bbf7d0",
+  fontSize: 12,
+  fontWeight: 700,
+  whiteSpace: "nowrap",
+};
+
+const opsMetricGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 10,
+};
+
+const opsMetricCard: CSSProperties = {
+  borderRadius: 12,
+  background: "rgba(255,255,255,0.03)",
+  border: "1px solid rgba(255,255,255,0.06)",
+  padding: 10,
+  minWidth: 0,
+};
+
+const opsHint: CSSProperties = {
+  borderRadius: 12,
+  padding: 10,
+  background: "rgba(251,191,36,0.08)",
+  color: "#fde68a",
+  fontSize: 12,
+  lineHeight: 1.5,
 };
 
 const emptyCard: CSSProperties = {

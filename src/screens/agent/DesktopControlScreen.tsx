@@ -20,6 +20,8 @@ import {
   type MobileDesktopCommand,
   type MobileDesktopState,
 } from '../../services/desktopSync';
+import { fetchOperationsContinuity, requestOperationsFollowUp, type OperationsContinuityState } from '../../services/operations';
+import { WatchDataLayerService } from '../../services/wearables/watchDataLayerBridge.service';
 
 const prettyJson = (value: unknown) => {
   if (value == null) return 'No result';
@@ -34,6 +36,7 @@ const prettyJson = (value: unknown) => {
 export function DesktopControlScreen() {
   const { t } = useI18n();
   const [state, setState] = useState<MobileDesktopState | null>(null);
+  const [continuity, setContinuity] = useState<OperationsContinuityState | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -47,8 +50,12 @@ export function DesktopControlScreen() {
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
-      const next = await fetchDesktopState();
+      const [next, nextContinuity] = await Promise.all([
+        fetchDesktopState(),
+        fetchOperationsContinuity().catch(() => null),
+      ]);
       setState(next);
+      setContinuity(nextContinuity);
       if (!selectedDeviceId && next.devices[0]?.deviceId) {
         setSelectedDeviceId(next.devices[0].deviceId);
       }
@@ -118,6 +125,42 @@ export function DesktopControlScreen() {
     }
   }, [loadState, t]);
 
+  const syncContinuityToWatch = useCallback(async () => {
+    if (!continuity?.wearableSummary) {
+      Alert.alert(t({ en: 'Continuity', zh: '连续任务' }), t({ en: 'No continuity summary is available yet.', zh: '暂时没有可同步的连续任务摘要。' }));
+      return;
+    }
+    try {
+      const payload = {
+        kind: 'operations-continuity',
+        summary: continuity.wearableSummary,
+        sessions: continuity.sessions.slice(0, 3),
+        syncedAt: Date.now(),
+      };
+      await WatchDataLayerService.putDataItem('/agentrix/session/state', payload);
+      await WatchDataLayerService.broadcastMessage('/agentrix/session/state', payload);
+      Alert.alert(t({ en: 'Synced', zh: '已同步' }), t({ en: 'Continuity summary was sent to Wear OS.', zh: '连续任务摘要已发送到 Wear OS。' }));
+    } catch (error: any) {
+      Alert.alert(t({ en: 'Watch Sync Failed', zh: '手表同步失败' }), error?.message || t({ en: 'Could not sync to watch.', zh: '无法同步到手表。' }));
+    }
+  }, [continuity, t]);
+
+  const requestFollowUp = useCallback(async (sessionId: string, title?: string) => {
+    try {
+      await requestOperationsFollowUp({
+        sessionId,
+        title: title || 'Resume Agentrix session',
+        targetDeviceId: selectedDevice?.deviceId,
+        requesterDeviceId: 'mobile-app',
+        action: 'resume-on-desktop',
+      });
+      await loadState(true);
+      Alert.alert(t({ en: 'Queued', zh: '已下发' }), t({ en: 'Follow-up was queued for the desktop.', zh: '已为桌面端下发继续任务。' }));
+    } catch (error: any) {
+      Alert.alert(t({ en: 'Follow-up Failed', zh: '继续任务失败' }), error?.message || t({ en: 'Could not queue follow-up.', zh: '无法下发继续任务。' }));
+    }
+  }, [loadState, selectedDevice?.deviceId, t]);
+
   const latestCommands = commands.slice(0, 8) as MobileDesktopCommand[];
 
   if (loading && !state) {
@@ -182,6 +225,36 @@ export function DesktopControlScreen() {
             <Text style={styles.actionChipText}>{t({ en: 'List Windows', zh: '窗口列表' })}</Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      <View style={styles.section} testID="mobile-operations-continuity">
+        <Text style={styles.sectionTitle}>{t({ en: 'Agent Continuity', zh: '连续任务' })}</Text>
+        <View style={styles.continuityGrid}>
+          <View style={styles.statPill}>
+            <Text style={styles.statValue}>{continuity?.wearableSummary.runningTaskCount ?? 0}</Text>
+            <Text style={styles.statLabel}>{t({ en: 'Running', zh: '运行中' })}</Text>
+          </View>
+          <View style={styles.statPill}>
+            <Text style={styles.statValue}>{continuity?.wearableSummary.pendingApprovalCount ?? approvals.filter((item) => item.status === 'pending').length}</Text>
+            <Text style={styles.statLabel}>{t({ en: 'Approvals', zh: '审批' })}</Text>
+          </View>
+          <View style={styles.statPill}>
+            <Text style={styles.statValue}>{continuity?.wearableSummary.onlineDeviceCount ?? devices.length}</Text>
+            <Text style={styles.statLabel}>{t({ en: 'Online', zh: '在线' })}</Text>
+          </View>
+        </View>
+        <TouchableOpacity style={styles.primaryButton} onPress={() => void syncContinuityToWatch()} testID="sync-continuity-watch-button">
+          <Text style={styles.primaryButtonText}>{t({ en: 'Sync To Watch', zh: '同步到手表' })}</Text>
+        </TouchableOpacity>
+        {continuity?.sessions.slice(0, 3).map((session) => (
+          <View key={session.sessionId} style={styles.card} testID="continuity-session-card">
+            <Text style={styles.cardTitle}>{session.title}</Text>
+            <Text style={styles.cardMeta}>{session.messageCount} messages · {session.deviceType} · {session.activeTaskCount} active</Text>
+            <TouchableOpacity style={styles.secondaryButton} onPress={() => void requestFollowUp(session.sessionId, session.title)}>
+              <Text style={styles.secondaryButtonText}>{t({ en: 'Continue On Desktop', zh: '在桌面继续' })}</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
       </View>
 
       <View style={styles.section}>
@@ -377,6 +450,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+  },
+  continuityGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  statPill: {
+    flex: 1,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  statValue: {
+    color: colors.textPrimary,
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  statLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 3,
   },
   actionChip: {
     backgroundColor: colors.bgSecondary,

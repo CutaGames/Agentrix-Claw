@@ -64,6 +64,7 @@ import {
   resumeSession as resumeSessionApi,
   type AgentPlan,
 } from "../services/agentIntelligence";
+import { fetchOperationsContinuity, fetchOperationsOverview, type OperationsContinuity, type OperationsOverview } from "../services/operations";
 import PlanPanel from "./PlanPanel";
 import TaskWorkbenchPanel, { type TaskCheckpoint, type TaskWorkbenchEvent } from "./TaskWorkbenchPanel";
 import { ContextVisualizer } from "./ContextVisualizer";
@@ -469,6 +470,8 @@ export default function ChatPanel({
   const [historyEntries, setHistoryEntries] = useState<SessionEntry[]>([]);
   const [crossDeviceOpen, setCrossDeviceOpen] = useState(false);
   const [taskWorkbenchOpen, setTaskWorkbenchOpen] = useState(false);
+  const [operationsOverview, setOperationsOverview] = useState<OperationsOverview | null>(null);
+  const [operationsContinuity, setOperationsContinuity] = useState<OperationsContinuity | null>(null);
   const [economyPanelOpen, setEconomyPanelOpen] = useState(false);
   const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
   const [dreamPanelOpen, setDreamPanelOpen] = useState(false);
@@ -3343,6 +3346,32 @@ export default function ChatPanel({
   }, [applyDesktopSyncState, desktopDeviceId, token]);
 
   useEffect(() => {
+    if (!taskWorkbenchOpen || !token) {
+      return;
+    }
+
+    let disposed = false;
+    Promise.all([
+      fetchOperationsOverview(token),
+      fetchOperationsContinuity(token),
+    ]).then(([overview, continuity]) => {
+      if (!disposed) {
+        setOperationsOverview(overview);
+        setOperationsContinuity(continuity);
+      }
+    }).catch(() => {
+      if (!disposed) {
+        setOperationsOverview(null);
+        setOperationsContinuity(null);
+      }
+    });
+
+    return () => {
+      disposed = true;
+    };
+  }, [taskWorkbenchOpen, token]);
+
+  useEffect(() => {
     const handleSocketEvent = (event: Event) => {
       const detail = (event as CustomEvent).detail as { event?: string; data?: any } | undefined;
       const eventName = detail?.event;
@@ -3948,6 +3977,8 @@ export default function ChatPanel({
         pendingApproval={pendingApproval}
         events={workbenchEvents}
         checkpoint={activeCheckpoint}
+        operationsOverview={operationsOverview}
+        operationsContinuity={operationsContinuity}
         onApprovePlan={async () => {
           if (!token) return;
           const updated = await approvePlanApi(token, sessionIdRef.current);

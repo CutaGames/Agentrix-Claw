@@ -50,4 +50,35 @@ export class CodeIntelligenceController {
       results: this.codeIntelligenceService.semanticSearch(query, limit ? parseInt(limit, 10) : undefined),
     };
   }
+
+  @Get('references')
+  @ApiOperation({ summary: 'Find definition and call references for a symbol' })
+  @ApiResponse({ status: 200, description: 'References returned' })
+  async findReferences(@Query('symbol') symbol = '', @Query('limit') limit?: string) {
+    return {
+      references: this.codeIntelligenceService.findReferences(symbol, limit ? parseInt(limit, 10) : undefined),
+    };
+  }
+
+  @Get('call-graph')
+  @ApiOperation({ summary: 'Return callers/callees for an indexed symbol' })
+  @ApiResponse({ status: 200, description: 'Call graph returned' })
+  async getCallGraph(
+    @Query('symbol') symbol = '',
+    @Query('direction') direction: 'callers' | 'callees' | 'both' = 'both',
+    @Query('limit') limit?: string,
+  ) {
+    return {
+      edges: this.codeIntelligenceService.getCallGraph(symbol, direction, limit ? parseInt(limit, 10) : undefined),
+    };
+  }
+
+  @Get('hybrid-search')
+  @ApiOperation({ summary: 'Search symbols, references, call graph, and semantic chunks with fused scores' })
+  @ApiResponse({ status: 200, description: 'Hybrid search results returned' })
+  async hybridSearch(@Query('query') query = '', @Query('limit') limit?: string) {
+    return {
+      results: this.codeIntelligenceService.hybridSearch(query, limit ? parseInt(limit, 10) : undefined),
+    };
+  }
 }

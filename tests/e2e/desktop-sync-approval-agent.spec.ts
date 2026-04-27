@@ -14,6 +14,8 @@ const API = process.env.API_URL || 'https://api.agentrix.top/api';
 
 let authToken = '';
 const testDeviceId = `test-device-${Date.now()}`;
+const testTaskId = `task-pw-${Date.now()}`;
+const testSessionId = `sess-pw-${Date.now()}`;
 
 test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
 
@@ -80,6 +82,18 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   test('2.6 desktop-sync commands requires auth', async ({ request }) => {
     const res = await request.get(`${API}/desktop-sync/commands`);
     expect([401, 403]).toContain(res.status());
+  });
+
+  test('2.7 operations control plane requires auth', async ({ request }) => {
+    const endpoints = [
+      '/operations/overview',
+      '/operations/tool-policy',
+      '/operations/continuity',
+    ];
+    for (const endpoint of endpoints) {
+      const res = await request.get(`${API}${endpoint}`);
+      expect([401, 403]).toContain(res.status());
+    }
   });
 
   // ── 3. Agent-Presence Endpoints ─────────────────────────────────────────
@@ -174,7 +188,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
     const res = await request.post(`${API}/desktop-sync/tasks`, {
       headers: { Authorization: `Bearer ${authToken}` },
       data: {
-        taskId: `task-pw-${Date.now()}`,
+        taskId: testTaskId,
         deviceId: testDeviceId,
         title: 'Playwright Test Task',
         summary: 'Created by E2E test',
@@ -226,7 +240,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
     const res = await request.post(`${API}/desktop-sync/sessions`, {
       headers: { Authorization: `Bearer ${authToken}` },
       data: {
-        sessionId: `sess-pw-${Date.now()}`,
+        sessionId: testSessionId,
         title: 'Playwright Chat',
         deviceId: testDeviceId,
         deviceType: 'desktop',
@@ -241,7 +255,52 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
     expect(body.ok).toBe(true);
   });
 
-  test('4.6 desktop-sync create command', async ({ request }) => {
+  test('4.6 operations overview reports runtime state', async ({ request }) => {
+    test.skip(!authToken, 'No auth token — skip');
+    const res = await request.get(`${API}/operations/overview`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBeDefined();
+    expect(body.counts).toBeDefined();
+    expect(body.toolPolicy).toBeDefined();
+    expect(body.counts.onlineDevices).toBeGreaterThanOrEqual(1);
+  });
+
+  test('4.7 operations continuity exposes wearable payload', async ({ request }) => {
+    test.skip(!authToken, 'No auth token — skip');
+    const res = await request.get(`${API}/operations/continuity`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.devices)).toBe(true);
+    expect(Array.isArray(body.sessions)).toBe(true);
+    expect(body.wearableSummary).toBeDefined();
+    expect(body.wearableSummary.onlineDeviceCount).toBeGreaterThanOrEqual(1);
+  });
+
+  test('4.8 operations follow-up queues desktop command', async ({ request }) => {
+    test.skip(!authToken, 'No auth token — skip');
+    const res = await request.post(`${API}/operations/follow-up`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+      data: {
+        sessionId: testSessionId,
+        title: 'Resume Playwright Chat',
+        targetDeviceId: testDeviceId,
+        requesterDeviceId: 'playwright-mobile',
+        action: 'resume-on-desktop',
+      },
+    });
+    expect(res.status()).toBeLessThan(400);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.followUp.command).toBeDefined();
+    expect(body.followUp.command.kind).toBe('context');
+  });
+
+  test('4.9 desktop-sync create command', async ({ request }) => {
     test.skip(!authToken, 'No auth token — skip');
     const res = await request.post(`${API}/desktop-sync/commands`, {
       headers: { Authorization: `Bearer ${authToken}` },

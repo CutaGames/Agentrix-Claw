@@ -77,4 +77,30 @@ describe('CodeIntelligenceService', () => {
     expect(service.searchSymbols('kept')).toHaveLength(1);
     expect(service.searchSymbols('ignored')).toHaveLength(0);
   });
+
+  it('indexes TypeScript references, call graph edges, and file hashes', async () => {
+    await fs.writeFile(path.join(tempDir, 'runner.ts'), [
+      'export class AgentRunner {',
+      '  executeLane() { return helper(); }',
+      '}',
+      'export function helper() { return true; }',
+      'export function run() {',
+      '  const runner = new AgentRunner();',
+      '  return runner.executeLane();',
+      '}',
+    ].join('\n'));
+
+    const snapshot = await service.indexWorkspace({ rootPath: tempDir });
+    const references = service.findReferences('executeLane');
+    const callers = service.getCallGraph('executeLane', 'callers');
+    const hybrid = service.hybridSearch('executeLane', 5);
+
+    expect(snapshot.files[0]).toEqual(expect.objectContaining({ path: 'runner.ts', hash: expect.any(String) }));
+    expect(snapshot.referenceCount).toBeGreaterThanOrEqual(3);
+    expect(references.map(ref => ref.referenceKind)).toEqual(expect.arrayContaining(['definition', 'call']));
+    expect(callers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fromSymbol: 'run', toSymbol: 'executeLane' }),
+    ]));
+    expect(hybrid[0].path).toBe('runner.ts');
+  });
 });

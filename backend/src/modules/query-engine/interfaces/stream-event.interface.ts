@@ -21,6 +21,31 @@ export interface ThinkingEvent {
   text: string;
 }
 
+export interface ReasoningEvent {
+  type: 'reasoning';
+  text?: string;
+  details?: any;
+  provider?: string;
+  model?: string;
+}
+
+export interface RuntimeFallbackEvent {
+  type: 'runtime_fallback';
+  reason: string;
+  fromModel?: string;
+  toModel?: string;
+  retryAttempt?: number;
+  delayMs?: number;
+}
+
+export interface ContextCompactionEvent {
+  type: 'context_compaction';
+  compactedMessageCount: number;
+  tokensSaved: number;
+  targetRatio?: number;
+  protectedLastMessages?: number;
+}
+
 export interface ToolStartEvent {
   type: 'tool_start';
   toolCallId: string;
@@ -117,6 +142,9 @@ export interface MetaEvent {
 export type StreamEvent =
   | TextDeltaEvent
   | ThinkingEvent
+  | ReasoningEvent
+  | RuntimeFallbackEvent
+  | ContextCompactionEvent
   | ToolStartEvent
   | ToolProgressEvent
   | ToolResultEvent

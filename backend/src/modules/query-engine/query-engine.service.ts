@@ -146,6 +146,11 @@ export class QueryEngineService {
             state.messages = compacted;
             state.isCompacted = true;
             state.compactionCount++;
+            onEvent({
+              type: 'context_compaction',
+              compactedMessageCount: compRes.compactedMessageCount,
+              tokensSaved: compRes.tokensSaved,
+            });
             logger.log(
               `Auto-compaction: ${compRes.compactedMessageCount} messages → summary, saved ~${compRes.tokensSaved} tokens`,
             );
@@ -175,6 +180,13 @@ export class QueryEngineService {
             abortSignal,
             onRetry: (attempt, err, delay) => {
               logger.warn(`LLM retry ${attempt}: ${err.message}, waiting ${delay}ms`);
+              onEvent({
+                type: 'runtime_fallback',
+                reason: err.message || 'LLM retry',
+                fromModel: options.model,
+                retryAttempt: attempt,
+                delayMs: delay,
+              });
             },
           },
         );
@@ -211,6 +223,16 @@ export class QueryEngineService {
           onEvent({ type: 'thinking', text: llmResponse.thinking });
         }
 
+        if (llmResponse.reasoning || llmResponse.reasoningDetails) {
+          onEvent({
+            type: 'reasoning',
+            text: llmResponse.reasoning,
+            details: llmResponse.reasoningDetails,
+            provider: options.provider,
+            model: llmResponse.model,
+          });
+        }
+
         // Emit text content
         if (llmResponse.content) {
           onEvent({ type: 'text_delta', text: llmResponse.content });
@@ -222,6 +244,9 @@ export class QueryEngineService {
           content: llmResponse.content,
           toolCalls: llmResponse.toolCalls.length > 0 ? llmResponse.toolCalls : undefined,
           timestamp: Date.now(),
+          reasoning: llmResponse.reasoning || llmResponse.thinking,
+          reasoningDetails: llmResponse.reasoningDetails,
+          fallbackCause: llmResponse.fallbackCause,
         };
         state.messages.push(assistantMsg);
         state.turnIndex = turnCount;

@@ -82,4 +82,54 @@ describe('AutoRepairService', () => {
     expect(result.status).toBe('needs_patch_generator');
     expect(result.finalDiagnostics[0]).toEqual(expect.objectContaining({ source: 'rust', code: 'E0425' }));
   });
+
+  it('records repair jobs, patch approval, and workspace containment before apply', async () => {
+    const job = await service.createRepairJob({
+      command: 'npm test',
+      workspaceRoot: '/repo',
+      approvalRequired: true,
+      createdBy: 'user-1',
+    });
+    const attempt = await service.recordRepairAttempt(job.id, {
+      attempt: 1,
+      commandResult: { exitCode: 1, stdout: 'src/app.ts(1,1): error TS2304: Cannot find name x.' },
+      status: 'needs_approval',
+    });
+
+    await expect(service.requestPatchApproval({
+      jobId: job.id,
+      attempt: 1,
+      patchPlan: {
+        summary: 'escape workspace',
+        patches: [{ file: '../outside.ts', description: 'bad' }],
+      },
+    })).rejects.toThrow(/outside workspace/);
+
+    const patch = await service.requestPatchApproval({
+      jobId: job.id,
+      attempt: 1,
+      attemptId: attempt.id,
+      requestedBy: 'user-1',
+      patchPlan: {
+        summary: 'Fix missing symbol',
+        patches: [{
+          file: 'src/app.ts',
+          description: 'Define x',
+          unifiedDiff: '--- a/src/app.ts\n+++ b/src/app.ts\n@@\n-foo\n+const x = 1',
+        }],
+      },
+    });
+
+    expect(patch.status).toBe('pending_approval');
+    await expect(service.markPatchApplied(patch.id)).rejects.toThrow(/approved/);
+
+    const approved = await service.reviewRepairPatch(patch.id, { reviewerId: 'reviewer-1', decision: 'approved' });
+    expect(approved.status).toBe('approved');
+    const applied = await service.markPatchApplied(patch.id);
+    expect(applied.status).toBe('applied');
+
+    const timeline = await service.getRepairJobTimeline(job.id);
+    expect(timeline.attempts).toHaveLength(1);
+    expect(timeline.patches[0]).toEqual(expect.objectContaining({ affectedFiles: ['src/app.ts'] }));
+  });
 });

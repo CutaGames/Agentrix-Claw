@@ -25,6 +25,9 @@ import { LlmRouterModule } from '../llm-router/llm-router.module';
 import { CostTrackerModule } from '../cost-tracker/cost-tracker.module';
 import { QueryEngineModule } from '../query-engine/query-engine.module';
 import { PredictionMarketModule } from '../prediction-market/prediction-market.module';
+import { CodeIntelligenceModule } from '../code-intelligence/code-intelligence.module';
+import { AutoRepairModule } from '../auto-repair/auto-repair.module';
+import { ToolControlPlaneModule } from '../tool-control-plane/tool-control-plane.module';
 
 @Module({
   imports: [
@@ -46,6 +49,9 @@ import { PredictionMarketModule } from '../prediction-market/prediction-market.m
     CostTrackerModule,
     forwardRef(() => QueryEngineModule),
     PredictionMarketModule,
+    CodeIntelligenceModule,
+    AutoRepairModule,
+    ToolControlPlaneModule,
   ],
   providers: [OpenClawProxyService],
   controllers: [OpenClawProxyController],

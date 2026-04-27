@@ -24,6 +24,9 @@ export interface ChatMessage {
   /** Metadata */
   timestamp?: number;
   tokenCount?: number;
+  reasoning?: string;
+  reasoningDetails?: any;
+  fallbackCause?: string;
 }
 
 export interface ToolCallRequest {
@@ -96,6 +99,9 @@ export interface NormalizedLLMResponse {
   };
   model: string;
   thinking?: string;
+  reasoning?: string;
+  reasoningDetails?: any;
+  fallbackCause?: string;
 }
 
 export { StreamEvent };

@@ -36,6 +36,9 @@ import { AgentOrchestrationService } from '../agent-orchestration/agent-orchestr
 import { LlmRouterService } from '../llm-router/llm-router.service';
 import { CostTrackerService } from '../cost-tracker/cost-tracker.service';
 import { RuntimeSeamService } from '../query-engine/runtime-seam.service';
+import { CodeIntelligenceService } from '../code-intelligence/code-intelligence.service';
+import { AutoRepairService } from '../auto-repair/auto-repair.service';
+import { ToolControlPlaneService } from '../tool-control-plane/tool-control-plane.service';
 import { LOCAL_ONLY_MODEL_IDS, isLocalOnlyModel, getCloudTwinForLocalModel } from '../../common/llm/local-only-models';
 import { PredictionMarketService } from '../prediction-market/prediction-market.service';
 import { PredictionAsset } from '../../entities/prediction-round.entity';
@@ -147,6 +150,9 @@ export class OpenClawProxyService {
     @Inject(forwardRef(() => RuntimeSeamService))
     private readonly runtimeSeamService: RuntimeSeamService,
     private readonly predictionMarketService: PredictionMarketService,
+    private readonly codeIntelligenceService: CodeIntelligenceService,
+    private readonly autoRepairService: AutoRepairService,
+    private readonly toolControlPlaneService: ToolControlPlaneService,
   ) {}
 
   private async ensureOwnedInstance(userId: string, instanceId: string): Promise<OpenClawInstance> {
@@ -1440,6 +1446,8 @@ export class OpenClawProxyService {
                 required: ['role', 'task'],
               },
             },
+            maxParallelWorkers: { type: 'number', description: 'Maximum workers to run concurrently' },
+            timeoutMs: { type: 'number', description: 'Per-lane timeout in milliseconds' },
           },
           required: ['task', 'workers'],
         },
@@ -1454,6 +1462,142 @@ export class OpenClawProxyService {
             message: { type: 'string', description: 'Message content' },
           },
           required: ['to', 'message'],
+        },
+      },
+      {
+        name: 'code_index_workspace',
+        description: 'Build or refresh the backend code intelligence index for a workspace. Use before symbol/reference/call-graph searches when the index may be stale.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            rootPath: { type: 'string', description: 'Workspace root path to index' },
+            maxFiles: { type: 'number', description: 'Maximum source files to index' },
+            maxFileBytes: { type: 'number', description: 'Maximum file size to read' },
+          },
+        },
+      },
+      {
+        name: 'code_search_symbols',
+        description: 'Search indexed code symbols by name, signature, or path.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            query: { type: 'string', description: 'Symbol or path query' },
+            limit: { type: 'number', description: 'Maximum symbols to return' },
+          },
+          required: ['query'],
+        },
+      },
+      {
+        name: 'code_semantic_search',
+        description: 'Search indexed code chunks using the local hybrid vector index.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            query: { type: 'string', description: 'Natural-language code search query' },
+            limit: { type: 'number', description: 'Maximum results to return' },
+          },
+          required: ['query'],
+        },
+      },
+      {
+        name: 'code_references',
+        description: 'Find definition and call references for an indexed symbol.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            symbol: { type: 'string', description: 'Symbol name to inspect' },
+            limit: { type: 'number', description: 'Maximum references to return' },
+          },
+          required: ['symbol'],
+        },
+      },
+      {
+        name: 'code_call_graph',
+        description: 'Return callers/callees for an indexed symbol using the AST call graph.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            symbol: { type: 'string', description: 'Symbol name to inspect' },
+            direction: { type: 'string', enum: ['callers', 'callees', 'both'], description: 'Graph direction' },
+            limit: { type: 'number', description: 'Maximum edges to return' },
+          },
+          required: ['symbol'],
+        },
+      },
+      {
+        name: 'auto_repair_analyze',
+        description: 'Parse build/test command output into diagnostics and a repair prompt without modifying files.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            command: { type: 'string', description: 'Command that produced the output' },
+            stdout: { type: 'string', description: 'Command stdout' },
+            stderr: { type: 'string', description: 'Command stderr' },
+            exitCode: { type: 'number', description: 'Process exit code' },
+            timedOut: { type: 'boolean', description: 'Whether the command timed out' },
+          },
+        },
+      },
+      {
+        name: 'auto_repair_start_job',
+        description: 'Create an auditable auto-repair job. Patch application still requires approval by default.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            command: { type: 'string', description: 'Build/test command to repair' },
+            workspaceRoot: { type: 'string', description: 'Workspace containment root for patches' },
+            approvalRequired: { type: 'boolean', description: 'Whether patch apply requires approval; default true' },
+          },
+          required: ['command'],
+        },
+      },
+      {
+        name: 'auto_repair_request_patch',
+        description: 'Record a generated repair patch plan and request approval before applying it.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            jobId: { type: 'string', description: 'Repair job ID' },
+            attempt: { type: 'number', description: 'Repair attempt number' },
+            patchPlan: { type: 'object', description: 'Patch plan with summary and patches[]' },
+            workspaceRoot: { type: 'string', description: 'Optional workspace root override' },
+            approvalReason: { type: 'string', description: 'Why this patch is requested' },
+          },
+          required: ['jobId', 'attempt', 'patchPlan'],
+        },
+      },
+      {
+        name: 'tool_policy_report',
+        description: 'Inspect the active Agentrix tool policy, collision report, safe-bin limits, risk bands, and browser SSRF policy before using new tools or MCP toolsets.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {},
+        },
+      },
+      {
+        name: 'programmatic_tool_plan',
+        description: 'Execute a restricted Programmatic Tool Calling plan against registered Agentrix tools only. Use dryRun first; L2/L3/payment tools require approval and are not auto-executed.',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            toolCalls: {
+              type: 'array',
+              description: 'Ordered registered-tool calls to validate or execute',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                  input: { type: 'object' },
+                },
+                required: ['name'],
+              },
+            },
+            dryRun: { type: 'boolean', description: 'When true, validate decisions without executing tools' },
+            maxRisk: { type: 'string', enum: ['L0', 'L1', 'L2', 'L3'], description: 'Maximum auto-execution risk band' },
+          },
+          required: ['toolCalls'],
         },
       },
       {
@@ -1611,23 +1755,28 @@ export class OpenClawProxyService {
         }
 
         if (name === 'agent_coordinate') {
-          const result = await this.agentOrchestrationService.coordinate(userId, {
+          const result = await this.agentOrchestrationService.coordinateDurable(userId, {
             task: args.task,
             workers: (args.workers || []).map((w: any) => ({
               role: w.role,
               task: w.task,
               model: w.model,
             })),
+            maxParallelWorkers: args.maxParallelWorkers,
+            timeoutMs: args.timeoutMs,
           });
           emitAgentSyncEvent(userId, 'agent:team_update', '', {
             action: 'coordination_started',
+            jobId: result.jobId,
             task: args.task,
             workerCount: result.workers.length,
           });
           return {
             coordinated: true,
+            jobId: result.jobId,
             summary: result.coordinatorSummary,
             parallelism: result.parallelism,
+            events: result.events,
             workers: result.workers.map(w => ({
               id: w.id,
               agentName: w.agentName,
@@ -1647,6 +1796,92 @@ export class OpenClawProxyService {
             args.message,
           );
           return { sent: true, to: args.to };
+        }
+
+        if (name === 'code_index_workspace') {
+          return this.codeIntelligenceService.indexWorkspace({
+            rootPath: args.rootPath,
+            maxFiles: args.maxFiles,
+            maxFileBytes: args.maxFileBytes,
+          });
+        }
+
+        if (name === 'code_search_symbols') {
+          return {
+            symbols: this.codeIntelligenceService.searchSymbols(args.query || '', args.limit),
+          };
+        }
+
+        if (name === 'code_semantic_search') {
+          return {
+            results: this.codeIntelligenceService.hybridSearch(args.query || '', args.limit),
+          };
+        }
+
+        if (name === 'code_references') {
+          return {
+            references: this.codeIntelligenceService.findReferences(args.symbol || '', args.limit),
+          };
+        }
+
+        if (name === 'code_call_graph') {
+          return {
+            edges: this.codeIntelligenceService.getCallGraph(args.symbol || '', args.direction || 'both', args.limit),
+          };
+        }
+
+        if (name === 'auto_repair_analyze') {
+          const diagnostics = this.autoRepairService.parseDiagnostics({
+            stdout: args.stdout,
+            stderr: args.stderr,
+            exitCode: args.exitCode,
+            timedOut: args.timedOut,
+          });
+          return {
+            diagnostics,
+            repairPrompt: this.autoRepairService.buildRepairPrompt(args.command || 'unknown command', diagnostics),
+          };
+        }
+
+        if (name === 'auto_repair_start_job') {
+          return this.autoRepairService.createRepairJob({
+            userId,
+            agentId: permissionProfile?.agentAccountId,
+            sessionId: ctx.sessionId,
+            command: args.command,
+            workspaceRoot: args.workspaceRoot,
+            approvalRequired: args.approvalRequired !== false,
+            createdBy: userId,
+            metadata: { source: 'openclaw-proxy-tool' },
+          });
+        }
+
+        if (name === 'auto_repair_request_patch') {
+          return this.autoRepairService.requestPatchApproval({
+            jobId: args.jobId,
+            attempt: Number(args.attempt || 1),
+            patchPlan: args.patchPlan,
+            requestedBy: userId,
+            approvalReason: args.approvalReason,
+            workspaceRoot: args.workspaceRoot,
+            metadata: { source: 'openclaw-proxy-tool' },
+          });
+        }
+
+        if (name === 'tool_policy_report') {
+          return this.toolControlPlaneService.buildPolicyReport();
+        }
+
+        if (name === 'programmatic_tool_plan') {
+          return this.toolControlPlaneService.executeProgrammaticToolPlan(userId, {
+            toolCalls: Array.isArray(args.toolCalls) ? args.toolCalls : [],
+            dryRun: args.dryRun !== false,
+            maxRisk: args.maxRisk,
+            sessionId: ctx.sessionId,
+            agentId: permissionProfile?.agentAccountId,
+            instanceId: instance.id,
+            metadata: { source: 'openclaw-proxy-tool' },
+          });
         }
 
         if (name === 'btc_predict_buy_up' || name === 'btc_predict_buy_down') {

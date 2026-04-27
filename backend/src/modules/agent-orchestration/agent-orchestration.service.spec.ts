@@ -127,4 +127,35 @@ describe('AgentOrchestrationService', () => {
 
     await new Promise(resolve => setTimeout(resolve, 90));
   });
+
+  it('records durable lane jobs/events and can use a runtime executor adapter', async () => {
+    const { service } = createService();
+    const executor = {
+      executeLane: jest.fn(async ({ worker }: any) => ({
+        output: JSON.stringify({ summary: `${worker.role} via runtime adapter` }),
+        usage: { inputTokens: 11, outputTokens: 7, estimatedCostUsd: 0.02 },
+      })),
+    };
+    service.setWorkerRuntimeExecutor(executor);
+
+    const result = await service.coordinateDurable('user-1', {
+      task: 'durable orchestration',
+      maxParallelWorkers: 2,
+      workers: [
+        { role: 'dev', task: 'implement feature' },
+        { role: 'qa-ops', task: 'test feature' },
+      ],
+    });
+
+    expect(result.jobId).toMatch(/^lane-job-/);
+    expect(executor.executeLane).toHaveBeenCalledTimes(2);
+    expect(result.workers.every(worker => worker.status === 'completed')).toBe(true);
+    expect(result.events.map(event => event.type)).toEqual(expect.arrayContaining([
+      'task.started',
+      'lane.started',
+      'lane.finished',
+      'task.completed',
+    ]));
+    expect(result.coordinatorSummary).toContain('via runtime adapter');
+  });
 });

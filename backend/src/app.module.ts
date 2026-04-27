@@ -129,6 +129,9 @@ import { PredictionMarketModule } from './modules/prediction-market/prediction-m
 import { CodeIntelligenceModule } from './modules/code-intelligence/code-intelligence.module';
 import { AutoRepairModule } from './modules/auto-repair/auto-repair.module';
 import { DesktopUpdateModule } from './modules/desktop-update/desktop-update.module';
+import { RuntimeDoctorModule } from './modules/runtime-doctor/runtime-doctor.module';
+import { ToolControlPlaneModule } from './modules/tool-control-plane/tool-control-plane.module';
+import { OperationsControlPlaneModule } from './modules/operations-control-plane/operations-control-plane.module';
 
 @Module({
   imports: [
@@ -268,6 +271,11 @@ import { DesktopUpdateModule } from './modules/desktop-update/desktop-update.mod
     AutoRepairModule,
     // Desktop release updater manifest endpoint
     DesktopUpdateModule,
+    // Runtime release doctor: chat parity, provider migration, signing/updater readiness
+    RuntimeDoctorModule,
+    // P3: tool policy / PTC governance and operations control plane
+    ToolControlPlaneModule,
+    OperationsControlPlaneModule,
   ],
   controllers: [AppController],
   providers: [
