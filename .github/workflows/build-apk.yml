@@ -153,34 +153,48 @@ jobs:
           PYEOF
 
       # Restrict C++ builds to arm64-v8a + x86_64 only.
-      # Drops legacy 32-bit targets (armeabi-v7a, x86) that almost no modern device needs.
-      # Cuts CMake compilation time from ~20 min → ~8 min (4 ABIs → 2).
-      # Idempotent: skips if ndk block already present.
+      # Drops legacy 32-bit targets (armeabi-v7a, x86) while keeping x86_64
+      # so the release APK can be installed on the CI emulator for UI tests.
       - name: Patch android/app/build.gradle — restrict ABI targets
         run: |
           python3 - << 'PYEOF'
           import re, os, sys
-          filepath = 'android/app/build.gradle'
-          if not os.path.exists(filepath):
-              print(f'[skip] {filepath} not found')
+          build_gradle = 'android/app/build.gradle'
+          gradle_props = 'android/gradle.properties'
+          target_filters = 'abiFilters "arm64-v8a", "x86_64"'
+
+          if not os.path.exists(build_gradle):
+              print(f'[skip] {build_gradle} not found')
               sys.exit(0)
-          with open(filepath) as f:
+          with open(build_gradle) as f:
               content = f.read()
+
           if 'abiFilters' in content:
-              print('[ok] abiFilters already present — skipping')
-              sys.exit(0)
-          # Insert ndk block as first line inside defaultConfig
-          fixed = re.sub(
-              r'(defaultConfig\s*\{)',
-              '\\1\n        ndk {\n            abiFilters "arm64-v8a", "x86_64"\n        }',
-              content, count=1
-          )
-          if fixed == content:
-              print('[warn] Could not find defaultConfig block — skipping')
+              fixed = re.sub(r'abiFilters\s+[^\n]+', target_filters, content, count=1)
           else:
-              with open(filepath, 'w') as f:
+              fixed = re.sub(
+                  r'(defaultConfig\s*\{)',
+                  '\\1\n        ndk {\n            ' + target_filters + '\n        }',
+                  content, count=1
+              )
+
+          if fixed == content:
+              print('[warn] Could not update abiFilters in build.gradle')
+          else:
+              with open(build_gradle, 'w') as f:
                   f.write(fixed)
-              print('[patched] Added abiFilters arm64-v8a + x86_64 to defaultConfig')
+              print('[patched] Ensured abiFilters arm64-v8a + x86_64 in build.gradle')
+
+          if os.path.exists(gradle_props):
+              with open(gradle_props) as f:
+                  props = f.read()
+              if re.search(r'^reactNativeArchitectures=', props, flags=re.M):
+                  props = re.sub(r'^reactNativeArchitectures=.*', 'reactNativeArchitectures=arm64-v8a,x86_64', props, flags=re.M)
+              else:
+                  props += '\nreactNativeArchitectures=arm64-v8a,x86_64\n'
+              with open(gradle_props, 'w') as f:
+                  f.write(props)
+              print('[patched] Ensured reactNativeArchitectures arm64-v8a,x86_64 in gradle.properties')
           PYEOF
 
       - name: Grant Gradle execute permission
