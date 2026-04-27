@@ -24,4 +24,5 @@ android/app/proguard-rules.pro
 android/app/src
 shared
 src
+plugins/withLlamaRN.js
 scripts/build/with-llama-rn-plugin.cjs
