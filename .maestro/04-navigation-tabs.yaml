@@ -1,26 +1,34 @@
-appId: app.clawlink.mobile
+appId: app.agentrix.claw
 ---
-# Test 04: Verify navigation tabs and basic app structure
-# This test covers the bottom tab navigator visible from any main screen
+# Test 04: Verify primary auth mode switching remains usable.
 
 - launchApp:
     clearState: true
+    clearKeychain: true
 
 - waitForAnimationToEnd:
     timeout: 10000
 
-# --- Auth or Main screen should be visible ---
-- assertVisible:
-    enabled: true
+- assertVisible: "Agentrix Claw"
 
 - takeScreenshot: "04-initial-state"
 
-# If there's a "Get Started" or "Sign In" button, we're on auth
-# If there are tabs (Agent, Market, Social, Me), we're on main
-# Either is valid — just verify app is not crashed/blank
+- tapOn:
+    textRegex: "Use Email Address instead.*|改用邮箱登录.*"
 
-# Check that some interactive element is present
+- waitForAnimationToEnd:
+    timeout: 2000
+
 - assertVisible:
-    textRegex: "ClawLink|Get Started|Sign In|Connect|Agent|Market|Social|Me|Claw"
+    textRegex: "Sign In with Email|邮箱登录"
 
-- takeScreenshot: "04-app-loaded"
+- tapOn:
+    textRegex: "Back to Web2.5 Login|返回 Web2.5 登录"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- assertVisible:
+    textRegex: "Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包"
+
+- takeScreenshot: "04-auth-mode-switching"

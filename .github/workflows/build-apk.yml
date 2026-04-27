@@ -453,7 +453,8 @@ jobs:
       - name: Prepare test script
         run: |
           cat << 'EOF' > run_tests.sh
-          set -e
+          #!/usr/bin/env bash
+          set -euo pipefail
           mkdir -p maestro-output
 
           echo "=== Installing APK ==="
@@ -463,9 +464,9 @@ jobs:
           # ── Launch smoke test: detect immediate crash (flash-quit on tap) ──────
           # Clear crash log buffer, launch app, wait 8 seconds, then check for FATAL
           echo "=== Launch smoke test (crash detection) ==="
-          PACKAGE="app.clawlink.mobile"
+          PACKAGE="app.agentrix.claw"
           adb logcat -c  # clear existing log
-          adb shell am start -n "${PACKAGE}/com.facebook.react.ReactActivity"
+          adb shell monkey -p "${PACKAGE}" -c android.intent.category.LAUNCHER 1
           sleep 8
           # Capture crash logs even if nothing crashed (empty = good)
           adb logcat -b crash -d > maestro-output/crash.log 2>&1 || true
@@ -478,19 +479,26 @@ jobs:
             cat maestro-output/crash.log
             echo "── runtime.log ──"
             cat maestro-output/runtime.log
-            echo "LAUNCH_CRASH=true" >> $GITHUB_ENV
+            LAUNCH_CRASH=true
+            echo "LAUNCH_CRASH=true" >> "$GITHUB_ENV"
             # Don't fail here — continue to upload logs, then fail at summary
           else
             echo "✅ App launched without immediate crash"
-            echo "LAUNCH_CRASH=false" >> $GITHUB_ENV
+            LAUNCH_CRASH=false
+            echo "LAUNCH_CRASH=false" >> "$GITHUB_ENV"
           fi
 
           echo "=== Running Maestro flows ==="
           PASS=0; FAIL=0; ERRORS=""
+          mapfile -t FLOWS < <(find .maestro -maxdepth 1 -type f -name "*.yaml" | sort 2>/dev/null || true)
 
-          for flow in .maestro/*.yaml; do
+          if [ "${#FLOWS[@]}" -eq 0 ]; then
+            echo "No Maestro flows found; launch smoke test only" | tee maestro-output/no-flows.log
+          fi
+
+          for flow in "${FLOWS[@]}"; do
             echo "--- Running: $flow ---"
-            if maestro test "$flow" --output "maestro-output/$(basename $flow .yaml)-report.xml" --format junit 2>&1 | tee "maestro-output/$(basename $flow .yaml).log"; then
+            if maestro test "$flow" --output "maestro-output/$(basename "$flow" .yaml)-report.xml" --format junit 2>&1 | tee "maestro-output/$(basename "$flow" .yaml).log"; then
               echo "✅ PASS: $flow"
               PASS=$((PASS + 1))
             else
@@ -538,6 +546,7 @@ jobs:
         with:
           name: maestro-results-build-${{ github.run_number }}
           path: maestro-output/
+          if-no-files-found: warn
           retention-days: 14
 
       # ── On failure: write detailed error report to job summary ─────────

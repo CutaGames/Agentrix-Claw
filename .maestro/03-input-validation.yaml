@@ -1,27 +1,39 @@
-appId: app.clawlink.mobile
+appId: app.agentrix.claw
 ---
-# Test 03: Input validation — empty OpenClaw URL shows alert
+# Test 03: Input validation — empty OpenClaw URL shows an alert.
 
 - launchApp:
     clearState: true
+    clearKeychain: true
 
 - waitForAnimationToEnd:
-    timeout: 8000
+    timeout: 12000
 
-# Should be on OpenClaw mode by default
-- assertVisible: "Connect & Sign In"
+- scrollUntilVisible:
+    element:
+      textRegex: "OpenClaw Instance|连接私有.*实例"
+    direction: DOWN
+    timeout: 10000
 
-# Tap Connect without entering URL — should show validation alert
-- tapOn: "Connect & Sign In"
+- tapOn:
+    textRegex: "OpenClaw Instance|连接私有.*实例"
 
 - waitForAnimationToEnd:
     timeout: 2000
 
-# An alert/toast should appear
 - assertVisible:
-    textRegex: "required|URL|required|enter|Enter"
+    textRegex: "Connect OpenClaw Instance|连接 OpenClaw 实例"
+
+- tapOn:
+    textRegex: "Connect & Sign In|连接并登录"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- assertVisible:
+    textRegex: "OpenClaw URL required|请输入 OpenClaw URL|Enter your OpenClaw|请输入你的 OpenClaw"
 
 - takeScreenshot: "03-validation-alert"
 
 - tapOn:
-    textRegex: "OK|Dismiss|Cancel|close"
+    textRegex: "OK|确定|Dismiss|Cancel|取消|close"

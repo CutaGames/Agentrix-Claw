@@ -1,41 +1,32 @@
-appId: app.clawlink.mobile
+appId: app.agentrix.claw
 ---
-# Test 02: Auth screen shows correct branding and all login tabs
+# Test 02: Auth screen exposes wallet, social, and email entry points.
 
 - launchApp:
     clearState: true
+    clearKeychain: true
 
 - waitForAnimationToEnd:
-    timeout: 8000
+    timeout: 12000
 
-# Logo visible
-- assertVisible: "🦀 ClawLink"
+- assertVisible: "Agentrix Claw"
 - takeScreenshot: "02-auth-branding"
 
-# Default mode is OpenClaw — check OpenClaw input placeholder is visible
 - assertVisible:
-    textRegex: "Connect & Sign In|OpenClaw|instance"
+    textRegex: "Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包"
 
-# Switch to Social tab
+- assertVisible: "Google"
+
 - tapOn:
-    textRegex: "Social|social account"
+    textRegex: "Use Email Address instead.*|改用邮箱登录.*"
 
 - waitForAnimationToEnd:
     timeout: 2000
 
 - assertVisible:
-    textRegex: "Google|Sign in with social"
-
-- takeScreenshot: "02-social-tab"
-
-# Switch to Email tab
-- tapOn:
-    textRegex: "Email|email"
-
-- waitForAnimationToEnd:
-    timeout: 2000
+    textRegex: "Sign In with Email|邮箱登录"
 
 - assertVisible:
-    textRegex: "Email|password|Password"
+    textRegex: "Email|邮箱|Password|密码"
 
 - takeScreenshot: "02-email-tab"
