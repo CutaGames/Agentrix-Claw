@@ -362,17 +362,290 @@ Agentrix 当前不是空白，已具备以下可继续演进的底座：
 - Operations board 能回放一个失败任务的模型调用、工具调用、lane、repair、approval 全链路。
 - mobile 发起的长任务可在 desktop 查看进度并取消，Wear OS 可收到完成摘要并发起 follow-up。
 
-## 8. 近期执行顺序
+## 8. 当前实际进展、验收状态、注意事项与跟进项
 
-1. 先补 P0：签名/updater、chat path parity、runtime doctor、repair persistence/approval。
-2. 再把 Parallel Lanes 从 in-memory MVP 升级为 durable jobs + real LLM worker。
-3. 同步做 reasoning/streaming schema，不要等 provider bug 出现后补救。
-4. Code intelligence 进入 pgvector + AST/LSP/call graph 设计，先 TypeScript 后 Rust。
-5. Skills/plugin 体系按 AgentSkills 兼容路径建设，先 resolver/evals/security scanner，再做 Workshop。
+本节记录 2026-04-27 已完成的对标落地情况。它不是路线图愿望清单，而是当前代码、部署与验证状态的交付快照。
+
+### 8.1 已落地能力
+
+| 对标能力 | 当前落地 | 完成状态 | 验收证据 | 注意事项与跟进 |
+|---|---|---|---|---|
+| Operations control plane | 新增 `operations-control-plane` 后端模块，聚合 lane jobs、repair jobs、desktop sync、approvals、tool policy、continuity、wearable summary；Web `/operations`、desktop workbench、mobile Desktop Control 已接入 | 已完成 P3/P4 MVP | 后端 spec 通过；前端 `/operations` 本地与服务器构建通过；`https://agentrix.top/operations` 返回 200 | 还需要把 `/operations` 从只读控制台升级为可审批、可取消、可回放的运维 board |
+| Durable Parallel Lanes | 新增 `agent_lane_jobs`、`agent_lane_events`、`agent_lane_artifacts` 实体与 migration；orchestration 开始写入 durable job/event/artifact | P1 基础完成，真实 worker 仍待做 | `agent-orchestration.service.spec.ts` 纳入回归；生产 migration 已执行 | 下一步补 worker reclaim、SSE fan-in、parent cancel、真实 LLM lane runtime |
+| Auto repair persistence | 新增 `agent_repair_jobs`、`agent_repair_attempts`、`agent_repair_patches`，repair 默认 approvalRequired，并记录 patch/audit 数据 | P0/P1 基础完成 | `auto-repair.service.spec.ts` 纳入回归；生产表已建 | 还需前端审批 UI、rollback 入口、CI doctor 展示、真实 patch apply policy 分级 |
+| Runtime doctor | 新增 `runtime-doctor` 模块，检查 runtime/provider、chat path parity、tool policy 等风险 | P0 MVP 完成 | `runtime-doctor.service.spec.ts` 通过 | 还需接入 CI gate、前端 doctor 页面、legacy config migration 自动建议 |
+| Tool control plane | 新增 `tool-control-plane`，实现 tool policy、risk band、MCP collision、Programmatic Tool Calling dry-run/guardrail 基础 | P1/P3 MVP 完成 | 后端 build 与 spec 通过；工具通过 OpenClaw proxy 暴露 | Programmatic Tool Calling 目前应默认 dry-run/低风险；L2/L3 和外部发布必须 human approval |
+| Chat path parity | 新增 `chat-path-parity.contract.ts`，把 `/openclaw/proxy/:id/stream` 与 `/claude/chat` 的工具与事件对齐检查结构化 | P0 基础完成 | runtime doctor 测试覆盖 parity pass | 还未成为强 CI gate；新增工具仍需工程规范强约束 |
+| Code intelligence MVP+ | code intelligence 增加更丰富的 symbol/search/reference/call graph 接口，并接入 OpenClaw proxy 工具 | P1/P2 MVP 完成 | `code-intelligence.service.spec.ts` 通过 | 仍不是完整 LSP/pgvector/RRF；下一步要做增量索引和真实 references benchmark |
+| AgentSkills resolver | agent-runtime skills 增加 `SKILL.md` frontmatter parser、resolver、danger scanner、routing eval 基础 | P2 基础完成 | `skills.service.spec.ts` 通过 | 还未接入 marketplace install、hot reload、quarantine、Workshop approval |
+| Memory graph/session search | 新增 `agent_memory_edges`，memory service 支持 session summary freshness 与 graph edge 查询 | P2 基础完成 | `memory.service.spec.ts` 通过；生产表已建 | 还需 transcript search、source isolation、长期 artifact 写入策略 |
+| 多端连续性 | desktop、mobile、wearable summary、web operations 已能共享 operations continuity | P4 MVP 完成 | desktop build、Tauri build、root typecheck、frontend build 通过 | Wear OS 仍只适合摘要/审批/短 follow-up；重工具应自动升级到 desktop/cloud lane |
+| 自进化方案 | 文档新增 Agent 框架、Agent 团队、Agentrix 产品三条自我进化闭环 | 方案完成 | 本文第 10 章 | 下一步要从文档变成 Self-Evolution Control Plane 数据表、API 与每日经营日报 |
+
+### 8.2 已完成验收
+
+- 本地后端回归：7 个 spec suite、22 个测试通过，覆盖 operations、runtime doctor、orchestration、auto repair、code intelligence、memory、skills。
+- 本地后端构建：`npm run build:tsc` 通过。
+- 本地根 typecheck：`npm run typecheck:root` 通过。
+- 本地 web 前端：`npx tsc --noEmit --pretty false` 与 `npm run build` 通过。
+- 本地 desktop 前端：`npm run build` 通过。
+- 本地 Tauri desktop：`npm run tauri build` 通过，产出 `agentrix-desktop.exe`、MSI、NSIS setup。
+- 生产服务器：已部署提交 `ec3a5f40` 到 `build142-phase0-hardening`，后端 build 成功，DB 备份成功，migration `CreateAgentRuntimeOperationsTables1782200000000` 已执行，PM2 后端/前端/openclaw-gateway 均 online。
+- 生产外部 smoke：`https://api.agentrix.top/api/health` 返回 200，`https://agentrix.top/operations` 返回 200。
+- 生产内部 smoke：`http://127.0.0.1:3000/api/health` 返回 200，`http://127.0.0.1:3001/operations` 返回 200；`http://127.0.0.1:3000/operations` 返回 404 是预期的，因为 3000 是 API 服务，不承载 web route。
+
+### 8.3 当前注意事项
+
+- 生产部署脚本最后一次 smoke 循环因为 PowerShell/Bash 引号拼接问题报 `unexpected end of file`，但核心部署、build、migration、PM2 restart 均已完成，并已用独立命令补验健康检查。
+- 服务器和本地工作树都有历史生成物与缓存噪音，例如 `tsbuildinfo`、Android/Gradle/Kotlin session、测试报告、logs、runs/jobs JSON；不要在未筛选情况下 `git add -A`。
+- 生产前端 `npm install` 曾触发 Next 自动安装 `typescript`/`@types/react` 并改变服务器本地 frontend package 文件；这属于服务器 node_modules/lockfile 漂移风险，后续部署应使用 `npm ci` 或固定 `--legacy-peer-deps` 的干净 install 策略。
+- 服务器 PM2 后端历史 restart count 很高，需要单独调查长期重启原因；本次部署后状态 online，但不能把历史重启数视为本次回归。
+- GitHub CLI 在当前 Windows/WSL 环境不可用，移动端 workflow 状态不能直接通过 `gh run list` 验证；需要通过 public repo branch、GitHub API 或服务器侧 public build script 兜底确认。
+- OpenClaw proxy 文件存在较大换行 diff 历史，后续提交要继续用 Windows Git 统一处理，避免 WSL/CRLF 造成重复 churn。
+
+### 8.4 必须跟进的工程项
+
+1. 把 runtime doctor 接入 CI gate。
+   - PR/build 分支必须检查 chat path parity、tool policy、MCP collision、runtime config migration、dangerous tool policy。
+
+2. 把 Operations board 从只读升级为可操作。
+   - 支持 approval decision、cancel job、retry repair、view diff、view lane event、view model fallback、view tool call audit。
+
+3. 补真实 LLM lane runtime。
+   - `coordinateDurable` 当前是 durable job 基础，下一步要让 lane 使用 QueryEngine/Runtime adapter，具备独立 budget、model、tool allowlist、reasoning level。
+
+4. 完成 production-grade auto repair。
+   - patch approval UI、workspace containment、rollback/reverse diff、attempt replay、CI command result 对接。
+
+5. 补移动构建可观测性。
+   - 在私有 repo push 后自动记录 public_claw branch SHA、Actions run id、APK artifact URL、可下载地址与部署结果。
+
+## 9. 具体执行顺序、产品界面与商业化落地
+
+下面的顺序把“做什么”拆成产品前端、后端、桌面/移动、增长运营和营收闭环，避免只停留在架构层。
+
+### 9.1 第 0 阶段：发布卫生与可售卖入口，1-3 天
+
+目标：把已完成的 operations/runtime hardening 变成可演示、可销售、可追踪的产品入口。
+
+前端产品界面：
+
+1. `/operations` 增加真实运营首页布局。
+   - 顶部 KPI：active tasks、failed tasks、pending approvals、repair jobs、tool risk、device continuity、今日 token/cost。
+   - 中部 task board：lane jobs、repair jobs、approval requests、incidents 四列。
+   - 右侧 timeline：tool call、lane event、repair patch、model fallback、deploy/update check。
+   - 每个敏感动作按钮必须显示风险等级与审批状态。
+
+2. 新增 `/pricing` 或重构现有定价页。
+   - Free、Pro、Team、Merchant、Developer 五个套餐。
+   - 明确免费额度、付费权益、超额计费、agent/team/marketplace 抽成。
+   - CTA 分流：个人用户进入 agent onboarding，商户进入 merchant onboarding，开发者进入 developer console。
+
+3. 首页和 onboarding 改成商业转化优先。
+   - 首屏直接表达：个人跨端 agent、agent economy、可交易技能/服务。
+   - 3 个高转化 demo：个人 agent 自动执行任务、商户上架 agent 服务、开发者发布 skill/API 并赚钱。
+   - 增加 feedback widget、waitlist/邮件订阅、referral code。
+
+后端：
+
+1. 增加 billing entitlement 基础表。
+   - `plans`、`subscriptions`、`usage_records`、`entitlements`、`invoices`。
+   - 所有高成本 agent run、tool call、cloud lane、Bedrock 调用写 usage。
+
+2. 增加 product analytics 事件。
+   - `user_registered`、`agent_created`、`task_started`、`task_completed`、`approval_clicked`、`checkout_started`、`subscription_created`、`merchant_onboarded`。
+
+3. 修复部署脚本。
+   - 把当前手工部署流程固化为脚本，修复 PowerShell/Bash 引号问题。
+   - 部署后自动输出 HEAD、migration status、PM2 status、API health、web route、public build branch。
+
+桌面/移动：
+
+1. Desktop workbench 增加 Operations tab。
+   - 当前任务、审批、repair patch、follow-up 输入框。
+   - 本地重工具提示升级到 desktop lane，移动端只发起和审批。
+
+2. Mobile Desktop Control 增加付费/额度提示。
+   - 免费额度剩余、任务成本预估、需要桌面在线/云 lane 的提示。
+
+营收验收：
+
+- 任何新用户能在 3 步内创建 agent 并完成首个任务。
+- 任何高成本功能都有 usage record。
+- 定价页能解释清楚为什么升级 Pro/Team/Merchant/Developer。
+
+### 9.2 第 1 阶段：可收费服务与商业模式，3-14 天
+
+目标：先卖最容易理解、最容易交付、最能证明价值的服务。
+
+收费服务设计：
+
+| 服务 | 目标用户 | 收费方式 | 免费层 | 付费理由 |
+|---|---|---|---|---|
+| Agentrix Pro | 个人专业用户、创作者、开发者 | 月订阅，建议 $9-$19 起 | 每日少量任务、基础 chat、有限 memory | 跨端连续性、长期记忆、桌面工具、更多 agent run、更高模型额度 |
+| Agentrix Team | 小团队、创业项目 | 每席/月 + usage | 1-2 个成员试用 | 团队 agent、共享 workspace、审批、审计、任务板 |
+| Merchant Agent Store | 商户、服务提供者 | 月费 + 交易佣金 | 免费上架少量服务 | 商户自动接单、客服、履约、支付、数据分析 |
+| Developer Skill/API Marketplace | 开发者 | 平台抽成 + 托管/调用 usage | 免费发布、低调用额度 | 分发、计费、托管、用户获取、API key 管理 |
+| Hosted Agent Runtime | 专业用户/开发者 | usage-based，按任务/模型/token/tool execution | 小额度试用 | 无需自建 infra，直接托管 agent/skill/MCP |
+| Concierge Setup | 商户/企业早期客户 | 一次性 setup fee + 月费 | 免费诊断 | 帮客户把业务流程接入 agent，最快产生收入 |
+
+前端产品改动：
+
+1. `/pricing` 接入 Stripe/checkout 或当前支付模块。
+2. `/account/billing` 显示 plan、usage、invoice、upgrade CTA。
+3. `/marketplace` 增加“可赚钱”的开发者/商户入口。
+4. `/merchants/dashboard` 增加 agent 服务上架、订单、收入、佣金、客户消息。
+5. `/developers/console` 增加 skill/API 发布、调用数据、收益、文档生成。
+
+后端改动：
+
+1. Stripe subscription / checkout / webhook 闭环。
+2. Usage metering：agent run、tool call、cloud lane、Bedrock token、storage、marketplace transaction。
+3. Entitlement guard：限制免费层任务数、模型额度、memory size、cloud lane、商户上架数、API 调用数。
+4. Commission settlement：marketplace 技能/API/服务交易自动记录平台抽成。
+5. Revenue dashboard API：MRR、ARR、GMV、commission、conversion、churn、ARPU。
+
+增长动作：
+
+1. 发布“Agentrix Pro private beta”：用 waitlist + invite code 收集早期付费意向。
+2. 招募 10 个商户/开发者做 concierge setup，优先收 setup fee 或成功佣金。
+3. 每周发布 2 个真实 demo：agent 如何帮个人省时间、如何帮商户接单、如何让开发者通过 skill 赚钱。
+
+营收验收：
+
+- 至少 1 个真实付费入口可用。
+- 至少 3 个可售套餐在前端清晰展示。
+- 至少 10 个高意向 lead 进入 CRM/lead table。
+- 第一个商户或开发者可完成上架/交易/佣金记录 MVP。
+
+### 9.3 第 2 阶段：增长飞轮与用户获取，14-30 天
+
+目标：用免费资源和 agent 团队持续扩大高质量线索，而不是无成本目标地消耗模型额度。
+
+产品前端：
+
+1. 新增 `/templates`。
+   - 个人：研究助手、代码助手、社群运营、邮件助手、桌面执行助手。
+   - 商户：客服 agent、订单 follow-up、营销素材、FAQ bot。
+   - 开发者：API wrapper skill、MCP server template、agent service template。
+
+2. 新增 referral 与 invite。
+   - 用户邀请好友获得 usage credits。
+   - 开发者邀请商户/用户获得佣金折扣或 marketplace boost。
+
+3. 新增 public demo/share 页面。
+   - 用户可分享 agent 完成任务的 sanitized result，带 referral CTA。
+
+后端：
+
+1. `growth_leads` 与 `campaigns` 表。
+   - 来源：Twitter/X、GitHub、Telegram、Discord、邮件、Product Hunt、Hacker News、Reddit、LinkedIn、开发者社区。
+   - 字段：persona、pain point、expected value、status、next action、owner agent、human approval。
+
+2. `feedback_items` 与 `product_opportunities`。
+   - 用户反馈、客服、社群问题、GitHub issue 自动聚类。
+   - 生成 RICE/ICE score 与实验建议。
+
+3. 邮件与社群 automation guardrail。
+   - 草稿自动生成，群发和对外承诺必须人工审核。
+
+运营：
+
+1. Twitter/X：每天 3 个草稿、10 个高质量回复建议、5 个大 V 互动机会。
+2. GitHub：每天 issue triage、docs improvement、开源示例项目维护。
+3. Telegram/Discord：欢迎流、FAQ、问题升级、每周 demo 活动。
+4. 邮件：分群 onboarding、激活、开发者召回、商户转化序列。
+5. 免费资源申请：每周至少 10 个资源/Grant/accelerator/API trial 申请或跟进。
+
+增长验收：
+
+- 每周新增 Twitter/X 高质量互动、大 V 回复或关注。
+- Telegram/Discord 每周活跃人数增长。
+- GitHub stars/issues/PR 有增长。
+- 邮件列表和 waitlist 每周增长。
+- 每周至少 3 个实验有明确数据结论。
+
+### 9.4 第 3 阶段：Self-Evolution Control Plane，30-60 天
+
+目标：让 agent 团队真的 7x24 自运营，而不是靠手工 prompt。
+
+前端：
+
+1. `/operations/evolution`。
+   - 经营日报、增长指标、营收、成本、资源额度、实验、agent 效率。
+   - approval queue：部署、DB migration、群发邮件、外部发布、财务、合作。
+
+2. `/operations/experiments`。
+   - 实验假设、目标指标、变体、状态、结果、学习结论、下一步。
+
+3. `/operations/resources`。
+   - 免费额度、API trial、grant、过期时间、使用计划、ROI。
+
+后端：
+
+1. `signals`、`metrics_snapshots`、`experiments`、`agent_runs`、`resource_ledger`、`approval_queue`、`learning_backlog`。
+2. 每小时 cron：拉取指标、社交、GitHub、社群、支付、反馈。
+3. 每日 cron：生成经营日报、优先级任务、风险和机会。
+4. 每周 cron：生成 agent 绩效复盘、prompt/skill/tool 改进建议。
+
+Agent 团队：
+
+1. CEO agent 负责取舍和冲突解决，不直接吞掉执行任务。
+2. Growth/Media/Community 负责增长实验和内容，但外部发布进 approval。
+3. Hunter/Ops/Treasury 负责免费资源和成本，付费资源必须 human 批准。
+4. Dev/QA/Ops 负责 PR、测试、部署建议，生产 deploy 和 DB migration 必须 human 批准。
+
+验收：
+
+- 每日自动经营日报可用。
+- 每周至少 3 个增长/产品实验进入执行或审核。
+- Agent run 成功率、成本、人工驳回率可见。
+- 免费资源 ledger 覆盖当前 Copilot Pro+、AWS Bedrock 额度和申请队列。
+
+### 9.5 第 4 阶段：生产级 Agent Economy，60-90 天
+
+目标：让 Agentrix 从工具变成可交易、可分发、可盈利的平台。
+
+产品前端：
+
+1. Marketplace 首页改成交易导向。
+   - Featured agents、skills、merchant services、developer APIs。
+   - 评价、成交量、响应时间、价格、试用 CTA。
+
+2. Agent profile 页面。
+   - 能力、价格、数据权限、工具权限、服务 SLA、审计摘要。
+
+3. Merchant service listing。
+   - 商户可上架“agent 服务包”：客服、内容、数据分析、自动化流程、行业模板。
+
+4. Developer payout 页面。
+   - 调用量、收入、平台抽成、结算状态、税务/身份资料。
+
+后端：
+
+1. Marketplace order、escrow、refund、commission、settlement 完整闭环。
+2. Skill/API/agent service usage metering 与 payout。
+3. Trust & safety：内容审核、工具风险、SSRF、credential access、用户投诉、封禁。
+4. Partner/affiliate tracking：邀请、渠道、佣金、coupon。
+
+营收路径：
+
+1. 订阅收入：Pro、Team、Merchant、Developer。
+2. Usage 收入：hosted agent runtime、cloud lane、tool execution、模型 token markup、storage。
+3. 抽成收入：marketplace skill/API/service 交易佣金。
+4. 服务收入：商户/企业 concierge setup、定制 agent workflow、培训和 support。
+5. 增值收入：featured listing、priority support、advanced analytics、compliance/audit export。
+
+验收：
+
+- 至少一个 marketplace 交易闭环能记录订单、支付、佣金、履约状态。
+- 至少一个开发者或商户能看到收益数据。
+- 至少一个 agent service 能从 discovery 到 checkout 到 fulfillment。
+- 每月能输出营收漏斗和增长归因报告。
 
 本计划的核心判断：Agentrix 已经有 agent runtime 的雏形，下一阶段不能再只加工具清单，而要把任务、runtime、模型、工具、权限、session、skills、审计全部结构化、持久化、可恢复。OpenClaw 4.24 的回归提醒我们，越接近真实 Gateway，升级迁移和平台边界越重要；Hermes v0.5.0 的 hardening release 则说明，生产级 agent 的竞争力来自可靠 loop、可观测 fallback、强工具安全和自学习 skills 闭环。
 
-## 9. Agentrix 自我迭代、自我进化与 7x24 自运营方案
+## 10. Agentrix 自我迭代、自我进化与 7x24 自运营方案
 
 Agentrix 的下一阶段目标不是“让 agent 偶尔自动化一些任务”，而是建设一个可持续学习、可审计、可控成本、以营收和增长为核心指标的运营系统。系统分三条互相反馈的自进化线：
 
@@ -380,7 +653,7 @@ Agentrix 的下一阶段目标不是“让 agent 偶尔自动化一些任务”�
 - Agent 团队自进化：让 11-agent 团队从固定角色升级为可度量、可复盘、可改组的 7x24 自运营组织。
 - Agentrix 产品自进化：持续吸收竞品、市场调研、用户反馈、增长数据和营收数据，自动形成实验、PRD、任务和发布建议。
 
-### 9.1 总体原则
+### 10.1 总体原则
 
 1. 营收优先，增长驱动。
    - 北极星指标分两层：第一层是净营收、毛利、付费转化、留存、ARPU、商户 GMV 或 agent economy 交易额；第二层是用户数、商户数、开发者数、专业用户数、活跃 agent 数、Twitter/X 关注与大 V 互动、Telegram/Discord 人数与活跃度、GitHub stars/forks/issues/PR、邮件订阅与打开率。
@@ -400,7 +673,7 @@ Agentrix 的下一阶段目标不是“让 agent 偶尔自动化一些任务”�
    - 每个 agent run 记录目标、输入、工具、模型、成本、耗时、产出、失败原因、审批、后续影响。
    - 任何自动写代码、发内容、改配置、动生产的动作都必须有 diff/audit timeline。
 
-### 9.2 Agent 框架自进化闭环
+### 10.2 Agent 框架自进化闭环
 
 Agent 框架需要从“能完成任务”升级为“持续降低失败率、延迟和成本”。建议新增 Agent Runtime Eval Loop：
 
@@ -421,7 +694,7 @@ Agent 框架需要从“能完成任务”升级为“持续降低失败率、�
    - 常见失败自动生成 tool improvement proposal 或 skill proposal。
    - 新 skill 必须通过 lint、安全扫描、routing eval、小样本真实任务 replay 后才能进入 agent allowlist。
 
-### 9.3 Agent 团队 7x24 自运营机制
+### 10.3 Agent 团队 7x24 自运营机制
 
 当前 11-agent 团队可作为初始角色，但不应固定不变。更推荐按经营目标组成动态 pod：
 
@@ -450,7 +723,7 @@ Agent 框架需要从“能完成任务”升级为“持续降低失败率、�
 4. 每月：战略更新。
    - 输出市场地图、竞品矩阵、用户画像变化、收入模型变化、资源申请结果和下一月 OKR。
 
-### 9.4 Agentrix 产品自进化闭环
+### 10.4 Agentrix 产品自进化闭环
 
 产品自进化要把“外部市场”和“内部行为数据”转成可执行实验。
 
@@ -472,7 +745,7 @@ Agent 框架需要从“能完成任务”升级为“持续降低失败率、�
    - Agent economy：强调 agent 身份、技能市场、任务交易、商户工具、开发者收益、平台抽成。
    - Professional users：强调可靠性、审计、权限、团队协作、企业/商户 ROI。
 
-### 9.5 增长与营收自动化
+### 10.5 增长与营收自动化
 
 增长系统不只追粉丝，而是追“可变现的注意力”。
 
@@ -494,7 +767,7 @@ Agent 框架需要从“能完成任务”升级为“持续降低失败率、�
 4. 邮件：按用户行为分群，生成 onboarding、激活、商户转化、开发者召回序列；群发必须人工批准。
 5. 商业化：每周输出 10 个潜在商户/合作方/开发者线索，附痛点、切入语、预计价值、触达渠道。
 
-### 9.6 免费资源与成本治理
+### 10.6 免费资源与成本治理
 
 资源策略的目标是让 agent 团队尽可能 7x24 工作，但不会失控烧钱。
 
@@ -513,7 +786,7 @@ Agent 框架需要从“能完成任务”升级为“持续降低失败率、�
    - 超预算任务自动降级、排队或进入审批。
    - 财务和付费资源开通属于红色审批，必须 human 批准。
 
-### 9.7 需要落地的控制平面
+### 10.7 需要落地的控制平面
 
 建议新增 Self-Evolution Control Plane，和 Operations Control Plane 打通：
 
@@ -535,7 +808,7 @@ Agent 框架需要从“能完成任务”升级为“持续降低失败率、�
 - `POST /ops/evolution/agent-runs/:id/grade`：人工或自动评价 agent run。
 - `POST /ops/evolution/approvals/:id/decision`：审批发布、部署、群发、费用、合作。
 
-### 9.8 近期落地顺序
+### 10.8 近期落地顺序
 
 1. 7 天内。
    - 建立经营指标日报：营收、用户、商户、开发者、社交、社群、GitHub、成本。
@@ -557,7 +830,7 @@ Agent 框架需要从“能完成任务”升级为“持续降低失败率、�
    - Agent 团队能 7x24 运行低风险任务，高风险事项进入 human 审批队列。
    - 每个 agent 的存在都能用增长、营收、节省成本或产品学习速度证明价值。
 
-### 9.9 验收标准
+### 10.9 验收标准
 
 - 每日自动生成经营日报，包含营收、增长、成本、资源、实验和风险。
 - 每周至少 3 个增长/产品实验进入执行或人工审核。
