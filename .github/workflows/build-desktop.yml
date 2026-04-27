@@ -84,6 +84,14 @@ jobs:
         working-directory: desktop
         run: npm ci
 
+      - name: Configure Windows signing
+        if: matrix.platform == 'windows-latest'
+        working-directory: desktop
+        env:
+          WINDOWS_CERTIFICATE_THUMBPRINT: ${{ secrets.WINDOWS_CERTIFICATE_THUMBPRINT }}
+          REQUIRE_WINDOWS_SIGNING: ${{ startsWith(github.ref, 'refs/tags/desktop-v') }}
+        run: npm run signing:configure
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -124,7 +132,9 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DESKTOP_UPDATE_BASE_URL: ${{ secrets.DESKTOP_UPDATE_BASE_URL }}
         run: |
-          echo "Update manifests would be deployed to the update server here."
+          test -n "$DESKTOP_UPDATE_BASE_URL" || (echo "DESKTOP_UPDATE_BASE_URL secret is required for updater releases" && exit 1)
+          echo "Update artifacts are ready for deployment to: $DESKTOP_UPDATE_BASE_URL"
           echo "Artifacts downloaded to: artifacts/"
           ls -la artifacts/ || true

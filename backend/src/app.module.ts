@@ -126,6 +126,9 @@ import { DreamingModule } from './modules/dreaming/dreaming.module';
 import { MemoryWikiModule } from './modules/memory-wiki/memory-wiki.module';
 // Prediction Market: BTC 5min up/down + Polymarket trending feed
 import { PredictionMarketModule } from './modules/prediction-market/prediction-market.module';
+import { CodeIntelligenceModule } from './modules/code-intelligence/code-intelligence.module';
+import { AutoRepairModule } from './modules/auto-repair/auto-repair.module';
+import { DesktopUpdateModule } from './modules/desktop-update/desktop-update.module';
 
 @Module({
   imports: [
@@ -259,6 +262,12 @@ import { PredictionMarketModule } from './modules/prediction-market/prediction-m
     MemoryWikiModule,
     // Prediction Market (BTC 5min + Polymarket feed)
     PredictionMarketModule,
+    // Workspace code intelligence: AST/LSP symbols + semantic vector index
+    CodeIntelligenceModule,
+    // Automatic run/diagnose/patch/retry repair loop
+    AutoRepairModule,
+    // Desktop release updater manifest endpoint
+    DesktopUpdateModule,
   ],
   controllers: [AppController],
   providers: [

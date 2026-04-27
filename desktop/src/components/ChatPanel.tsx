@@ -56,6 +56,7 @@ import {
 } from "../services/desktopSync";
 import { pushSessionSync, isSessionSyncConnected } from "../services/sessionSync";
 import { trackEvent } from "../services/analytics";
+import { compactChatMessagesForContext } from "../services/contextWindow";
 import {
   getActivePlan,
   approvePlan as approvePlanApi,
@@ -137,6 +138,8 @@ interface Props {
 
 const APPROX_CHARS_PER_TOKEN = 4;
 const LONG_LOCAL_PREFILL_TOKEN_THRESHOLD = 3000;
+const DESKTOP_LOCAL_CONTEXT_BUDGET_TOKENS = 6500;
+const DESKTOP_DIRECT_CONTEXT_BUDGET_TOKENS = 60000;
 const MANUAL_MODEL_SELECTION_GRACE_MS = 20_000;
 const STALE_DESKTOP_TASK_WINDOW_MS = 45_000;
 const RECENT_DESKTOP_FAILURE_WINDOW_MS = 15_000;
@@ -355,7 +358,7 @@ function resolveEffectiveChatMode(
 function shouldEscalateDesktopLocalTurn(effectiveChatMode: ChatMode, hasCloudPath: boolean): boolean {
   // Desktop targets VSCode-level capability for complex tasks.
   // agent/plan modes escalate to cloud for full tool orchestration (40+ tools, file ops, commands, 16-22 rounds).
-  // ask mode runs locally with basic tools (5 tools, 5 rounds) — fast, private, offline-capable.
+  // ask mode runs locally without the heavier tool loop — fast, private, offline-capable.
   return hasCloudPath && (effectiveChatMode === "agent" || effectiveChatMode === "plan");
 }
 
@@ -2390,10 +2393,7 @@ export default function ChatPanel({
 
       if (token || useDesktopLocalModel) {
         const authToken = token;
-        // Local sidecar runs with a bounded ctx window (8192 tokens). Keep recent history only
-        // for local path so prompt_tokens stays well under ctx even after several turns.
-        const historyWindow = useDesktopLocalModel ? 8 : 25;
-        const history = currentMessagesForSession.slice(-historyWindow).map((message) => ({
+        let history = currentMessagesForSession.map((message) => ({
           role: message.role,
           content: serializeMessageForModel(message.content, message.attachments || []),
         }));
@@ -2415,6 +2415,13 @@ export default function ChatPanel({
           history.unshift(...systemMessages);
         }
         history.push({ role: "user", content: outboundText });
+        history = compactChatMessagesForContext(history, {
+          maxTokens: useDesktopLocalModel
+            ? DESKTOP_LOCAL_CONTEXT_BUDGET_TOKENS
+            : DESKTOP_DIRECT_CONTEXT_BUDGET_TOKENS,
+          minRecentMessages: useDesktopLocalModel ? 8 : 20,
+          maxSummaryChars: useDesktopLocalModel ? 1600 : 3200,
+        }).messages;
 
         const chunkHandler = (chunk: string) => {
           const responseKey = `${targetSessionId}:${assistantId}`;

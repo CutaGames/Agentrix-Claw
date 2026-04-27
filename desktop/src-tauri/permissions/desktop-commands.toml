@@ -19,6 +19,7 @@ commands.allow = [
   "desktop_bridge_get_workspace_dir",
   "desktop_bridge_list_workspace_dir",
   "desktop_bridge_read_workspace_file",
+  "desktop_bridge_search_workspace_files",
   "desktop_bridge_write_workspace_file",
   # Desktop bridge: commands / files / context
   "desktop_bridge_list_directory",

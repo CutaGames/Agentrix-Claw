@@ -51,6 +51,25 @@ pub struct DesktopListDirectoryResult {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct DesktopSearchMatch {
+    pub path: String,
+    pub line_number: usize,
+    pub column: usize,
+    pub line_text: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopSearchResult {
+    pub query: String,
+    pub root: String,
+    pub matches: Vec<DesktopSearchMatch>,
+    pub truncated: bool,
+    pub duration_ms: u128,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct DesktopWriteFileResult {
     pub path: String,
     pub bytes_written: usize,
@@ -508,6 +527,192 @@ pub fn read_workspace_file(relative_path: String) -> Result<String, String> {
         return Err("File too large (>2MB). Use a specific range or smaller file.".into());
     }
     std::fs::read_to_string(&target).map_err(|e| e.to_string())
+}
+
+fn should_skip_search_dir(name: &str) -> bool {
+    matches!(
+        name,
+        ".git"
+            | ".gradle"
+            | ".next"
+            | ".turbo"
+            | ".vscode-test"
+            | "build"
+            | "dist"
+            | "node_modules"
+            | "target"
+            | "coverage"
+            | "test-results"
+    )
+}
+
+fn is_probably_binary(bytes: &[u8]) -> bool {
+    bytes.iter().take(1024).any(|byte| *byte == 0)
+}
+
+fn relative_search_path(workspace: &Path, path: &Path) -> String {
+    path.strip_prefix(workspace)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn search_path_matches_filter(relative_path: &str, path_filter: Option<&str>) -> bool {
+    let Some(filter) = path_filter.map(str::trim).filter(|value| !value.is_empty()) else {
+        return true;
+    };
+    relative_path
+        .to_lowercase()
+        .contains(&filter.replace('\\', "/").to_lowercase())
+}
+
+fn search_file_for_query(
+    workspace: &Path,
+    path: &Path,
+    query: &str,
+    case_sensitive: bool,
+    matches: &mut Vec<DesktopSearchMatch>,
+    max_results: usize,
+) -> Result<(), String> {
+    if matches.len() >= max_results {
+        return Ok(());
+    }
+
+    let metadata = match std::fs::metadata(path) {
+        Ok(value) => value,
+        Err(_) => return Ok(()),
+    };
+    if metadata.len() > 1024 * 1024 {
+        return Ok(());
+    }
+
+    let bytes = match std::fs::read(path) {
+        Ok(value) => value,
+        Err(_) => return Ok(()),
+    };
+    if is_probably_binary(&bytes) {
+        return Ok(());
+    }
+
+    let content = String::from_utf8_lossy(&bytes);
+    let needle = if case_sensitive {
+        query.to_string()
+    } else {
+        query.to_lowercase()
+    };
+    let relative_path = relative_search_path(workspace, path);
+
+    for (line_index, line) in content.lines().enumerate() {
+        if matches.len() >= max_results {
+            break;
+        }
+        let haystack = if case_sensitive {
+            line.to_string()
+        } else {
+            line.to_lowercase()
+        };
+        if let Some(column_index) = haystack.find(&needle) {
+            matches.push(DesktopSearchMatch {
+                path: relative_path.clone(),
+                line_number: line_index + 1,
+                column: column_index + 1,
+                line_text: line.trim_end().chars().take(500).collect(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn walk_search_dir(
+    workspace: &Path,
+    dir: &Path,
+    query: &str,
+    path_filter: Option<&str>,
+    case_sensitive: bool,
+    matches: &mut Vec<DesktopSearchMatch>,
+    max_results: usize,
+) -> Result<(), String> {
+    if matches.len() >= max_results {
+        return Ok(());
+    }
+
+    let entries = match std::fs::read_dir(dir) {
+        Ok(value) => value,
+        Err(_) => return Ok(()),
+    };
+
+    for entry in entries {
+        if matches.len() >= max_results {
+            break;
+        }
+        let entry = match entry {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        let file_type = match entry.file_type() {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        let name = entry.file_name().to_string_lossy().to_string();
+
+        if file_type.is_dir() {
+            if should_skip_search_dir(&name) {
+                continue;
+            }
+            walk_search_dir(
+                workspace,
+                &path,
+                query,
+                path_filter,
+                case_sensitive,
+                matches,
+                max_results,
+            )?;
+        } else if file_type.is_file() {
+            let relative_path = relative_search_path(workspace, &path);
+            if search_path_matches_filter(&relative_path, path_filter) {
+                search_file_for_query(workspace, &path, query, case_sensitive, matches, max_results)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn search_workspace_files(
+    query: String,
+    path_filter: Option<String>,
+    max_results: Option<usize>,
+    case_sensitive: Option<bool>,
+) -> Result<DesktopSearchResult, String> {
+    let started = Instant::now();
+    let workspace = require_workspace_dir()?;
+    let trimmed_query = query.trim();
+    if trimmed_query.is_empty() {
+        return Err("Search query is required".into());
+    }
+
+    let limit = max_results.unwrap_or(20).clamp(1, 200);
+    let mut matches = Vec::new();
+    walk_search_dir(
+        &workspace,
+        &workspace,
+        trimmed_query,
+        path_filter.as_deref(),
+        case_sensitive.unwrap_or(false),
+        &mut matches,
+        limit,
+    )?;
+
+    Ok(DesktopSearchResult {
+        query: trimmed_query.to_string(),
+        root: workspace.display().to_string(),
+        truncated: matches.len() >= limit,
+        matches,
+        duration_ms: started.elapsed().as_millis(),
+    })
 }
 
 pub fn write_workspace_file(relative_path: String, content: String) -> Result<(), String> {

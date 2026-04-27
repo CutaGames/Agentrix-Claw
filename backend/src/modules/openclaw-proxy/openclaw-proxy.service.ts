@@ -1627,11 +1627,14 @@ export class OpenClawProxyService {
           return {
             coordinated: true,
             summary: result.coordinatorSummary,
+            parallelism: result.parallelism,
             workers: result.workers.map(w => ({
               id: w.id,
               agentName: w.agentName,
+              role: w.role,
               task: w.task,
               status: w.status,
+              durationMs: w.durationMs,
             })),
             totalCostUsd: result.totalCostUsd,
           };

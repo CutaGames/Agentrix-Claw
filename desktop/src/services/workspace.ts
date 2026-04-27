@@ -6,6 +6,28 @@ export interface FileEntry {
   size: number;
 }
 
+export interface WorkspaceSearchMatch {
+  path: string;
+  lineNumber: number;
+  column: number;
+  lineText: string;
+}
+
+export interface WorkspaceSearchResult {
+  query: string;
+  root: string;
+  matches: WorkspaceSearchMatch[];
+  truncated: boolean;
+  durationMs: number;
+}
+
+export interface WorkspaceSearchParams {
+  query: string;
+  pathFilter?: string;
+  maxResults?: number;
+  caseSensitive?: boolean;
+}
+
 export async function setWorkspaceDir(path: string): Promise<string> {
   return invoke<string>("desktop_bridge_set_workspace_dir", { path });
 }
@@ -24,6 +46,15 @@ export async function readWorkspaceFile(relativePath: string): Promise<string> {
 
 export async function writeWorkspaceFile(relativePath: string, content: string): Promise<void> {
   return invoke<void>("desktop_bridge_write_workspace_file", { relativePath, content });
+}
+
+export async function searchWorkspaceFiles(params: WorkspaceSearchParams): Promise<WorkspaceSearchResult> {
+  return invoke<WorkspaceSearchResult>("desktop_bridge_search_workspace_files", {
+    query: params.query,
+    pathFilter: params.pathFilter,
+    maxResults: params.maxResults,
+    caseSensitive: params.caseSensitive,
+  });
 }
 
 function normalizeDialogSelection(selected: string | string[] | null): string | null {

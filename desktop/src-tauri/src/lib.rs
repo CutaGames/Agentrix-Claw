@@ -99,6 +99,16 @@ fn desktop_bridge_read_workspace_file(relative_path: String) -> Result<String, S
 }
 
 #[tauri::command]
+fn desktop_bridge_search_workspace_files(
+    query: String,
+    path_filter: Option<String>,
+    max_results: Option<usize>,
+    case_sensitive: Option<bool>,
+) -> Result<commands::DesktopSearchResult, String> {
+    commands::search_workspace_files(query, path_filter, max_results, case_sensitive)
+}
+
+#[tauri::command]
 fn desktop_bridge_write_workspace_file(relative_path: String, content: String) -> Result<(), String> {
     commands::write_workspace_file(relative_path, content)
 }
@@ -633,6 +643,7 @@ pub fn run() {
             desktop_bridge_get_workspace_dir,
             desktop_bridge_list_workspace_dir,
             desktop_bridge_read_workspace_file,
+            desktop_bridge_search_workspace_files,
             desktop_bridge_write_workspace_file,
             // Desktop bridge: commands / files / context
             desktop_bridge_run_command,
