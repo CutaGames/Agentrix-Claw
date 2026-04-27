@@ -1,6 +1,6 @@
 param(
     [string]$Branch,
-    [string]$ServerHost = "ubuntu@18.139.157.116",
+    [string]$ServerHost = "ubuntu@47.130.176.148",
     [string]$KeyPath = "C:\Users\15279\Desktop\hq.pem",
     [string]$ServerTokenPath = "/home/ubuntu/.config/agentrix/public-build.env"
 )
@@ -88,6 +88,7 @@ Assert-PublicBuildStage -StageDir $stageDir
 
 Copy-IfExists -SourcePath (Join-Path $repoRoot ".github\workflows\build-apk.yml") -DestinationPath (Join-Path $stageDir ".github\workflows\build-apk.yml")
 Copy-IfExists -SourcePath (Join-Path $repoRoot ".github\workflows\build-ios-simulator.yml") -DestinationPath (Join-Path $stageDir ".github\workflows\build-ios-simulator.yml")
+Copy-IfExists -SourcePath (Join-Path $repoRoot ".github\workflows\build-watch-apk.yml") -DestinationPath (Join-Path $stageDir ".github\workflows\build-watch-apk.yml")
 Copy-IfExists -SourcePath (Join-Path $repoRoot ".github\public-workflows\build-apk-trigger.yml") -DestinationPath (Join-Path $stageDir ".github\workflows\build-apk-trigger.yml")
 Copy-IfExists -SourcePath (Join-Path $repoRoot ".github\public-workflows\build-ios-simulator-trigger.yml") -DestinationPath (Join-Path $stageDir ".github\workflows\build-ios-simulator-trigger.yml")
 

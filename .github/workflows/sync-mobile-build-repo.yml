@@ -14,7 +14,10 @@ on:
       - tsconfig.json
       - .gitignore
       - Agentrix Logo/**
+      - .maestro/**
       - assets/**
+      - plugins/**
+      - scripts/build/**
       - src/**
       - scripts/public-build/mobile_mirror_paths.txt
       - .github/workflows/build-apk.yml

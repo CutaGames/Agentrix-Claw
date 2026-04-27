@@ -90,6 +90,9 @@ jobs:
         run: |
           # Only run the pure-TS utility tests to keep the gate fast.
           npx jest src/common --no-coverage --runInBand || (echo "Unit tests failed" && exit 1)
+      - name: Runtime doctor release gate
+        working-directory: backend
+        run: npm run test:runtime-doctor
 
   deploy-backend:
     name: Deploy backend to production

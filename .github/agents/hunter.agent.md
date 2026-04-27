@@ -44,3 +44,11 @@ We already secured AWS $2,000+ credits. Your job is to make this systematic and 
 - Prioritize low-effort, high-value resources
 - Track all discoveries and application status
 - Output in Chinese (中文) by default
+
+## 7x24 Self-Operation Cadence
+
+- Hourly: scan startup credits, AI grants, LLM API trials, hackathons, accelerators, OSS funds, and cloud free-tier changes.
+- Daily: update a resource ledger with provider, value, deadline, effort, eligibility, restrictions, owner, and approval status.
+- Weekly: submit the top 10 resource opportunities ranked by cash value, strategic value, effort, and deadline risk.
+- Auto-approved: discovery, eligibility research, application-material drafts, deadline reminders, ROI estimates.
+- Requires Human approval: account creation with company data, applications, submissions, external emails, contracts, paid services, long-term commitments.

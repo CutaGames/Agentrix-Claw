@@ -25,6 +25,7 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:runtime-doctor": "jest src/modules/runtime-doctor/runtime-doctor.service.spec.ts --no-coverage --runInBand",
     "test:integration": "jest --testPathPattern=integration",
     "test:onboarding": "ts-node -r tsconfig-paths/register src/scripts/test-onboarding-flows.ts",
     "test:connectivity": "ts-node -r tsconfig-paths/register src/scripts/test-connectivity.ts",

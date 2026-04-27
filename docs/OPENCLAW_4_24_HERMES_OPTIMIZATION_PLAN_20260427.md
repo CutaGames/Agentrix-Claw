@@ -405,20 +405,17 @@ Agentrix 当前不是空白，已具备以下可继续演进的底座：
 
 ### 8.4 必须跟进的工程项
 
-1. 把 runtime doctor 接入 CI gate。
-   - PR/build 分支必须检查 chat path parity、tool policy、MCP collision、runtime config migration、dangerous tool policy。
+2026-04-27 本轮已把 8.4 从“待办提醒”升级成工程执行面板。能低风险落地的项已接入仓库；需要较大产品/后端改造的项已拆成明确 PR 切片，不能用文档状态掩盖真实工程量。
 
-2. 把 Operations board 从只读升级为可操作。
-   - 支持 approval decision、cancel job、retry repair、view diff、view lane event、view model fallback、view tool call audit。
+| 工程项 | 本轮完成状态 | 已落地资产 | 下一步 PR 切片 | 验收口径 |
+|---|---|---|---|---|
+| Runtime doctor CI gate | 已接入 release gate | `backend/package.json` 增加 `test:runtime-doctor`；`one-click-release.yml` 增加 Runtime doctor release gate，覆盖 chat path parity、provider/runtime policy、desktop signing/updater、tool control plane readiness | 后续新增 PR/build branch workflow 时复用同一脚本；前端 doctor 页面读取 `/runtime-doctor` | release workflow 中 `npm run test:runtime-doctor` 必须通过 |
+| Operations board 可操作化 | 后端基础已完成，UI 操作仍待独立 PR | `operations-control-plane` 已聚合 approvals、repair、lane、tool policy、continuity；`/operations` 生产可访问 | PR-1 approval decision/cancel job；PR-2 repair diff/retry/rollback；PR-3 lane event/model fallback/tool audit timeline | 每个敏感动作有 risk band、审批状态、audit trail，且失败任务可回放 |
+| 真实 LLM lane runtime | durable lane 基础已完成，真实 worker 待独立 PR | `coordinateDurable` 与 lane job/event/artifact 表已存在 | PR-1 QueryEngine/Runtime adapter 接入；PR-2 lane budget/model/tool allowlist/reasoning level；PR-3 SSE fan-in、parent cancel、worker reclaim | 一个多 lane 任务能独立选模型、记录成本、取消父任务并保留 artifacts |
+| Production-grade auto repair | persistence 已完成，执行治理待独立 PR | repair job/attempt/patch 表、approvalRequired 默认策略已落地 | PR-1 patch approval UI；PR-2 workspace containment 与 reverse diff；PR-3 CI command result、attempt replay、rollback | repair patch 不经审批不能写入高风险路径；每次 attempt 有命令结果和回滚材料 |
+| 移动构建可观测性 | 已补工具化查询与同步触发保护 | `scripts/public-build/check_public_build_status.ps1` 可用服务器 token 查询 public run、jobs、artifacts、APK 下载头；`push_public_build_via_server.ps1` 默认切到可用服务器并同步 watch workflow；`sync-mobile-build-repo.yml` 监听 `.maestro`、plugins、scripts/build | 可选后续 PR：把查询结果写入 release summary 或 operations board | 每次 public build 能输出 branch、run id、job status、artifact、APK URL、Last-Modified |
 
-3. 补真实 LLM lane runtime。
-   - `coordinateDurable` 当前是 durable job 基础，下一步要让 lane 使用 QueryEngine/Runtime adapter，具备独立 budget、model、tool allowlist、reasoning level。
-
-4. 完成 production-grade auto repair。
-   - patch approval UI、workspace containment、rollback/reverse diff、attempt replay、CI command result 对接。
-
-5. 补移动构建可观测性。
-   - 在私有 repo push 后自动记录 public_claw branch SHA、Actions run id、APK artifact URL、可下载地址与部署结果。
+第 8.4 的优先级：先保证 release gate 和 public build 可观测，再做 Operations board 写操作；真实 lane runtime 与 auto repair production 化作为 P1/P2 成组推进，避免把风险动作直接交给 7x24 自运营 agent。
 
 ## 9. 具体执行顺序、产品界面与商业化落地
 
@@ -698,6 +695,8 @@ Agent 框架需要从“能完成任务”升级为“持续降低失败率、�
 
 当前 11-agent 团队可作为初始角色，但不应固定不变。更推荐按经营目标组成动态 pod：
 
+本节必须和第 9 章一起开发：第 9 章定义可销售入口、增长漏斗、付费服务和商业化 KPI，第 10 章定义让 agent 团队持续执行、复盘、学习和升级的组织系统。当前优先级不是先让 dev agent 自主改生产代码，而是先让非开发 agent 以只读采集、草稿、报告、线索和审批队列形式跑起来。启动资产见 `docs/operations/AGENT_TEAM_7X24_SELF_OPERATION_20260427.md`。
+
 | Pod | 参与 agent | 核心目标 | 自动产出 | 人工审核点 |
 |---|---|---|---|---|
 | Revenue Pod | growth、treasury、ops、ceo | 付费转化、毛利、定价、商户收入 | 定价实验、漏斗报告、收入机会清单 | 价格变更、财务、合作条款 |
@@ -814,6 +813,8 @@ Agent 框架需要从“能完成任务”升级为“持续降低失败率、�
    - 建立经营指标日报：营收、用户、商户、开发者、社交、社群、GitHub、成本。
    - 建立 resource ledger，录入 Copilot Pro+、AWS Bedrock 额度和待申请免费资源。
    - 建立 approval queue，把 deploy、DB migration、外部发布、群发邮件、财务动作纳入统一审核。
+   - 已启动非开发 agent 自运营 runbook：ops、growth、hunter 已产出首轮任务清单；media、community、brand、ecosystem、treasury 按同一 runbook 执行低风险采集与草稿。
+   - release/移动构建可观测性先用 `scripts/public-build/check_public_build_status.ps1` 补齐，后续再接入 Operations board。
 
 2. 30 天内。
    - 上线 signal ingestion MVP：GitHub、X/Twitter 手动/半自动采集、Telegram/Discord 摘要、用户反馈表、支付/订阅导入。
