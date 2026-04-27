@@ -11,6 +11,6 @@ appId: app.agentrix.claw
 - assertVisible: "Agentrix Claw"
 
 - assertVisible:
-    textRegex: "Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包|Google"
+    text: "Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包|Google"
 
 - takeScreenshot: "01-app-launch-success"

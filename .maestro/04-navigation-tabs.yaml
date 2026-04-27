@@ -14,21 +14,21 @@ appId: app.agentrix.claw
 - takeScreenshot: "04-initial-state"
 
 - tapOn:
-    textRegex: "Use Email Address instead.*|改用邮箱登录.*"
+    text: "Use Email Address instead.*|改用邮箱登录.*"
 
 - waitForAnimationToEnd:
     timeout: 2000
 
 - assertVisible:
-    textRegex: "Sign In with Email|邮箱登录"
+    text: "Sign In with Email|邮箱登录"
 
 - tapOn:
-    textRegex: "Back to Web2.5 Login|返回 Web2.5 登录"
+    text: "Back to Web2.5 Login|返回 Web2.5 登录"
 
 - waitForAnimationToEnd:
     timeout: 2000
 
 - assertVisible:
-    textRegex: "Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包"
+    text: "Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包"
 
 - takeScreenshot: "04-auth-mode-switching"

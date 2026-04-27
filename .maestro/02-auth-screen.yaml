@@ -13,20 +13,20 @@ appId: app.agentrix.claw
 - takeScreenshot: "02-auth-branding"
 
 - assertVisible:
-    textRegex: "Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包"
+    text: "Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包"
 
 - assertVisible: "Google"
 
 - tapOn:
-    textRegex: "Use Email Address instead.*|改用邮箱登录.*"
+    text: "Use Email Address instead.*|改用邮箱登录.*"
 
 - waitForAnimationToEnd:
     timeout: 2000
 
 - assertVisible:
-    textRegex: "Sign In with Email|邮箱登录"
+    text: "Sign In with Email|邮箱登录"
 
 - assertVisible:
-    textRegex: "Email|邮箱|Password|密码"
+    text: "Email|邮箱|Password|密码"
 
 - takeScreenshot: "02-email-tab"
