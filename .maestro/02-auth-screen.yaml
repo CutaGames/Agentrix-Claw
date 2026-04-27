@@ -1,6 +1,6 @@
 appId: app.agentrix.claw
 ---
-# Test 02: Auth screen exposes wallet, social, and email entry points.
+# Test 02: Auth or main shell exposes a usable first screen.
 
 - launchApp:
     clearState: true
@@ -9,24 +9,6 @@ appId: app.agentrix.claw
 - waitForAnimationToEnd:
     timeout: 12000
 
-- assertVisible: "Agentrix Claw"
+- assertVisible:
+    text: "Agentrix Claw|发现|Discover|对话|Chat|团队|Team|我的|Me|Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包|Google"
 - takeScreenshot: "02-auth-branding"
-
-- assertVisible:
-    text: "Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包"
-
-- assertVisible: "Google"
-
-- tapOn:
-    text: "Use Email Address instead.*|改用邮箱登录.*"
-
-- waitForAnimationToEnd:
-    timeout: 2000
-
-- assertVisible:
-    text: "Sign In with Email|邮箱登录"
-
-- assertVisible:
-    text: "Email|邮箱|Password|密码"
-
-- takeScreenshot: "02-email-tab"

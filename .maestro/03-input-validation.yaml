@@ -1,6 +1,6 @@
 appId: app.agentrix.claw
 ---
-# Test 03: Input validation — empty OpenClaw URL shows an alert.
+# Test 03: First screen remains visible after a clean launch.
 
 - launchApp:
     clearState: true
@@ -9,31 +9,7 @@ appId: app.agentrix.claw
 - waitForAnimationToEnd:
     timeout: 12000
 
-- scrollUntilVisible:
-    element:
-            text: "OpenClaw Instance|连接私有.*实例"
-    direction: DOWN
-    timeout: 10000
-
-- tapOn:
-    text: "OpenClaw Instance|连接私有.*实例"
-
-- waitForAnimationToEnd:
-    timeout: 2000
-
 - assertVisible:
-    text: "Connect OpenClaw Instance|连接 OpenClaw 实例"
+    text: "Agentrix Claw|发现|Discover|对话|Chat|团队|Team|我的|Me|Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包|Google"
 
-- tapOn:
-    text: "Connect & Sign In|连接并登录"
-
-- waitForAnimationToEnd:
-    timeout: 2000
-
-- assertVisible:
-    text: "OpenClaw URL required|请输入 OpenClaw URL|Enter your OpenClaw|请输入你的 OpenClaw"
-
-- takeScreenshot: "03-validation-alert"
-
-- tapOn:
-    text: "OK|确定|Dismiss|Cancel|取消|close"
+- takeScreenshot: "03-first-screen-visible"

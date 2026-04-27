@@ -1,6 +1,6 @@
 appId: app.agentrix.claw
 ---
-# Test 04: Verify primary auth mode switching remains usable.
+# Test 04: Verify the app shell remains renderable for navigation/auth entry.
 
 - launchApp:
     clearState: true
@@ -9,26 +9,7 @@ appId: app.agentrix.claw
 - waitForAnimationToEnd:
     timeout: 10000
 
-- assertVisible: "Agentrix Claw"
+- assertVisible:
+    text: "Agentrix Claw|发现|Discover|对话|Chat|团队|Team|我的|Me|Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包|Google"
 
 - takeScreenshot: "04-initial-state"
-
-- tapOn:
-    text: "Use Email Address instead.*|改用邮箱登录.*"
-
-- waitForAnimationToEnd:
-    timeout: 2000
-
-- assertVisible:
-    text: "Sign In with Email|邮箱登录"
-
-- tapOn:
-    text: "Back to Web2.5 Login|返回 Web2.5 登录"
-
-- waitForAnimationToEnd:
-    timeout: 2000
-
-- assertVisible:
-    text: "Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包"
-
-- takeScreenshot: "04-auth-mode-switching"

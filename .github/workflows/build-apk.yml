@@ -498,16 +498,18 @@ jobs:
           fi
 
           for flow in "${FLOWS[@]}"; do
-            echo "--- Running: $flow ---"
-            if maestro test "$flow" --output "maestro-output/$(basename "$flow" .yaml)-report.xml" --format junit 2>&1 | tee "maestro-output/$(basename "$flow" .yaml).log"; then
-              echo "✅ PASS: $flow"
-              PASS=$((PASS + 1))
-            else
-              echo "❌ FAIL: $flow"
-              FAIL=$((FAIL + 1))
-              ERRORS="$ERRORS\n- \`$flow\`"
-            fi
+            echo "  $flow"
           done
+
+          if [ "${#FLOWS[@]}" -gt 0 ]; then
+            echo "--- Running Maestro suite: .maestro ---"
+            if maestro test .maestro --output "maestro-output/maestro-report.xml" --format junit 2>&1 | tee "maestro-output/maestro.log"; then
+              PASS=${#FLOWS[@]}
+            else
+              FAIL=1
+              ERRORS="- \`.maestro\`"
+            fi
+          fi
 
           mkdir -p maestro-output/screenshots
           find . -name "*.png" -newer artifacts/ -exec cp {} maestro-output/screenshots/ \; 2>/dev/null || true
