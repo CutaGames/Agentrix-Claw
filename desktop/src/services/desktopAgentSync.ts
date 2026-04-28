@@ -72,6 +72,51 @@ function payloadStrings(payload?: Record<string, unknown>) {
   return result;
 }
 
+function isAbsoluteDesktopPath(path: string) {
+  return /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith("/") || path.startsWith("~");
+}
+
+async function requireDesktopWorkspaceForRelativePath() {
+  const { getWorkspaceDir } = await import("./workspace");
+  const workspaceDir = await getWorkspaceDir();
+  if (!workspaceDir) {
+    throw new Error("No workspace selected. Choose a workspace folder in Settings before using relative desktop paths, or provide an absolute path.");
+  }
+  return workspaceDir;
+}
+
+async function resolveDesktopCommandPath(path: unknown, allowWorkspaceRoot = false) {
+  const raw = String(path || "").trim().replace(/\\/g, "/");
+
+  if (!raw || raw === ".") {
+    if (!allowWorkspaceRoot) {
+      throw new Error("path is required");
+    }
+    return requireDesktopWorkspaceForRelativePath();
+  }
+
+  if (isAbsoluteDesktopPath(raw)) {
+    return raw;
+  }
+
+  const segments = raw.split("/").filter(Boolean);
+  if (segments.some((segment) => segment === "..")) {
+    throw new Error("Relative desktop paths must stay inside the selected workspace.");
+  }
+
+  const workspaceDir = await requireDesktopWorkspaceForRelativePath();
+  const separator = workspaceDir.includes("\\") ? "\\" : "/";
+  return `${workspaceDir.replace(/[\\/]+$/g, "")}${separator}${segments.join(separator)}`;
+}
+
+async function resolveDesktopCommandWorkingDirectory(value: unknown) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) {
+    return undefined;
+  }
+  return resolveDesktopCommandPath(raw, true);
+}
+
 function getCommandRiskLevel(command: DesktopRemoteCommand) {
   return classifyDesktopRisk(command.kind, payloadStrings(command.payload));
 }
@@ -297,29 +342,37 @@ async function executeRemoteCommand(command: DesktopRemoteCommand) {
       case "list-windows":
         result = { windows: await listDesktopWindows() };
         break;
-      case "list-directory":
-        result = { directory: await listDesktopDirectory(String(payload.path || "")) };
+      case "list-directory": {
+        const resolvedPath = await resolveDesktopCommandPath(payload.path, true);
+        result = { directory: await listDesktopDirectory(resolvedPath) };
         break;
-      case "run-command":
+      }
+      case "run-command": {
+        const workingDirectory = await resolveDesktopCommandWorkingDirectory(payload.workingDirectory);
         result = await runDesktopCommand(
           String(payload.command || ""),
-          typeof payload.workingDirectory === "string" ? payload.workingDirectory : undefined,
+          workingDirectory,
           typeof payload.timeoutMs === "number" ? payload.timeoutMs : COMMAND_EXECUTION_TIMEOUT_MS,
         ) as unknown as Record<string, unknown>;
         break;
-      case "read-file":
+      }
+      case "read-file": {
+        const resolvedPath = await resolveDesktopCommandPath(payload.path);
         result = await readDesktopFile(
-          String(payload.path || ""),
+          resolvedPath,
           typeof payload.startLine === "number" ? payload.startLine : undefined,
           typeof payload.endLine === "number" ? payload.endLine : undefined,
         ) as unknown as Record<string, unknown>;
         break;
-      case "write-file":
+      }
+      case "write-file": {
+        const resolvedPath = await resolveDesktopCommandPath(payload.path);
         result = await writeDesktopFile(
-          String(payload.path || ""),
+          resolvedPath,
           String(payload.content || ""),
         ) as unknown as Record<string, unknown>;
         break;
+      }
       case "open-browser":
         result = { opened: await openDesktopBrowser(String(payload.url || "")) };
         break;
