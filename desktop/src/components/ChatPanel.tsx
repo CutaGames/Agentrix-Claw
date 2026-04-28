@@ -216,11 +216,33 @@ function getDesktopApprovalId(approval: DesktopRemoteApproval | null | undefined
   return String(raw?.approvalId || raw?.approval_id || raw?.id || "").trim();
 }
 
-function normalizeDesktopApproval(approval: DesktopRemoteApproval): DesktopRemoteApproval {
+function normalizeDesktopApproval(approval: DesktopRemoteApproval | null | undefined): DesktopRemoteApproval | null {
+  if (!approval) {
+    return null;
+  }
   const approvalId = getDesktopApprovalId(approval);
   return approvalId && approval.approvalId !== approvalId
     ? { ...approval, approvalId }
     : approval;
+}
+
+function extractDesktopApprovalEventDetail(detail: unknown): {
+  approval: DesktopRemoteApproval | null;
+  sessionId?: string;
+} {
+  if (detail && typeof detail === "object" && "approval" in (detail as Record<string, unknown>)) {
+    const payload = detail as { approval?: DesktopRemoteApproval | null; sessionId?: string };
+    return {
+      approval: normalizeDesktopApproval(payload.approval),
+      sessionId: typeof payload.sessionId === "string" && payload.sessionId.trim()
+        ? payload.sessionId.trim()
+        : undefined,
+    };
+  }
+
+  return {
+    approval: normalizeDesktopApproval(detail as DesktopRemoteApproval | null | undefined),
+  };
 }
 
 function looksIncompleteAssistantOutput(text: string): boolean {
@@ -1671,7 +1693,7 @@ export default function ChatPanel({
       }
       // Add workspace context for coding tasks
       if (workspaceDir) {
-        result += `\n\n[Desktop Workspace: ${workspaceDir}]\nYou have access to read and write files in this workspace. When performing coding tasks, reference files by relative path. Use code blocks with file paths to suggest edits.`;
+        result += `\n\n[Desktop Workspace: ${workspaceDir}]\nUse the workspace tools to inspect and modify files in this workspace with relative paths. Real file changes and commands should be executed through tools, not only described in code blocks. Risky writes or commands may require approval.`;
       }
       return result;
     },
@@ -3101,6 +3123,7 @@ export default function ChatPanel({
                         instanceId: activeInst?.id,
                         agentId: (activeInst as any)?.metadata?.agentAccountId || activeInst?.id,
                         authToken: authToken || undefined,
+                        sessionId: targetSessionId,
                         temperature: 0.7,
                         maxTokens: 6144,
                         onToolCall: (name: string, args: Record<string, unknown>) => {
@@ -3625,15 +3648,38 @@ export default function ChatPanel({
       applyDesktopSyncState((event as CustomEvent).detail);
     };
     const handleApprovalNew = (event: Event) => {
-      const detail = (event as CustomEvent).detail as DesktopRemoteApproval | undefined;
-      const approval = detail ? normalizeDesktopApproval(detail) : undefined;
+      const { approval, sessionId } = extractDesktopApprovalEventDetail((event as CustomEvent).detail);
+      if (approval && sessionId) {
+        setSessionRuntime((prev) => ({
+          ...prev,
+          [sessionId]: {
+            ...(prev[sessionId] || createEmptySessionRuntimeState()),
+            pendingApproval: approval,
+          },
+        }));
+      }
       if (approval?.deviceId === desktopDeviceId && approval.status === "pending" && token) {
         fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
       }
     };
     const handleApprovalResponse = (event: Event) => {
-      const detail = (event as CustomEvent).detail as DesktopRemoteApproval | undefined;
-      const approval = detail ? normalizeDesktopApproval(detail) : undefined;
+      const { approval, sessionId } = extractDesktopApprovalEventDetail((event as CustomEvent).detail);
+      if (approval && sessionId && approval.status !== "pending") {
+        setSessionRuntime((prev) => {
+          const current = prev[sessionId];
+          if (!current || getDesktopApprovalId(current.pendingApproval) !== getDesktopApprovalId(approval)) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [sessionId]: {
+              ...current,
+              pendingApproval: null,
+              rememberApprovalForSession: false,
+            },
+          };
+        });
+      }
       if (getDesktopApprovalId(approval) && approval?.status !== "pending" && token) {
         fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
       }

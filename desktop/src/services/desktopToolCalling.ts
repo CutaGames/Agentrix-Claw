@@ -16,6 +16,60 @@ import type { LocalLLMSidecar, ChatMessage, ToolDef, ToolCallResult } from "./lo
 import { compactChatMessagesForContext } from "./contextWindow";
 import { API_BASE } from "./store";
 
+function isAbsolutePath(path: string): boolean {
+  return /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith("/") || path.startsWith("~");
+}
+
+function normalizeWorkspaceRelativePath(value: unknown, allowEmpty = false): string {
+  const raw = String(value || "").trim().replace(/\\/g, "/");
+  if (!raw || raw === ".") {
+    if (allowEmpty) return "";
+    throw new Error("path is required");
+  }
+  if (isAbsolutePath(raw)) {
+    throw new Error("Use a workspace-relative path, not an absolute path.");
+  }
+  const segments = raw.split("/").filter(Boolean);
+  if (segments.some((segment) => segment === "..")) {
+    throw new Error("Path must stay inside the selected workspace.");
+  }
+  return segments.join("/");
+}
+
+function joinWorkspacePath(workspaceDir: string, relativePath: string): string {
+  const safeRelativePath = normalizeWorkspaceRelativePath(relativePath, true);
+  if (!safeRelativePath) {
+    return workspaceDir;
+  }
+  const separator = workspaceDir.includes("\\") ? "\\" : "/";
+  return `${workspaceDir.replace(/[\\/]+$/g, "")}${separator}${safeRelativePath.replace(/\//g, separator)}`;
+}
+
+function parseLineNumber(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return Math.max(1, Math.floor(parsed));
+}
+
+function clampCommandTimeout(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 60_000;
+  }
+  return Math.max(1_000, Math.min(10 * 60_000, Math.floor(parsed)));
+}
+
+async function requireSelectedWorkspace(): Promise<string> {
+  const { getWorkspaceDir } = await import("./workspace");
+  const workspaceDir = await getWorkspaceDir();
+  if (!workspaceDir) {
+    throw new Error("No workspace selected. Choose a workspace folder in Settings before using workspace tools.");
+  }
+  return workspaceDir;
+}
+
 // ── Tool Definitions (OpenAI format) ───────────────────
 
 export const DESKTOP_LOCAL_TOOLS: ToolDef[] = [
@@ -95,6 +149,97 @@ export const DESKTOP_LOCAL_TOOLS: ToolDef[] = [
       description:
         "List all skills currently installed on this agent instance.",
       parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_directory",
+      description:
+        "List files and directories inside the selected workspace. Use relative paths. Use an empty path to inspect the workspace root.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Workspace-relative directory path. Leave empty to list the workspace root.",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_file",
+      description:
+        "Read a file from the selected workspace. Use relative paths. Provide start_line and end_line for large files.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Workspace-relative file path to read",
+          },
+          start_line: {
+            type: "number",
+            description: "1-based start line for a partial read (optional)",
+          },
+          end_line: {
+            type: "number",
+            description: "1-based inclusive end line for a partial read (optional)",
+          },
+        },
+        required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "write_file",
+      description:
+        "Write content to a file inside the selected workspace. Creates parent directories if needed. Requires user approval.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Workspace-relative file path to write",
+          },
+          content: {
+            type: "string",
+            description: "New file content",
+          },
+        },
+        required: ["path", "content"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "run_command",
+      description:
+        "Run a shell command with the selected workspace as the default working directory. Use this for tasks like build, test, mkdir, move, or delete after approval.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description: "Shell command to execute",
+          },
+          working_directory: {
+            type: "string",
+            description: "Optional workspace-relative working directory",
+          },
+          timeout_ms: {
+            type: "number",
+            description: "Maximum runtime in milliseconds, default 60000, max 600000",
+          },
+        },
+        required: ["command"],
+      },
     },
   },
   {
@@ -300,6 +445,7 @@ export interface DesktopToolContext {
   instanceId?: string;
   agentId?: string;
   authToken?: string;
+  sessionId?: string;
 }
 
 async function executeToolCall(
@@ -341,6 +487,18 @@ async function executeToolCall(
       case "search_workspace_files":
         return await executeSearchWorkspaceFiles(args);
 
+      case "list_directory":
+        return await executeListDirectory(args);
+
+      case "read_file":
+        return await executeReadFile(args);
+
+      case "write_file":
+        return await executeWriteFile(args, context);
+
+      case "run_command":
+        return await executeRunCommand(args, context);
+
       case "index_workspace_code":
         return await executeIndexWorkspaceCode(args);
 
@@ -378,6 +536,119 @@ function clampMaxResults(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) return 20;
   return Math.max(1, Math.min(50, Math.floor(parsed)));
+}
+
+async function executeListDirectory(args: Record<string, unknown>): Promise<string> {
+  const relativePath = normalizeWorkspaceRelativePath(args.path, true);
+  try {
+    const workspaceDir = await requireSelectedWorkspace();
+    const { listWorkspaceDir } = await import("./workspace");
+    const entries = await listWorkspaceDir(relativePath);
+    return JSON.stringify({
+      workspaceRoot: workspaceDir,
+      path: relativePath,
+      entries,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return JSON.stringify({ error: `List directory failed: ${message}` });
+  }
+}
+
+async function executeReadFile(args: Record<string, unknown>): Promise<string> {
+  let relativePath = "";
+  try {
+    relativePath = normalizeWorkspaceRelativePath(args.path);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return JSON.stringify({ error: `Read file failed: ${message}` });
+  }
+
+  try {
+    const workspaceDir = await requireSelectedWorkspace();
+    const { readDesktopFile } = await import("./desktop");
+    const result = await readDesktopFile(
+      joinWorkspacePath(workspaceDir, relativePath),
+      parseLineNumber(args.start_line),
+      parseLineNumber(args.end_line),
+    );
+    return JSON.stringify({
+      path: relativePath,
+      workspaceRoot: workspaceDir,
+      content: result.content,
+      size: result.size,
+      totalLines: result.totalLines,
+      startLine: result.startLine,
+      endLine: result.endLine,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return JSON.stringify({ error: `Read file failed: ${message}` });
+  }
+}
+
+async function executeWriteFile(args: Record<string, unknown>, context: DesktopToolContext): Promise<string> {
+  const content = typeof args.content === "string" ? args.content : String(args.content || "");
+  let relativePath = "";
+  try {
+    relativePath = normalizeWorkspaceRelativePath(args.path);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return JSON.stringify({ error: `Write file failed: ${message}` });
+  }
+
+  try {
+    const { writeWorkspaceFile } = await import("./workspace");
+    const { requireDesktopActionApproval } = await import("./desktopAgentSync");
+    const workspaceDir = await requireSelectedWorkspace();
+    await requireDesktopActionApproval({
+      token: context.authToken,
+      kind: "write-file",
+      title: `Write file: ${relativePath}`,
+      description: `Allow Agentrix to write to this workspace file?\n${relativePath}`,
+      payload: { path: relativePath },
+      sessionId: context.sessionId,
+    });
+    await writeWorkspaceFile(relativePath, content);
+    return JSON.stringify({
+      success: true,
+      path: relativePath,
+      workspaceRoot: workspaceDir,
+      bytesWritten: new TextEncoder().encode(content).length,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return JSON.stringify({ error: `Write file failed: ${message}` });
+  }
+}
+
+async function executeRunCommand(args: Record<string, unknown>, context: DesktopToolContext): Promise<string> {
+  const command = String(args.command || "").trim();
+  if (!command) {
+    return JSON.stringify({ error: "command is required" });
+  }
+
+  try {
+    const { runDesktopCommand } = await import("./desktop");
+    const { requireDesktopActionApproval } = await import("./desktopAgentSync");
+    const workspaceDir = await requireSelectedWorkspace();
+    const workingDirectory = typeof args.working_directory === "string" && args.working_directory.trim()
+      ? joinWorkspacePath(workspaceDir, normalizeWorkspaceRelativePath(args.working_directory, true))
+      : workspaceDir;
+    await requireDesktopActionApproval({
+      token: context.authToken,
+      kind: "run-command",
+      title: `Run command: ${command.slice(0, 80)}`,
+      description: `Allow Agentrix to run this workspace command?\n${command}${workingDirectory ? `\nWorking directory: ${workingDirectory}` : ""}`,
+      payload: { command, workingDirectory },
+      sessionId: context.sessionId,
+    });
+    const result = await runDesktopCommand(command, workingDirectory, clampCommandTimeout(args.timeout_ms));
+    return JSON.stringify(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return JSON.stringify({ error: `Run command failed: ${message}` });
+  }
 }
 
 async function executeSearchWorkspaceFiles(args: Record<string, unknown>): Promise<string> {
@@ -738,6 +1009,7 @@ export interface DesktopToolCallingOptions {
   instanceId?: string;
   agentId?: string;
   authToken?: string;
+  sessionId?: string;
   temperature?: number;
   maxTokens?: number;
   onToolCall?: (name: string, args: Record<string, unknown>) => void;
@@ -810,6 +1082,7 @@ export async function runDesktopToolCallingLoop(
     instanceId: options.instanceId,
     agentId: options.agentId,
     authToken: options.authToken,
+    sessionId: options.sessionId,
   };
 
   let workingMessages: ChatMessage[] = compactToolContextMessages([...messages]);

@@ -12,6 +12,7 @@ import {
   type DesktopRemoteCommand,
 } from "./desktopSync";
 import {
+  type DesktopActionKind,
   buildDesktopApprovalSessionKey,
   classifyDesktopRisk,
   getActiveDesktopWindow,
@@ -151,6 +152,57 @@ function waitForApproval(approvalId: string) {
   });
 }
 
+export async function requireDesktopActionApproval(request: {
+  token?: string | null;
+  kind: DesktopActionKind;
+  title: string;
+  description: string;
+  payload?: Record<string, string>;
+  taskId?: string;
+  timelineEntryId?: string;
+  sessionId?: string;
+}) {
+  const riskLevel = classifyDesktopRisk(request.kind, request.payload);
+  const sessionKey = buildDesktopApprovalSessionKey(request.kind, request.payload);
+  const sessionApproved = Boolean(sessionKey && rememberedApprovalSessionKeys.has(sessionKey));
+
+  if (!shouldRequireApproval(riskLevel, sessionApproved)) {
+    return;
+  }
+
+  if (!request.token) {
+    throw new Error("Sign in is required to approve this desktop action.");
+  }
+
+  const taskId = String(request.taskId || `local-${request.sessionId || "global"}-${request.kind}-${Date.now()}`);
+  const timelineEntryId = String(request.timelineEntryId || taskId);
+  const { approval: rawApproval } = await createDesktopApproval(request.token, {
+    taskId,
+    timelineEntryId,
+    title: request.title,
+    description: request.description,
+    riskLevel,
+    sessionKey,
+  });
+
+  const approval = normalizeDesktopRemoteApproval(rawApproval);
+  if (!approval) {
+    throw new Error("Approval request was created without a usable approvalId");
+  }
+
+  const approvalPromise = waitForApproval(approval.approvalId);
+  window.dispatchEvent(new CustomEvent("agentrix:approval-new", {
+    detail: request.sessionId
+      ? { approval, sessionId: request.sessionId }
+      : approval,
+  }));
+
+  const resolvedApproval = await approvalPromise;
+  if (resolvedApproval.rememberForSession && resolvedApproval.sessionKey) {
+    rememberedApprovalSessionKeys.add(resolvedApproval.sessionKey);
+  }
+}
+
 async function requireApprovalIfNeeded(
   command: DesktopRemoteCommand,
   startedAt: number,
@@ -168,12 +220,6 @@ async function requireApprovalIfNeeded(
 
   const payload = payloadStrings(command.payload);
   const riskLevel = classifyDesktopRisk(command.kind, payload);
-  const sessionKey = buildDesktopApprovalSessionKey(command.kind, payload);
-  const sessionApproved = Boolean(sessionKey && rememberedApprovalSessionKeys.has(sessionKey));
-
-  if (!shouldRequireApproval(riskLevel, sessionApproved)) {
-    return;
-  }
 
   await syncDesktopTask(activeToken, {
     taskId: command.commandId,
@@ -185,28 +231,16 @@ async function requireApprovalIfNeeded(
     timeline: [{ ...timelineBase, status: "waiting-approval", startedAt }],
   });
 
-  const { approval: rawApproval } = await createDesktopApproval(activeToken, {
-    taskId: command.commandId,
-    timelineEntryId: command.commandId,
+  await requireDesktopActionApproval({
+    token: activeToken,
+    kind: command.kind,
     title: command.title,
     description: describeApproval(command),
-    riskLevel,
-    sessionKey,
+    payload,
+    taskId: command.commandId,
+    timelineEntryId: command.commandId,
+    sessionId: command.sessionId,
   });
-
-  const approval = normalizeDesktopRemoteApproval(rawApproval);
-  if (!approval) {
-    throw new Error("Approval request was created without a usable approvalId");
-  }
-
-  const approvalPromise = waitForApproval(approval.approvalId);
-
-  window.dispatchEvent(new CustomEvent("agentrix:approval-new", { detail: approval }));
-
-  const resolvedApproval = await approvalPromise;
-  if (resolvedApproval.rememberForSession && resolvedApproval.sessionKey) {
-    rememberedApprovalSessionKeys.add(resolvedApproval.sessionKey);
-  }
 }
 
 async function refreshState() {

@@ -2264,11 +2264,12 @@ export class OpenClawProxyService {
     ]);
     _lap(`parallelQueries (tools=${additionalTools.length}, history=${persistedHistory.length})`);
 
-    // Inject desktop-native tools when request comes from the desktop client
-    const isDesktop = dto.platform === 'desktop';
+    // Inject desktop-native tools for desktop chat and mobile remote-control chat.
+    const shouldInjectDesktopTools = dto.platform === 'desktop' || dto.platform === 'mobile';
     let effectiveOnToolCallFn = onToolCall;
-    if (isDesktop) {
-      const desktopBridge = this.buildDesktopToolBridge(userId, dto.deviceId, sessionId);
+    if (shouldInjectDesktopTools) {
+      const targetDesktopDeviceId = dto.platform === 'desktop' ? dto.deviceId : undefined;
+      const desktopBridge = this.buildDesktopToolBridge(userId, targetDesktopDeviceId, sessionId);
       additionalTools.push(...desktopBridge.additionalTools);
       effectiveOnToolCallFn = async (name: string, args: any) => {
         const desktopResult = await desktopBridge.onToolCall(name, args);
@@ -2277,7 +2278,7 @@ export class OpenClawProxyService {
         }
         return onToolCall(name, args);
       };
-      this.logger.log(`🖥️ Desktop platform detected — injected ${desktopBridge.additionalTools.length} desktop tools`);
+      this.logger.log(`🖥️ ${dto.platform || 'unknown'} platform detected — injected ${desktopBridge.additionalTools.length} desktop tools`);
     }
 
     // Skip tools for simple conversational messages to avoid 4-5s Bedrock tool processing overhead.
