@@ -38,6 +38,8 @@ const queryClient = new QueryClient({
   },
 });
 
+const isMaestroE2E = process.env.EXPO_PUBLIC_MAESTRO_E2E === '1';
+
 function SplashScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center' }}>
@@ -79,6 +81,7 @@ function AppNavigator() {
   const { setAuth, setInitialized, clearAuth } = useAuthStore.getState();
   const notifSubRef = useRef<Notifications.Subscription | null>(null);
   const isVoiceUiE2E = isVoiceUiE2EEnabled();
+  const skipStartupIntegrations = isVoiceUiE2E || isMaestroE2E;
   const wakeWordConfig = useMemo(() => resolveMobileWakeWordConfig(wakeWordSettings), [wakeWordSettings]);
   const hasLocalModel = hasLocalWakeWordModel(wakeWordConfig.localModel);
   const backgroundWakeWordEnabled = Platform.OS === 'android'
@@ -277,12 +280,12 @@ function AppNavigator() {
     };
     restoreSession();
 
-    // Check for OTA updates after session restore
-    checkAndPromptUpdate().catch(() => {});
+    if (!skipStartupIntegrations) {
+      checkAndPromptUpdate().catch(() => {});
+    }
 
-    // Silent update check when app returns to foreground
     const handleAppStateChange = (state: AppStateStatus) => {
-      if (state === 'active') {
+      if (!skipStartupIntegrations && state === 'active') {
         silentBackgroundUpdate().catch(() => {});
       }
     };
@@ -292,10 +295,10 @@ function AppNavigator() {
       stopNotificationPolling();
       appStateSub.remove();
     };
-  }, [clearAuth, isVoiceUiE2E, setAuth, setInitialized]);
+  }, [clearAuth, isVoiceUiE2E, setAuth, setInitialized, skipStartupIntegrations]);
 
   useEffect(() => {
-    if (isVoiceUiE2E || Platform.OS !== 'android') {
+    if (skipStartupIntegrations || Platform.OS !== 'android') {
       return;
     }
 
@@ -324,10 +327,10 @@ function AppNavigator() {
       unsubscribeAuthRequest();
       void WatchDataLayerService.stopListening().catch(() => {});
     };
-  }, [isAuthenticated, isVoiceUiE2E, token]);
+  }, [isAuthenticated, skipStartupIntegrations, token]);
 
   useEffect(() => {
-    if (isVoiceUiE2E) {
+    if (skipStartupIntegrations) {
       return;
     }
 
@@ -340,10 +343,10 @@ function AppNavigator() {
         shouldSetBadge: notificationsEnabled,
       }),
     });
-  }, [isVoiceUiE2E, notificationsEnabled]);
+  }, [skipStartupIntegrations, notificationsEnabled]);
 
   useEffect(() => {
-    if (isVoiceUiE2E) {
+    if (skipStartupIntegrations) {
       return;
     }
 
@@ -368,10 +371,10 @@ function AppNavigator() {
       notifSubRef.current?.remove();
       notifSubRef.current = null;
     };
-  }, [isVoiceUiE2E, notificationsEnabled]);
+  }, [skipStartupIntegrations, notificationsEnabled]);
 
   useEffect(() => {
-    if (isVoiceUiE2E || !isInitialized || !isAuthenticated || !token || !notificationsEnabled) {
+    if (skipStartupIntegrations || !isInitialized || !isAuthenticated || !token || !notificationsEnabled) {
       stopNotificationPolling();
       useNotificationStore.getState().setPushToken(null);
       return;
@@ -404,7 +407,7 @@ function AppNavigator() {
       cancelled = true;
       stopNotificationPolling();
     };
-  }, [isAuthenticated, isInitialized, isVoiceUiE2E, notificationsEnabled, token]);
+  }, [isAuthenticated, isInitialized, skipStartupIntegrations, notificationsEnabled, token]);
 
   if (!isInitialized) return <SplashScreen />;
 

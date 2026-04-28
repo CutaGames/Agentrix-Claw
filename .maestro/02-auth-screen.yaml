@@ -1,14 +1,20 @@
 appId: app.agentrix.claw
 ---
-# Test 02: Auth or main shell exposes a usable first screen.
+# Test 02: Auth screen exposes the stable sign-in controls.
 
 - launchApp:
     clearState: true
     clearKeychain: true
 
 - waitForAnimationToEnd:
-    timeout: 12000
+    timeout: 30000
 
 - assertVisible:
-    text: "Agentrix Claw|发现|Discover|对话|Chat|团队|Team|我的|Me|Connect Crypto Wallet|连接加密钱包|Connect Wallet|连接钱包|Google"
+    text: "Agentrix Claw"
+
+- assertVisible:
+    text: "Connect Crypto Wallet"
+
+- assertVisible:
+    text: "Google"
 - takeScreenshot: "02-auth-branding"

@@ -14,6 +14,7 @@ interface Props {
   onRememberChange: (value: boolean) => void;
   onApprove: () => void;
   onReject: () => void;
+  submitting?: boolean;
 }
 
 export default function ApprovalSheet({
@@ -22,6 +23,7 @@ export default function ApprovalSheet({
   onRememberChange,
   onApprove,
   onReject,
+  submitting = false,
 }: Props) {
   if (!request) return null;
 
@@ -42,6 +44,7 @@ export default function ApprovalSheet({
             <input
               type="checkbox"
               checked={rememberForSession}
+              disabled={submitting}
               onChange={(event) => onRememberChange(event.target.checked)}
             />
             Approve similar actions for this session
@@ -49,8 +52,10 @@ export default function ApprovalSheet({
         )}
 
         <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-          <button onClick={onReject} style={secondaryBtn}>Reject</button>
-          <button onClick={onApprove} style={primaryBtn}>Approve</button>
+          <button onClick={onReject} disabled={submitting} style={{ ...secondaryBtn, opacity: submitting ? 0.6 : 1 }}>Reject</button>
+          <button onClick={onApprove} disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.7 : 1 }}>
+            {submitting ? "Submitting..." : "Approve"}
+          </button>
         </div>
       </div>
     </div>

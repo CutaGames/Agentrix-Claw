@@ -4,6 +4,7 @@ import PlanPanel from "./PlanPanel";
 import type { AgentPlan } from "../services/agentIntelligence";
 import type { DesktopRemoteApproval } from "../services/desktopSync";
 import type { OperationsContinuity, OperationsOverview } from "../services/operations";
+import type { GitFileChange } from "../services/git";
 
 export interface TaskWorkbenchEvent {
   id: string;
@@ -33,6 +34,7 @@ interface Props {
   checkpoint: TaskCheckpoint | null;
   operationsOverview?: OperationsOverview | null;
   operationsContinuity?: OperationsContinuity | null;
+  workspaceChanges?: GitFileChange[];
   onApprovePlan: () => void | Promise<void>;
   onRejectPlan: () => void | Promise<void>;
   onOpenApprovals: () => void;
@@ -68,6 +70,7 @@ export default function TaskWorkbenchPanel({
   checkpoint,
   operationsOverview,
   operationsContinuity,
+  workspaceChanges = [],
   onApprovePlan,
   onRejectPlan,
   onOpenApprovals,
@@ -226,6 +229,24 @@ export default function TaskWorkbenchPanel({
             {operationsOverview?.toolPolicy?.recommendations?.[0] && (
               <div style={opsHint}>{operationsOverview.toolPolicy.recommendations[0]}</div>
             )}
+          </div>
+        )}
+
+        {workspaceChanges.length > 0 && (
+          <div style={changesCard}>
+            <div>
+              <div style={sectionTitle}>Workspace Changes</div>
+              <div style={changesTitle}>{workspaceChanges.length} file{workspaceChanges.length === 1 ? "" : "s"} modified</div>
+            </div>
+            <div style={changesList}>
+              {workspaceChanges.slice(0, 10).map((change) => (
+                <div key={`${change.status}-${change.file}`} style={changeRow}>
+                  <span style={changeStatus}>{change.status}</span>
+                  <span style={changePath}>{change.file}</span>
+                </div>
+              ))}
+              {workspaceChanges.length > 10 && <div style={changeMore}>+{workspaceChanges.length - 10} more</div>}
+            </div>
           </div>
         )}
 
@@ -563,6 +584,62 @@ const approvalAction: CSSProperties = {
   color: "#111827",
   fontWeight: 700,
   cursor: "pointer",
+};
+
+const changesCard: CSSProperties = {
+  padding: 14,
+  borderRadius: 16,
+  background: "rgba(125,211,252,0.06)",
+  border: "1px solid rgba(125,211,252,0.18)",
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 0.75fr) minmax(0, 1.25fr)",
+  gap: 12,
+};
+
+const changesTitle: CSSProperties = {
+  marginTop: 6,
+  fontSize: 16,
+  fontWeight: 700,
+  color: "#f8fafc",
+};
+
+const changesList: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  minWidth: 0,
+};
+
+const changeRow: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  minWidth: 0,
+};
+
+const changeStatus: CSSProperties = {
+  minWidth: 28,
+  fontSize: 10,
+  fontWeight: 700,
+  color: "#7dd3fc",
+  border: "1px solid rgba(125,211,252,0.25)",
+  borderRadius: 6,
+  padding: "2px 5px",
+  textAlign: "center",
+};
+
+const changePath: CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  color: "#cbd5e1",
+  fontSize: 12,
+};
+
+const changeMore: CSSProperties = {
+  color: "#94a3b8",
+  fontSize: 12,
 };
 
 const checkpointCard: CSSProperties = {

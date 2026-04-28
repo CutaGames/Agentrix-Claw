@@ -162,6 +162,16 @@ async function requireApprovalIfNeeded(
     return;
   }
 
+  await syncDesktopTask(activeToken, {
+    taskId: command.commandId,
+    title: command.title,
+    summary: `Remote ${command.kind}`,
+    sessionId: command.sessionId,
+    status: "need-approve",
+    startedAt,
+    timeline: [{ ...timelineBase, status: "waiting-approval", startedAt }],
+  });
+
   const { approval } = await createDesktopApproval(activeToken, {
     taskId: command.commandId,
     timelineEntryId: command.commandId,
@@ -174,16 +184,6 @@ async function requireApprovalIfNeeded(
   const approvalPromise = waitForApproval(approval.approvalId);
 
   window.dispatchEvent(new CustomEvent("agentrix:approval-new", { detail: approval }));
-
-  await syncDesktopTask(activeToken, {
-    taskId: command.commandId,
-    title: command.title,
-    summary: `Remote ${command.kind}`,
-    sessionId: command.sessionId,
-    status: "need-approve",
-    startedAt,
-    timeline: [{ ...timelineBase, status: "waiting-approval", startedAt }],
-  });
 
   const resolvedApproval = await approvalPromise;
   if (resolvedApproval.rememberForSession && resolvedApproval.sessionKey) {

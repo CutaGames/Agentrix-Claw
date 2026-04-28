@@ -30,7 +30,7 @@ import SettingsPanel from "./SettingsPanel";
 import FileTreePanel from "./FileTreePanel";
 import ApprovalSheet from "./ApprovalSheet";
 import TaskTimeline, { type TaskRunState, type TaskTimelineEntry, type TaskTimelineStatus } from "./TaskTimeline";
-import { gitStatus, gitDiff, gitLog, gitCommit, gitBranchList } from "../services/git";
+import { gitStatus, gitDiff, gitLog, gitCommit, gitBranchList, type GitFileChange } from "../services/git";
 import { captureScreen } from "../services/screenshot";
 import NotificationCenter, { NotificationBadge } from "./NotificationCenter";
 import { subscribe as subscribeNotifications, getUnreadCount } from "../services/notifications";
@@ -191,6 +191,24 @@ function isDesktopCapabilityQuestion(text: string): boolean {
   const topic = /(工具|技能|权限|能力|功能|模式|tools?|skills?|permissions?|capabilit|modes?)/i.test(normalized);
   if (!topic) return false;
   return /(你能|你可以|能调用|可以调用|能使用|可以使用|有哪些|哪些|支持哪些|能做什么|可以做什么|what|which|list|show|available|can you|could you)/i.test(normalized);
+}
+
+function parseDesktopApprovalDecision(text: string): "approved" | "rejected" | null {
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.!?。！？，,;；]+$/g, "");
+  if (!normalized) return null;
+
+  if (/^(approve|approved|aprrove|aprroved|yes|y|ok|okay|confirm|confirmed|allow|allowed|go|continue|批准|同意|确认|允许|可以|执行|继续)$/.test(normalized)) {
+    return "approved";
+  }
+
+  if (/^(reject|rejected|deny|denied|no|n|cancel|stop|拒绝|不同意|不允许|取消|停止|否)$/.test(normalized)) {
+    return "rejected";
+  }
+
+  return null;
 }
 
 function formatInstalledSkillSummary(skills: Array<{ id?: string; name?: string; version?: string }> | null): string {
@@ -450,6 +468,8 @@ export default function ChatPanel({
   const [wikiPanelOpen, setWikiPanelOpen] = useState(false);
   const [mcpPanelOpen, setMcpPanelOpen] = useState(false);
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+  const [approvalSubmitting, setApprovalSubmitting] = useState(false);
+  const [workspaceChanges, setWorkspaceChanges] = useState<GitFileChange[]>([]);
   const desktopDeviceId = useMemo(() => getDesktopDeviceId(), []);
   const [chatMode, setChatMode] = useState<ChatMode>(() => {
     const saved = localStorage.getItem("agentrix_chat_mode");
@@ -859,6 +879,15 @@ export default function ChatPanel({
     window.dispatchEvent(new CustomEvent("agentrix:desktop-tool-timeline", { detail: { sessionId, entry } }));
   }, [patchSessionRuntime]);
 
+  const refreshWorkspaceChanges = useCallback(async () => {
+    try {
+      const status = await gitStatus();
+      setWorkspaceChanges(status.changes || []);
+    } catch {
+      setWorkspaceChanges([]);
+    }
+  }, []);
+
   const persistMessagesForSession = useCallback(
     (sessionId: string, nextMessages: ChatMessage[]) => {
       const retainedMessages = trimChatMessagesForDesktopMemory(nextMessages);
@@ -1061,6 +1090,64 @@ export default function ChatPanel({
     });
   }, [desktopDeviceId, tabs]);
 
+  const submitDesktopApprovalDecision = useCallback(
+    async (
+      approval: DesktopRemoteApproval | null,
+      decision: "approved" | "rejected",
+      rememberForSession: boolean,
+    ) => {
+      if (!token || !approval || approvalSubmitting) {
+        return false;
+      }
+
+      setApprovalSubmitting(true);
+      setStreamFeedback({
+        tone: "info",
+        label: decision === "approved" ? "正在提交审批" : "正在拒绝审批",
+        detail: approval.title,
+      });
+
+      try {
+        const response = await respondDesktopApproval(token, approval.approvalId, {
+          decision,
+          rememberForSession: decision === "approved" ? rememberForSession : false,
+        });
+        window.dispatchEvent(new CustomEvent("agentrix:approval-response-local", { detail: response.approval }));
+        setSessionRuntime((prev) => {
+          const next = { ...prev };
+          for (const [sessionId, runtime] of Object.entries(next)) {
+            if (runtime.pendingApproval?.approvalId === approval.approvalId) {
+              next[sessionId] = {
+                ...runtime,
+                pendingApproval: null,
+                rememberApprovalForSession: false,
+              };
+            }
+          }
+          return next;
+        });
+        await fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
+        setStreamFeedback({
+          tone: decision === "approved" ? "success" : "warning",
+          label: decision === "approved" ? "审批已通过" : "审批已拒绝",
+          detail: decision === "approved" ? "桌面任务将继续执行" : "已停止这次高风险动作",
+        });
+        return true;
+      } catch (error: any) {
+        setStreamFeedback({
+          tone: "error",
+          label: "审批提交失败",
+          detail: error?.message || String(error),
+        });
+        window.alert(error?.message || "Failed to submit approval decision");
+        return false;
+      } finally {
+        setApprovalSubmitting(false);
+      }
+    },
+    [applyDesktopSyncState, approvalSubmitting, token],
+  );
+
   const approvalSheetRequest = useMemo(
     () => pendingApproval
       ? {
@@ -1100,6 +1187,14 @@ export default function ChatPanel({
     window.addEventListener("agentrix:workspace-changed", onSettings);
     return () => window.removeEventListener("agentrix:workspace-changed", onSettings);
   }, []);
+
+  useEffect(() => {
+    if (!workspaceDir) {
+      setWorkspaceChanges([]);
+      return;
+    }
+    void refreshWorkspaceChanges();
+  }, [desktopTaskStatus, desktopTimelineEntries.length, refreshWorkspaceChanges, taskWorkbenchOpen, workspaceDir]);
 
   useEffect(() => {
     if (!token) {
@@ -1950,6 +2045,7 @@ export default function ChatPanel({
       const content = rest.slice(spaceIdx + 1);
       try {
         await writeWorkspaceFile(relPath, content);
+        void refreshWorkspaceChanges();
         addSystemMessage(`✅ Written to ${relPath}`);
       } catch (err: any) {
         addSystemMessage(`❌ ${err?.message || err}`);
@@ -2254,13 +2350,14 @@ export default function ChatPanel({
     }
 
     return false;
-  }, [models, messages, activeAgent, activeAgentId, token, persistSelectedModel]);
+  }, [models, messages, activeAgent, activeAgentId, token, persistSelectedModel, refreshWorkspaceChanges]);
 
   const handleSend = useCallback(
     async (overrideText?: string) => {
       const text = (overrideText || textareaRef.current?.value || "").trim();
       const targetSessionId = sessionIdRef.current;
       const targetRuntime = sessionRuntimeRef.current[targetSessionId] || createEmptySessionRuntimeState();
+      const approvalDecision = targetRuntime.pendingApproval ? parseDesktopApprovalDecision(text) : null;
       const isSyntheticContinueTurn = isSyntheticContinuePrompt(text);
       const activeInst = activeInstanceId
         ? instances.find((instance) => instance.id === activeInstanceId)
@@ -2299,6 +2396,18 @@ export default function ChatPanel({
       const activeLocalModelId = useDesktopLocalModel
         ? normalizeDesktopLocalModelId(tierDecision.activeModelId || routedSelectedModel)
         : DESKTOP_LOCAL_MODEL_ID;
+
+      if (approvalDecision) {
+        if (!overrideText && textareaRef.current) {
+          textareaRef.current.value = "";
+        }
+        await submitDesktopApprovalDecision(
+          targetRuntime.pendingApproval,
+          approvalDecision,
+          approvalDecision === "approved" ? targetRuntime.rememberApprovalForSession : false,
+        );
+        return;
+      }
 
       if ((!text && pendingAttachments.length === 0) || targetRuntime.sending || uploadingAttachments) {
         return;
@@ -2592,6 +2701,7 @@ export default function ChatPanel({
             }));
           } else if (event.type === "tool_result") {
             setActiveToolRun(null);
+            void refreshWorkspaceChanges();
             recordToolTimelineEvent(targetSessionId, {
               id: event.toolCallId,
               toolName: event.toolName,
@@ -2951,6 +3061,7 @@ export default function ChatPanel({
                             output: result,
                             finishedAt: Date.now(),
                           });
+                          void refreshWorkspaceChanges();
                         },
                         abortSignal: controller.signal,
                       },
@@ -3235,6 +3346,8 @@ export default function ChatPanel({
       updateSessionMessages,
       queueAutoContinue,
       recordToolTimelineEvent,
+      refreshWorkspaceChanges,
+      submitDesktopApprovalDecision,
     ],
   );
 
@@ -3334,22 +3447,13 @@ export default function ChatPanel({
 
   const handleDesktopApprovalDecision = useCallback(
     async (decision: "approved" | "rejected") => {
-      if (!token || !pendingApproval) {
-        return;
-      }
-
-      try {
-        const response = await respondDesktopApproval(token, pendingApproval.approvalId, {
-          decision,
-          rememberForSession: decision === "approved" ? rememberApprovalForSession : false,
-        });
-        window.dispatchEvent(new CustomEvent("agentrix:approval-response-local", { detail: response.approval }));
-        await fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
-      } catch (error: any) {
-        window.alert(error?.message || "Failed to submit approval decision");
-      }
+      await submitDesktopApprovalDecision(
+        pendingApproval,
+        decision,
+        decision === "approved" ? rememberApprovalForSession : false,
+      );
     },
-    [applyDesktopSyncState, pendingApproval, rememberApprovalForSession, token],
+    [pendingApproval, rememberApprovalForSession, submitDesktopApprovalDecision],
   );
 
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -4056,6 +4160,7 @@ export default function ChatPanel({
         checkpoint={activeCheckpoint}
         operationsOverview={operationsOverview}
         operationsContinuity={operationsContinuity}
+        workspaceChanges={workspaceChanges}
         onApprovePlan={async () => {
           if (!token) return;
           const updated = await approvePlanApi(token, sessionIdRef.current);
@@ -4188,7 +4293,7 @@ export default function ChatPanel({
         </div>
       )}
 
-      {(desktopTaskStatus !== "idle" || activePlan || pendingApproval) && (
+      {(desktopTaskStatus !== "idle" || activePlan || pendingApproval || workspaceChanges.length > 0) && (
         <div style={taskWorkbenchBannerStyle}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 11, color: "#7dd3fc", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>
@@ -4197,6 +4302,8 @@ export default function ChatPanel({
             <div style={{ fontSize: 13, fontWeight: 600 }}>
               {pendingApproval
                 ? `Approval pending · ${pendingApproval.title}`
+                : workspaceChanges.length > 0
+                  ? `${workspaceChanges.length} workspace change${workspaceChanges.length === 1 ? "" : "s"}`
                 : activePlan
                   ? `Plan ${activePlan.status.replace(/_/g, " ")}`
                   : `${desktopTimelineEntries.length} timeline step${desktopTimelineEntries.length === 1 ? "" : "s"} tracked`}
@@ -4375,16 +4482,16 @@ export default function ChatPanel({
               style={pendingApprovalButtonStyle}
               title="Open the Task Workbench to review approvals"
             >
-              Approval pending
+              {approvalSubmitting ? "Submitting approval" : "Approval pending"}
             </button>
           )}
-          {(desktopTaskStatus !== "idle" || activePlan) && (
+          {(desktopTaskStatus !== "idle" || activePlan || workspaceChanges.length > 0) && (
             <button
               onClick={() => setTaskWorkbenchOpen(true)}
               style={taskWorkbenchPillStyle}
               title="Open Task Workbench"
             >
-              Workbench
+              {workspaceChanges.length > 0 ? `Changes ${workspaceChanges.length}` : "Workbench"}
             </button>
           )}
           {activePlan && chatMode === "plan" && (
@@ -4619,6 +4726,7 @@ export default function ChatPanel({
         onRememberChange={setRememberApprovalForSession}
         onApprove={() => void handleDesktopApprovalDecision("approved")}
         onReject={() => void handleDesktopApprovalDecision("rejected")}
+        submitting={approvalSubmitting}
       />
     </div>
   );
