@@ -93,6 +93,10 @@ import {
 import TabBar, { type ChatTab } from "./TabBar";
 import type { NetworkStatus } from "../services/network";
 import type { StreamEvent } from "../../../shared/stream-parser.ts";
+import DragDropOverlay from "./chatPanel/DragDropOverlay";
+import EmptyChatState from "./chatPanel/EmptyChatState";
+import OfflineStatusBanner from "./chatPanel/OfflineStatusBanner";
+import WindowDragHandle from "./chatPanel/WindowDragHandle";
 import {
   DESKTOP_LOCAL_MODEL_ID,
   DESKTOP_LOCAL_MODEL_LABEL,
@@ -113,6 +117,25 @@ import {
   type ExecutionMode,
 } from "../services/turnRouter";
 import { trackLocalInferenceOutcome } from "../services/localInferenceTelemetry";
+import {
+  trimChatMessagesForDesktopMemory,
+  trimSessionMessageCache,
+} from "./chatPanel/messageRetention";
+import {
+  APPROX_CHARS_PER_TOKEN,
+  CHAT_AUTO_CONTINUE_LIMIT,
+  CHECKPOINT_CONTINUE_PROMPT,
+  DESKTOP_DIRECT_CONTEXT_BUDGET_TOKENS,
+  DESKTOP_LOCAL_CONTEXT_BUDGET_TOKENS,
+  MANUAL_MODEL_SELECTION_GRACE_MS,
+  RECENT_DESKTOP_FAILURE_WINDOW_MS,
+  STALE_DESKTOP_TASK_WINDOW_MS,
+  STREAM_CHUNK_FLUSH_MS,
+  TASK_LIKE_PROMPT_PATTERN,
+  getLocalPrefillFeedback,
+} from "./chatPanel/contextBudget";
+import { createEmptySessionRuntimeState, type SessionRuntimeState } from "./chatPanel/sessionRuntime";
+import { buildToolTimelineEntry, buildToolWorkbenchEvent } from "./chatPanel/toolTimeline";
 
 // Send desktop notification when app is in background
 async function notifyIfBackground(title: string, body: string) {
@@ -135,36 +158,6 @@ interface Props {
   networkStatus?: NetworkStatus;
   proMode?: boolean;
   onEnterProMode?: () => void;
-}
-
-const APPROX_CHARS_PER_TOKEN = 4;
-const LONG_LOCAL_PREFILL_TOKEN_THRESHOLD = 3000;
-const DESKTOP_LOCAL_CONTEXT_BUDGET_TOKENS = 6500;
-const DESKTOP_DIRECT_CONTEXT_BUDGET_TOKENS = 60000;
-const MANUAL_MODEL_SELECTION_GRACE_MS = 20_000;
-const STALE_DESKTOP_TASK_WINDOW_MS = 45_000;
-const RECENT_DESKTOP_FAILURE_WINDOW_MS = 15_000;
-const CHAT_AUTO_CONTINUE_LIMIT = 6;
-const STREAM_CHUNK_FLUSH_MS = 50;
-const CHECKPOINT_CONTINUE_PROMPT = "Continue from the latest checkpoint. Preserve the active plan, task progress, and any pending background results.";
-const TASK_LIKE_PROMPT_PATTERN = /([a-z]:\\|\\|\/|\.tsx?\b|\.jsx?\b|\.json\b|\.md\b|package\.json|readme|src\/|backend\/|desktop\/|```|\n)|\b(search|find|install|run|execute|debug|fix|edit|write|read|open|grep|list|analy[sz]e|inspect|deploy|build|test|git|ssh|workspace|file|folder|directory|project|repo|code|patch|benchmark|profile|trace|continue|resume)\b|搜索|安装|运行|执行|修复|修改|查看|列出|分析|排查|部署|构建|测试|工作区|文件|目录|项目|仓库|代码/i;
-
-function estimateLocalPrefillTokens(messages: Array<{ content: string }>): number {
-  const totalChars = messages.reduce((sum, message) => sum + message.content.length, 0);
-  return Math.max(1, Math.round(totalChars / APPROX_CHARS_PER_TOKEN));
-}
-
-function getLocalPrefillFeedback(messages: Array<{ content: string }>): StreamFeedback {
-  const estimatedTokens = estimateLocalPrefillTokens(messages);
-  const isLongContext = estimatedTokens >= LONG_LOCAL_PREFILL_TOKEN_THRESHOLD;
-
-  return {
-    tone: "info",
-    label: isLongContext ? "长上下文预填充中" : "上下文预填充中",
-    detail: isLongContext
-      ? `本地模型已就绪，正在预处理约 ${estimatedTokens.toLocaleString()} tokens 的上下文`
-      : `本地模型已就绪，正在预处理约 ${estimatedTokens.toLocaleString()} tokens 的上下文`,
-  };
 }
 
 function getConversationModelLabel(
@@ -365,28 +358,6 @@ function shouldEscalateDesktopLocalTurn(effectiveChatMode: ChatMode, hasCloudPat
 
 type BallState = "idle" | "recording" | "thinking" | "speaking";
 type ChatMode = "ask" | "agent" | "plan";
-
-type SessionRuntimeState = {
-  sending: boolean;
-  desktopTaskStatus: TaskRunState;
-  desktopTimelineEntries: TaskTimelineEntry[];
-  pendingApproval: DesktopRemoteApproval | null;
-  rememberApprovalForSession: boolean;
-  workbenchEvents: TaskWorkbenchEvent[];
-  lastCheckpointAt: number | null;
-};
-
-function createEmptySessionRuntimeState(): SessionRuntimeState {
-  return {
-    sending: false,
-    desktopTaskStatus: "idle",
-    desktopTimelineEntries: [],
-    pendingApproval: null,
-    rememberApprovalForSession: false,
-    workbenchEvents: [],
-    lastCheckpointAt: null,
-  };
-}
 
 type IncomingHandoffSnapshot = {
   title?: string;
@@ -741,6 +712,20 @@ export default function ChatPanel({
 
   useEffect(() => () => clearAutoContinueTimer(), [clearAutoContinueTimer]);
 
+  useEffect(() => () => {
+    responseInterruptedRef.current = true;
+    Object.values(sessionAbortControllersRef.current).forEach((controller) => controller?.abort());
+    sessionAbortControllersRef.current = {};
+    abortRef.current = null;
+    if (sessionPersistTimerRef.current) {
+      clearTimeout(sessionPersistTimerRef.current);
+      sessionPersistTimerRef.current = null;
+    }
+    audioPlayerRef.current?.stopAll();
+    sentenceAccRef.current?.reset();
+    tabMessagesCache.current = {};
+  }, []);
+
   const enterWindowProMode = useCallback(async () => {
     if (onEnterProMode) {
       onEnterProMode();
@@ -842,15 +827,49 @@ export default function ChatPanel({
     }));
   }, [patchSessionRuntime]);
 
+  const recordToolTimelineEvent = useCallback((
+    sessionId: string,
+    args: {
+      id: string;
+      toolName: string;
+      status: TaskTimelineStatus;
+      input?: unknown;
+      output?: unknown;
+      startedAt?: number;
+      finishedAt?: number;
+      message?: string;
+    },
+  ) => {
+    const entry = buildToolTimelineEntry(args);
+    const workbenchEvent = buildToolWorkbenchEvent(entry);
+    patchSessionRuntime(sessionId, (current) => {
+      const timelineEntries = [
+        entry,
+        ...current.desktopTimelineEntries.filter((candidate) => candidate.id !== entry.id),
+      ].sort((left, right) => right.startedAt - left.startedAt).slice(0, 32);
+      const hasRunning = timelineEntries.some((candidate) => candidate.status === "running" || candidate.status === "waiting-approval");
+      const hasFailed = timelineEntries.some((candidate) => candidate.status === "failed" || candidate.status === "rejected");
+      return {
+        desktopTimelineEntries: timelineEntries,
+        desktopTaskStatus: hasRunning ? "executing" : hasFailed ? "failed" : "completed",
+        workbenchEvents: [workbenchEvent, ...current.workbenchEvents.filter((candidate) => candidate.id !== workbenchEvent.id)].slice(0, 16),
+        lastCheckpointAt: Math.max(current.lastCheckpointAt || 0, workbenchEvent.createdAt),
+      };
+    });
+    window.dispatchEvent(new CustomEvent("agentrix:desktop-tool-timeline", { detail: { sessionId, entry } }));
+  }, [patchSessionRuntime]);
+
   const persistMessagesForSession = useCallback(
     (sessionId: string, nextMessages: ChatMessage[]) => {
-      if (nextMessages.length === 0) {
+      const retainedMessages = trimChatMessagesForDesktopMemory(nextMessages);
+
+      if (retainedMessages.length === 0) {
         return;
       }
 
-      void persistSession(sessionId, nextMessages).then(() => refreshHistory());
+      void persistSession(sessionId, retainedMessages).then(() => refreshHistory());
 
-      const firstUser = nextMessages.find((message) => message.role === "user");
+      const firstUser = retainedMessages.find((message) => message.role === "user");
       const title = firstUser?.content?.slice(0, 50) || "New Chat";
 
       setTabs((prev) => prev.map((tab) => (
@@ -862,7 +881,7 @@ export default function ChatPanel({
           : tab
       )));
 
-      pushSessionSync(sessionId, nextMessages, title);
+      pushSessionSync(sessionId, retainedMessages, title);
       patchSessionRuntime(sessionId, { lastCheckpointAt: Date.now() });
     },
     [patchSessionRuntime, refreshHistory],
@@ -875,8 +894,11 @@ export default function ChatPanel({
       options?: { persist?: boolean; markUnread?: boolean },
     ) => {
       const currentMessages = tabMessagesCache.current[sessionId] || [];
-      const nextMessages = updater(currentMessages);
-      tabMessagesCache.current[sessionId] = nextMessages;
+      const nextMessages = trimChatMessagesForDesktopMemory(updater(currentMessages));
+      tabMessagesCache.current = trimSessionMessageCache({
+        ...tabMessagesCache.current,
+        [sessionId]: nextMessages,
+      }, sessionId);
 
       if (sessionId === sessionIdRef.current) {
         setMessages(nextMessages);
@@ -1218,19 +1240,25 @@ export default function ChatPanel({
           setActiveTabId(activeId);
           const activeTab = chatTabs.find((tab) => tab.id === activeId)!;
           sessionIdRef.current = activeTab.sessionId;
-          const msgs = await loadSessionMessages(activeTab.sessionId);
+          const msgs = trimChatMessagesForDesktopMemory(await loadSessionMessages(activeTab.sessionId));
           if (cancelled) {
             return;
           }
           setMessages(msgs);
-          tabMessagesCache.current[activeTab.sessionId] = msgs;
+          tabMessagesCache.current = trimSessionMessageCache({
+            ...tabMessagesCache.current,
+            [activeTab.sessionId]: msgs,
+          }, activeTab.sessionId);
         } else {
-          const msgs = await loadSessionMessages(sessionIdRef.current);
+          const msgs = trimChatMessagesForDesktopMemory(await loadSessionMessages(sessionIdRef.current));
           if (cancelled) {
             return;
           }
           setMessages(msgs);
-          tabMessagesCache.current[sessionIdRef.current] = msgs;
+          tabMessagesCache.current = trimSessionMessageCache({
+            ...tabMessagesCache.current,
+            [sessionIdRef.current]: msgs,
+          }, sessionIdRef.current);
         }
       } finally {
         if (!cancelled) {
@@ -1250,7 +1278,10 @@ export default function ChatPanel({
     const sid = `session-${Date.now()}`;
     const newTab: ChatTab = { id, sessionId: sid, title: "New Chat", unread: false };
     // Cache current messages before switching
-    tabMessagesCache.current[sessionIdRef.current] = messages;
+    tabMessagesCache.current = trimSessionMessageCache({
+      ...tabMessagesCache.current,
+      [sessionIdRef.current]: trimChatMessagesForDesktopMemory(messages),
+    }, sessionIdRef.current);
     setTabs(prev => [...prev, newTab]);
     setActiveTabId(id);
     sessionIdRef.current = sid;
@@ -1267,7 +1298,10 @@ export default function ChatPanel({
   const switchTab = useCallback(async (tabId: string) => {
     if (tabId === activeTabId) return;
     // Save current tab's messages to cache
-    tabMessagesCache.current[sessionIdRef.current] = messages;
+    tabMessagesCache.current = trimSessionMessageCache({
+      ...tabMessagesCache.current,
+      [sessionIdRef.current]: trimChatMessagesForDesktopMemory(messages),
+    }, sessionIdRef.current);
     audioPlayerRef.current?.stopAll();
     sentenceAccRef.current?.reset();
     // Find target tab
@@ -1280,11 +1314,14 @@ export default function ChatPanel({
     // Load messages from cache or store
     const cached = tabMessagesCache.current[target.sessionId];
     if (cached) {
-      setMessages(cached);
+      setMessages(trimChatMessagesForDesktopMemory(cached));
     } else {
-      const stored = await loadSessionMessages(target.sessionId);
+      const stored = trimChatMessagesForDesktopMemory(await loadSessionMessages(target.sessionId));
       setMessages(stored);
-      tabMessagesCache.current[target.sessionId] = stored;
+      tabMessagesCache.current = trimSessionMessageCache({
+        ...tabMessagesCache.current,
+        [target.sessionId]: stored,
+      }, target.sessionId);
     }
     abortRef.current = sessionAbortControllersRef.current[target.sessionId] || null;
     setPendingAttachments([]);
@@ -1320,9 +1357,9 @@ export default function ChatPanel({
       sessionIdRef.current = nextTab.sessionId;
       const cached = tabMessagesCache.current[nextTab.sessionId];
       if (cached) {
-        setMessages(cached);
+        setMessages(trimChatMessagesForDesktopMemory(cached));
       } else {
-        const stored = await loadSessionMessages(nextTab.sessionId);
+        const stored = trimChatMessagesForDesktopMemory(await loadSessionMessages(nextTab.sessionId));
         setMessages(stored);
       }
       abortRef.current = sessionAbortControllersRef.current[nextTab.sessionId] || null;
@@ -1346,18 +1383,31 @@ export default function ChatPanel({
   // active assistant message every frame, so immediate disk/sync work here makes
   // typing and native window dragging stutter in WebView2.
   useEffect(() => {
+    const retained = trimChatMessagesForDesktopMemory(messages);
+    if (retained.length !== messages.length) {
+      tabMessagesCache.current = trimSessionMessageCache({
+        ...tabMessagesCache.current,
+        [sessionIdRef.current]: retained,
+      }, sessionIdRef.current);
+      setMessages(retained);
+      return;
+    }
+
     if (!tabsHydrated) {
       return;
     }
 
-    if (messages.length === 0) {
+    if (retained.length === 0) {
       return;
     }
 
     const sessionId = sessionIdRef.current;
-    const firstUser = messages.find(m => m.role === "user");
+    const firstUser = retained.find(m => m.role === "user");
     const title = firstUser?.content?.slice(0, 50) || "New Chat";
-    tabMessagesCache.current[sessionId] = messages;
+    tabMessagesCache.current = trimSessionMessageCache({
+      ...tabMessagesCache.current,
+      [sessionId]: retained,
+    }, sessionId);
 
     setTabs(prev => prev.map(t => (
       t.id === activeTabId && t.title !== title ? { ...t, title } : t
@@ -1367,7 +1417,7 @@ export default function ChatPanel({
       clearTimeout(sessionPersistTimerRef.current);
     }
 
-    const snapshot = messages;
+    const snapshot = retained;
     sessionPersistTimerRef.current = setTimeout(() => {
       sessionPersistTimerRef.current = null;
       void persistSession(sessionId, snapshot).then(() => refreshHistory());
@@ -1407,7 +1457,10 @@ export default function ChatPanel({
     const nextSessionId = payload.sessionId || `handoff-${Date.now()}`;
     const nextTitle = snapshot?.title || `Handoff from ${payload.sourceDeviceId || "mobile"}`;
 
-    tabMessagesCache.current[sessionIdRef.current] = messages;
+    tabMessagesCache.current = trimSessionMessageCache({
+      ...tabMessagesCache.current,
+      [sessionIdRef.current]: trimChatMessagesForDesktopMemory(messages),
+    }, sessionIdRef.current);
     audioPlayerRef.current?.stopAll();
     sentenceAccRef.current?.reset();
 
@@ -1418,11 +1471,11 @@ export default function ChatPanel({
     setPendingAttachments([]);
     if (textareaRef.current) textareaRef.current.value = "";
     setBallState("idle");
-    setMessages(
+    setMessages(trimChatMessagesForDesktopMemory(
       restoredMessages.length > 0
         ? restoredMessages
         : [{ id: `sys-${Date.now()}`, role: "assistant", content: `Incoming handoff from ${payload.sourceDeviceId || "mobile"}.`, createdAt: Date.now() }],
-    );
+    ));
 
     // Activate the agent that initiated the handoff so replies are routed correctly
     if (payload.agentId) {
@@ -1567,12 +1620,12 @@ export default function ChatPanel({
   }, [flushChunkBuffer, updateSessionMessages]);
 
   const addSystemMessage = useCallback((content: string) => {
-    setMessages(prev => [...prev, {
+    setMessages(prev => trimChatMessagesForDesktopMemory([...prev, {
       id: `sys-${Date.now()}`,
       role: "assistant" as const,
       content,
       createdAt: Date.now(),
-    }]);
+    }]));
   }, [abortSession]);
 
   const settleRealtimeVoiceTurn = useCallback((options?: { interrupted?: boolean; errorMessage?: string }) => {
@@ -2215,7 +2268,10 @@ export default function ChatPanel({
       const fallbackCloudModel = activeInst?.resolvedModel && !isDesktopLocalModelId(activeInst.resolvedModel)
         ? activeInst.resolvedModel
         : undefined;
-      const routedSelectedModel = executionMode === "local-only" && !isDesktopLocalModelId(selectedModel)
+      const offlineLocalFallback = networkStatus === "offline" && executionMode !== "cloud-only";
+      const routedSelectedModel = offlineLocalFallback
+        ? DESKTOP_LOCAL_MODEL_ID
+        : executionMode === "local-only" && !isDesktopLocalModelId(selectedModel)
         ? DESKTOP_LOCAL_MODEL_ID
         : selectedModel;
 
@@ -2319,7 +2375,7 @@ export default function ChatPanel({
       const shouldEscalateLocalTurn = useDesktopLocalModel
         && executionMode !== "local-only"
         && shouldEscalateDesktopLocalTurn(effectiveChatMode, Boolean(token));
-      const currentMessagesForSession = tabMessagesCache.current[targetSessionId] || messages;
+      const currentMessagesForSession = trimChatMessagesForDesktopMemory(tabMessagesCache.current[targetSessionId] || messages);
 
       const userMsg: ChatMessage = {
         id: `u-${Date.now()}`,
@@ -2498,11 +2554,19 @@ export default function ChatPanel({
               detail: event.text || "分析上下文和任务中",
             });
           } else if (event.type === "tool_start") {
+            const startedAt = Date.now();
             setActiveToolRun({
               toolCallId: event.toolCallId,
               toolName: event.toolName,
               status: "starting",
-              startedAt: Date.now(),
+              startedAt,
+            });
+            recordToolTimelineEvent(targetSessionId, {
+              id: event.toolCallId,
+              toolName: event.toolName,
+              status: "running",
+              input: event.input,
+              startedAt,
             });
             setStreamFeedback({
               tone: "info",
@@ -2528,6 +2592,14 @@ export default function ChatPanel({
             }));
           } else if (event.type === "tool_result") {
             setActiveToolRun(null);
+            recordToolTimelineEvent(targetSessionId, {
+              id: event.toolCallId,
+              toolName: event.toolName,
+              status: event.success ? "completed" : "failed",
+              output: event.success ? event.result : event.error,
+              finishedAt: Date.now(),
+              message: event.error,
+            });
             setStreamFeedback({
               tone: event.success ? "success" : "error",
               label: event.success ? `${event.toolName} 已完成` : `${event.toolName} 执行失败`,
@@ -2538,6 +2610,14 @@ export default function ChatPanel({
           } else if (event.type === "tool_error") {
             const timedOut = /timeout|timed out|ETIMEDOUT/i.test(event.error);
             setActiveToolRun(null);
+            recordToolTimelineEvent(targetSessionId, {
+              id: event.toolCallId,
+              toolName: event.toolName,
+              status: "failed",
+              output: event.error,
+              finishedAt: Date.now(),
+              message: event.error,
+            });
             if (timedOut) {
               setContinuePrompt(buildContinuePrompt());
               setStreamFeedback({
@@ -2553,6 +2633,14 @@ export default function ChatPanel({
               });
             }
           } else if (event.type === "approval_required") {
+            recordToolTimelineEvent(targetSessionId, {
+              id: event.toolCallId,
+              toolName: event.toolName,
+              status: "waiting-approval",
+              input: event.input,
+              startedAt: Date.now(),
+              message: event.reason,
+            });
             // Dispatch event for FloatingBall approval badge
             window.dispatchEvent(new CustomEvent("agentrix:approval-needed", {
               detail: {
@@ -2823,6 +2911,7 @@ export default function ChatPanel({
                       label: "正在思考",
                       detail: "检查是否需要使用工具",
                     });
+                    const localToolRunIds = new Map<string, string[]>();
                     const toolResult = await runDesktopToolCallingLoop(
                       localSidecar,
                       history,
@@ -2831,12 +2920,36 @@ export default function ChatPanel({
                         agentId: (activeInst as any)?.metadata?.agentAccountId || activeInst?.id,
                         authToken: authToken || undefined,
                         temperature: 0.7,
-                        maxTokens: 2048,
-                        onToolCall: (name: string) => {
+                        maxTokens: 6144,
+                        onToolCall: (name: string, args: Record<string, unknown>) => {
+                          const id = `local-${name}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                          const queuedIds = localToolRunIds.get(name) || [];
+                          queuedIds.push(id);
+                          localToolRunIds.set(name, queuedIds);
+                          recordToolTimelineEvent(targetSessionId, {
+                            id,
+                            toolName: name,
+                            status: "running",
+                            input: args,
+                            startedAt: Date.now(),
+                          });
                           setStreamFeedback({
                             tone: "info",
-                            label: `🔧 ${name}`,
+                            label: name,
                             detail: "正在执行工具调用",
+                          });
+                        },
+                        onToolResult: (name: string, result: string) => {
+                          const queuedIds = localToolRunIds.get(name) || [];
+                          const id = queuedIds.shift() || `local-${name}-${Date.now()}`;
+                          localToolRunIds.set(name, queuedIds);
+                          const failed = /^error\b|"error"\s*:|"success"\s*:\s*false/i.test(result);
+                          recordToolTimelineEvent(targetSessionId, {
+                            id,
+                            toolName: name,
+                            status: failed ? "failed" : "completed",
+                            output: result,
+                            finishedAt: Date.now(),
                           });
                         },
                         abortSignal: controller.signal,
@@ -2854,7 +2967,7 @@ export default function ChatPanel({
 
                 // Fallback: plain streaming without tools
                 if (!toolCallingHandled) {
-                  for await (const chunk of localSidecar.chatStream(history)) {
+                  for await (const chunk of localSidecar.chatStream(history, { maxTokens: 4096 })) {
                     if (controller.signal.aborted) {
                       break;
                     }
@@ -3004,6 +3117,9 @@ export default function ChatPanel({
         const cloudModelForTurn = useDesktopLocalModel
           ? (fallbackCloudModel || activeInst?.resolvedModel || "claude-haiku-4-5")
           : (tierDecision.activeModelId || selectedModel || undefined);
+        const cloudHistoryForInstance = history
+          .slice(0, Math.max(0, history.length - 1))
+          .filter((message) => message.role === "user" || message.role === "assistant") as Array<{ role: "user" | "assistant"; content: string }>;
 
         await new Promise<void>((resolve) => {
           let controller: AbortController;
@@ -3011,10 +3127,12 @@ export default function ChatPanel({
             controller = streamChat({
               instanceId: activeInstanceId,
               message: outboundText,
+              history: cloudHistoryForInstance,
               sessionId: targetSessionId,
               token: authToken,
               model: cloudModelForTurn,
               mode: effectiveChatMode,
+              maxTokens: 12288,
               onChunk: chunkHandler,
               onMeta: metaHandler,
               onEvent: eventHandler,
@@ -3097,7 +3215,9 @@ export default function ChatPanel({
       token,
       selectedModel,
       instances,
+      models,
       messages,
+      networkStatus,
       pendingAttachments,
       appendChunk,
       clearAutoContinueTimer,
@@ -3110,9 +3230,11 @@ export default function ChatPanel({
       uploadingAttachments,
       handleSlashCommand,
       chatMode,
+      executionMode,
       activePlan,
       updateSessionMessages,
       queueAutoContinue,
+      recordToolTimelineEvent,
     ],
   );
 
@@ -3257,13 +3379,17 @@ export default function ChatPanel({
   };
 
   const loadSession = useCallback(async (sid: string) => {
-    const stored = await loadSessionMessages(sid);
+    const stored = trimChatMessagesForDesktopMemory(await loadSessionMessages(sid));
     if (stored.length === 0) return;
     abortSession(sessionIdRef.current);
     audioPlayerRef.current?.stopAll();
     sentenceAccRef.current?.reset();
     sessionIdRef.current = sid;
     abortRef.current = sessionAbortControllersRef.current[sid] || null;
+    tabMessagesCache.current = trimSessionMessageCache({
+      ...tabMessagesCache.current,
+      [sid]: stored,
+    }, sid);
     setMessages(stored);
     setPendingAttachments([]);
     if (textareaRef.current) textareaRef.current.value = "";
@@ -3510,7 +3636,7 @@ export default function ChatPanel({
       const snapshot = (e as CustomEvent).detail;
       if (snapshot?.sessionId === sessionIdRef.current && snapshot?.messages) {
         // Merge remote messages into current session if it's the active one
-        setMessages(snapshot.messages);
+        setMessages(trimChatMessagesForDesktopMemory(snapshot.messages));
       }
     };
     window.addEventListener("agentrix:session-synced", handler);
@@ -3596,26 +3722,7 @@ export default function ChatPanel({
       onDrop={handleDrop}
     >
       {/* Drag-and-drop overlay */}
-      {isDragOver && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: "rgba(99, 102, 241, 0.15)",
-            border: "2px dashed var(--accent)",
-            borderRadius: "inherit",
-            zIndex: 999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            pointerEvents: "none",
-          }}
-        >
-          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)" }}>
-            Drop files here to attach
-          </div>
-        </div>
-      )}
+      {isDragOver && <DragDropOverlay />}
 
       {/* Tab bar */}
       {tabs.length > 1 && (
@@ -3630,18 +3737,9 @@ export default function ChatPanel({
 
       {/* Dedicated drag bar for PRO mode (titlebar is too packed with buttons) */}
       {effectiveProMode && (
-        <div
-          data-tauri-drag-region
+        <WindowDragHandle
           onMouseDown={handleTitleBarMouseDown}
           onDoubleClick={handleTitleBarDoubleClick}
-          style={{
-            height: 8,
-            width: "100%",
-            cursor: "grab",
-            WebkitAppRegion: "drag",
-            background: "transparent",
-            flexShrink: 0,
-          }}
         />
       )}
 
@@ -3889,28 +3987,7 @@ export default function ChatPanel({
         </div>
       </div>
 
-      {/* Offline / degraded banner */}
-      {networkStatus !== "online" && (
-        <div
-          style={{
-            padding: "6px 16px",
-            background: networkStatus === "offline" ? "#FF6B6B22" : "#FECA5722",
-            borderBottom: "1px solid var(--border)",
-            fontSize: 12,
-            color: networkStatus === "offline" ? "#FF6B6B" : "#FECA57",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          <span>{networkStatus === "offline" ? "⚡" : "⚠️"}</span>
-          <span>
-            {networkStatus === "offline"
-              ? "You're offline — messages will sync when reconnected"
-              : "Connection unstable — some features may be limited"}
-          </span>
-        </div>
-      )}
+      <OfflineStatusBanner networkStatus={networkStatus} offlineQueueCount={offlineQueueCount} />
 
       {/* Settings overlay */}
       {settingsOpen && (
@@ -3931,12 +4008,12 @@ export default function ChatPanel({
           onFileSelect={(path, content) => {
             const ext = path.split(".").pop() || "";
             const preview = content.length > 3000 ? content.slice(0, 3000) + "\n... (truncated)" : content;
-            setMessages((prev) => [...prev, {
+            setMessages((prev) => trimChatMessagesForDesktopMemory([...prev, {
               id: `sys-${Date.now()}`,
               role: "assistant" as const,
               content: `📄 **${path}**\n\n\`\`\`${ext}\n${preview}\n\`\`\``,
               createdAt: Date.now(),
-            }]);
+            }]));
             setFileTreeOpen(false);
           }}
           onClose={() => setFileTreeOpen(false)}
@@ -3952,7 +4029,7 @@ export default function ChatPanel({
           onClose={() => setCrossDeviceOpen(false)}
           onResumeSession={(sessionId, msgs) => {
             sessionIdRef.current = sessionId;
-            setMessages(msgs);
+            setMessages(trimChatMessagesForDesktopMemory(msgs));
           }}
         />
       )}
@@ -4137,29 +4214,17 @@ export default function ChatPanel({
           onAccept={(handoffId, ctx) => {
             const msgs = (ctx as any)?.messages;
             if (Array.isArray(msgs)) {
-              setMessages(msgs.map((m: any, i: number) => ({
+              setMessages(trimChatMessagesForDesktopMemory(msgs.map((m: any, i: number) => ({
                 id: m.id || `handoff-${i}`,
                 role: m.role || "user",
                 content: m.content || "",
                 createdAt: m.createdAt || Date.now(),
-              })));
+              }))));
             }
           }}
         />
         <WearableNotification />
       </div>
-
-      {/* Offline queue indicator */}
-      {offlineQueueCount > 0 && networkStatus !== "online" && (
-        <div style={{
-          margin: "4px 16px", padding: "6px 10px", borderRadius: 6,
-          background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.2)",
-          fontSize: 11, color: "#fbbf24", display: "flex", alignItems: "center", gap: 6,
-        }}>
-          <span>📤</span>
-          <span>{offlineQueueCount} 条消息排队中，恢复网络后自动发送</span>
-        </div>
-      )}
 
       {/* Compaction status hint */}
       {compactionInfo?.isCompacted && (
@@ -4190,21 +4255,7 @@ export default function ChatPanel({
           gap: 10,
         }}
       >
-        {messages.length === 0 && (
-          <div
-            style={{
-              textAlign: "center",
-              color: "var(--text-dim)",
-              marginTop: 80,
-            }}
-          >
-            <div style={{ fontSize: 32, marginBottom: 12 }}>🤖</div>
-            <div>Ask me anything</div>
-            <div style={{ fontSize: 12, marginTop: 6 }}>
-              Ctrl+Shift+A for voice · Type / for commands
-            </div>
-          </div>
-        )}
+        {messages.length === 0 && <EmptyChatState />}
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} onRetry={handleRetryMessage} />
         ))}        {activePlan && (

@@ -191,6 +191,71 @@ export const DESKTOP_LOCAL_TOOLS: ToolDef[] = [
   {
     type: "function",
     function: {
+      name: "git_push",
+      description:
+        "Push the current branch to a remote. Use only when the user explicitly asks to push code or trigger remote CI.",
+      parameters: {
+        type: "object",
+        properties: {
+          remote: { type: "string", description: "Remote name, defaults to origin" },
+          branch: { type: "string", description: "Branch name, defaults to current branch" },
+          set_upstream: { type: "boolean", description: "Whether to pass --set-upstream" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "git_pull",
+      description:
+        "Pull the current branch from a remote. Use before integrating remote changes; defaults to --autostash.",
+      parameters: {
+        type: "object",
+        properties: {
+          remote: { type: "string", description: "Remote name, defaults to origin" },
+          branch: { type: "string", description: "Branch name, defaults to current branch" },
+          rebase: { type: "boolean", description: "Whether to pull with --rebase" },
+          autostash: { type: "boolean", description: "Whether to pull with --autostash, default true" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "git_checkout",
+      description:
+        "Switch to an existing branch or create a new branch. Do not use for destructive resets.",
+      parameters: {
+        type: "object",
+        properties: {
+          branch: { type: "string", description: "Branch name to check out" },
+          create: { type: "boolean", description: "Create the branch with -b" },
+        },
+        required: ["branch"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "git_stash",
+      description:
+        "Run git stash push/list/pop. Prefer push before risky branch switches when there are local changes.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["push", "list", "pop"], description: "Stash action, defaults to push" },
+          message: { type: "string", description: "Optional stash message for push" },
+          include_untracked: { type: "boolean", description: "Include untracked files when pushing" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "run_auto_repair_command",
       description:
         "Run a local build/test command, parse diagnostics, and optionally apply exact workspace text edits before retrying. First call without edits to diagnose; if it returns needs_patch, call again with edits [{file, old_text, new_text}] to apply and rerun.",
@@ -284,6 +349,18 @@ async function executeToolCall(
 
       case "semantic_search_workspace_code":
         return await executeSemanticSearchWorkspaceCode(args);
+
+      case "git_push":
+        return await executeGitPush(args);
+
+      case "git_pull":
+        return await executeGitPull(args);
+
+      case "git_checkout":
+        return await executeGitCheckout(args);
+
+      case "git_stash":
+        return await executeGitStash(args);
 
       case "run_auto_repair_command":
         return await executeRunAutoRepairCommand(args);
@@ -380,6 +457,67 @@ async function executeSemanticSearchWorkspaceCode(args: Record<string, unknown>)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return JSON.stringify({ error: `Semantic code search failed: ${message}` });
+  }
+}
+
+async function executeGitPush(args: Record<string, unknown>): Promise<string> {
+  try {
+    const { gitPush } = await import("./git");
+    const result = await gitPush(
+      typeof args.remote === "string" ? args.remote : undefined,
+      typeof args.branch === "string" ? args.branch : undefined,
+      args.set_upstream === true,
+    );
+    return JSON.stringify(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return JSON.stringify({ error: `Git push failed: ${message}` });
+  }
+}
+
+async function executeGitPull(args: Record<string, unknown>): Promise<string> {
+  try {
+    const { gitPull } = await import("./git");
+    const result = await gitPull(
+      typeof args.remote === "string" ? args.remote : undefined,
+      typeof args.branch === "string" ? args.branch : undefined,
+      args.rebase === true,
+      args.autostash !== false,
+    );
+    return JSON.stringify(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return JSON.stringify({ error: `Git pull failed: ${message}` });
+  }
+}
+
+async function executeGitCheckout(args: Record<string, unknown>): Promise<string> {
+  const branch = String(args.branch || "").trim();
+  if (!branch) return JSON.stringify({ error: "branch is required" });
+  try {
+    const { gitCheckout } = await import("./git");
+    const result = await gitCheckout(branch, args.create === true);
+    return JSON.stringify(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return JSON.stringify({ error: `Git checkout failed: ${message}` });
+  }
+}
+
+async function executeGitStash(args: Record<string, unknown>): Promise<string> {
+  const actionValue = String(args.action || "push");
+  const action = actionValue === "list" || actionValue === "pop" ? actionValue : "push";
+  try {
+    const { gitStash } = await import("./git");
+    const result = await gitStash(
+      action,
+      typeof args.message === "string" ? args.message : undefined,
+      args.include_untracked === true,
+    );
+    return JSON.stringify(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return JSON.stringify({ error: `Git stash failed: ${message}` });
   }
 }
 

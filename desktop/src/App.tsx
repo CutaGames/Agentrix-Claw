@@ -43,6 +43,15 @@ export default function App() {
     setPanelOpen(true);
   }, []);
 
+  const openSpotlightOrPanel = useCallback(async () => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("desktop_bridge_open_spotlight");
+    } catch {
+      openProPanel();
+    }
+  }, [openProPanel]);
+
   // ── Window resize helper for single-window mode ──
   const resizeMainWindow = useCallback(async (width: number, height: number) => {
     try {
@@ -169,6 +178,11 @@ export default function App() {
           openProPanel();
         }
       }
+      // Ctrl/Cmd+K → quick command / Spotlight fallback inside the webview
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        void openSpotlightOrPanel();
+      }
       // Escape → close panel
       if (e.key === "Escape" && panelOpen) {
         setPanelOpen(false);
@@ -182,7 +196,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [openProPanel, panelMode, panelOpen]);
+  }, [openProPanel, openSpotlightOrPanel, panelMode, panelOpen]);
 
   useEffect(() => {
     const handler = () => setPanelOpen(true);
@@ -219,14 +233,7 @@ export default function App() {
         // Register Ctrl/Cmd+K for Spotlight mode
         await register("CmdOrCtrl+K", (event) => {
           if (event.state === "Pressed") {
-            (async () => {
-              try {
-                const { invoke } = await import("@tauri-apps/api/core");
-                await invoke("desktop_bridge_open_spotlight");
-              } catch (err) {
-                console.error("open_spotlight failed:", err);
-              }
-            })();
+            void openSpotlightOrPanel();
           }
         });
         cleanup = () => {
@@ -237,7 +244,7 @@ export default function App() {
       }
     })();
     return () => cleanup?.();
-  }, [openCompactPanel, openProPanel, panelMode, panelOpen]);
+  }, [openCompactPanel, openProPanel, openSpotlightOrPanel, panelMode, panelOpen]);
 
   useEffect(() => {
     if (

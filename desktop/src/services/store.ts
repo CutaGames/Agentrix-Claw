@@ -580,10 +580,12 @@ async function fetchWithBackoff(
 export function streamChat(opts: {
   instanceId: string;
   message: string;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
   sessionId: string;
   token: string;
   model?: string;
   mode?: "ask" | "agent" | "plan";
+  maxTokens?: number;
   onChunk: (chunk: string) => void;
   onMeta?: (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => void;
   onEvent?: (event: StreamEvent) => void;
@@ -602,8 +604,18 @@ export function streamChat(opts: {
     },
     body: JSON.stringify({
       message: opts.message,
+      history: opts.history,
       sessionId: opts.sessionId,
+      context: {
+        sessionId: opts.sessionId,
+        maxOutputTokens: opts.maxTokens ?? 12288,
+        enableParallelLanes: true,
+      },
       model: opts.model,
+      options: {
+        maxTokens: opts.maxTokens ?? 12288,
+        enableParallelLanes: true,
+      },
       mode: opts.mode || "agent",
       platform: "desktop",
       deviceId: getDesktopDeviceId(),
@@ -691,7 +703,7 @@ export function streamDirectChat(opts: {
       mode: opts.mode || "agent",
       platform: "desktop",
       deviceId: getDesktopDeviceId(),
-      options: opts.model ? { model: opts.model } : undefined,
+      options: { model: opts.model, maxTokens: 12288, enableParallelLanes: true },
       ...(opts.agentId ? { agentId: opts.agentId } : {}),
     }),
     signal: ac.signal,

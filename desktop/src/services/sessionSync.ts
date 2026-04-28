@@ -40,6 +40,7 @@ let _socket: Socket | null = null;
 let _handlers: SyncEventHandler = {};
 let _heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let _token: string | null = null;
+let _socketToken: string | null = null;
 let _connected = false;
 let _clipboardSyncOutListener: EventListener | null = null;
 
@@ -48,6 +49,10 @@ export function isSessionSyncConnected(): boolean {
 }
 
 export function initSessionSync(token: string, handlers: SyncEventHandler) {
+  if (_socket && _socketToken && _socketToken !== token) {
+    destroySessionSync();
+  }
+
   _token = token;
   _handlers = handlers;
   connect();
@@ -77,12 +82,19 @@ export function destroySessionSync() {
     _socket.disconnect();
     _socket = null;
   }
+  _socketToken = null;
   _connected = false;
 }
 
 function connect() {
   if (_socket?.connected) return;
   if (!_token) return;
+
+  if (_socket && _socketToken === _token) {
+    return;
+  }
+
+  _socketToken = _token;
 
   _socket = io(`${WS_ORIGIN}/ws`, {
     auth: { token: _token },

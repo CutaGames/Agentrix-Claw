@@ -45,6 +45,9 @@ commands.allow = [
   "desktop_bridge_download_model",
   "desktop_bridge_check_llama_server",
   "desktop_bridge_download_llama_server",
+  "desktop_bridge_lsp_status",
+  "desktop_bridge_start_lsp_sidecar",
+  "desktop_bridge_stop_lsp_sidecar",
   # Screen capture (P3.2)
   "desktop_bridge_capture_screen",
   # Git integration (P3.3)
@@ -53,6 +56,10 @@ commands.allow = [
   "desktop_bridge_git_log",
   "desktop_bridge_git_commit",
   "desktop_bridge_git_branch_list",
+  "desktop_bridge_git_push",
+  "desktop_bridge_git_pull",
+  "desktop_bridge_git_checkout",
+  "desktop_bridge_git_stash",
   # Secure credential vault (P3.5)
   "desktop_bridge_keychain_set",
   "desktop_bridge_keychain_get",

@@ -27,6 +27,8 @@ export interface WorkspaceCodeIndexSummary {
   fileCount: number;
   symbolCount: number;
   chunkCount: number;
+  vectorDimensions: number;
+  embeddingProvider: string;
   skipped: string[];
 }
 
@@ -39,7 +41,8 @@ export interface WorkspaceSemanticResult {
   preview: string;
 }
 
-const VECTOR_DIMENSIONS = 128;
+const VECTOR_DIMENSIONS = 512;
+const EMBEDDING_PROVIDER = "local-hashing-512";
 const DEFAULT_MAX_FILES = 300;
 const DEFAULT_MAX_FILE_BYTES = 240_000;
 const SKIP_DIRS = new Set([".git", ".next", ".turbo", ".expo", ".gradle", "build", "coverage", "dist", "node_modules", "target", "test-results"]);
@@ -91,6 +94,8 @@ export async function indexWorkspaceCode(options: { maxFiles?: number; maxFileBy
     fileCount: files.length,
     symbolCount: symbols.length,
     chunkCount: chunks.length,
+    vectorDimensions: VECTOR_DIMENSIONS,
+    embeddingProvider: EMBEDDING_PROVIDER,
     skipped,
   };
   return summary;

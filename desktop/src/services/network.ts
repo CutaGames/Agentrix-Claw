@@ -19,7 +19,8 @@ type NetworkListener = (status: NetworkStatus) => void;
 let _status: NetworkStatus = navigator.onLine ? "online" : "offline";
 let _listeners: NetworkListener[] = [];
 let _healthTimer: ReturnType<typeof setInterval> | null = null;
-let _retryTimer: ReturnType<typeof setTimeout> | null = null;
+let _retryTimer: ReturnType<typeof setInterval> | null = null;
+let _started = false;
 
 const HEALTH_INTERVAL_MS = 30_000;   // check every 30s when online
 const RETRY_INTERVAL_MS = 5_000;     // retry every 5s when offline
@@ -39,6 +40,11 @@ export function onNetworkStatusChange(fn: NetworkListener): () => void {
 
 /** Start monitoring */
 export function startNetworkMonitor() {
+  if (_started) {
+    return;
+  }
+
+  _started = true;
   window.addEventListener("online", handleOnline);
   window.addEventListener("offline", handleOffline);
 
@@ -51,10 +57,15 @@ export function startNetworkMonitor() {
 
 /** Stop monitoring */
 export function stopNetworkMonitor() {
+  if (!_started) {
+    return;
+  }
+
+  _started = false;
   window.removeEventListener("online", handleOnline);
   window.removeEventListener("offline", handleOffline);
   if (_healthTimer) { clearInterval(_healthTimer); _healthTimer = null; }
-  if (_retryTimer) { clearTimeout(_retryTimer); _retryTimer = null; }
+  if (_retryTimer) { clearInterval(_retryTimer); _retryTimer = null; }
 }
 
 // ─── Internals ─────────────────────────────────────────

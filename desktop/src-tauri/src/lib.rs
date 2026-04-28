@@ -419,6 +419,23 @@ async fn desktop_bridge_download_llama_server(app: AppHandle) -> Result<commands
     commands::download_llama_server(app).await
 }
 
+// ── LSP Sidecars (tsserver / rust-analyzer) ─────────────────────
+
+#[tauri::command]
+fn desktop_bridge_lsp_status(server: String, workspace_dir: Option<String>) -> Result<commands::LspSidecarStatus, String> {
+    commands::lsp_sidecar_status(server, workspace_dir)
+}
+
+#[tauri::command]
+fn desktop_bridge_start_lsp_sidecar(server: String, workspace_dir: Option<String>) -> Result<commands::LspSidecarStatus, String> {
+    commands::start_lsp_sidecar(server, workspace_dir)
+}
+
+#[tauri::command]
+fn desktop_bridge_stop_lsp_sidecar(server: String) -> Result<commands::LspSidecarStatus, String> {
+    commands::stop_lsp_sidecar(server)
+}
+
 // ── Screen Capture (P3.2) ──────────────────────────────────────────
 
 #[tauri::command]
@@ -451,6 +468,26 @@ fn desktop_bridge_git_commit(message: String, add_all: bool) -> Result<commands:
 #[tauri::command]
 fn desktop_bridge_git_branch_list() -> Result<Vec<String>, String> {
     commands::git_branch_list()
+}
+
+#[tauri::command]
+fn desktop_bridge_git_push(remote: Option<String>, branch: Option<String>, set_upstream: bool) -> Result<commands::GitCommandResult, String> {
+    commands::git_push(remote, branch, set_upstream)
+}
+
+#[tauri::command]
+fn desktop_bridge_git_pull(remote: Option<String>, branch: Option<String>, rebase: bool, autostash: bool) -> Result<commands::GitCommandResult, String> {
+    commands::git_pull(remote, branch, rebase, autostash)
+}
+
+#[tauri::command]
+fn desktop_bridge_git_checkout(branch: String, create: bool) -> Result<commands::GitCommandResult, String> {
+    commands::git_checkout(branch, create)
+}
+
+#[tauri::command]
+fn desktop_bridge_git_stash(action: Option<String>, message: Option<String>, include_untracked: bool) -> Result<commands::GitCommandResult, String> {
+    commands::git_stash(action, message, include_untracked)
 }
 
 // ── Secure Credential Vault (P3.5) ───────────────────────────────
@@ -670,6 +707,10 @@ pub fn run() {
             desktop_bridge_git_log,
             desktop_bridge_git_commit,
             desktop_bridge_git_branch_list,
+            desktop_bridge_git_push,
+            desktop_bridge_git_pull,
+            desktop_bridge_git_checkout,
+            desktop_bridge_git_stash,
             // Secure credential vault (P3.5)
             desktop_bridge_keychain_set,
             desktop_bridge_keychain_get,
@@ -681,6 +722,10 @@ pub fn run() {
             desktop_bridge_download_model,
             desktop_bridge_check_llama_server,
             desktop_bridge_download_llama_server,
+            // LSP sidecars
+            desktop_bridge_lsp_status,
+            desktop_bridge_start_lsp_sidecar,
+            desktop_bridge_stop_lsp_sidecar,
         ])
         .setup(|app| {
             // Grant WebView2 permissions (microphone, camera, etc.) on the main window

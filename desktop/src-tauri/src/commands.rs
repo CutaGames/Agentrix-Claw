@@ -1345,6 +1345,14 @@ pub struct GitCommitResult {
     pub files_changed: usize,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommandResult {
+    pub success: bool,
+    pub command: String,
+    pub output: String,
+}
+
 fn git_command(args: &[&str], cwd: &Path) -> Result<String, String> {
     let output = Command::new("git")
         .args(args)
@@ -1363,6 +1371,40 @@ fn git_command(args: &[&str], cwd: &Path) -> Result<String, String> {
         });
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn git_command_dynamic(args: Vec<String>, cwd: &Path) -> Result<String, String> {
+    let borrowed: Vec<&str> = args.iter().map(|arg| arg.as_str()).collect();
+    git_command(&borrowed, cwd)
+}
+
+fn validate_git_ref(value: &str, field: &str) -> Result<(), String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.starts_with('-') {
+        return Err(format!("Invalid {}", field));
+    }
+    let forbidden = ["..", "~", "^", ":", "\\", " ", "\t", "\n", "*", "[", "?", "//"];
+    if forbidden.iter().any(|needle| trimmed.contains(needle)) || trimmed.ends_with('.') || trimmed.ends_with('/') {
+        return Err(format!("Invalid {}: {}", field, value));
+    }
+    Ok(())
+}
+
+fn git_current_branch(workspace: &Path) -> Result<String, String> {
+    let branch = git_command(&["branch", "--show-current"], workspace)?.trim().to_string();
+    if branch.is_empty() {
+        return Err("Git repository is in detached HEAD state; specify a branch explicitly".into());
+    }
+    Ok(branch)
+}
+
+fn git_result(args: Vec<String>, workspace: &Path) -> Result<GitCommandResult, String> {
+    let output = git_command_dynamic(args.clone(), workspace)?;
+    Ok(GitCommandResult {
+        success: true,
+        command: format!("git {}", args.join(" ")),
+        output: if output.trim().is_empty() { "OK".to_string() } else { output },
+    })
 }
 
 pub fn git_status() -> Result<GitStatusResult, String> {
@@ -1455,6 +1497,80 @@ pub fn git_branch_list() -> Result<Vec<String>, String> {
     let workspace = require_workspace_dir()?;
     let raw = git_command(&["branch", "-a", "--format=%(refname:short)"], &workspace)?;
     Ok(raw.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
+}
+
+pub fn git_push(remote: Option<String>, branch: Option<String>, set_upstream: bool) -> Result<GitCommandResult, String> {
+    let workspace = require_workspace_dir()?;
+    let remote = remote.unwrap_or_else(|| "origin".to_string());
+    let branch = match branch {
+        Some(value) if !value.trim().is_empty() => value,
+        _ => git_current_branch(&workspace)?,
+    };
+    validate_git_ref(&remote, "remote")?;
+    validate_git_ref(&branch, "branch")?;
+
+    let mut args = vec!["push".to_string()];
+    if set_upstream {
+        args.push("--set-upstream".to_string());
+    }
+    args.push(remote);
+    args.push(branch);
+    git_result(args, &workspace)
+}
+
+pub fn git_pull(remote: Option<String>, branch: Option<String>, rebase: bool, autostash: bool) -> Result<GitCommandResult, String> {
+    let workspace = require_workspace_dir()?;
+    let remote = remote.unwrap_or_else(|| "origin".to_string());
+    let branch = match branch {
+        Some(value) if !value.trim().is_empty() => value,
+        _ => git_current_branch(&workspace)?,
+    };
+    validate_git_ref(&remote, "remote")?;
+    validate_git_ref(&branch, "branch")?;
+
+    let mut args = vec!["pull".to_string()];
+    if rebase {
+        args.push("--rebase".to_string());
+    }
+    if autostash {
+        args.push("--autostash".to_string());
+    }
+    args.push(remote);
+    args.push(branch);
+    git_result(args, &workspace)
+}
+
+pub fn git_checkout(branch: String, create: bool) -> Result<GitCommandResult, String> {
+    let workspace = require_workspace_dir()?;
+    validate_git_ref(&branch, "branch")?;
+    let mut args = vec!["checkout".to_string()];
+    if create {
+        args.push("-b".to_string());
+    }
+    args.push(branch);
+    git_result(args, &workspace)
+}
+
+pub fn git_stash(action: Option<String>, message: Option<String>, include_untracked: bool) -> Result<GitCommandResult, String> {
+    let workspace = require_workspace_dir()?;
+    let action = action.unwrap_or_else(|| "push".to_string());
+    let mut args = vec!["stash".to_string()];
+    match action.as_str() {
+        "list" => args.push("list".to_string()),
+        "pop" => args.push("pop".to_string()),
+        "push" => {
+            args.push("push".to_string());
+            if include_untracked {
+                args.push("-u".to_string());
+            }
+            if let Some(message) = message.filter(|value| !value.trim().is_empty()) {
+                args.push("-m".to_string());
+                args.push(message);
+            }
+        }
+        other => return Err(format!("Unsupported git stash action: {}", other)),
+    }
+    git_result(args, &workspace)
 }
 
 // ─── Secure Credential Vault (P3.5) ───────────────────────
@@ -1639,6 +1755,18 @@ pub fn close_spotlight(app: AppHandle) -> Result<(), String> {
 // ─── Local LLM Sidecar (llama.cpp) ───────────────────────
 
 static LLM_SIDECAR_PID: Mutex<Option<u32>> = Mutex::new(None);
+static TSSERVER_SIDECAR: Mutex<Option<std::process::Child>> = Mutex::new(None);
+static RUST_ANALYZER_SIDECAR: Mutex<Option<std::process::Child>> = Mutex::new(None);
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LspSidecarStatus {
+    pub server: String,
+    pub available: bool,
+    pub running: bool,
+    pub command: Option<String>,
+    pub message: Option<String>,
+}
 
 /// Start a llama.cpp server as a sidecar process.
 /// The binary must exist at the given path or be resolvable via PATH.
@@ -1709,6 +1837,152 @@ pub fn stop_llm_sidecar() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn normalize_lsp_server(server: &str) -> Result<&'static str, String> {
+    match server.trim().to_ascii_lowercase().as_str() {
+        "typescript" | "tsserver" | "ts" => Ok("typescript"),
+        "rust" | "rust-analyzer" | "rust_analyzer" => Ok("rust-analyzer"),
+        other => Err(format!("Unsupported LSP server: {}", other)),
+    }
+}
+
+fn lsp_slot(server: &str) -> Result<&'static Mutex<Option<std::process::Child>>, String> {
+    match normalize_lsp_server(server)? {
+        "typescript" => Ok(&TSSERVER_SIDECAR),
+        "rust-analyzer" => Ok(&RUST_ANALYZER_SIDECAR),
+        _ => unreachable!(),
+    }
+}
+
+fn lsp_binary_names(server: &str) -> Result<Vec<&'static str>, String> {
+    match normalize_lsp_server(server)? {
+        "typescript" => {
+            #[cfg(target_os = "windows")]
+            { Ok(vec!["tsserver.cmd", "tsserver.exe", "tsserver"]) }
+            #[cfg(not(target_os = "windows"))]
+            { Ok(vec!["tsserver"]) }
+        }
+        "rust-analyzer" => {
+            #[cfg(target_os = "windows")]
+            { Ok(vec!["rust-analyzer.exe", "rust-analyzer"]) }
+            #[cfg(not(target_os = "windows"))]
+            { Ok(vec!["rust-analyzer"]) }
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn find_lsp_binary(server: &str, workspace_dir: Option<&Path>) -> Result<Option<PathBuf>, String> {
+    let names = lsp_binary_names(server)?;
+    let mut roots = Vec::new();
+    if let Some(workspace) = workspace_dir {
+        roots.push(workspace.to_path_buf());
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        roots.push(cwd.clone());
+        if let Some(parent) = cwd.parent() {
+            roots.push(parent.to_path_buf());
+        }
+    }
+
+    for root in roots {
+        for name in &names {
+            let candidate = root.join("node_modules").join(".bin").join(name);
+            if candidate.is_file() {
+                return Ok(Some(candidate));
+            }
+        }
+    }
+
+    if let Some(path_var) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            for name in &names {
+                let candidate = dir.join(name);
+                if candidate.is_file() {
+                    return Ok(Some(candidate));
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+fn refresh_lsp_running(server: &str) -> Result<bool, String> {
+    let slot = lsp_slot(server)?;
+    let mut guard = slot.lock().map_err(|e| e.to_string())?;
+    if let Some(child) = guard.as_mut() {
+        match child.try_wait().map_err(|e| e.to_string())? {
+            Some(_) => {
+                *guard = None;
+                Ok(false)
+            }
+            None => Ok(true),
+        }
+    } else {
+        Ok(false)
+    }
+}
+
+pub fn lsp_sidecar_status(server: String, workspace_dir: Option<String>) -> Result<LspSidecarStatus, String> {
+    let normalized = normalize_lsp_server(&server)?.to_string();
+    let workspace = workspace_dir.map(PathBuf::from).or_else(|| load_workspace_dir().ok().flatten());
+    let command = find_lsp_binary(&normalized, workspace.as_deref())?;
+    let running = refresh_lsp_running(&normalized)?;
+    Ok(LspSidecarStatus {
+        server: normalized,
+        available: command.is_some(),
+        running,
+        command: command.map(|path| path.display().to_string()),
+        message: if running { Some("LSP sidecar is running".to_string()) } else { None },
+    })
+}
+
+pub fn start_lsp_sidecar(server: String, workspace_dir: Option<String>) -> Result<LspSidecarStatus, String> {
+    let normalized = normalize_lsp_server(&server)?.to_string();
+    stop_lsp_sidecar(normalized.clone()).ok();
+    let workspace = workspace_dir.map(PathBuf::from).or_else(|| load_workspace_dir().ok().flatten());
+    let binary = find_lsp_binary(&normalized, workspace.as_deref())?
+        .ok_or_else(|| format!("{} binary not found", normalized))?;
+
+    let mut cmd = Command::new(&binary);
+    if let Some(workspace) = workspace.as_ref() {
+        cmd.current_dir(workspace);
+    }
+    cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    let child = cmd.spawn().map_err(|e| format!("Failed to start {}: {}", normalized, e))?;
+
+    let slot = lsp_slot(&normalized)?;
+    let mut guard = slot.lock().map_err(|e| e.to_string())?;
+    *guard = Some(child);
+
+    Ok(LspSidecarStatus {
+        server: normalized,
+        available: true,
+        running: true,
+        command: Some(binary.display().to_string()),
+        message: Some("LSP sidecar started".to_string()),
+    })
+}
+
+pub fn stop_lsp_sidecar(server: String) -> Result<LspSidecarStatus, String> {
+    let normalized = normalize_lsp_server(&server)?.to_string();
+    let slot = lsp_slot(&normalized)?;
+    let mut guard = slot.lock().map_err(|e| e.to_string())?;
+    if let Some(mut child) = guard.take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    Ok(LspSidecarStatus {
+        server: normalized,
+        available: false,
+        running: false,
+        command: None,
+        message: Some("LSP sidecar stopped".to_string()),
+    })
 }
 
 /// List GGUF model files in a directory.

@@ -152,16 +152,15 @@ jobs:
           print('[patched] Added signingConfig release block to build.gradle')
           PYEOF
 
-      # Restrict C++ builds to arm64-v8a + x86_64 only.
-      # Drops legacy 32-bit targets (armeabi-v7a, x86) while keeping x86_64
-      # so the release APK can be installed on the CI emulator for UI tests.
-      - name: Patch android/app/build.gradle — restrict ABI targets
+      # Public/download release stays arm64-only. The UI test job builds its own
+      # x86_64 APK later so emulator support does not bloat the shipped APK.
+      - name: Patch android/app/build.gradle — arm64 public release ABI
         run: |
           python3 - << 'PYEOF'
           import re, os, sys
           build_gradle = 'android/app/build.gradle'
           gradle_props = 'android/gradle.properties'
-          target_filters = 'abiFilters "arm64-v8a", "x86_64"'
+          target_filters = 'abiFilters "arm64-v8a"'
 
           if not os.path.exists(build_gradle):
               print(f'[skip] {build_gradle} not found')
@@ -183,18 +182,18 @@ jobs:
           else:
               with open(build_gradle, 'w') as f:
                   f.write(fixed)
-              print('[patched] Ensured abiFilters arm64-v8a + x86_64 in build.gradle')
+              print('[patched] Ensured abiFilters arm64-v8a in build.gradle')
 
           if os.path.exists(gradle_props):
               with open(gradle_props) as f:
                   props = f.read()
               if re.search(r'^reactNativeArchitectures=', props, flags=re.M):
-                  props = re.sub(r'^reactNativeArchitectures=.*', 'reactNativeArchitectures=arm64-v8a,x86_64', props, flags=re.M)
+                  props = re.sub(r'^reactNativeArchitectures=.*', 'reactNativeArchitectures=arm64-v8a', props, flags=re.M)
               else:
-                  props += '\nreactNativeArchitectures=arm64-v8a,x86_64\n'
+                  props += '\nreactNativeArchitectures=arm64-v8a\n'
               with open(gradle_props, 'w') as f:
                   f.write(props)
-              print('[patched] Ensured reactNativeArchitectures arm64-v8a,x86_64 in gradle.properties')
+              print('[patched] Ensured reactNativeArchitectures arm64-v8a in gradle.properties')
           PYEOF
 
       - name: Grant Gradle execute permission
@@ -248,12 +247,11 @@ jobs:
             echo "[ci] No ANDROID_KEYSTORE_BASE64 secret — building unsigned APK"
           fi
 
-      # Build a single release APK — used for both UI tests and the download link.
-      # Splitting into debug + release doubles native C++ build time (reanimated alone = 20 min).
-      # Unsigned release APK installs fine on any emulator or test device.
-      - name: Build APK
+      # Build the public release APK first. This artifact is deployed and attached
+      # to the GitHub Release, so it should not contain the x86_64 emulator ABI.
+      - name: Build public release APK
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon --parallel --build-cache
+        run: ./gradlew assembleRelease --no-daemon --parallel --build-cache -PreactNativeArchitectures=arm64-v8a
         env:
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true'
 
@@ -261,7 +259,7 @@ jobs:
         id: tag
         run: echo "tag=build-${{ github.run_id }}" >> $GITHUB_OUTPUT
 
-      - name: Stage APK
+      - name: Stage public release APK
         id: paths
         run: |
           mkdir -p artifacts
@@ -275,6 +273,7 @@ jobs:
           echo "Found APK: $APK"
           cp "$APK" artifacts/ClawLink-build-${{ github.run_number }}.apk
           echo "release=artifacts/ClawLink-build-${{ github.run_number }}.apk" >> $GITHUB_OUTPUT
+          du -h artifacts/ClawLink-build-${{ github.run_number }}.apk
 
       # ── Deploy + Release BEFORE artifact upload ──────────────────
       # Artifact upload may hit GitHub storage quota and crash the job,
@@ -339,6 +338,62 @@ jobs:
           draft: false
           prerelease: false
 
+      - name: Patch android/app/build.gradle — x86_64 UI test ABI
+        run: |
+          python3 - << 'PYEOF'
+          import re, os, sys
+          build_gradle = 'android/app/build.gradle'
+          gradle_props = 'android/gradle.properties'
+          target_filters = 'abiFilters "x86_64"'
+
+          if not os.path.exists(build_gradle):
+              print(f'[skip] {build_gradle} not found')
+              sys.exit(0)
+          with open(build_gradle) as f:
+              content = f.read()
+
+          if 'abiFilters' in content:
+              fixed = re.sub(r'abiFilters\s+[^\n]+', target_filters, content, count=1)
+          else:
+              fixed = re.sub(
+                  r'(defaultConfig\s*\{)',
+                  '\\1\n        ndk {\n            ' + target_filters + '\n        }',
+                  content, count=1
+              )
+
+          with open(build_gradle, 'w') as f:
+              f.write(fixed)
+          print('[patched] Ensured abiFilters x86_64 in build.gradle')
+
+          if os.path.exists(gradle_props):
+              with open(gradle_props) as f:
+                  props = f.read()
+              if re.search(r'^reactNativeArchitectures=', props, flags=re.M):
+                  props = re.sub(r'^reactNativeArchitectures=.*', 'reactNativeArchitectures=x86_64', props, flags=re.M)
+              else:
+                  props += '\nreactNativeArchitectures=x86_64\n'
+              with open(gradle_props, 'w') as f:
+                  f.write(props)
+              print('[patched] Ensured reactNativeArchitectures x86_64 in gradle.properties')
+          PYEOF
+
+      - name: Build x86_64 UI test APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon --parallel --build-cache -PreactNativeArchitectures=x86_64
+        env:
+          GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true'
+
+      - name: Stage UI test APK
+        run: |
+          APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          if [ -z "$APK" ]; then
+            echo "ERROR: No x86_64 APK found in android/app/build/outputs/apk/release/"
+            ls -la android/app/build/outputs/apk/release/ || true
+            exit 1
+          fi
+          cp "$APK" artifacts/ClawLink-ui-test-${{ github.run_number }}.apk
+          du -h artifacts/ClawLink-ui-test-${{ github.run_number }}.apk
+
       # ── Artifact upload (optional — only for UI test job) ────────
       # Storage quota may be exceeded; this step must not block deploy/release.
       # GitHub recalculates quota every 6-12h, so aggressive cleanup is needed.
@@ -382,7 +437,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: apks-build-${{ github.run_number }}
-          path: artifacts/
+          path: artifacts/ClawLink-ui-test-${{ github.run_number }}.apk
           retention-days: 1
 
       - name: Record artifact status
@@ -460,7 +515,15 @@ jobs:
 
           echo "=== Installing APK ==="
           adb wait-for-device
-          adb install -r artifacts/ClawLink-build-${{ github.run_number }}.apk
+          adb kill-server || true
+          adb start-server
+          adb wait-for-device
+          adb shell getprop sys.boot_completed
+          adb shell input keyevent 82 || true
+          adb shell settings put global window_animation_scale 0 || true
+          adb shell settings put global transition_animation_scale 0 || true
+          adb shell settings put global animator_duration_scale 0 || true
+          adb install -r artifacts/ClawLink-ui-test-${{ github.run_number }}.apk
 
           # ── Launch smoke test: detect immediate crash (flash-quit on tap) ──────
           # Clear crash log buffer, launch app, wait 8 seconds, then check for FATAL
@@ -501,13 +564,41 @@ jobs:
             echo "  $flow"
           done
 
-          if [ "${#FLOWS[@]}" -gt 0 ]; then
+          run_maestro_suite() {
             echo "--- Running Maestro suite: .maestro ---"
-            if maestro test .maestro --output "maestro-output/maestro-report.xml" --format junit 2>&1 | tee "maestro-output/maestro.log"; then
+            MAESTRO_CLI_NO_ANALYTICS=1 maestro test .maestro --output "maestro-output/maestro-report.xml" --format junit 2>&1 | tee "maestro-output/maestro.log"
+          }
+
+          reset_maestro_driver() {
+            echo "=== Resetting Maestro Android driver state ==="
+            adb shell pm list packages | grep -E 'maestro|mobile.dev' | sed 's/package://' | while read -r pkg; do
+              [ -n "$pkg" ] && adb uninstall "$pkg" || true
+            done || true
+            adb kill-server || true
+            adb start-server
+            adb wait-for-device
+            adb shell input keyevent 82 || true
+            sleep 5
+          }
+
+          if [ "${#FLOWS[@]}" -gt 0 ]; then
+            if run_maestro_suite; then
               PASS=${#FLOWS[@]}
             else
-              FAIL=1
-              ERRORS="- \`.maestro\`"
+              if grep -q "Maestro Android driver did not start up" "maestro-output/maestro.log" 2>/dev/null; then
+                echo "Maestro driver startup timed out; retrying after driver reset"
+                cp "maestro-output/maestro.log" "maestro-output/maestro-first-attempt.log" || true
+                reset_maestro_driver
+                if run_maestro_suite; then
+                  PASS=${#FLOWS[@]}
+                else
+                  FAIL=1
+                  ERRORS="- \`.maestro\` (driver retry failed)"
+                fi
+              else
+                FAIL=1
+                ERRORS="- \`.maestro\`"
+              fi
             fi
           fi
 

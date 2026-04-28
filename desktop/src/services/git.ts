@@ -27,6 +27,12 @@ export interface GitCommitResult {
   filesChanged: number;
 }
 
+export interface GitCommandResult {
+  success: boolean;
+  command: string;
+  output: string;
+}
+
 export async function gitStatus(): Promise<GitStatusResult> {
   return invoke<GitStatusResult>("desktop_bridge_git_status");
 }
@@ -45,4 +51,33 @@ export async function gitCommit(message: string, addAll = true): Promise<GitComm
 
 export async function gitBranchList(): Promise<string[]> {
   return invoke<string[]>("desktop_bridge_git_branch_list");
+}
+
+export async function gitPush(remote?: string, branch?: string, setUpstream = false): Promise<GitCommandResult> {
+  return invoke<GitCommandResult>("desktop_bridge_git_push", {
+    remote: remote ?? null,
+    branch: branch ?? null,
+    setUpstream,
+  });
+}
+
+export async function gitPull(remote?: string, branch?: string, rebase = false, autostash = true): Promise<GitCommandResult> {
+  return invoke<GitCommandResult>("desktop_bridge_git_pull", {
+    remote: remote ?? null,
+    branch: branch ?? null,
+    rebase,
+    autostash,
+  });
+}
+
+export async function gitCheckout(branch: string, create = false): Promise<GitCommandResult> {
+  return invoke<GitCommandResult>("desktop_bridge_git_checkout", { branch, create });
+}
+
+export async function gitStash(action: "push" | "pop" | "list" = "push", message?: string, includeUntracked = false): Promise<GitCommandResult> {
+  return invoke<GitCommandResult>("desktop_bridge_git_stash", {
+    action,
+    message: message ?? null,
+    includeUntracked,
+  });
 }

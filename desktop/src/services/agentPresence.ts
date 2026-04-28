@@ -68,6 +68,7 @@ export interface DashboardOverview {
 let _presenceSocket: Socket | null = null;
 let _presenceHeartbeat: ReturnType<typeof setInterval> | null = null;
 let _presenceConnected = false;
+let _presenceToken: string | null = null;
 
 export type PresenceEventName =
   | "presence:device_online"
@@ -98,6 +99,10 @@ export function isPresenceConnected(): boolean {
 }
 
 export function initPresenceSocket(token: string, handlers: PresenceHandlers) {
+  if (_presenceSocket && _presenceToken && _presenceToken !== token) {
+    destroyPresenceSocket();
+  }
+
   _presenceHandlers = handlers;
   connectPresence(token);
 }
@@ -111,11 +116,14 @@ export function destroyPresenceSocket() {
     _presenceSocket.disconnect();
     _presenceSocket = null;
   }
+  _presenceToken = null;
   _presenceConnected = false;
 }
 
 function connectPresence(token: string) {
   if (_presenceSocket?.connected) return;
+  if (_presenceSocket && _presenceToken === token) return;
+  _presenceToken = token;
 
   const deviceId = getDesktopDeviceId();
 

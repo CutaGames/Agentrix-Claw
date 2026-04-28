@@ -59,6 +59,11 @@ export interface ChatMessageDto {
   sessionId?: string;
   context?: Record<string, any>;
   model?: string;
+  options?: {
+    maxTokens?: number;
+    temperature?: number;
+    enableParallelLanes?: boolean;
+  };
   voiceId?: string;
   mode?: 'ask' | 'agent' | 'plan';
   platform?: 'desktop' | 'mobile' | 'web';
@@ -502,9 +507,13 @@ export class OpenClawProxyService {
     }
 
     if (!needsTools) {
+      const requestedMaxTokens = Number(dto.options?.maxTokens ?? dto.context?.maxTokens ?? dto.context?.maxOutputTokens);
+      const maxTokens = Number.isFinite(requestedMaxTokens) && requestedMaxTokens > 0
+        ? Math.max(dto.platform === 'desktop' ? 8192 : 3072, Math.min(20000, Math.floor(requestedMaxTokens)))
+        : (dto.platform === 'desktop' ? 8192 : 3072);
       return {
         maxToolRounds: dto.platform === 'desktop' ? 6 : 5,
-        maxTokens: dto.platform === 'desktop' ? 4096 : 3072,
+        maxTokens,
         taskTier: precomputedTier,
         routingReason: precomputedTier ? `tier-${precomputedTier}` : undefined,
       };
@@ -516,14 +525,14 @@ export class OpenClawProxyService {
         ? 12
         : 8;
     let maxTokens = dto.mode === 'plan'
-      ? 6144
+      ? 8192
       : dto.mode === 'agent'
-        ? 5120
+        ? 6144
         : 4096;
 
     if (dto.platform === 'desktop') {
       maxToolRounds += 4;
-      maxTokens = Math.max(maxTokens, 6144);
+      maxTokens = Math.max(maxTokens, dto.mode === 'plan' ? 12288 : 8192);
     }
 
     try {
@@ -540,18 +549,23 @@ export class OpenClawProxyService {
       switch (routing.tier) {
         case 'ultra':
           maxToolRounds = Math.max(maxToolRounds, 22);
-          maxTokens = Math.max(maxTokens, 8192);
+          maxTokens = Math.max(maxTokens, dto.platform === 'desktop' ? 16384 : 8192);
           break;
         case 'heavy':
           maxToolRounds = Math.max(maxToolRounds, 18);
-          maxTokens = Math.max(maxTokens, 7168);
+          maxTokens = Math.max(maxTokens, dto.platform === 'desktop' ? 12288 : 7168);
           break;
         case 'medium':
           maxToolRounds = Math.max(maxToolRounds, 12);
-          maxTokens = Math.max(maxTokens, 5120);
+          maxTokens = Math.max(maxTokens, dto.platform === 'desktop' ? 8192 : 5120);
           break;
         default:
           break;
+      }
+
+      const requestedMaxTokens = Number(dto.options?.maxTokens ?? dto.context?.maxTokens ?? dto.context?.maxOutputTokens);
+      if (Number.isFinite(requestedMaxTokens) && requestedMaxTokens > 0) {
+        maxTokens = Math.max(maxTokens, Math.min(20000, Math.floor(requestedMaxTokens)));
       }
 
       return {
@@ -562,6 +576,10 @@ export class OpenClawProxyService {
       };
     } catch (error: any) {
       this.logger.warn(`Tool round budget routing failed: ${error.message}`);
+      const requestedMaxTokens = Number(dto.options?.maxTokens ?? dto.context?.maxTokens ?? dto.context?.maxOutputTokens);
+      if (Number.isFinite(requestedMaxTokens) && requestedMaxTokens > 0) {
+        maxTokens = Math.max(maxTokens, Math.min(20000, Math.floor(requestedMaxTokens)));
+      }
       return { maxToolRounds, maxTokens };
     }
   }
@@ -2179,6 +2197,7 @@ export class OpenClawProxyService {
     const _lap = (label: string) => this.logger.log(`⏱ ${label}: ${Date.now() - _t0}ms`);
     const sessionId = dto.sessionId || `platform-${Date.now()}`;
     const messageText = this.extractTextContent(dto.message);
+    streamingCallbacks?.onEvent?.({ type: 'thinking', text: 'Preparing desktop cloud context and tool lanes.' });
     const session = await this.getOrCreatePlatformHostedSession(userId, instance, sessionId);
     _lap('getOrCreateSession');
     if (this.isAssistantCapabilityQuestion(messageText)) {
@@ -2266,7 +2285,36 @@ export class OpenClawProxyService {
     // 'ask' mode always skips tools; 'agent'/'plan' respect the heuristic.
     const needsTools = this.shouldUseTools(dto.mode, messageText);
     const effectiveTools = needsTools ? additionalTools : [];
-    const effectiveOnToolCall = needsTools ? effectiveOnToolCallFn : undefined;
+    let effectiveOnToolCall = needsTools ? effectiveOnToolCallFn : undefined;
+    if (effectiveOnToolCall && streamingCallbacks?.onEvent) {
+      const baseOnToolCall = effectiveOnToolCall;
+      effectiveOnToolCall = async (name: string, args: any) => {
+        const toolCallId = `tool-${name}-${Date.now()}`;
+        const startedAt = Date.now();
+        streamingCallbacks.onEvent?.({ type: 'tool_start', toolCallId, toolName: name, input: args || {} });
+        try {
+          const toolResult = await baseOnToolCall(name, args);
+          streamingCallbacks.onEvent?.({
+            type: 'tool_result',
+            toolCallId,
+            toolName: name,
+            success: true,
+            result: toolResult,
+            durationMs: Date.now() - startedAt,
+          });
+          return toolResult;
+        } catch (err: any) {
+          streamingCallbacks.onEvent?.({
+            type: 'tool_error',
+            toolCallId,
+            toolName: name,
+            error: err?.message || String(err),
+            retriable: false,
+          });
+          throw err;
+        }
+      };
+    }
     if (!needsTools) {
       const reason = dto.mode === 'ask' ? 'ask mode' : 'simple message detected';
       this.logger.log(`⚡ Skipping ${additionalTools.length} tools: ${reason}`);
@@ -2502,6 +2550,14 @@ export class OpenClawProxyService {
     }
 
     const executionBudget = this.resolveToolRoundBudget(dto, messageText, needsTools);
+    streamingCallbacks?.onEvent?.({
+      type: 'turn_info',
+      turnIndex: 0,
+      messageCount: messages.length,
+      contextTokens: this.intelligenceService.estimateMessageTokens(messages as any),
+      budgetRemaining: executionBudget.maxTokens,
+      isCompacted: historyMessages.some((message: any) => String(message.content || '').includes('[Conversation Summary')),
+    });
     const finalRoutingReason = localOnlyFallbackReason
       || (executionBudget.taskTier
         ? `${executionBudget.routingReason ?? 'primary'}|tier=${executionBudget.taskTier}`
@@ -2571,7 +2627,7 @@ export class OpenClawProxyService {
     // with "continue" and append the additional text. Limited to 2 additional
     // rounds so runaway models cannot inflate cost indefinitely.
     let continuationCount = 0;
-    const MAX_CONTINUATIONS = 2;
+    const MAX_CONTINUATIONS = dto.platform === 'desktop' ? 4 : 2;
     while (
       result?.stopReason === 'max_tokens' &&
       continuationCount < MAX_CONTINUATIONS &&
@@ -2583,9 +2639,12 @@ export class OpenClawProxyService {
       try {
         streamingCallbacks?.onEvent?.({
           type: 'turn_info',
-          turn: continuationCount,
-          maxTurns: MAX_CONTINUATIONS,
-        } as any);
+          turnIndex: continuationCount,
+          messageCount: messages.length + (continuationCount * 2),
+          contextTokens: this.intelligenceService.estimateMessageTokens(messages as any),
+          budgetRemaining: executionBudget.maxTokens,
+          isCompacted: false,
+        });
       } catch { /* non-fatal */ }
       const continuationMessages = [
         ...messages,
@@ -2963,7 +3022,12 @@ export class OpenClawProxyService {
       headers: { ...this.buildHeaders(resolvedInstance), Accept: 'text/event-stream' },
       body: JSON.stringify({
         message: dto.message,
+        history: dto.history,
         sessionId: dto.sessionId,
+        context: dto.context,
+        mode: dto.mode,
+        platform: dto.platform,
+        deviceId: dto.deviceId,
         model: dto.model || (resolvedInstance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
       }),
       signal: callbacks.signal || AbortSignal.timeout(180_000),
@@ -3049,8 +3113,12 @@ export class OpenClawProxyService {
         headers: this.buildHeaders(resolvedInstance),
         body: JSON.stringify({
           message: dto.message,
+          history: dto.history,
           sessionId: dto.sessionId,
           context: dto.context,
+          mode: dto.mode,
+          platform: dto.platform,
+          deviceId: dto.deviceId,
           model: dto.model || (resolvedInstance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
         }),
         signal: AbortSignal.timeout(30_000),
@@ -3121,10 +3189,15 @@ export class OpenClawProxyService {
         headers: { ...this.buildHeaders(resolvedInstance), Accept: 'text/event-stream' },
         body: JSON.stringify({
           message: dto.message,
+          history: dto.history,
           sessionId: dto.sessionId,
+          context: dto.context,
+          mode: dto.mode,
+          platform: dto.platform,
+          deviceId: dto.deviceId,
           model: dto.model || (resolvedInstance.capabilities as any)?.activeModel || process.env.DEFAULT_MODEL || 'claude-haiku-4-5',
         }),
-        signal: AbortSignal.timeout(60_000),
+        signal: AbortSignal.timeout(180_000),
       });
 
       if (!upstreamResp.ok || !upstreamResp.body) {

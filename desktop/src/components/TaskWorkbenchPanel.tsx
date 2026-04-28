@@ -95,7 +95,9 @@ export default function TaskWorkbenchPanel({
     const activeEntry = [...timelineEntries].reverse().find((entry) => entry.status === "running" || entry.status === "waiting-approval")
       || timelineEntries[timelineEntries.length - 1]
       || null;
-    const laneCount = new Set(timelineEntries.map((entry) => entry.kind)).size;
+    const kindLaneCount = new Set(timelineEntries.map((entry) => entry.kind)).size;
+    const activeLaneCount = timelineEntries.filter((entry) => entry.status === "running" || entry.status === "waiting-approval").length;
+    const laneCount = Math.max(kindLaneCount, activeLaneCount);
 
     return { counts, activeEntry, laneCount };
   }, [timelineEntries]);
