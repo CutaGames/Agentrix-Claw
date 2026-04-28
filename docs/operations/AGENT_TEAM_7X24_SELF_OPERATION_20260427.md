@@ -107,6 +107,38 @@
 - Blockers:
 ```
 
+## 2026-04-28 自迭代与自运营 Audit
+
+本节记录当前“让 Agentrix 自己做产品开发迭代、自己运营业务”的实际完成度。结论是：读、查、汇总、生成、排队、审批、构建监控已经有基础闭环；真正的自动写文件、自动提交、自动部署、自动对外发布还必须保持在人类审批之后，并补齐 diff、回滚、E2E 与审计面板。
+
+| 能力域 | 已完成 | 当前缺口 |
+|---|---|---|
+| 多端统一后台 | Web、移动、桌面、可穿戴共用 `agentrix.top` / API 后台；新用户云端 OpenClaw 以同一服务器为核心入口 | 端侧离线、服务器断开后的恢复策略还缺正式 runbook 和工具化入口 |
+| 桌面端自迭代工具 | 桌面端具备 workspace 读写、搜索、符号/语义检索、命令执行、git 操作、auto repair、Task Workbench、workspace changes 展示 | 还缺打包态 approval E2E、diff preview、可点击回滚、失败任务 replay |
+| 审批链路 | `desktop-sync` 已有 task、approval、command、state；本轮补强了 approvalId 兼容、顶层 portal 弹窗、提交态保护 | 还需要统一 approval timeline、审批按钮遥测、移动/Web/桌面三端审批一致性测试 |
+| 输出连续性 | 桌面云端流支持 done reason 续写；本轮增加“明显半截输出”自动继续 | 后端仍需保留 provider stopReason、token usage、stream close reason，方便定位半截输出根因 |
+| 移动 public build | release APK arm64 构建、服务器下载、GitHub Release 已跑通；UI test x86_64 与 release artifact 已拆分 | build251 暴露 Maestro driver / 系统进程 crash 误判，本轮已修 workflow 并触发新 build 验证 |
+| 7x24 非开发 agent | ops、growth、hunter 已有 Day 0 产出；media、community、brand、ecosystem、treasury 有低风险任务边界 | 还缺 scheduler、持久化运行记录、日报自动生成、指标快照和预算限制执行器 |
+| Operations control plane | 已有 operations-control-plane、repair/job/tool policy/continuity 聚合基础，`/operations` 可作为只读控制台 | 需要升级为可审批、可取消、可回放、可分配 owner agent 的运维 board |
+
+### 下一步完善计划
+
+| 优先级 | 目标 | 验收标准 |
+|---|---|---|
+| P0 | 桌面端可验证自迭代闭环 | 打包 `.exe` 中触发一个写文件任务，弹出审批，批准后落盘；Task Workbench 显示 changed files；拒绝后不写入 |
+| P0 | 移动 build/release gate 稳定 | public run 中 release APK artifact、UI test APK artifact 分名清晰；手机只下载 arm64 release；Maestro driver 基础设施失败不阻塞 release |
+| P0 | 自动 build 诊断 | ops agent 能读取 public build run、失败 job、失败 step、artifact、服务器 APK header，并生成一段可执行修复建议 |
+| P1 | 高风险工具审批与回滚 | 文件写入、git push、SSH/PM2、部署、DB migration 全部有 risk band、approval record、diff、命令结果和 rollback 材料 |
+| P1 | 本地模式恢复云端能力 | 本地模型可在服务器断开时提出“重连/重启服务/切换云端模型”方案；真正 SSH/PM2 操作进入 L3 人工审批 |
+| P1 | Operations board 写操作 | `/operations` 能审批/拒绝、取消 job、查看 repair patch、重试/回滚，并按 agent owner 过滤 |
+| P2 | 11-agent 调度器 | 每小时/每日/每周任务自动生成 `agent_runs`、`metrics_snapshots`、`approval_queue`、`learning_backlog` |
+| P2 | 自进化沉淀 | 成功任务自动沉淀为 prompt、runbook、skill 草稿；安装或启用 skill 必须经过安全扫描与人工审批 |
+| P3 | 成本与增长闭环 | token/API/服务器成本、APK 下载、用户激活、GitHub/social/community 指标进入同一个日报和月度复盘 |
+
+### 当前状态判断
+
+Agentrix 已经具备“可辅助自迭代”的基础：能理解仓库、改代码、跑验证、生成桌面安装包、同步 public mobile build，并通过审批机制控制风险。但距离“产品开发完全自我迭代”还差三件硬东西：打包态端到端审批测试、每次写入的 diff/rollback 审计、以及 operations board 的可回放任务时间线。7x24 自运营也已经有组织模型和低风险任务清单，下一步要把它从文档清单推进到定时调度、持久化记录和日报自动生成。
+
 ## 验收标准
 
 - 每日有一份经营日报，至少覆盖 build/health、增长、社群、内容、资源、成本和审批队列。
