@@ -9,6 +9,7 @@
  */
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { API_BASE, useAuthStore, type ChatMessage } from "../services/store";
+import { getDesktopRemoteApprovalId, normalizeDesktopRemoteApproval, type DesktopRemoteApprovalLike } from "../services/desktopSync";
 
 // ── Types ──────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ interface DeviceInfo {
   context?: Record<string, unknown>;
 }
 
-interface PendingApproval {
+interface PendingApproval extends DesktopRemoteApprovalLike {
   approvalId: string;
   title: string;
   description: string;
@@ -101,7 +102,7 @@ export default function CrossDevicePanel({ onClose, onResumeSession }: Props) {
       ]);
       setSessions(sessRes?.sessions || []);
       setDevices(devRes?.devices || []);
-      setApprovals(appRes?.approvals || []);
+      setApprovals((appRes?.approvals || []).map(normalizeDesktopRemoteApproval).filter(Boolean));
       setTransfers(mediaRes?.transfers || []);
       setWorkspaces(wsRes?.workspaces || []);
     } catch (err) {
@@ -130,8 +131,14 @@ export default function CrossDevicePanel({ onClose, onResumeSession }: Props) {
 
   const handleApprovalResponse = async (approvalId: string, decision: "approved" | "rejected") => {
     if (!token) return;
+    const safeApprovalId = String(approvalId || "").trim();
+    if (!safeApprovalId) {
+      console.warn("CrossDevicePanel approval missing id");
+      await refresh();
+      return;
+    }
     try {
-      await apiFetch(`${API_BASE}/desktop-sync/approvals/${approvalId}/respond`, token, {
+      await apiFetch(`${API_BASE}/desktop-sync/approvals/${encodeURIComponent(safeApprovalId)}/respond`, token, {
         method: "POST",
         body: JSON.stringify({ decision }),
       });
@@ -267,19 +274,22 @@ function DevicesTab({
       {approvals.length > 0 && (
         <>
           <div style={styles.sectionTitle}>⚠️ Pending Approvals</div>
-          {approvals.map((a) => (
-            <div key={a.approvalId} style={{ ...styles.card, borderLeft: "3px solid #f59e0b" }}>
+          {approvals.map((a, index) => {
+            const approvalId = getDesktopRemoteApprovalId(a);
+            if (!approvalId) return null;
+            return (
+            <div key={approvalId || `${a.taskId || "approval"}-${index}`} style={{ ...styles.card, borderLeft: "3px solid #f59e0b" }}>
               <div style={styles.cardHeader}>
                 <span style={styles.cardTitle}>{a.title}</span>
                 <span style={{ ...styles.badge, background: riskColor(a.riskLevel) }}>{a.riskLevel}</span>
               </div>
               <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 4 }}>{a.description}</div>
               <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-                <button onClick={() => onApproval(a.approvalId, "approved")} style={styles.approveBtn}>✓ Approve</button>
-                <button onClick={() => onApproval(a.approvalId, "rejected")} style={styles.rejectBtn}>✗ Reject</button>
+                <button onClick={() => onApproval(approvalId, "approved")} style={styles.approveBtn}>✓ Approve</button>
+                <button onClick={() => onApproval(approvalId, "rejected")} style={styles.rejectBtn}>✗ Reject</button>
               </div>
             </div>
-          ))}
+          );})}
         </>
       )}
 

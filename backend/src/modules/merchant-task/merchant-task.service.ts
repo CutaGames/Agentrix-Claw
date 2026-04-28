@@ -13,12 +13,18 @@ export interface CreateTaskDto {
   description: string;
   budget: number;
   currency?: string;
+  tags?: string[];
   requirements?: {
     deadline?: Date;
     deliverables?: string[];
     specifications?: Record<string, any>;
   };
   agentId?: string;
+  metadata?: MerchantTask['metadata'] & {
+    source?: string;
+    sourceTaskId?: string;
+    sourceTaskTitle?: string;
+  };
 }
 
 export interface UpdateTaskProgressDto {
@@ -52,8 +58,10 @@ export class MerchantTaskService {
       description: dto.description,
       budget: dto.budget,
       currency: dto.currency || 'CNY',
+      tags: dto.tags,
       requirements: dto.requirements,
       agentId: dto.agentId,
+      metadata: dto.metadata,
       status: TaskStatus.PENDING,
       progress: {
         currentStep: 'pending',

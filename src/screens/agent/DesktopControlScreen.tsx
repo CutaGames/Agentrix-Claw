@@ -15,6 +15,8 @@ import { useI18n } from '../../stores/i18nStore';
 import {
   createRemoteDesktopCommand,
   fetchDesktopState,
+  getMobileDesktopApprovalId,
+  normalizeMobileDesktopApproval,
   respondToDesktopApproval,
   type DesktopCommandKind,
   type MobileDesktopCommand,
@@ -80,7 +82,7 @@ export function DesktopControlScreen() {
 
   const devices = state?.devices || [];
   const commands = state?.commands || [];
-  const approvals = state?.approvals || [];
+  const approvals = (state?.approvals || []).map(normalizeMobileDesktopApproval).filter(Boolean);
   const sessions = state?.sessions || [];
 
   const selectedDevice = useMemo(
@@ -114,8 +116,14 @@ export function DesktopControlScreen() {
   }, [loadState, selectedDevice, t]);
 
   const handleApproval = useCallback(async (approvalId: string, decision: 'approved' | 'rejected') => {
+    const safeApprovalId = String(approvalId || '').trim();
+    if (!safeApprovalId) {
+      Alert.alert(t({ en: 'Approval Failed', zh: '审批失败' }), t({ en: 'Missing approval id. Refresh desktop state and try again.', zh: '缺少审批ID，请刷新桌面状态后重试。' }));
+      await loadState(true);
+      return;
+    }
     try {
-      await respondToDesktopApproval(approvalId, { decision });
+      await respondToDesktopApproval(safeApprovalId, { decision });
       await loadState(true);
     } catch (error: any) {
       Alert.alert(
@@ -321,21 +329,24 @@ export function DesktopControlScreen() {
         {approvals.filter((item) => item.status === 'pending').length === 0 ? (
           <Text style={styles.emptyText}>{t({ en: 'No pending approvals.', zh: '暂无待处理审批。' })}</Text>
         ) : (
-          approvals.filter((item) => item.status === 'pending').map((approval) => (
-            <View key={approval.approvalId} style={styles.card}>
+          approvals.filter((item) => item.status === 'pending').map((approval, index) => {
+            const approvalId = getMobileDesktopApprovalId(approval);
+            if (!approvalId) return null;
+            return (
+            <View key={approvalId || `${approval.taskId}-${index}`} style={styles.card}>
               <Text style={styles.cardTitle}>{approval.title}</Text>
               <Text style={styles.cardBody}>{approval.description}</Text>
               <Text style={styles.cardMeta}>Risk {approval.riskLevel}</Text>
               <View style={styles.rowWrap}>
-                <TouchableOpacity style={styles.secondaryButton} onPress={() => void handleApproval(approval.approvalId, 'rejected')}>
+                <TouchableOpacity style={styles.secondaryButton} onPress={() => void handleApproval(approvalId, 'rejected')}>
                   <Text style={styles.secondaryButtonText}>{t({ en: 'Reject', zh: '拒绝' })}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.primaryButtonSmall} onPress={() => void handleApproval(approval.approvalId, 'approved')}>
+                <TouchableOpacity style={styles.primaryButtonSmall} onPress={() => void handleApproval(approvalId, 'approved')}>
                   <Text style={styles.primaryButtonText}>{t({ en: 'Approve', zh: '批准' })}</Text>
                 </TouchableOpacity>
               </View>
             </View>
-          ))
+          );})
         )}
       </View>
 

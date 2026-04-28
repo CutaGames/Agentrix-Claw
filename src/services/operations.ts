@@ -23,8 +23,40 @@ export interface OperationsContinuityState {
   };
 }
 
+export interface OperationsOverviewState {
+  generatedAt: string;
+  status: 'pass' | 'active' | 'warn' | string;
+  counts: {
+    onlineDevices: number;
+    pendingApprovals: number;
+    runningLaneJobs: number;
+    runningTasks: number;
+    failedSignals: number;
+    [key: string]: number;
+  };
+}
+
+export interface OperationsTimelineItem {
+  id: string;
+  source: 'parallel-lane' | 'auto-repair' | 'desktop-task' | 'approval' | 'desktop-command' | string;
+  title: string;
+  detail?: string;
+  status?: string;
+  tone: 'info' | 'success' | 'warning' | 'error' | string;
+  createdAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export async function fetchOperationsOverview(): Promise<OperationsOverviewState> {
+  return apiFetch('/operations/overview');
+}
+
 export async function fetchOperationsContinuity(): Promise<OperationsContinuityState> {
   return apiFetch('/operations/continuity');
+}
+
+export async function fetchOperationsTimeline(limit = 30): Promise<{ generatedAt: string; items: OperationsTimelineItem[] }> {
+  return apiFetch(`/operations/timeline?limit=${encodeURIComponent(String(limit))}`);
 }
 
 export async function requestOperationsFollowUp(payload: {

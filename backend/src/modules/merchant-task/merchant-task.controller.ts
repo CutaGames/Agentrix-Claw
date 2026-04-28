@@ -85,8 +85,8 @@ export class MerchantTaskController {
   @ApiResponse({ status: 200, description: '返回任务列表' })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  async getMyTasks(@Request() req: any) {
-    return this.taskService.getUserTasks(req.user?.id);
+  async getMyTasks(@Request() req: any, @Query('status') status?: any) {
+    return this.taskService.getUserTasks(req.user?.id, status);
   }
 
   @Put(':taskId/cancel')

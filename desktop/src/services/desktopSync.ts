@@ -40,6 +40,27 @@ export interface DesktopRemoteApproval {
   rememberForSession: boolean;
 }
 
+export type DesktopRemoteApprovalLike = Partial<Omit<DesktopRemoteApproval, "riskLevel" | "status">> & {
+  id?: string;
+  approval_id?: string;
+  riskLevel?: ApprovalRiskLevel | string;
+  status?: DesktopRemoteApproval["status"] | string;
+};
+
+export function getDesktopRemoteApprovalId(approval: DesktopRemoteApprovalLike | null | undefined): string {
+  return String(approval?.approvalId || approval?.approval_id || approval?.id || "").trim();
+}
+
+export function normalizeDesktopRemoteApproval(
+  approval: DesktopRemoteApproval | DesktopRemoteApprovalLike | null | undefined,
+): DesktopRemoteApproval | null {
+  const approvalId = getDesktopRemoteApprovalId(approval);
+  if (!approvalId || !approval) {
+    return null;
+  }
+  return { ...(approval as DesktopRemoteApproval), approvalId };
+}
+
 export type DesktopCommandKind =
   | "context"
   | "active-window"

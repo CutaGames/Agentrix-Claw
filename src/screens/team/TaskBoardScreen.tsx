@@ -11,6 +11,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
+import { taskMarketplaceApi, type TaskItem } from '../../services/taskMarketplace.api';
 
 // ──────────────────────────────────────────────
 // Types
@@ -29,6 +30,11 @@ interface MerchantTask {
   requirements?: {
     deadline?: string;
     deliverables?: string[];
+  };
+  metadata?: {
+    source?: string;
+    sourceTaskId?: string;
+    sourceTaskTitle?: string;
   };
   createdAt: string;
   updatedAt: string;
@@ -78,6 +84,9 @@ async function createTask(dto: {
   type: string;
   budget: number;
   agentId?: string;
+  tags?: string[];
+  requirements?: MerchantTask['requirements'];
+  metadata?: MerchantTask['metadata'];
 }): Promise<MerchantTask> {
   const res = await apiFetch<MerchantTask | { data: MerchantTask }>('/merchant-tasks', {
     method: 'POST',
@@ -88,6 +97,11 @@ async function createTask(dto: {
 
 async function completeTask(taskId: string): Promise<void> {
   await apiFetch(`/merchant-tasks/${taskId}/complete`, { method: 'PUT' });
+}
+
+async function fetchMarketplaceTasks(): Promise<TaskItem[]> {
+  const res = await taskMarketplaceApi.searchTasks({ status: 'pending', page: 1, limit: 12, sortBy: 'createdAt', sortOrder: 'DESC' });
+  return res.items || [];
 }
 
 // ──────────────────────────────────────────────
@@ -235,7 +249,7 @@ function AssignTaskModal({
 // ──────────────────────────────────────────────
 // View tabs
 // ──────────────────────────────────────────────
-type BoardTab = 'by-agent' | 'all';
+type BoardTab = 'by-agent' | 'all' | 'market';
 
 export function TaskBoardScreen() {
   const { t } = useI18n();
@@ -254,6 +268,13 @@ export function TaskBoardScreen() {
     queryKey: ['my-teams'],
     queryFn: fetchMyTeams,
     retry: false,
+  });
+
+  const { data: marketplaceTasks = [], isLoading: marketplaceLoading, refetch: refetchMarketplaceTasks } = useQuery({
+    queryKey: ['team-marketplace-tasks'],
+    queryFn: fetchMarketplaceTasks,
+    retry: false,
+    staleTime: 60_000,
   });
 
   const allAgents = useMemo(() => myTeams.flatMap(t => t.agents), [myTeams]);
@@ -284,7 +305,33 @@ export function TaskBoardScreen() {
   const totalOpen = myTasks.filter(t => t.status === 'open' || t.status === 'pending').length;
   const totalDone = myTasks.filter(t => t.status === 'completed' || t.status === 'delivered').length;
 
-  const loading = tasksLoading || teamsLoading;
+  const loading = tasksLoading || teamsLoading || (tab === 'market' && marketplaceLoading);
+
+  const handleImportMarketTask = async (task: TaskItem) => {
+    try {
+      await createTask({
+        title: task.title,
+        description: `${task.description}\n\nSource: Task Marketplace (${task.id})`,
+        type: task.type,
+        budget: Number(task.budget || 0),
+        tags: task.tags,
+        requirements: task.requirements,
+        metadata: {
+          source: 'marketplace',
+          sourceTaskId: task.id,
+          sourceTaskTitle: task.title,
+        },
+      });
+      queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
+      setTab('all');
+      Alert.alert(
+        '✅',
+        t({ en: 'Marketplace task imported into the team queue.', zh: '任务市场任务已导入团队队列。' }),
+      );
+    } catch (e: any) {
+      Alert.alert(t({ en: 'Import Failed', zh: '导入失败' }), e?.message ?? 'Failed');
+    }
+  };
 
   const handleComplete = (task: MerchantTask) => {
     Alert.alert(
@@ -309,6 +356,9 @@ export function TaskBoardScreen() {
 
   const renderTaskCard = (task: MerchantTask) => {
     const meta = STATUS_META[task.status] ?? STATUS_META.open;
+    const sourceLabel = task.metadata?.source === 'marketplace'
+      ? t({ en: 'Marketplace', zh: '任务市场' })
+      : t({ en: 'Internal', zh: '内部任务' });
     return (
       <TouchableOpacity
         key={task.id}
@@ -321,6 +371,7 @@ export function TaskBoardScreen() {
           <View style={{ flex: 1 }}>
             <Text style={s.taskTitle} numberOfLines={1}>{task.title}</Text>
             {task.description ? <Text style={s.taskDesc} numberOfLines={1}>{task.description}</Text> : null}
+            <Text style={s.taskSource}>{sourceLabel}</Text>
           </View>
           <View style={[s.taskBadge, { backgroundColor: meta.color + '18' }]}>
             <Text style={[s.taskBadgeText, { color: meta.color }]}>{t(meta.label)}</Text>
@@ -339,6 +390,30 @@ export function TaskBoardScreen() {
       </TouchableOpacity>
     );
   };
+
+  const renderMarketTaskCard = (task: TaskItem) => (
+    <View key={task.id} style={s.marketCard}>
+      <View style={s.taskRow}>
+        <Text style={s.taskIcon}>🏪</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={s.taskTitle} numberOfLines={2}>{task.title}</Text>
+          <Text style={s.taskDesc} numberOfLines={2}>{task.description}</Text>
+          <Text style={s.taskSource}>{t({ en: 'External opportunity · import before agents execute it', zh: '外部机会 · 先导入团队队列再执行' })}</Text>
+        </View>
+        <View style={[s.taskBadge, { backgroundColor: '#3b82f618' }]}>
+          <Text style={[s.taskBadgeText, { color: '#3b82f6' }]}>${task.budget}</Text>
+        </View>
+      </View>
+      {!!task.requirements?.deliverables?.length && (
+        <Text style={s.marketDeliverables} numberOfLines={2}>
+          {t({ en: 'Deliverables', zh: '交付物' })}: {task.requirements.deliverables.join(' · ')}
+        </Text>
+      )}
+      <TouchableOpacity style={s.importBtn} onPress={() => handleImportMarketTask(task)}>
+        <Text style={s.importBtnText}>＋ {t({ en: 'Import To Team Queue', zh: '导入团队队列' })}</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   const renderAgentSection = (item: { agent: TeamAgent; tasks: MerchantTask[] }) => {
     const { agent, tasks } = item;
@@ -423,6 +498,14 @@ export function TaskBoardScreen() {
             📋 {t({ en: 'All Tasks', zh: '全部任务' })}
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.tabBtn, tab === 'market' && s.tabActive]}
+          onPress={() => setTab('market')}
+        >
+          <Text style={[s.tabText, tab === 'market' && s.tabTextActive]}>
+            🏪 {t({ en: 'Market', zh: '市场' })}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -434,7 +517,7 @@ export function TaskBoardScreen() {
           refreshControl={
             <RefreshControl
               refreshing={loading}
-              onRefresh={refetchTasks}
+              onRefresh={() => { refetchTasks(); refetchMarketplaceTasks(); }}
               tintColor={colors.accent}
             />
           }
@@ -465,6 +548,27 @@ export function TaskBoardScreen() {
                     </View>
                   )}
                 </>
+              )}
+            </>
+          ) : tab === 'market' ? (
+            <>
+              <View style={s.marketHint}>
+                <Text style={s.marketHintTitle}>{t({ en: 'Task Market → Team Queue', zh: '任务市场 → 团队队列' })}</Text>
+                <Text style={s.marketHintText}>
+                  {t({
+                    en: 'Marketplace tasks are public/external opportunities. Import one to turn it into an internal team task that agents can execute and you can approve.',
+                    zh: '任务市场是公开/外部机会。导入后才会成为团队内部任务，Agent 可执行，人类可审批和验收。',
+                  })}
+                </Text>
+              </View>
+              {marketplaceTasks.length === 0 ? (
+                <View style={s.empty}>
+                  <Text style={{ fontSize: 40 }}>🏪</Text>
+                  <Text style={s.emptyTitle}>{t({ en: 'No market tasks', zh: '暂无市场任务' })}</Text>
+                  <Text style={s.emptySub}>{t({ en: 'Pull to refresh the task marketplace.', zh: '下拉刷新任务市场。' })}</Text>
+                </View>
+              ) : (
+                marketplaceTasks.map(renderMarketTaskCard)
               )}
             </>
           ) : (
@@ -559,8 +663,28 @@ const s = StyleSheet.create({
   taskIcon: { fontSize: 14 },
   taskTitle: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
   taskDesc: { fontSize: 11, color: colors.textMuted, marginTop: 1 },
+  taskSource: { fontSize: 10, color: colors.accent, fontWeight: '600', marginTop: 2 },
   taskBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
   taskBadgeText: { fontSize: 10, fontWeight: '700' },
+  marketHint: {
+    marginHorizontal: 16, marginBottom: 12,
+    backgroundColor: colors.bgCard, borderRadius: 14,
+    padding: 12, borderWidth: 1, borderColor: colors.accent + '44',
+  },
+  marketHintTitle: { fontSize: 14, fontWeight: '800', color: colors.textPrimary, marginBottom: 4 },
+  marketHintText: { fontSize: 12, color: colors.textSecondary, lineHeight: 18 },
+  marketCard: {
+    marginHorizontal: 16, marginBottom: 10,
+    backgroundColor: colors.bgCard, borderRadius: 14,
+    padding: 12, borderWidth: 1, borderColor: colors.border,
+    gap: 8,
+  },
+  marketDeliverables: { fontSize: 11, color: colors.textSecondary, lineHeight: 16 },
+  importBtn: {
+    alignItems: 'center', paddingVertical: 9, borderRadius: 10,
+    backgroundColor: colors.accent + '18', borderWidth: 1, borderColor: colors.accent + '55',
+  },
+  importBtnText: { fontSize: 12, fontWeight: '700', color: colors.accent },
   progressBar: { height: 3, backgroundColor: colors.bgPrimary, borderRadius: 2, overflow: 'hidden' },
   progressFill: { height: 3, backgroundColor: '#f59e0b', borderRadius: 2 },
   completeBtn: {

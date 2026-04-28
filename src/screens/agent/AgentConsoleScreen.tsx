@@ -17,6 +17,8 @@ import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
 import { SelectEngineModal } from '../../components/SelectEngineModal';
 import { switchInstanceModel } from '../../services/openclaw.service';
 import { useI18n } from '../../stores/i18nStore';
+import { fetchOperationsContinuity } from '../../services/operations';
+import { taskMarketplaceApi } from '../../services/taskMarketplace.api';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentConsole'>;
 
@@ -117,6 +119,22 @@ export function AgentConsoleScreen() {
     enabled: !!activeInstance,
     retry: 1,
     staleTime: 60_000,
+  });
+
+  const { data: continuity } = useQuery({
+    queryKey: ['agent-console-continuity'],
+    queryFn: fetchOperationsContinuity,
+    enabled: !!activeInstance,
+    retry: 1,
+    refetchInterval: 15000,
+  });
+
+  const { data: myTasks = [] } = useQuery({
+    queryKey: ['agent-console-my-tasks'],
+    queryFn: () => taskMarketplaceApi.getMyTasks(),
+    enabled: !!activeInstance,
+    retry: 1,
+    staleTime: 30_000,
   });
 
   const handleRestart = async () => {
@@ -451,9 +469,53 @@ export function AgentConsoleScreen() {
       )}
 
       {tab === 'tasks' && (
-        <View style={styles.emptySection}>
-          <Text style={styles.emptySectionText}>{t({ en: 'No recent tasks.', zh: '暂无最近任务。' })}</Text>
-          <Text style={styles.emptySectionSub}>{t({ en: 'Tasks triggered by your agent will appear here.', zh: '由你的智能体触发的任务会显示在这里。' })}</Text>
+        <View style={styles.tasksSection}>
+          <View style={styles.opsMiniCard}>
+            <Text style={styles.opsMiniTitle}>{t({ en: 'Self-Operation Snapshot', zh: '自运营快照' })}</Text>
+            <View style={styles.opsMiniStats}>
+              <View style={styles.opsMiniStat}>
+                <Text style={styles.opsMiniValue}>{continuity?.wearableSummary.runningTaskCount ?? 0}</Text>
+                <Text style={styles.opsMiniLabel}>{t({ en: 'Running', zh: '运行中' })}</Text>
+              </View>
+              <View style={styles.opsMiniStat}>
+                <Text style={[styles.opsMiniValue, { color: '#f59e0b' }]}>{continuity?.wearableSummary.pendingApprovalCount ?? 0}</Text>
+                <Text style={styles.opsMiniLabel}>{t({ en: 'Approvals', zh: '待审批' })}</Text>
+              </View>
+              <View style={styles.opsMiniStat}>
+                <Text style={[styles.opsMiniValue, { color: '#22c55e' }]}>{continuity?.wearableSummary.onlineDeviceCount ?? 0}</Text>
+                <Text style={styles.opsMiniLabel}>{t({ en: 'Devices', zh: '设备' })}</Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('DesktopControl')}>
+                <Text style={styles.secondaryBtnText}>{t({ en: 'Open Approvals', zh: '打开审批' })}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={() => (navigation as any).getParent?.()?.navigate('Team', { screen: 'TaskBoard' })}>
+                <Text style={styles.secondaryBtnText}>{t({ en: 'Team Board', zh: '团队看板' })}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {(continuity?.activeTasks || []).slice(0, 3).map((task) => (
+            <View key={task.taskId} style={styles.taskRowCard}>
+              <Text style={styles.taskRowTitle}>{task.title}</Text>
+              <Text style={styles.taskRowMeta}>{task.status} · {task.deviceId}</Text>
+            </View>
+          ))}
+
+          {myTasks.length === 0 ? (
+            <View style={styles.emptySection}>
+              <Text style={styles.emptySectionText}>{t({ en: 'No internal team tasks yet.', zh: '暂无团队内部任务。' })}</Text>
+              <Text style={styles.emptySectionSub}>{t({ en: 'Import from Task Market or assign tasks in the Team Board.', zh: '可从任务市场导入，或在团队看板中分配任务。' })}</Text>
+            </View>
+          ) : (
+            myTasks.slice(0, 5).map((task: any) => (
+              <View key={task.id} style={styles.taskRowCard}>
+                <Text style={styles.taskRowTitle} numberOfLines={1}>{task.title}</Text>
+                <Text style={styles.taskRowMeta}>{task.metadata?.source === 'marketplace' ? t({ en: 'Marketplace', zh: '任务市场' }) : t({ en: 'Internal', zh: '内部' })} · {task.status}</Text>
+              </View>
+            ))
+          )}
         </View>
       )}
 
@@ -594,6 +656,38 @@ const styles = StyleSheet.create({
   },
   giftBadgeText: { fontSize: 11, fontWeight: '700', color: '#22c55e' },
   skillsSection: { gap: 10 },
+  tasksSection: { gap: 10 },
+  opsMiniCard: {
+    backgroundColor: colors.bgCard,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.accent + '44',
+    gap: 10,
+  },
+  opsMiniTitle: { fontSize: 15, fontWeight: '800', color: colors.textPrimary },
+  opsMiniStats: { flexDirection: 'row', gap: 8 },
+  opsMiniStat: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: colors.bgSecondary,
+    borderRadius: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  opsMiniValue: { fontSize: 18, fontWeight: '800', color: colors.accent },
+  opsMiniLabel: { fontSize: 10, color: colors.textMuted, fontWeight: '700', marginTop: 2 },
+  taskRowCard: {
+    backgroundColor: colors.bgCard,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 3,
+  },
+  taskRowTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+  taskRowMeta: { fontSize: 11, color: colors.textMuted },
   emptySection: { alignItems: 'center', padding: 32, gap: 12 },
   emptySectionText: { fontSize: 15, color: colors.textSecondary },
   emptySectionSub: { fontSize: 13, color: colors.textMuted },

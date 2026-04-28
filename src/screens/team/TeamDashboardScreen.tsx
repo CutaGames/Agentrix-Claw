@@ -12,6 +12,7 @@ import { useI18n } from '../../stores/i18nStore';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { apiFetch } from '../../services/api';
 import { fetchUnifiedAgents, type UnifiedAgent } from '../../services/unifiedAgent';
+import { fetchOperationsContinuity, fetchOperationsTimeline, requestOperationsFollowUp } from '../../services/operations';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ──────────────────────────────────────────────
@@ -517,6 +518,7 @@ export function TeamDashboardScreen({ navigation }: Props) {
   const queryClient = useQueryClient();
   const setApprovalCount = useNotificationStore((s) => s.setApprovalCount);
   const [actionLoading, setActionLoading] = React.useState<{ id: string; action: 'approve' | 'reject' } | null>(null);
+  const [followUpLoading, setFollowUpLoading] = React.useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [provisioning, setProvisioning] = useState(false);
 
@@ -568,6 +570,26 @@ export function TeamDashboardScreen({ navigation }: Props) {
     queryKey: ['team-templates'],
     queryFn: fetchTeamTemplates,
     retry: false,
+  });
+
+  const {
+    data: operationsContinuity,
+    refetch: refetchOperationsContinuity,
+  } = useQuery({
+    queryKey: ['team-operations-continuity'],
+    queryFn: fetchOperationsContinuity,
+    retry: false,
+    refetchInterval: 15000,
+  });
+
+  const {
+    data: operationsTimeline,
+    refetch: refetchOperationsTimeline,
+  } = useQuery({
+    queryKey: ['team-operations-timeline'],
+    queryFn: () => fetchOperationsTimeline(12),
+    retry: false,
+    refetchInterval: 15000,
   });
 
   // Sync approval count badge
@@ -676,6 +698,27 @@ export function TeamDashboardScreen({ navigation }: Props) {
     );
   }, [queryClient, t]);
 
+  const openDesktopControl = useCallback(() => {
+    (navigation as any).getParent?.()?.navigate('Agent', { screen: 'DesktopControl' });
+  }, [navigation]);
+
+  const requestOpsFollowUp = useCallback(async (sessionId?: string, title?: string) => {
+    if (!sessionId) {
+      Alert.alert(t({ en: 'No Session', zh: '没有会话' }), t({ en: 'This item has no session to resume.', zh: '这个任务没有可继续的会话。' }));
+      return;
+    }
+    setFollowUpLoading(sessionId);
+    try {
+      await requestOperationsFollowUp({ sessionId, title: title || 'Follow up team task', requesterDeviceId: 'mobile-team-dashboard' });
+      await Promise.all([refetchOperationsContinuity(), refetchOperationsTimeline()]);
+      Alert.alert(t({ en: 'Queued', zh: '已下发' }), t({ en: 'Follow-up was queued for the desktop agent.', zh: '已向桌面 Agent 下发跟进任务。' }));
+    } catch (e: any) {
+      Alert.alert(t({ en: 'Follow-up Failed', zh: '跟进失败' }), e?.message || t({ en: 'Could not queue follow-up.', zh: '无法下发跟进任务。' }));
+    } finally {
+      setFollowUpLoading(null);
+    }
+  }, [refetchOperationsContinuity, refetchOperationsTimeline, t]);
+
   const isRefreshing = loadingApprovals || loadingAgents || loadingTeams;
   const hasTeams = myTeams.length > 0;
   const totalTeamAgents = myTeams.reduce((sum, team) => sum + team.agents.length, 0);
@@ -718,7 +761,7 @@ export function TeamDashboardScreen({ navigation }: Props) {
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
-            onRefresh={() => { refetchApprovals(); refetchAgents(); refetchTeams(); }}
+            onRefresh={() => { refetchApprovals(); refetchAgents(); refetchTeams(); refetchOperationsContinuity(); refetchOperationsTimeline(); }}
             tintColor={colors.accent}
           />
         }
@@ -744,6 +787,63 @@ export function TeamDashboardScreen({ navigation }: Props) {
               <Text style={styles.summaryLabel}>{t({ en: 'Pending', zh: '待审批' })}</Text>
             </View>
           </View>
+        </View>
+
+        <View style={styles.opsPanel} testID="mobile-agent-ops-control">
+          <View style={styles.opsHeader}>
+            <View>
+              <Text style={styles.opsTitle}>{t({ en: 'Self-Operation Control', zh: '自运营控制台' })}</Text>
+              <Text style={styles.opsSub}>{t({ en: 'Live tasks, approvals, outputs, and human intervention', zh: '运行任务、审批、输出物与人工干预入口' })}</Text>
+            </View>
+            <TouchableOpacity style={styles.opsLinkBtn} onPress={openDesktopControl}>
+              <Text style={styles.opsLinkText}>{t({ en: 'Approve', zh: '审批' })}</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.opsStatsRow}>
+            <View style={styles.opsStatPill}>
+              <Text style={styles.opsStatValue}>{operationsContinuity?.wearableSummary.runningTaskCount ?? 0}</Text>
+              <Text style={styles.opsStatLabel}>{t({ en: 'Running', zh: '运行中' })}</Text>
+            </View>
+            <View style={styles.opsStatPill}>
+              <Text style={[styles.opsStatValue, { color: '#f59e0b' }]}>{operationsContinuity?.wearableSummary.pendingApprovalCount ?? approvals.length}</Text>
+              <Text style={styles.opsStatLabel}>{t({ en: 'Approvals', zh: '待审批' })}</Text>
+            </View>
+            <View style={styles.opsStatPill}>
+              <Text style={[styles.opsStatValue, { color: '#22c55e' }]}>{operationsContinuity?.wearableSummary.onlineDeviceCount ?? 0}</Text>
+              <Text style={styles.opsStatLabel}>{t({ en: 'Devices', zh: '在线设备' })}</Text>
+            </View>
+          </View>
+          {(operationsContinuity?.activeTasks || []).slice(0, 3).map((task) => (
+            <View key={task.taskId} style={styles.opsItem}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.opsItemTitle} numberOfLines={1}>{task.title}</Text>
+                <Text style={styles.opsItemMeta}>{task.status} · {task.deviceId}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.opsSmallBtn}
+                onPress={() => void requestOpsFollowUp(task.sessionId, task.title)}
+                disabled={followUpLoading === task.sessionId}
+              >
+                <Text style={styles.opsSmallBtnText}>{followUpLoading === task.sessionId ? '…' : t({ en: 'Intervene', zh: '干预' })}</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+          {(operationsContinuity?.pendingApprovals || []).slice(0, 2).map((approval) => (
+            <TouchableOpacity key={approval.approvalId} style={styles.opsItem} onPress={openDesktopControl} activeOpacity={0.75}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.opsItemTitle} numberOfLines={1}>{approval.title}</Text>
+                <Text style={styles.opsItemMeta}>{approval.riskLevel} · {approval.deviceId}</Text>
+              </View>
+              <Text style={styles.opsWarning}>{t({ en: 'Review', zh: '处理' })}</Text>
+            </TouchableOpacity>
+          ))}
+          {(operationsTimeline?.items || []).slice(0, 3).map((item) => (
+            <View key={item.id} style={styles.opsOutputItem}>
+              <Text style={styles.opsOutputSource}>{item.source} · {item.status || item.tone}</Text>
+              <Text style={styles.opsOutputTitle} numberOfLines={1}>{item.title}</Text>
+              {!!item.detail && <Text style={styles.opsOutputDetail} numberOfLines={2}>{item.detail}</Text>}
+            </View>
+          ))}
         </View>
 
         {/* ═══ CEO Directive — give a command to CEO ═══ */}
@@ -1049,6 +1149,54 @@ const styles = StyleSheet.create({
   summaryCount: { fontSize: 24, fontWeight: '800', color: colors.accent },
   summaryLabel: { fontSize: 11, color: colors.textMuted, fontWeight: '600', textAlign: 'center' },
   summaryDivider: { width: 1, height: 36, backgroundColor: colors.border },
+  opsPanel: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: colors.bgCard,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.accent + '44',
+    gap: 10,
+  },
+  opsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  opsTitle: { fontSize: 15, fontWeight: '800', color: colors.textPrimary },
+  opsSub: { fontSize: 11, color: colors.textMuted, marginTop: 2, lineHeight: 16 },
+  opsLinkBtn: {
+    backgroundColor: colors.accent + '18', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderWidth: 1, borderColor: colors.accent + '55',
+  },
+  opsLinkText: { fontSize: 12, fontWeight: '700', color: colors.accent },
+  opsStatsRow: { flexDirection: 'row', gap: 8 },
+  opsStatPill: {
+    flex: 1, alignItems: 'center', paddingVertical: 8,
+    backgroundColor: colors.bgSecondary, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  opsStatValue: { fontSize: 18, fontWeight: '800', color: colors.accent },
+  opsStatLabel: { fontSize: 10, color: colors.textMuted, fontWeight: '600', marginTop: 2 },
+  opsItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.bgSecondary, borderRadius: 10,
+    padding: 10, borderWidth: 1, borderColor: colors.border,
+  },
+  opsItemTitle: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+  opsItemMeta: { fontSize: 10, color: colors.textMuted, marginTop: 2 },
+  opsSmallBtn: {
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    backgroundColor: '#f59e0b18', borderWidth: 1, borderColor: '#f59e0b44',
+  },
+  opsSmallBtnText: { fontSize: 11, fontWeight: '700', color: '#f59e0b' },
+  opsWarning: { fontSize: 11, color: '#f59e0b', fontWeight: '700' },
+  opsOutputItem: {
+    backgroundColor: colors.bgSecondary, borderRadius: 10,
+    padding: 10, borderWidth: 1, borderColor: colors.border,
+    gap: 3,
+  },
+  opsOutputSource: { fontSize: 10, color: colors.accent, fontWeight: '700' },
+  opsOutputTitle: { fontSize: 12, color: colors.textPrimary, fontWeight: '700' },
+  opsOutputDetail: { fontSize: 11, color: colors.textMuted, lineHeight: 16 },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',

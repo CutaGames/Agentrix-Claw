@@ -4,6 +4,8 @@ import {
   createDesktopApproval,
   fetchDesktopSyncState,
   fetchPendingDesktopCommands,
+  getDesktopRemoteApprovalId,
+  normalizeDesktopRemoteApproval,
   syncDesktopHeartbeat,
   syncDesktopTask,
   type DesktopRemoteApproval,
@@ -98,7 +100,12 @@ function describeApproval(command: DesktopRemoteCommand) {
   return command.title;
 }
 
-function settleApprovalRecord(approval: DesktopRemoteApproval) {
+function settleApprovalRecord(rawApproval: DesktopRemoteApproval | undefined | null) {
+  const approval = normalizeDesktopRemoteApproval(rawApproval);
+  if (!approval) {
+    return;
+  }
+
   if (approval.status === "approved" && approval.rememberForSession && approval.sessionKey) {
     rememberedApprovalSessionKeys.add(approval.sessionKey);
   }
@@ -107,13 +114,14 @@ function settleApprovalRecord(approval: DesktopRemoteApproval) {
     return;
   }
 
-  const waiter = approvalWaiters.get(approval.approvalId);
+  const approvalId = getDesktopRemoteApprovalId(approval);
+  const waiter = approvalWaiters.get(approvalId);
   if (!waiter) {
     return;
   }
 
   clearTimeout(waiter.timeoutId);
-  approvalWaiters.delete(approval.approvalId);
+  approvalWaiters.delete(approvalId);
 
   if (approval.status === "approved") {
     waiter.resolve(approval);
@@ -123,18 +131,23 @@ function settleApprovalRecord(approval: DesktopRemoteApproval) {
   waiter.reject(new ApprovalRejectedError("Command was rejected by the user"));
 }
 
-function settleApprovalRecords(approvals: DesktopRemoteApproval[]) {
+function settleApprovalRecords(approvals: Array<DesktopRemoteApproval | undefined | null>) {
   approvals.forEach(settleApprovalRecord);
 }
 
 function waitForApproval(approvalId: string) {
+  const safeApprovalId = String(approvalId || "").trim();
+  if (!safeApprovalId) {
+    return Promise.reject(new Error("Approval response is missing approvalId"));
+  }
+
   return new Promise<DesktopRemoteApproval>((resolve, reject) => {
     const timeoutId = setTimeout(() => {
-      approvalWaiters.delete(approvalId);
+      approvalWaiters.delete(safeApprovalId);
       reject(new ApprovalTimedOutError("Approval timed out"));
     }, APPROVAL_WAIT_MS);
 
-    approvalWaiters.set(approvalId, { resolve, reject, timeoutId });
+    approvalWaiters.set(safeApprovalId, { resolve, reject, timeoutId });
   });
 }
 
@@ -172,7 +185,7 @@ async function requireApprovalIfNeeded(
     timeline: [{ ...timelineBase, status: "waiting-approval", startedAt }],
   });
 
-  const { approval } = await createDesktopApproval(activeToken, {
+  const { approval: rawApproval } = await createDesktopApproval(activeToken, {
     taskId: command.commandId,
     timelineEntryId: command.commandId,
     title: command.title,
@@ -180,6 +193,11 @@ async function requireApprovalIfNeeded(
     riskLevel,
     sessionKey,
   });
+
+  const approval = normalizeDesktopRemoteApproval(rawApproval);
+  if (!approval) {
+    throw new Error("Approval request was created without a usable approvalId");
+  }
 
   const approvalPromise = waitForApproval(approval.approvalId);
 
