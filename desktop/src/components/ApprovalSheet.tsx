@@ -1,4 +1,5 @@
 import { type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import type { ApprovalRiskLevel } from "../services/desktop";
 
 export interface PendingApprovalRequest {
@@ -26,10 +27,24 @@ export default function ApprovalSheet({
   submitting = false,
 }: Props) {
   if (!request) return null;
+  if (typeof document === "undefined") return null;
 
-  return (
-    <div style={overlay}>
-      <div style={panel}>
+  return createPortal(
+    <div
+      style={overlay}
+      onPointerDown={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div
+        style={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Approval Required"
+        onPointerDown={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
         <div style={{ fontSize: 11, color: "#fbbf24", textTransform: "uppercase", letterSpacing: 0.6 }}>
           Approval Required
         </div>
@@ -52,13 +67,14 @@ export default function ApprovalSheet({
         )}
 
         <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-          <button onClick={onReject} disabled={submitting} style={{ ...secondaryBtn, opacity: submitting ? 0.6 : 1 }}>Reject</button>
-          <button onClick={onApprove} disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.7 : 1 }}>
+          <button type="button" onClick={onReject} disabled={submitting} style={{ ...secondaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? "wait" : "pointer" }}>Reject</button>
+          <button type="button" onClick={onApprove} disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.7 : 1, cursor: submitting ? "wait" : "pointer" }}>
             {submitting ? "Submitting..." : "Approve"}
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -69,8 +85,9 @@ const overlay: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  zIndex: 120,
+  zIndex: 2147483647,
   padding: 16,
+  pointerEvents: "auto",
 };
 
 const panel: CSSProperties = {
@@ -81,6 +98,7 @@ const panel: CSSProperties = {
   borderRadius: 16,
   boxShadow: "var(--shadow)",
   padding: 20,
+  pointerEvents: "auto",
 };
 
 const riskPill: CSSProperties = {

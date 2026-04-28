@@ -333,6 +333,8 @@ jobs:
             1. Download **ClawLink-build-${{ github.run_number }}.apk** below
             2. On your Android device: **Settings → Security → Install unknown apps** → enable for your browser
             3. Open the APK and tap Install
+
+            Do not install the `ui-test` APK artifact from Actions; it is x86_64-only for the emulator.
           files: artifacts/ClawLink-build-${{ github.run_number }}.apk
           fail_on_unmatched_files: false
           draft: false
@@ -395,7 +397,7 @@ jobs:
           cp "$APK" artifacts/ClawLink-ui-test-${{ github.run_number }}.apk
           du -h artifacts/ClawLink-ui-test-${{ github.run_number }}.apk
 
-      # ── Artifact upload (optional — only for UI test job) ────────
+      # ── Artifact upload (optional — release download + UI test job) ────────
       # Storage quota may be exceeded; this step must not block deploy/release.
       # GitHub recalculates quota every 6-12h, so aggressive cleanup is needed.
       - name: Delete old artifacts (free quota)
@@ -432,12 +434,21 @@ jobs:
               }
             }
 
-      - name: Upload APKs
-        id: upload-apks
+      - name: Upload public release APK artifact
+        id: upload-release-apk
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: apks-build-${{ github.run_number }}
+          name: public-release-apk-build-${{ github.run_number }}
+          path: artifacts/ClawLink-build-${{ github.run_number }}.apk
+          retention-days: 7
+
+      - name: Upload UI test APK artifact
+        id: upload-ui-apk
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-apk-build-${{ github.run_number }}
           path: artifacts/ClawLink-ui-test-${{ github.run_number }}.apk
           retention-days: 1
 
@@ -445,7 +456,7 @@ jobs:
         id: artifact-status
         if: always()
         run: |
-          if [ "${{ steps.upload-apks.outcome }}" = "success" ]; then
+          if [ "${{ steps.upload-ui-apk.outcome }}" = "success" ]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
@@ -475,7 +486,7 @@ jobs:
       - name: Download APKs
         uses: actions/download-artifact@v4
         with:
-          name: apks-build-${{ github.run_number }}
+          name: ui-test-apk-build-${{ github.run_number }}
           path: artifacts/
 
       - name: Install Maestro CLI

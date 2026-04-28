@@ -211,6 +211,35 @@ function parseDesktopApprovalDecision(text: string): "approved" | "rejected" | n
   return null;
 }
 
+function getDesktopApprovalId(approval: DesktopRemoteApproval | null | undefined): string {
+  const raw = approval as (DesktopRemoteApproval & { id?: string; approval_id?: string }) | null | undefined;
+  return String(raw?.approvalId || raw?.approval_id || raw?.id || "").trim();
+}
+
+function normalizeDesktopApproval(approval: DesktopRemoteApproval): DesktopRemoteApproval {
+  const approvalId = getDesktopApprovalId(approval);
+  return approvalId && approval.approvalId !== approvalId
+    ? { ...approval, approvalId }
+    : approval;
+}
+
+function looksIncompleteAssistantOutput(text: string): boolean {
+  const value = text.trim();
+  if (value.length < 12) return false;
+
+  const codeFenceCount = (value.match(/```/g) || []).length;
+  if (codeFenceCount % 2 === 1) return true;
+
+  if (/[：:]$/.test(value)) return true;
+  if (/([（(\[{「『《]$|[,，、;；]$)/.test(value)) return true;
+  if (/(让我|我来|我会|现在|接下来|下一步|首先|然后|继续|准备|开始|正在|请稍等|let me|i will|i'll|next|first|then)\s*[：:]?$/i.test(value)) {
+    return true;
+  }
+  if (/[-*]\s*$/.test(value)) return true;
+
+  return false;
+}
+
 function formatInstalledSkillSummary(skills: Array<{ id?: string; name?: string; version?: string }> | null): string {
   if (skills === null) {
     return "已安装技能：登录并选择实例后可以读取；当前先按内置桌面工具和平台工具回答。";
@@ -1015,8 +1044,14 @@ export default function ChatPanel({
     }
 
     const approvalBySession = new Map<string, DesktopRemoteApproval>();
-    for (const approval of approvals) {
+    for (const rawApproval of approvals) {
+      const approval = normalizeDesktopApproval(rawApproval);
+      const approvalId = getDesktopApprovalId(approval);
       if (approval?.deviceId !== desktopDeviceId || approval?.status !== "pending") {
+        continue;
+      }
+      if (!approvalId) {
+        console.warn("[desktop-approval] pending approval missing id", approval);
         continue;
       }
       const sessionId = taskSessionMap.get(approval.taskId) || "__global__";
@@ -1099,6 +1134,16 @@ export default function ChatPanel({
       if (!token || !approval || approvalSubmitting) {
         return false;
       }
+      const approvalId = getDesktopApprovalId(approval);
+      if (!approvalId) {
+        setStreamFeedback({
+          tone: "error",
+          label: "审批提交失败",
+          detail: "缺少 approvalId，请刷新桌面同步状态后重试",
+        });
+        await fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
+        return false;
+      }
 
       setApprovalSubmitting(true);
       setStreamFeedback({
@@ -1108,15 +1153,16 @@ export default function ChatPanel({
       });
 
       try {
-        const response = await respondDesktopApproval(token, approval.approvalId, {
+        const response = await respondDesktopApproval(token, approvalId, {
           decision,
           rememberForSession: decision === "approved" ? rememberForSession : false,
         });
-        window.dispatchEvent(new CustomEvent("agentrix:approval-response-local", { detail: response.approval }));
+        const responseApproval = normalizeDesktopApproval(response.approval);
+        window.dispatchEvent(new CustomEvent("agentrix:approval-response-local", { detail: responseApproval }));
         setSessionRuntime((prev) => {
           const next = { ...prev };
           for (const [sessionId, runtime] of Object.entries(next)) {
-            if (runtime.pendingApproval?.approvalId === approval.approvalId) {
+            if (getDesktopApprovalId(runtime.pendingApproval) === approvalId) {
               next[sessionId] = {
                 ...runtime,
                 pendingApproval: null,
@@ -2591,7 +2637,14 @@ export default function ChatPanel({
           maxSummaryChars: useDesktopLocalModel ? 1600 : 3200,
         }).messages;
 
+        let assistantTextForTurn = "";
+        let cloudDoneReason: Extract<StreamEvent, { type: "done" }>["reason"] | null = null;
+        let sawApprovalRequired = false;
+        let sawToolEventAfterLastText = false;
+
         const chunkHandler = (chunk: string) => {
+          assistantTextForTurn += chunk;
+          sawToolEventAfterLastText = false;
           const responseKey = `${targetSessionId}:${assistantId}`;
           if (!streamingResponseStartedRef.current.has(responseKey)) {
             streamingResponseStartedRef.current.add(responseKey);
@@ -2663,6 +2716,7 @@ export default function ChatPanel({
               detail: event.text || "分析上下文和任务中",
             });
           } else if (event.type === "tool_start") {
+            sawToolEventAfterLastText = true;
             const startedAt = Date.now();
             setActiveToolRun({
               toolCallId: event.toolCallId,
@@ -2700,6 +2754,7 @@ export default function ChatPanel({
               detail: event.partialResult || event.status || current?.detail || "处理中",
             }));
           } else if (event.type === "tool_result") {
+            sawToolEventAfterLastText = true;
             setActiveToolRun(null);
             void refreshWorkspaceChanges();
             recordToolTimelineEvent(targetSessionId, {
@@ -2718,6 +2773,7 @@ export default function ChatPanel({
                 : event.error,
             });
           } else if (event.type === "tool_error") {
+            sawToolEventAfterLastText = true;
             const timedOut = /timeout|timed out|ETIMEDOUT/i.test(event.error);
             setActiveToolRun(null);
             recordToolTimelineEvent(targetSessionId, {
@@ -2743,6 +2799,7 @@ export default function ChatPanel({
               });
             }
           } else if (event.type === "approval_required") {
+            sawApprovalRequired = true;
             recordToolTimelineEvent(targetSessionId, {
               id: event.toolCallId,
               toolName: event.toolName,
@@ -2766,6 +2823,7 @@ export default function ChatPanel({
               detail: `${event.toolName} 需要确认后才能继续`,
             });
           } else if (event.type === "done") {
+            cloudDoneReason = event.reason;
             setActiveToolRun(null);
             if (event.reason === "max_tokens") {
               queueAutoContinue(targetSessionId, "max_tokens");
@@ -2811,6 +2869,20 @@ export default function ChatPanel({
         };
 
         const doneHandler = (resolve: () => void) => () => {
+          if (
+            !pendingAutoContinuePromptRef.current
+            && !sawApprovalRequired
+            && effectiveChatMode !== "ask"
+            && (cloudDoneReason === null || cloudDoneReason === "end_turn" || cloudDoneReason === "stop_sequence")
+            && looksIncompleteAssistantOutput(assistantTextForTurn)
+          ) {
+            queueAutoContinue(targetSessionId, sawToolEventAfterLastText ? "tool_use" : "max_tokens");
+            setStreamFeedback({
+              tone: "warning",
+              label: sawToolEventAfterLastText ? "自动继续任务" : "检测到输出未完成",
+              detail: "上一段回复像是被提前截断，正在自动续写",
+            });
+          }
           finalizeMessage(targetSessionId, assistantId);
           sentenceAcc?.flush();
           sessionAbortControllersRef.current[targetSessionId] = null;
@@ -3553,14 +3625,16 @@ export default function ChatPanel({
       applyDesktopSyncState((event as CustomEvent).detail);
     };
     const handleApprovalNew = (event: Event) => {
-      const approval = (event as CustomEvent).detail as DesktopRemoteApproval | undefined;
+      const detail = (event as CustomEvent).detail as DesktopRemoteApproval | undefined;
+      const approval = detail ? normalizeDesktopApproval(detail) : undefined;
       if (approval?.deviceId === desktopDeviceId && approval.status === "pending" && token) {
         fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
       }
     };
     const handleApprovalResponse = (event: Event) => {
-      const approval = (event as CustomEvent).detail as DesktopRemoteApproval | undefined;
-      if (approval?.approvalId && approval.status !== "pending" && token) {
+      const detail = (event as CustomEvent).detail as DesktopRemoteApproval | undefined;
+      const approval = detail ? normalizeDesktopApproval(detail) : undefined;
+      if (getDesktopApprovalId(approval) && approval?.status !== "pending" && token) {
         fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
       }
     };

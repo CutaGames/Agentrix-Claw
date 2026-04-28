@@ -250,7 +250,11 @@ export async function respondDesktopApproval(
   approvalId: string,
   payload: { decision: "approved" | "rejected"; rememberForSession?: boolean },
 ) {
-  const response = await apiFetch(`${API_BASE}/desktop-sync/approvals/${approvalId}/respond`, {
+  const safeApprovalId = String(approvalId || "").trim();
+  if (!safeApprovalId) {
+    throw new Error("approvalId is required to respond to a desktop approval");
+  }
+  const response = await apiFetch(`${API_BASE}/desktop-sync/approvals/${encodeURIComponent(safeApprovalId)}/respond`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
