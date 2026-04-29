@@ -619,7 +619,7 @@ export class OpenClawProxyService {
 
   private buildPlatformToolSchema(skill: PresetSkill) {
     // Per-skill tailored schemas so Claude knows exactly what each tool accepts
-    const schemas: Record<string, { properties: Record<string, any>; required?: string[] }> = {
+    const schemas: Record<string, { properties: Record<string, any>; required?: string[]; anyOf?: Array<{ required: string[] }> }> = {
       skill_search: {
         properties: {
           query: { type: 'string', description: 'Marketplace/OpenClaw Hub search query — keyword, skill name, or description. Do not use for questions about current assistant tools, permissions, or capabilities.' },
@@ -641,6 +641,10 @@ export class OpenClawProxyService {
           input: { type: 'object', description: 'Structured input payload for the skill' },
           prompt: { type: 'string', description: 'Natural-language prompt for prompt-based skills' },
         },
+        anyOf: [
+          { required: ['skillId'] },
+          { required: ['query'] },
+        ],
       },
       skill_recommend: {
         properties: {
@@ -1183,7 +1187,7 @@ export class OpenClawProxyService {
     return [
       {
         name: 'desktop_read_file',
-        description: 'Read a file from the user\'s desktop/local filesystem. Relative paths are resolved from the selected workspace when available. Prefer targeted reads with startLine/endLine for large source files.',
+        description: 'Read a file from the user\'s desktop/local filesystem. Relative paths are resolved from the selected workspace root when available, so include explicit prefixes like desktop/, backend/, docs/, or src/ when targeting a subdirectory. Prefer targeted reads with startLine/endLine for large source files.',
         input_schema: {
           type: 'object' as const,
           properties: {
@@ -1196,7 +1200,7 @@ export class OpenClawProxyService {
       },
       {
         name: 'desktop_list_directory',
-        description: 'List files and directories in a local folder. Relative paths are resolved from the selected workspace when available. Returns structured entries instead of raw shell output.',
+        description: 'List files and directories in a local folder. Relative paths are resolved from the selected workspace root when available, so include explicit prefixes like desktop/, backend/, docs/, or src/ when targeting a subdirectory. Returns structured entries instead of raw shell output.',
         input_schema: {
           type: 'object' as const,
           properties: {
@@ -1207,7 +1211,7 @@ export class OpenClawProxyService {
       },
       {
         name: 'desktop_write_file',
-        description: 'Write content to a file on the user\'s desktop. Creates the file if it doesn\'t exist. REQUIRES USER APPROVAL.',
+        description: 'Write content to a file on the user\'s desktop. Relative paths are resolved from the selected workspace root when available, so include explicit prefixes like desktop/, backend/, docs/, or src/ when writing into a subdirectory. Creates the file if it doesn\'t exist. REQUIRES USER APPROVAL.',
         input_schema: {
           type: 'object' as const,
           properties: {
@@ -1219,7 +1223,7 @@ export class OpenClawProxyService {
       },
       {
         name: 'desktop_run_command',
-        description: 'Execute a shell command on the user\'s desktop (PowerShell on Windows, bash on Linux/Mac). REQUIRES USER APPROVAL.',
+        description: 'Execute a shell command on the user\'s desktop (PowerShell on Windows, bash on Linux/Mac). Use workingDirectory when the command should run inside a workspace subdirectory such as desktop or backend. REQUIRES USER APPROVAL.',
         input_schema: {
           type: 'object' as const,
           properties: {
@@ -1296,6 +1300,7 @@ export class OpenClawProxyService {
 
     // Poll for completion (desktop client processes via 3s polling + socket acceleration)
     const commandId = result.command.commandId;
+    const targetDeviceId = result.command.targetDeviceId || deviceId;
     const timeout = kind === 'run-command'
       ? Math.max(Number(payload.timeoutMs || 10 * 60_000) + 15_000, 120_000)
       : 120_000;
@@ -1306,8 +1311,14 @@ export class OpenClawProxyService {
     while (Date.now() - startTime < timeout) {
       await new Promise(r => setTimeout(r, pollInterval));
       try {
-        const commands = await this.desktopSyncService.listCommands(userId, deviceId);
-        const cmd = commands.find((c: any) => c.commandId === commandId);
+        const scopedCommands = targetDeviceId
+          ? await this.desktopSyncService.listCommands(userId, targetDeviceId)
+          : await this.desktopSyncService.listCommands(userId);
+        let cmd = scopedCommands.find((c: any) => c.commandId === commandId);
+        if (!cmd && targetDeviceId) {
+          const allCommands = await this.desktopSyncService.listCommands(userId);
+          cmd = allCommands.find((candidate: any) => candidate.commandId === commandId);
+        }
         if (!cmd) continue;
         latestCommand = cmd;
 
@@ -2200,39 +2211,6 @@ export class OpenClawProxyService {
     streamingCallbacks?.onEvent?.({ type: 'thinking', text: 'Preparing desktop cloud context and tool lanes.' });
     const session = await this.getOrCreatePlatformHostedSession(userId, instance, sessionId);
     _lap('getOrCreateSession');
-    if (this.isAssistantCapabilityQuestion(messageText)) {
-      const content = this.buildAssistantCapabilityReply(instance, dto);
-      await this.savePlatformHostedMessage(session, userId, MessageRole.USER, messageText, {
-        source: 'platform-hosted-chat',
-        instanceId: instance.id,
-        capabilityQuestion: true,
-      });
-      await this.savePlatformHostedMessage(session, userId, MessageRole.ASSISTANT, content, {
-        source: 'platform-hosted-chat',
-        instanceId: instance.id,
-        deterministicCapabilityReply: true,
-      });
-      return {
-        sessionId,
-        resolvedModel: dto.model || (instance.capabilities as any)?.activeModel || instance.defaultModel || process.env.DEFAULT_MODEL || null,
-        resolvedModelLabel: dto.model || (instance.capabilities as any)?.activeModel || instance.defaultModel || process.env.DEFAULT_MODEL || null,
-        taskTier: 'light',
-        routingReason: 'capability_question',
-        toolBudget: 0,
-        tokenBudget: 0,
-        usage: { inputTokens: estimateTokens(messageText), outputTokens: estimateTokens(content), totalCostUsd: 0 },
-        reply: {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content,
-          createdAt: new Date().toISOString(),
-        },
-        toolCalls: null,
-        stopReason: 'end_turn',
-        plan: null,
-        platformHosted: true,
-      };
-    }
     const directSkillIntent = await this.tryHandleDirectSkillIntent(userId, instance, messageText, sessionId);
     _lap('tryHandleDirectSkillIntent');
     if (directSkillIntent) {

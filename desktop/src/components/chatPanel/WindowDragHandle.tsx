@@ -6,7 +6,7 @@ type Props = {
 };
 
 const dragHandleStyle: CSSProperties = {
-  height: 28,
+  height: 40,
   width: "100%",
   cursor: "grab",
   WebkitAppRegion: "drag",
@@ -19,11 +19,11 @@ const dragHandleStyle: CSSProperties = {
 };
 
 const gripStyle: CSSProperties = {
-  width: 54,
-  height: 5,
+  width: 88,
+  height: 6,
   borderRadius: 999,
   background: "linear-gradient(90deg, transparent, var(--text-dim), transparent)",
-  opacity: 0.55,
+  opacity: 0.7,
 };
 
 export default function WindowDragHandle({ onMouseDown, onDoubleClick }: Props) {

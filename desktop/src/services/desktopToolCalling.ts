@@ -45,6 +45,79 @@ function joinWorkspacePath(workspaceDir: string, relativePath: string): string {
   return `${workspaceDir.replace(/[\\/]+$/g, "")}${separator}${safeRelativePath.replace(/\//g, separator)}`;
 }
 
+const KNOWN_WORKSPACE_HINT_PREFIXES = [
+  "desktop",
+  "backend",
+  "frontend",
+  "docs",
+  "src",
+  "tests",
+  "android",
+  "ios",
+  "contract",
+  "shared",
+  "scripts",
+  "sdk-js",
+  "local-agent",
+];
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractWorkspacePathHint(messages: ChatMessage[]): string | undefined {
+  const recentUserTexts = [...messages]
+    .reverse()
+    .filter((message) => message.role === "user" && typeof message.content === "string" && message.content.trim())
+    .slice(0, 6)
+    .map((message) => message.content);
+
+  for (const text of recentUserTexts) {
+    if (/(根目录|仓库根目录|workspace root|repo root|project root)/i.test(text)) {
+      return undefined;
+    }
+
+    const explicitPathMatches = text.match(/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+/g) || [];
+    for (const rawMatch of explicitPathMatches) {
+      const normalizedMatch = rawMatch.replace(/^[.\/]+/, "").replace(/[),.;:!?]+$/g, "");
+      if (!normalizedMatch || isAbsolutePath(normalizedMatch)) {
+        continue;
+      }
+
+      const segments = normalizedMatch.split("/").filter(Boolean);
+      if (segments.some((segment) => segment === "..")) {
+        continue;
+      }
+
+      const lastSegment = segments[segments.length - 1] || "";
+      const directorySegments = /\.[a-z0-9]+$/i.test(lastSegment) ? segments.slice(0, -1) : segments;
+      if (directorySegments.length > 0) {
+        return directorySegments.join("/");
+      }
+    }
+
+    for (const prefix of KNOWN_WORKSPACE_HINT_PREFIXES) {
+      const pattern = new RegExp(
+        "(?:^|[\\s\"'(`])" + escapeRegExp(prefix) + "(?:[\\\\/]|\\s*(?:目录|文件夹|folder|dir|directory|下|中)\\b)",
+        "i",
+      );
+      if (pattern.test(text)) {
+        return prefix;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function applyWorkspacePathHint(relativePath: string, context: DesktopToolContext) {
+  const normalizedPath = normalizeWorkspaceRelativePath(relativePath, true);
+  if (!normalizedPath || !context.workspacePathHint || normalizedPath.includes("/")) {
+    return normalizedPath;
+  }
+  return normalizeWorkspaceRelativePath(`${context.workspacePathHint}/${normalizedPath}`);
+}
+
 function parseLineNumber(value: unknown): number | undefined {
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) {
@@ -156,7 +229,7 @@ export const DESKTOP_LOCAL_TOOLS: ToolDef[] = [
     function: {
       name: "list_directory",
       description:
-        "List files and directories inside the selected workspace. Use relative paths. Use an empty path to inspect the workspace root.",
+        "List files and directories inside the selected workspace. Paths are resolved from the workspace root, not the current chat topic. Include explicit prefixes like desktop/, backend/, docs/, or src/ when targeting subdirectories. Use an empty path to inspect the workspace root.",
       parameters: {
         type: "object",
         properties: {
@@ -173,7 +246,7 @@ export const DESKTOP_LOCAL_TOOLS: ToolDef[] = [
     function: {
       name: "read_file",
       description:
-        "Read a file from the selected workspace. Use relative paths. Provide start_line and end_line for large files.",
+        "Read a file from the selected workspace. Paths are workspace-root relative, so include explicit prefixes like desktop/src/... or backend/src/... instead of bare filenames when the target is inside a subdirectory. Provide start_line and end_line for large files.",
       parameters: {
         type: "object",
         properties: {
@@ -199,7 +272,7 @@ export const DESKTOP_LOCAL_TOOLS: ToolDef[] = [
     function: {
       name: "write_file",
       description:
-        "Write content to a file inside the selected workspace. Creates parent directories if needed. Requires user approval.",
+        "Write content to a file inside the selected workspace. Paths are workspace-root relative, so include explicit prefixes like desktop/, backend/, docs/, or src/ when writing into a subdirectory. Creates parent directories if needed. Requires user approval.",
       parameters: {
         type: "object",
         properties: {
@@ -221,7 +294,7 @@ export const DESKTOP_LOCAL_TOOLS: ToolDef[] = [
     function: {
       name: "run_command",
       description:
-        "Run a shell command with the selected workspace as the default working directory. Use this for tasks like build, test, mkdir, move, or delete after approval.",
+        "Run a shell command with the selected workspace as the default working directory. When the command should run inside a subdirectory, set working_directory explicitly with a workspace-root-relative path like desktop or backend. Use this for tasks like build, test, mkdir, move, or delete after approval.",
       parameters: {
         type: "object",
         properties: {
@@ -446,6 +519,7 @@ export interface DesktopToolContext {
   agentId?: string;
   authToken?: string;
   sessionId?: string;
+  workspacePathHint?: string;
 }
 
 async function executeToolCall(
@@ -488,10 +562,10 @@ async function executeToolCall(
         return await executeSearchWorkspaceFiles(args);
 
       case "list_directory":
-        return await executeListDirectory(args);
+        return await executeListDirectory(args, context);
 
       case "read_file":
-        return await executeReadFile(args);
+        return await executeReadFile(args, context);
 
       case "write_file":
         return await executeWriteFile(args, context);
@@ -538,15 +612,16 @@ function clampMaxResults(value: unknown): number {
   return Math.max(1, Math.min(50, Math.floor(parsed)));
 }
 
-async function executeListDirectory(args: Record<string, unknown>): Promise<string> {
+async function executeListDirectory(args: Record<string, unknown>, context: DesktopToolContext): Promise<string> {
   const relativePath = normalizeWorkspaceRelativePath(args.path, true);
   try {
     const workspaceDir = await requireSelectedWorkspace();
     const { listWorkspaceDir } = await import("./workspace");
-    const entries = await listWorkspaceDir(relativePath);
+    const hintedPath = applyWorkspacePathHint(relativePath, context);
+    const entries = await listWorkspaceDir(hintedPath);
     return JSON.stringify({
       workspaceRoot: workspaceDir,
-      path: relativePath,
+      path: hintedPath,
       entries,
     });
   } catch (error) {
@@ -555,7 +630,7 @@ async function executeListDirectory(args: Record<string, unknown>): Promise<stri
   }
 }
 
-async function executeReadFile(args: Record<string, unknown>): Promise<string> {
+async function executeReadFile(args: Record<string, unknown>, context: DesktopToolContext): Promise<string> {
   let relativePath = "";
   try {
     relativePath = normalizeWorkspaceRelativePath(args.path);
@@ -567,13 +642,14 @@ async function executeReadFile(args: Record<string, unknown>): Promise<string> {
   try {
     const workspaceDir = await requireSelectedWorkspace();
     const { readDesktopFile } = await import("./desktop");
+    const hintedPath = applyWorkspacePathHint(relativePath, context);
     const result = await readDesktopFile(
-      joinWorkspacePath(workspaceDir, relativePath),
+      joinWorkspacePath(workspaceDir, hintedPath),
       parseLineNumber(args.start_line),
       parseLineNumber(args.end_line),
     );
     return JSON.stringify({
-      path: relativePath,
+      path: hintedPath,
       workspaceRoot: workspaceDir,
       content: result.content,
       size: result.size,
@@ -601,18 +677,19 @@ async function executeWriteFile(args: Record<string, unknown>, context: DesktopT
     const { writeWorkspaceFile } = await import("./workspace");
     const { requireDesktopActionApproval } = await import("./desktopAgentSync");
     const workspaceDir = await requireSelectedWorkspace();
+    const hintedPath = applyWorkspacePathHint(relativePath, context);
     await requireDesktopActionApproval({
       token: context.authToken,
       kind: "write-file",
-      title: `Write file: ${relativePath}`,
-      description: `Allow Agentrix to write to this workspace file?\n${relativePath}`,
-      payload: { path: relativePath },
+      title: `Write file: ${hintedPath}`,
+      description: `Allow Agentrix to write to this workspace file?\n${hintedPath}`,
+      payload: { path: hintedPath },
       sessionId: context.sessionId,
     });
-    await writeWorkspaceFile(relativePath, content);
+    await writeWorkspaceFile(hintedPath, content);
     return JSON.stringify({
       success: true,
-      path: relativePath,
+      path: hintedPath,
       workspaceRoot: workspaceDir,
       bytesWritten: new TextEncoder().encode(content).length,
     });
@@ -1083,6 +1160,7 @@ export async function runDesktopToolCallingLoop(
     agentId: options.agentId,
     authToken: options.authToken,
     sessionId: options.sessionId,
+    workspacePathHint: extractWorkspacePathHint(messages),
   };
 
   let workingMessages: ChatMessage[] = compactToolContextMessages([...messages]);

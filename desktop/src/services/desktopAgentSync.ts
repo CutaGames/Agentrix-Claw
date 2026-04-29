@@ -39,6 +39,7 @@ let stateTimer: ReturnType<typeof setInterval> | null = null;
 let commandTimer: ReturnType<typeof setInterval> | null = null;
 let commandInFlight = new Set<string>();
 let rememberedApprovalSessionKeys = new Set<string>();
+let pendingApprovalRequests = new Map<string, Promise<DesktopRemoteApproval>>();
 let approvalWaiters = new Map<
   string,
   {
@@ -219,32 +220,56 @@ export async function requireDesktopActionApproval(request: {
     throw new Error("Sign in is required to approve this desktop action.");
   }
 
-  const taskId = String(request.taskId || `local-${request.sessionId || "global"}-${request.kind}-${Date.now()}`);
-  const timelineEntryId = String(request.timelineEntryId || taskId);
-  const { approval: rawApproval } = await createDesktopApproval(request.token, {
-    taskId,
-    timelineEntryId,
-    title: request.title,
-    description: request.description,
-    riskLevel,
-    sessionKey,
-  });
-
-  const approval = normalizeDesktopRemoteApproval(rawApproval);
-  if (!approval) {
-    throw new Error("Approval request was created without a usable approvalId");
+  if (sessionKey) {
+    const pendingRequest = pendingApprovalRequests.get(sessionKey);
+    if (pendingRequest) {
+      await pendingRequest;
+      return;
+    }
   }
 
-  const approvalPromise = waitForApproval(approval.approvalId);
-  window.dispatchEvent(new CustomEvent("agentrix:approval-new", {
-    detail: request.sessionId
-      ? { approval, sessionId: request.sessionId }
-      : approval,
-  }));
+  const approvalRequest = (async () => {
+    const taskId = String(request.taskId || `local-${request.sessionId || "global"}-${request.kind}-${Date.now()}`);
+    const timelineEntryId = String(request.timelineEntryId || taskId);
+    const { approval: rawApproval } = await createDesktopApproval(request.token!, {
+      taskId,
+      timelineEntryId,
+      title: request.title,
+      description: request.description,
+      riskLevel,
+      sessionKey,
+    });
 
-  const resolvedApproval = await approvalPromise;
-  if (resolvedApproval.rememberForSession && resolvedApproval.sessionKey) {
-    rememberedApprovalSessionKeys.add(resolvedApproval.sessionKey);
+    const approval = normalizeDesktopRemoteApproval(rawApproval);
+    if (!approval) {
+      throw new Error("Approval request was created without a usable approvalId");
+    }
+
+    const approvalPromise = waitForApproval(approval.approvalId);
+    window.dispatchEvent(new CustomEvent("agentrix:approval-new", {
+      detail: request.sessionId
+        ? { approval, sessionId: request.sessionId }
+        : approval,
+    }));
+
+    const resolvedApproval = await approvalPromise;
+    if (resolvedApproval.rememberForSession && resolvedApproval.sessionKey) {
+      rememberedApprovalSessionKeys.add(resolvedApproval.sessionKey);
+    }
+
+    return resolvedApproval;
+  })();
+
+  if (sessionKey) {
+    pendingApprovalRequests.set(sessionKey, approvalRequest);
+  }
+
+  try {
+    await approvalRequest;
+  } finally {
+    if (sessionKey && pendingApprovalRequests.get(sessionKey) === approvalRequest) {
+      pendingApprovalRequests.delete(sessionKey);
+    }
   }
 }
 
@@ -508,6 +533,7 @@ export function stopDesktopAgentSync() {
   activeToken = null;
   commandInFlight = new Set<string>();
   rememberedApprovalSessionKeys = new Set<string>();
+  pendingApprovalRequests = new Map<string, Promise<DesktopRemoteApproval>>();
   for (const waiter of approvalWaiters.values()) {
     clearTimeout(waiter.timeoutId);
     waiter.reject(new Error("Desktop sync stopped"));

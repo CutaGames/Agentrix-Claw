@@ -797,6 +797,9 @@ pub fn run_command(command: String, working_directory: Option<String>, timeout_m
     }
     shell.stdout(Stdio::piped()).stderr(Stdio::piped());
 
+    #[cfg(target_os = "windows")]
+    shell.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
     let mut child = shell.spawn().map_err(|e| e.to_string())?;
     let timeout = Duration::from_millis(timeout_ms.max(1));
 

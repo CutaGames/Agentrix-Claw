@@ -167,7 +167,7 @@ test.describe('Desktop Frontend Smoke Tests', () => {
     await expect(page.locator('text=/Available Commands|commands/i')).toBeVisible({ timeout: 5000 });
   });
 
-  test('capability question answers locally instead of executing a skill', async ({ page }) => {
+  test('capability question no longer injects the old canned reply', async ({ page }) => {
     await page.evaluate(() => {
       localStorage.setItem('agentrix_onboarded', '1');
     });
@@ -184,7 +184,7 @@ test.describe('Desktop Frontend Smoke Tests', () => {
     await page.fill('textarea', '你能调用哪些工具？');
     await page.keyboard.press('Enter');
 
-    await expect(page.locator('text=可用能力按模式分层')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=可用能力按模式分层')).toHaveCount(0);
     await expect(page.locator('text=/skill_execute|Failed to execute skill|Session not found/i')).toHaveCount(0);
   });
 });

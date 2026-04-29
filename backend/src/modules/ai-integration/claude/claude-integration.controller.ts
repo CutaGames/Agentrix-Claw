@@ -241,40 +241,6 @@ export class ClaudeIntegrationController {
     const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
     const lastUserText = this.extractMessageText(lastUserMessage?.content);
 
-    if (this.isAssistantCapabilityQuestion(lastUserText)) {
-      const text = this.buildCapabilityReply({ mode, platform, model: options?.model });
-      if (wantsStream) {
-        this.initSse(res);
-        emitStructured({ type: 'text_delta', text });
-        emitStructured({
-          type: 'done',
-          reason: 'end_turn',
-          totalDurationMs: Date.now() - startMs,
-          totalInputTokens: 0,
-          totalOutputTokens: 0,
-        });
-        this.writeSse(res, formatSSEDone());
-        res.end();
-        return;
-      }
-
-      return res.json({
-        text,
-        content: text,
-        message: text,
-        reply: {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: text,
-          createdAt: new Date().toISOString(),
-        },
-        routingReason: 'capability_question',
-        toolCalls: null,
-        stopReason: 'end_turn',
-        via: 'claude-compat-capability-reply',
-      });
-    }
-
     if (context.userId) {
       const compatibilityPayload: UnifiedChatRequestDto = {
         ...body,

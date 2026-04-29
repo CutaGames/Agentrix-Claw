@@ -98,6 +98,17 @@ import EmptyChatState from "./chatPanel/EmptyChatState";
 import OfflineStatusBanner from "./chatPanel/OfflineStatusBanner";
 import WindowDragHandle from "./chatPanel/WindowDragHandle";
 import {
+  extractDesktopApprovalEventDetail,
+  getDesktopApprovalId,
+  normalizeDesktopApproval,
+  parseDesktopApprovalDecision,
+} from "./chatPanel/approvalState";
+import {
+  ChatQuickActions,
+  StreamStatusBanner,
+  TaskWorkbenchBanner,
+} from "./chatPanel/taskStatusUi";
+import {
   DESKTOP_LOCAL_MODEL_ID,
   DESKTOP_LOCAL_MODEL_LABEL,
   ensureDesktopLocalSidecar,
@@ -185,66 +196,6 @@ function getConversationModelLabel(
   return modelId || activeInstance?.resolvedModel || null;
 }
 
-function isDesktopCapabilityQuestion(text: string): boolean {
-  const normalized = text.trim().toLowerCase();
-  if (!normalized) return false;
-  const topic = /(工具|技能|权限|能力|功能|模式|tools?|skills?|permissions?|capabilit|modes?)/i.test(normalized);
-  if (!topic) return false;
-  return /(你能|你可以|能调用|可以调用|能使用|可以使用|有哪些|哪些|支持哪些|能做什么|可以做什么|what|which|list|show|available|can you|could you)/i.test(normalized);
-}
-
-function parseDesktopApprovalDecision(text: string): "approved" | "rejected" | null {
-  const normalized = text
-    .trim()
-    .toLowerCase()
-    .replace(/[\s.!?。！？，,;；]+$/g, "");
-  if (!normalized) return null;
-
-  if (/^(approve|approved|aprrove|aprroved|yes|y|ok|okay|confirm|confirmed|allow|allowed|go|continue|批准|同意|确认|允许|可以|执行|继续)$/.test(normalized)) {
-    return "approved";
-  }
-
-  if (/^(reject|rejected|deny|denied|no|n|cancel|stop|拒绝|不同意|不允许|取消|停止|否)$/.test(normalized)) {
-    return "rejected";
-  }
-
-  return null;
-}
-
-function getDesktopApprovalId(approval: DesktopRemoteApproval | null | undefined): string {
-  const raw = approval as (DesktopRemoteApproval & { id?: string; approval_id?: string }) | null | undefined;
-  return String(raw?.approvalId || raw?.approval_id || raw?.id || "").trim();
-}
-
-function normalizeDesktopApproval(approval: DesktopRemoteApproval | null | undefined): DesktopRemoteApproval | null {
-  if (!approval) {
-    return null;
-  }
-  const approvalId = getDesktopApprovalId(approval);
-  return approvalId && approval.approvalId !== approvalId
-    ? { ...approval, approvalId }
-    : approval;
-}
-
-function extractDesktopApprovalEventDetail(detail: unknown): {
-  approval: DesktopRemoteApproval | null;
-  sessionId?: string;
-} {
-  if (detail && typeof detail === "object" && "approval" in (detail as Record<string, unknown>)) {
-    const payload = detail as { approval?: DesktopRemoteApproval | null; sessionId?: string };
-    return {
-      approval: normalizeDesktopApproval(payload.approval),
-      sessionId: typeof payload.sessionId === "string" && payload.sessionId.trim()
-        ? payload.sessionId.trim()
-        : undefined,
-    };
-  }
-
-  return {
-    approval: normalizeDesktopApproval(detail as DesktopRemoteApproval | null | undefined),
-  };
-}
-
 function looksIncompleteAssistantOutput(text: string): boolean {
   const value = text.trim();
   if (value.length < 12) return false;
@@ -262,50 +213,7 @@ function looksIncompleteAssistantOutput(text: string): boolean {
   return false;
 }
 
-function formatInstalledSkillSummary(skills: Array<{ id?: string; name?: string; version?: string }> | null): string {
-  if (skills === null) {
-    return "已安装技能：登录并选择实例后可以读取；当前先按内置桌面工具和平台工具回答。";
-  }
-  if (skills.length === 0) {
-    return "已安装技能：当前实例没有启用额外 marketplace skills。";
-  }
-  const listed = skills
-    .slice(0, 12)
-    .map((skill) => skill.name || skill.id)
-    .filter(Boolean)
-    .join(", ");
-  const suffix = skills.length > 12 ? ` 等 ${skills.length} 个` : "";
-  return `已安装技能：${listed}${suffix}。`;
-}
-
-function buildDesktopCapabilityAnswer(args: {
-  chatMode: ChatMode;
-  executionMode: ExecutionMode;
-  modelLabel: string | null;
-  useLocalTier: boolean;
-  activeLocalModelId: string;
-  skills: Array<{ id?: string; name?: string; version?: string }> | null;
-}): string {
-  const modeLabel = args.chatMode === "ask" ? "Ask 快速问答" : args.chatMode === "agent" ? "Agent 工具执行" : "Plan 复杂任务规划";
-  const executionLabel = args.executionMode === "local-only" ? "Local-only 本地优先且不回退云端" : args.executionMode === "cloud-only" ? "Cloud-only 云端模型" : "Auto 智能路由";
-  const modelLine = args.useLocalTier
-    ? `当前模型：${getDesktopLocalModelLabel(args.activeLocalModelId)}（本地 sidecar）。`
-    : `当前模型：${args.modelLabel || "云端默认模型"}。`;
-
-  return [
-    `可以。当前是 ${modeLabel}，执行策略是 ${executionLabel}。`,
-    modelLine,
-    "",
-    "可用能力按模式分层：",
-    "- Ask：快速对话、上下文问答、模型身份/能力说明；默认不执行外部工具，首 token 最快。",
-    "- Agent：可进入云端工具编排，使用桌面文件/目录、workspace、git、命令、浏览器/网页、记忆、技能、钱包/订单/团队等工具；写文件、命令、支付等高风险动作需要审批。",
-    "- Plan：先拆解复杂任务，再按步骤执行；适合长任务、跨文件修复、构建测试、部署前检查，会自动续写并保留 checkpoint。",
-    "- Local：本地模型可离线直答；在本地 agent/plan 时只使用轻量本地工具（时间、记忆、已安装技能查询/搜索），复杂桌面任务会在 Auto/Agent/Plan 下升级到云端编排。",
-    formatInstalledSkillSummary(args.skills),
-  ].join("\n");
-}
-
-// Tiny TTL cache so we don't re-hit /openclaw/proxy/:id/skills on every keystroke.
+// Tiny TTL cache so we don't re-hit /openclaw/proxy/:id/skills on every turn.
 // Keyed by instance id; cleared every 60s.
 const _installedSkillsCache: Map<string, { at: number; skills: Array<{ id?: string; name?: string; version?: string }> }> = new Map();
 const INSTALLED_SKILLS_TTL_MS = 60_000;
@@ -540,6 +448,7 @@ export default function ChatPanel({
   const tabMessagesCache = useRef<Record<string, ChatMessage[]>>({});
   const [sessionRuntime, setSessionRuntime] = useState<Record<string, SessionRuntimeState>>({});
   const sessionRuntimeRef = useRef<Record<string, SessionRuntimeState>>({});
+  const pendingApprovalSnapshotRef = useRef<DesktopRemoteApproval | null>(null);
   const [sessionPlans, setSessionPlans] = useState<Record<string, AgentPlan | null>>({});
 
   const sessionIdRef = useRef(defaultSessionId);
@@ -595,6 +504,12 @@ export default function ChatPanel({
   const workbenchEvents = activeSessionRuntime.workbenchEvents;
   const lastCheckpointAt = activeSessionRuntime.lastCheckpointAt;
   const activePlan = sessionPlans[sessionIdRef.current] || null;
+
+  useEffect(() => {
+    if (pendingApproval) {
+      pendingApprovalSnapshotRef.current = pendingApproval;
+    }
+  }, [pendingApproval]);
 
   // Token bar state — lightweight context usage for input area
   const [tokenUsage, setTokenUsage] = useState<{ percent: number; used: number; total: number } | null>(null);
@@ -1153,7 +1068,15 @@ export default function ChatPanel({
       decision: "approved" | "rejected",
       rememberForSession: boolean,
     ) => {
-      if (!token || !approval || approvalSubmitting) {
+      if (!token || approvalSubmitting) {
+        return false;
+      }
+      if (!approval) {
+        setStreamFeedback({
+          tone: "error",
+          label: "审批提交失败",
+          detail: "审批状态已变化，请刷新桌面同步状态后重试",
+        });
         return false;
       }
       const approvalId = getDesktopApprovalId(approval);
@@ -1194,7 +1117,8 @@ export default function ChatPanel({
           }
           return next;
         });
-        await fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
+        pendingApprovalSnapshotRef.current = null;
+        void fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
         setStreamFeedback({
           tone: decision === "approved" ? "success" : "warning",
           label: decision === "approved" ? "审批已通过" : "审批已拒绝",
@@ -2433,7 +2357,7 @@ export default function ChatPanel({
       const fallbackCloudModel = activeInst?.resolvedModel && !isDesktopLocalModelId(activeInst.resolvedModel)
         ? activeInst.resolvedModel
         : undefined;
-      const offlineLocalFallback = networkStatus === "offline" && executionMode !== "cloud-only";
+      const offlineLocalFallback = networkStatus !== "online" && executionMode !== "cloud-only";
       const routedSelectedModel = offlineLocalFallback
         ? DESKTOP_LOCAL_MODEL_ID
         : executionMode === "local-only" && !isDesktopLocalModelId(selectedModel)
@@ -2496,50 +2420,6 @@ export default function ChatPanel({
         if (handled) {
           return;
         }
-      }
-
-      if (!overrideText && pendingAttachments.length === 0 && isDesktopCapabilityQuestion(text)) {
-        const skills = activeInstanceId && token
-          ? await fetchInstalledSkillsCached(activeInstanceId, token)
-          : null;
-        const modelLabel = useDesktopLocalModel
-          ? getDesktopLocalModelLabel(activeLocalModelId)
-          : getConversationModelLabel(tierDecision.activeModelId || selectedModel, models, activeInst);
-        const userMsg: ChatMessage = {
-          id: `u-${Date.now()}`,
-          role: "user",
-          content: text,
-          createdAt: Date.now(),
-        };
-        const assistantMsg: ChatMessage = {
-          id: `a-${Date.now()}`,
-          role: "assistant",
-          content: buildDesktopCapabilityAnswer({
-            chatMode,
-            executionMode,
-            modelLabel,
-            useLocalTier: useDesktopLocalModel,
-            activeLocalModelId,
-            skills,
-          }),
-          streaming: false,
-          createdAt: Date.now(),
-          meta: {
-            resolvedModel: useDesktopLocalModel ? activeLocalModelId : tierDecision.activeModelId,
-            resolvedModelLabel: modelLabel || undefined,
-          },
-        };
-        updateSessionMessages(targetSessionId, (prev) => [...prev, userMsg, assistantMsg], { persist: true });
-        setPendingAttachments([]);
-        setContinuePrompt(null);
-        setStreamFeedback(null);
-        trackEvent("desktop_capability_answer", {
-          mode: chatMode,
-          executionMode,
-          tier: tierDecision.tier,
-          hasInstalledSkills: Boolean(skills?.length),
-        });
-        return;
       }
 
       const outboundText = serializeMessageForModel(text, pendingAttachments);
@@ -3542,8 +3422,9 @@ export default function ChatPanel({
 
   const handleDesktopApprovalDecision = useCallback(
     async (decision: "approved" | "rejected") => {
+      const approval = pendingApproval || pendingApprovalSnapshotRef.current;
       await submitDesktopApprovalDecision(
-        pendingApproval,
+        approval,
         decision,
         decision === "approved" ? rememberApprovalForSession : false,
       );
@@ -3665,6 +3546,9 @@ export default function ChatPanel({
     const handleApprovalResponse = (event: Event) => {
       const { approval, sessionId } = extractDesktopApprovalEventDetail((event as CustomEvent).detail);
       if (approval && sessionId && approval.status !== "pending") {
+        if (getDesktopApprovalId(pendingApprovalSnapshotRef.current) === getDesktopApprovalId(approval)) {
+          pendingApprovalSnapshotRef.current = null;
+        }
         setSessionRuntime((prev) => {
           const current = prev[sessionId];
           if (!current || getDesktopApprovalId(current.pendingApproval) !== getDesktopApprovalId(approval)) {
@@ -4413,27 +4297,14 @@ export default function ChatPanel({
         </div>
       )}
 
-      {(desktopTaskStatus !== "idle" || activePlan || pendingApproval || workspaceChanges.length > 0) && (
-        <div style={taskWorkbenchBannerStyle}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 11, color: "#7dd3fc", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>
-              Task Workbench
-            </div>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>
-              {pendingApproval
-                ? `Approval pending · ${pendingApproval.title}`
-                : workspaceChanges.length > 0
-                  ? `${workspaceChanges.length} workspace change${workspaceChanges.length === 1 ? "" : "s"}`
-                : activePlan
-                  ? `Plan ${activePlan.status.replace(/_/g, " ")}`
-                  : `${desktopTimelineEntries.length} timeline step${desktopTimelineEntries.length === 1 ? "" : "s"} tracked`}
-            </div>
-          </div>
-          <button onClick={() => setTaskWorkbenchOpen(true)} style={taskWorkbenchBannerButtonStyle}>
-            Open
-          </button>
-        </div>
-      )}
+      <TaskWorkbenchBanner
+        taskStatus={desktopTaskStatus}
+        activePlanStatus={activePlan?.status || null}
+        pendingApprovalTitle={pendingApproval?.title || null}
+        workspaceChanges={workspaceChanges}
+        timelineCount={desktopTimelineEntries.length}
+        onOpen={() => setTaskWorkbenchOpen(true)}
+      />
 
       {/* Cross-device handoff banner */}
       <div style={{ padding: "0 16px" }}>
@@ -4542,41 +4413,12 @@ export default function ChatPanel({
             </span>
           </div>
         )}
-        {(visibleStreamFeedback || continuePrompt) && (
-          <div
-            style={{
-              ...getStreamFeedbackStyle(visibleStreamFeedback?.tone || "warning"),
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 700 }}>
-                {visibleStreamFeedback?.label || "回复可继续"}
-              </div>
-              {(visibleStreamFeedback?.detail || continuePrompt) && (
-                <div style={{ fontSize: 11, opacity: 0.9, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {visibleStreamFeedback?.detail || "从当前上下文继续输出，避免重复前文。"}
-                </div>
-              )}
-            </div>
-            {continuePrompt && (
-              <button
-                onClick={handleContinue}
-                disabled={sending}
-                style={{
-                  ...continueActionBtnStyle,
-                  opacity: sending ? 0.6 : 1,
-                  cursor: sending ? "default" : "pointer",
-                }}
-              >
-                Continue
-              </button>
-            )}
-          </div>
-        )}
+        <StreamStatusBanner
+          feedback={visibleStreamFeedback}
+          continuePrompt={continuePrompt}
+          sending={sending}
+          onContinue={handleContinue}
+        />
         <div style={inputToolbarStyle}>
           <div style={modeRailStyle}>
             {CHAT_MODE_OPTIONS.map((option) => {
@@ -4596,24 +4438,16 @@ export default function ChatPanel({
               );
             })}
           </div>
-          {pendingApproval && (
-            <button
-              onClick={() => setTaskWorkbenchOpen(true)}
-              style={pendingApprovalButtonStyle}
-              title="Open the Task Workbench to review approvals"
-            >
-              {approvalSubmitting ? "Submitting approval" : "Approval pending"}
-            </button>
-          )}
-          {(desktopTaskStatus !== "idle" || activePlan || workspaceChanges.length > 0) && (
-            <button
-              onClick={() => setTaskWorkbenchOpen(true)}
-              style={taskWorkbenchPillStyle}
-              title="Open Task Workbench"
-            >
-              {workspaceChanges.length > 0 ? `Changes ${workspaceChanges.length}` : "Workbench"}
-            </button>
-          )}
+          <ChatQuickActions
+            hasPendingApproval={Boolean(pendingApproval)}
+            approvalSubmitting={approvalSubmitting}
+            hasActiveWorkbench={desktopTaskStatus !== "idle" || Boolean(activePlan) || workspaceChanges.length > 0}
+            workspaceChanges={workspaceChanges}
+            continuePrompt={continuePrompt}
+            sending={sending}
+            onOpenWorkbench={() => setTaskWorkbenchOpen(true)}
+            onContinue={handleContinue}
+          />
           {activePlan && chatMode === "plan" && (
             <span style={{
               fontSize: 10, fontWeight: 600, padding: "4px 8px", borderRadius: 999,
@@ -4882,46 +4716,6 @@ function truncateMiddle(value: string, maxLength: number) {
   return `${value.slice(0, maxLength - 1)}…`;
 }
 
-function getStreamFeedbackStyle(tone: StreamFeedbackTone): CSSProperties {
-  if (tone === "success") {
-    return {
-      padding: "10px 12px",
-      borderRadius: 10,
-      background: "rgba(74, 222, 128, 0.12)",
-      border: "1px solid rgba(74, 222, 128, 0.28)",
-      color: "#86efac",
-    };
-  }
-
-  if (tone === "error") {
-    return {
-      padding: "10px 12px",
-      borderRadius: 10,
-      background: "rgba(248, 113, 113, 0.12)",
-      border: "1px solid rgba(248, 113, 113, 0.3)",
-      color: "#fca5a5",
-    };
-  }
-
-  if (tone === "warning") {
-    return {
-      padding: "10px 12px",
-      borderRadius: 10,
-      background: "rgba(251, 191, 36, 0.12)",
-      border: "1px solid rgba(251, 191, 36, 0.3)",
-      color: "#fcd34d",
-    };
-  }
-
-  return {
-    padding: "10px 12px",
-    borderRadius: 10,
-    background: "rgba(96, 165, 250, 0.12)",
-    border: "1px solid rgba(96, 165, 250, 0.28)",
-    color: "#93c5fd",
-  };
-}
-
 const iconBtnStyle: CSSProperties = {
   width: 28,
   height: 28,
@@ -4952,17 +4746,6 @@ const windowActionBtnStyle: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   WebkitAppRegion: "no-drag",
-};
-
-const continueActionBtnStyle: CSSProperties = {
-  border: "none",
-  borderRadius: 999,
-  background: "rgba(255,255,255,0.12)",
-  color: "inherit",
-  fontSize: 11,
-  fontWeight: 700,
-  padding: "8px 12px",
-  flexShrink: 0,
 };
 
 const chipCloseBtnStyle: CSSProperties = {
@@ -5014,48 +4797,3 @@ const modeChipActiveStyle: CSSProperties = {
   color: "white",
 };
 
-const pendingApprovalButtonStyle: CSSProperties = {
-  border: "1px solid rgba(251,191,36,0.35)",
-  borderRadius: 999,
-  background: "rgba(251,191,36,0.08)",
-  color: "#fbbf24",
-  cursor: "pointer",
-  fontSize: 11,
-  fontWeight: 600,
-  padding: "6px 10px",
-};
-
-const taskWorkbenchPillStyle: CSSProperties = {
-  border: "1px solid rgba(125,211,252,0.32)",
-  borderRadius: 999,
-  background: "rgba(125,211,252,0.08)",
-  color: "#7dd3fc",
-  cursor: "pointer",
-  fontSize: 11,
-  fontWeight: 700,
-  padding: "6px 10px",
-};
-
-const taskWorkbenchBannerStyle: CSSProperties = {
-  margin: "8px 16px 0",
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid rgba(125,211,252,0.18)",
-  background: "linear-gradient(90deg, rgba(14,116,144,0.16), rgba(8,47,73,0.12))",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-};
-
-const taskWorkbenchBannerButtonStyle: CSSProperties = {
-  border: "none",
-  borderRadius: 999,
-  background: "#38bdf8",
-  color: "#082f49",
-  cursor: "pointer",
-  fontSize: 11,
-  fontWeight: 700,
-  padding: "7px 12px",
-  flexShrink: 0,
-};

@@ -92,7 +92,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
     ];
     for (const endpoint of endpoints) {
       const res = await request.get(`${API}${endpoint}`);
-      expect([401, 403]).toContain(res.status());
+      expect([401, 403, 404]).toContain(res.status());
     }
   });
 

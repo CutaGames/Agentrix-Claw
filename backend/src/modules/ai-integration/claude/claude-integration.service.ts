@@ -388,6 +388,10 @@ export class ClaudeIntegrationService {
             prompt: { type: 'string', description: 'Natural-language prompt for the skill' },
             input: { type: 'object', description: 'Structured input payload for the skill' },
           },
+          anyOf: [
+            { required: ['skillId'] },
+            { required: ['query'] },
+          ],
         },
       },
     ];
