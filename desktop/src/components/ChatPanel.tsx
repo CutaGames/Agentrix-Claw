@@ -133,8 +133,11 @@ import {
   trimSessionMessageCache,
 } from "./chatPanel/messageRetention";
 import {
+  buildContinuePrompt,
+  isSyntheticContinuePrompt,
+} from "./chatPanel/continuePrompt";
+import {
   APPROX_CHARS_PER_TOKEN,
-  CHAT_AUTO_CONTINUE_LIMIT,
   CHECKPOINT_CONTINUE_PROMPT,
   DESKTOP_DIRECT_CONTEXT_BUDGET_TOKENS,
   DESKTOP_LOCAL_CONTEXT_BUDGET_TOKENS,
@@ -147,6 +150,7 @@ import {
 } from "./chatPanel/contextBudget";
 import { createEmptySessionRuntimeState, type SessionRuntimeState } from "./chatPanel/sessionRuntime";
 import { buildToolTimelineEntry, buildToolWorkbenchEvent } from "./chatPanel/toolTimeline";
+import { useAutoContinue } from "./chatPanel/useAutoContinue";
 
 // Send desktop notification when app is in background
 async function notifyIfBackground(title: string, body: string) {
@@ -535,7 +539,6 @@ export default function ChatPanel({
   const [deepThinkActive, setDeepThinkActive] = useState(false);
   const [deepThinkTargetModel, setDeepThinkTargetModel] = useState<string | null>(null);
   const [fabricDevices, setFabricDevices] = useState<FabricDevice[]>([]);
-  const [continuePrompt, setContinuePrompt] = useState<string | null>(null);
   const [windowBounds, setWindowBounds] = useState(() => ({
     width: typeof window !== "undefined" ? window.innerWidth : 480,
     height: typeof window !== "undefined" ? window.innerHeight : 640,
@@ -545,11 +548,16 @@ export default function ChatPanel({
     fullscreen: false,
   });
   const [feedbackNow, setFeedbackNow] = useState(Date.now());
-  const autoContinueCountRef = useRef(0);
-  const pendingAutoContinuePromptRef = useRef<string | null>(null);
-  const pendingAutoContinueReasonRef = useRef<"max_tokens" | "tool_use" | null>(null);
-  const pendingAutoContinueSessionIdRef = useRef<string | null>(null);
-  const autoContinueTimerRef = useRef<number | null>(null);
+  const {
+    continuePrompt,
+    setContinuePrompt,
+    cancelAutoContinue,
+    hasPendingAutoContinue,
+    prepareAutoContinueTurn,
+    queueAutoContinue,
+    finalizeAutoContinueTurn,
+    handleContinue: submitContinuePrompt,
+  } = useAutoContinue(setStreamFeedback);
 
   const effectiveProMode =
     proMode ||
@@ -599,27 +607,6 @@ export default function ChatPanel({
       ? "F11 退出全屏"
       : "拖动顶部移动窗口 · 双击放大 · F11 全屏")
     : (getConversationModelLabel(selectedModel, models, activeHeaderInstance) || activeHeaderInstance?.resolvedModelLabel || "Ready");
-
-  const clearAutoContinueTimer = useCallback(() => {
-    if (autoContinueTimerRef.current !== null) {
-      window.clearTimeout(autoContinueTimerRef.current);
-      autoContinueTimerRef.current = null;
-    }
-  }, []);
-
-  const clearPendingAutoContinue = useCallback(() => {
-    pendingAutoContinuePromptRef.current = null;
-    pendingAutoContinueReasonRef.current = null;
-    pendingAutoContinueSessionIdRef.current = null;
-  }, []);
-
-  const queueAutoContinue = useCallback((sessionId: string, reason: "max_tokens" | "tool_use") => {
-    const prompt = buildContinuePrompt();
-    pendingAutoContinuePromptRef.current = prompt;
-    pendingAutoContinueReasonRef.current = reason;
-    pendingAutoContinueSessionIdRef.current = sessionId;
-    setContinuePrompt(prompt);
-  }, []);
 
   const hasPendingManualModelSelection = useCallback((instanceId: string | null, resolvedModelId?: string | null) => {
     const pendingSelection = manualModelSelectionRef.current;
@@ -695,8 +682,6 @@ export default function ChatPanel({
     const timer = window.setInterval(() => setFeedbackNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [activeToolRun, sendStartedAt]);
-
-  useEffect(() => () => clearAutoContinueTimer(), [clearAutoContinueTimer]);
 
   useEffect(() => () => {
     responseInterruptedRef.current = true;
@@ -920,13 +905,7 @@ export default function ChatPanel({
     const controller = sessionAbortControllersRef.current[sessionId];
     if (controller) {
       responseInterruptedRef.current = true;
-      if (autoContinueTimerRef.current !== null) {
-        window.clearTimeout(autoContinueTimerRef.current);
-        autoContinueTimerRef.current = null;
-      }
-      pendingAutoContinuePromptRef.current = null;
-      pendingAutoContinueReasonRef.current = null;
-      pendingAutoContinueSessionIdRef.current = null;
+      cancelAutoContinue();
       controller.abort();
       sessionAbortControllersRef.current[sessionId] = null;
     }
@@ -934,7 +913,7 @@ export default function ChatPanel({
     if (sessionId === sessionIdRef.current) {
       abortRef.current = null;
     }
-  }, [patchSessionRuntime]);
+  }, [cancelAutoContinue, patchSessionRuntime]);
 
   const applyDesktopSyncState = useCallback((state: any) => {
     const tasks = Array.isArray(state?.tasks) ? state.tasks : [];
@@ -2405,11 +2384,7 @@ export default function ChatPanel({
         return;
       }
 
-      clearAutoContinueTimer();
-      clearPendingAutoContinue();
-      if (!isSyntheticContinueTurn) {
-        autoContinueCountRef.current = 0;
-      }
+      prepareAutoContinueTurn(isSyntheticContinueTurn);
 
       if (!overrideText && textareaRef.current) {
         textareaRef.current.value = "";
@@ -2772,7 +2747,7 @@ export default function ChatPanel({
 
         const doneHandler = (resolve: () => void) => () => {
           if (
-            !pendingAutoContinuePromptRef.current
+            !hasPendingAutoContinue()
             && !sawApprovalRequired
             && effectiveChatMode !== "ask"
             && (cloudDoneReason === null || cloudDoneReason === "end_turn" || cloudDoneReason === "stop_sequence")
@@ -3250,44 +3225,12 @@ export default function ChatPanel({
       patchSessionRuntime(targetSessionId, { sending: false });
       setSendStartedAt(null);
 
-      const autoContinuePrompt = pendingAutoContinuePromptRef.current;
-      const autoContinueReason = pendingAutoContinueReasonRef.current;
-      const autoContinueSessionId = pendingAutoContinueSessionIdRef.current;
-      if (
-        !responseInterruptedRef.current
-        && autoContinuePrompt
-        && autoContinueReason
-        && autoContinueSessionId === targetSessionId
-        && autoContinueCountRef.current < CHAT_AUTO_CONTINUE_LIMIT
-      ) {
-        autoContinueCountRef.current += 1;
-        clearPendingAutoContinue();
-        setStreamFeedback({
-          tone: "warning",
-          label: autoContinueReason === "tool_use" ? "自动继续任务" : "自动续写中",
-          detail: autoContinueReason === "tool_use"
-            ? "继续未完成的步骤，避免任务中断"
-            : "继续补全被长度上限截断的回复",
-        });
-        autoContinueTimerRef.current = window.setTimeout(() => {
-          autoContinueTimerRef.current = null;
-          if (sessionIdRef.current !== targetSessionId) {
-            return;
-          }
-          void handleSend(autoContinuePrompt);
-        }, 180);
-      } else if (
-        autoContinuePrompt
-        && autoContinueReason
-        && autoContinueSessionId === targetSessionId
-        && autoContinueCountRef.current >= CHAT_AUTO_CONTINUE_LIMIT
-      ) {
-        setStreamFeedback({
-          tone: "warning",
-          label: autoContinueReason === "tool_use" ? "任务仍可继续" : "回复仍可继续",
-          detail: "自动续写达到当前上限，可点击 Continue 继续",
-        });
-      }
+      finalizeAutoContinueTurn({
+        responseInterrupted: responseInterruptedRef.current,
+        targetSessionId,
+        activeSessionId: sessionIdRef.current,
+        onSend: handleSend,
+      });
 
       voiceInitiatedRef.current = false;
       if (targetSessionId === sessionIdRef.current && !audioPlayer?.playing) {
@@ -3306,9 +3249,9 @@ export default function ChatPanel({
       networkStatus,
       pendingAttachments,
       appendChunk,
-      clearAutoContinueTimer,
-      clearPendingAutoContinue,
       finalizeMessage,
+      finalizeAutoContinueTurn,
+      hasPendingAutoContinue,
       patchSessionRuntime,
       setPlanForSession,
       ttsEnabled,
@@ -3318,6 +3261,7 @@ export default function ChatPanel({
       chatMode,
       executionMode,
       activePlan,
+      prepareAutoContinueTurn,
       updateSessionMessages,
       queueAutoContinue,
       recordToolTimelineEvent,
@@ -3331,13 +3275,9 @@ export default function ChatPanel({
     handleSendRetryRef.current = handleSend as unknown as (text?: string) => unknown;
   }, [handleSend]);
 
-  const handleContinue = useCallback(() => {
-    if (!continuePrompt || sending) return;
-    autoContinueCountRef.current = 0;
-    clearAutoContinueTimer();
-    clearPendingAutoContinue();
-    void handleSend(continuePrompt);
-  }, [clearAutoContinueTimer, clearPendingAutoContinue, continuePrompt, handleSend, sending]);
+  const triggerContinue = useCallback(() => {
+    void submitContinuePrompt({ sending, onSend: handleSend });
+  }, [handleSend, sending, submitContinuePrompt]);
 
   const pendingAttachmentSummary = useMemo(
     () => pendingAttachments.map((attachment) => attachment.originalName).join(", "),
@@ -4216,7 +4156,7 @@ export default function ChatPanel({
             .catch(() => {
               setTaskWorkbenchOpen(false);
               if (continuePrompt) {
-                handleContinue();
+                triggerContinue();
                 return;
               }
               handleSend(CHECKPOINT_CONTINUE_PROMPT);
@@ -4417,7 +4357,7 @@ export default function ChatPanel({
           feedback={visibleStreamFeedback}
           continuePrompt={continuePrompt}
           sending={sending}
-          onContinue={handleContinue}
+          onContinue={triggerContinue}
         />
         <div style={inputToolbarStyle}>
           <div style={modeRailStyle}>
@@ -4446,7 +4386,7 @@ export default function ChatPanel({
             continuePrompt={continuePrompt}
             sending={sending}
             onOpenWorkbench={() => setTaskWorkbenchOpen(true)}
-            onContinue={handleContinue}
+            onContinue={triggerContinue}
           />
           {activePlan && chatMode === "plan" && (
             <span style={{
@@ -4691,14 +4631,6 @@ function formatBytes(size: number) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function buildContinuePrompt() {
-  return "Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting. If you were in the middle of a tool-driven task, resume the unfinished steps first and only summarize after the task is complete.";
-}
-
-function isSyntheticContinuePrompt(value: string) {
-  return value === buildContinuePrompt() || value === CHECKPOINT_CONTINUE_PROMPT;
 }
 
 function summarizeToolInput(input: unknown) {
