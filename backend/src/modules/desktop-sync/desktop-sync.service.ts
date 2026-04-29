@@ -154,22 +154,35 @@ export class DesktopSyncService {
     emitDesktopSyncEvent(userId, 'desktop-sync:approval', record);
 
     const message = this.formatApprovalMessage(saved);
-    await this.notificationService.createNotification(userId, {
-      type: NotificationType.APPROVAL as any,
-      title: `Desktop approval required · ${saved.riskLevel}`,
-      message,
-    });
-    await this.notificationService.sendPushNotification(userId, {
-      title: 'Desktop approval required',
-      body: message,
-      data: {
-        type: 'desktop_approval_required',
-        approvalId,
-        taskId: dto.taskId,
-        deviceId: dto.deviceId,
-      },
-      channelId: 'developer',
-    });
+    try {
+      await this.notificationService.createNotification(userId, {
+        type: NotificationType.SYSTEM,
+        title: `Desktop approval required · ${saved.riskLevel}`,
+        message,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to create desktop approval notification ${approvalId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    try {
+      await this.notificationService.sendPushNotification(userId, {
+        title: 'Desktop approval required',
+        body: message,
+        data: {
+          type: 'desktop_approval_required',
+          approvalId,
+          taskId: dto.taskId,
+          deviceId: dto.deviceId,
+        },
+        channelId: 'developer',
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to send desktop approval push ${approvalId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
 
     return { ok: true, approval: record };
   }

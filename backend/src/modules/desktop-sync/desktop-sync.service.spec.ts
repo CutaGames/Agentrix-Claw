@@ -222,7 +222,35 @@ describe('DesktopSyncService', () => {
       expect(result.ok).toBe(true);
       expect(result.approval).toBeDefined();
       expect(result.approval.status).toBe('pending');
-      expect(mockNotificationService.createNotification).toHaveBeenCalled();
+      expect(mockNotificationService.createNotification).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ type: 'system' }),
+      );
+      expect(mockNotificationService.sendPushNotification).toHaveBeenCalled();
+    });
+
+    it('should still create approval when notification creation fails', async () => {
+      taskRepo.findOne.mockResolvedValue({
+        id: 't-1',
+        userId: 'user-1',
+        taskId: 'task-1',
+        status: DesktopTaskStatus.EXECUTING,
+        timeline: [],
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      });
+      mockNotificationService.createNotification.mockRejectedValueOnce(new Error('invalid enum'));
+
+      const result = await service.createApproval('user-1', {
+        deviceId: 'dev-1',
+        taskId: 'task-1',
+        title: 'Delete file?',
+        description: 'Agent wants to delete important.txt',
+        riskLevel: DesktopApprovalRiskLevel.L2,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.approval.status).toBe('pending');
       expect(mockNotificationService.sendPushNotification).toHaveBeenCalled();
     });
   });
