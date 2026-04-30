@@ -97,6 +97,7 @@ import DragDropOverlay from "./chatPanel/DragDropOverlay";
 import EmptyChatState from "./chatPanel/EmptyChatState";
 import OfflineStatusBanner from "./chatPanel/OfflineStatusBanner";
 import WindowDragHandle from "./chatPanel/WindowDragHandle";
+import ChatInputComposer from "./chatPanel/ChatInputComposer";
 import {
   extractDesktopApprovalEventDetail,
   getDesktopApprovalId,
@@ -202,17 +203,20 @@ function getConversationModelLabel(
 
 function looksIncompleteAssistantOutput(text: string): boolean {
   const value = text.trim();
-  if (value.length < 12) return false;
+  if (value.length < 24) return false;
 
   const codeFenceCount = (value.match(/```/g) || []).length;
   if (codeFenceCount % 2 === 1) return true;
 
-  if (/[：:]$/.test(value)) return true;
-  if (/([（(\[{「『《]$|[,，、;；]$)/.test(value)) return true;
-  if (/(让我|我来|我会|现在|接下来|下一步|首先|然后|继续|准备|开始|正在|请稍等|let me|i will|i'll|next|first|then)\s*[：:]?$/i.test(value)) {
+  const lastLine = value.split(/\r?\n/).filter(Boolean).pop() || value;
+  if (/[。！？.!?…」』】》`]$/.test(lastLine)) return false;
+
+  if (/[：:]$/.test(lastLine)) return true;
+  if (/([（(\[{「『《]$|[,，、;；]$)/.test(lastLine)) return true;
+  if (/(让我|我来|我会|现在|接下来|下一步|首先|然后|继续|准备|开始|正在|请稍等|let me|i will|i'll|next|first|then)\s*[：:]?$/i.test(lastLine)) {
     return true;
   }
-  if (/[-*]\s*$/.test(value)) return true;
+  if (/[-*]\s*$/.test(lastLine)) return true;
 
   return false;
 }
@@ -2756,8 +2760,8 @@ export default function ChatPanel({
             queueAutoContinue(targetSessionId, sawToolEventAfterLastText ? "tool_use" : "max_tokens");
             setStreamFeedback({
               tone: "warning",
-              label: sawToolEventAfterLastText ? "自动继续任务" : "检测到输出未完成",
-              detail: "上一段回复像是被提前截断，正在自动续写",
+              label: sawToolEventAfterLastText ? "任务似乎尚未完成" : "检测到输出未完成",
+              detail: "已停止自动续写，避免额外消耗 Premium Request；点击 Continue 继续",
             });
           }
           finalizeMessage(targetSessionId, assistantId);
@@ -3228,8 +3232,6 @@ export default function ChatPanel({
       finalizeAutoContinueTurn({
         responseInterrupted: responseInterruptedRef.current,
         targetSessionId,
-        activeSessionId: sessionIdRef.current,
-        onSend: handleSend,
       });
 
       voiceInitiatedRef.current = false;
@@ -3278,6 +3280,21 @@ export default function ChatPanel({
   const triggerContinue = useCallback(() => {
     void submitContinuePrompt({ sending, onSend: handleSend });
   }, [handleSend, sending, submitContinuePrompt]);
+
+  const stopCurrentTurn = useCallback(() => {
+    if (!sending || !sessionIdRef.current) return;
+    setStreamFeedback({
+      tone: "warning",
+      label: "正在停止",
+      detail: "当前回复将在最近的中断点停止",
+    });
+    responseInterruptedRef.current = true;
+    sentenceAccRef.current?.reset();
+    audioPlayerRef.current?.stopAll();
+    setActiveToolRun(null);
+    setSendStartedAt(null);
+    abortSession(sessionIdRef.current);
+  }, [abortSession, sending]);
 
   const pendingAttachmentSummary = useMemo(
     () => pendingAttachments.map((attachment) => attachment.originalName).join(", "),
@@ -4516,102 +4533,44 @@ export default function ChatPanel({
             );
           })}
         </div>
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "flex-end",
-          }}
-        >
-        <textarea
-          ref={textareaRef}
-          defaultValue=""
+        <ChatInputComposer
+          textareaRef={textareaRef}
+          fileInputRef={fileInputRef}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message... (/ for commands)"
-          rows={1}
-          style={{
-            flex: 1,
-            background: "var(--bg-input)",
-            color: "var(--text)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius-sm)",
-            padding: "10px 14px",
-            fontSize: 14,
-            resize: "none",
-            outline: "none",
-            minHeight: 40,
-            maxHeight: 120,
-            fontFamily: "inherit",
+          onAttachmentChange={handleAttachmentChange}
+          onOpenFilePicker={() => fileInputRef.current?.click()}
+          attachDisabled={!token}
+          uploadingAttachments={uploadingAttachments}
+          sending={sending}
+          onSend={() => {
+            void handleSend();
           }}
+          onStop={stopCurrentTurn}
+          iconButtonStyle={iconBtnStyle}
+          voiceButton={(
+            <VoiceButton
+              onTranscript={handleVoiceTranscript}
+              voiceState={voiceState}
+              onStateChange={setVoiceState}
+              onBargeIn={() => {
+                audioPlayerRef.current?.stopAll();
+                sentenceAccRef.current?.reset();
+              }}
+              realtime={{
+                enabled: Boolean(token && activeInstanceId),
+                instanceId: activeInstanceId || undefined,
+                model: selectedModel || undefined,
+                onTranscriptFinal: handleRealtimeVoiceTranscript,
+                onAgentText: handleRealtimeVoiceAgentText,
+                onAgentEnd: handleRealtimeVoiceAgentEnd,
+                onDeepThinkStart: handleRealtimeDeepThinkStart,
+                onDeepThinkDone: handleRealtimeDeepThinkDone,
+                onFabricDevicesChanged: handleRealtimeFabricDevicesChanged,
+                onError: handleRealtimeVoiceError,
+              }}
+            />
+          )}
         />
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          onChange={handleAttachmentChange}
-          style={{ display: "none" }}
-          accept="image/*,.pdf,.txt,.md,.csv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={!token || uploadingAttachments}
-          style={{
-            ...iconBtnStyle,
-            width: 40,
-            height: 40,
-            borderRadius: "50%",
-            background: "var(--bg-input)",
-            border: "1px solid var(--border)",
-            opacity: !token || uploadingAttachments ? 0.5 : 1,
-          }}
-          title="Attach image or file"
-        >
-          {uploadingAttachments ? "⏳" : "📎"}
-        </button>
-        <VoiceButton
-          onTranscript={handleVoiceTranscript}
-          voiceState={voiceState}
-          onStateChange={setVoiceState}
-          onBargeIn={() => {
-            audioPlayerRef.current?.stopAll();
-            sentenceAccRef.current?.reset();
-          }}
-          realtime={{
-            enabled: Boolean(token && activeInstanceId),
-            instanceId: activeInstanceId || undefined,
-            model: selectedModel || undefined,
-            onTranscriptFinal: handleRealtimeVoiceTranscript,
-            onAgentText: handleRealtimeVoiceAgentText,
-            onAgentEnd: handleRealtimeVoiceAgentEnd,
-            onDeepThinkStart: handleRealtimeDeepThinkStart,
-            onDeepThinkDone: handleRealtimeDeepThinkDone,
-            onFabricDevicesChanged: handleRealtimeFabricDevicesChanged,
-            onError: handleRealtimeVoiceError,
-          }}
-        />
-        <button
-          onClick={() => handleSend()}
-          disabled={sending || uploadingAttachments}
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: "50%",
-            background:
-              !sending && !uploadingAttachments ? "var(--accent)" : "var(--bg-input)",
-            color: "white",
-            border: "none",
-            cursor: !sending && !uploadingAttachments ? "pointer" : "default",
-            fontSize: 18,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            transition: "background 0.2s",
-            flexShrink: 0,
-          }}
-        >
-          {sending || uploadingAttachments ? "⏳" : "➤"}
-        </button>
-        </div>
       </div>
 
       <ApprovalSheet

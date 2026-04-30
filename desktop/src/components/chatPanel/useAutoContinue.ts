@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { CHAT_AUTO_CONTINUE_LIMIT } from "./contextBudget";
+import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { buildContinuePrompt } from "./continuePrompt";
 
 export type AutoContinueReason = "max_tokens" | "tool_use";
@@ -13,8 +12,6 @@ type StreamFeedback = {
 type FinalizeAutoContinueArgs = {
   responseInterrupted: boolean;
   targetSessionId: string;
-  activeSessionId: string;
-  onSend: (prompt: string) => void | Promise<unknown>;
 };
 
 type HandleContinueArgs = {
@@ -26,18 +23,9 @@ export function useAutoContinue(
   setStreamFeedback: Dispatch<SetStateAction<StreamFeedback | null>>,
 ) {
   const [continuePrompt, setContinuePrompt] = useState<string | null>(null);
-  const autoContinueCountRef = useRef(0);
   const pendingAutoContinuePromptRef = useRef<string | null>(null);
   const pendingAutoContinueReasonRef = useRef<AutoContinueReason | null>(null);
   const pendingAutoContinueSessionIdRef = useRef<string | null>(null);
-  const autoContinueTimerRef = useRef<number | null>(null);
-
-  const clearAutoContinueTimer = useCallback(() => {
-    if (autoContinueTimerRef.current !== null) {
-      window.clearTimeout(autoContinueTimerRef.current);
-      autoContinueTimerRef.current = null;
-    }
-  }, []);
 
   const clearPendingAutoContinue = useCallback(() => {
     pendingAutoContinuePromptRef.current = null;
@@ -46,15 +34,12 @@ export function useAutoContinue(
   }, []);
 
   const cancelAutoContinue = useCallback(() => {
-    clearAutoContinueTimer();
     clearPendingAutoContinue();
-  }, [clearAutoContinueTimer, clearPendingAutoContinue]);
+  }, [clearPendingAutoContinue]);
 
   const prepareAutoContinueTurn = useCallback((isSyntheticContinueTurn: boolean) => {
     cancelAutoContinue();
-    if (!isSyntheticContinueTurn) {
-      autoContinueCountRef.current = 0;
-    }
+    if (isSyntheticContinueTurn) return;
   }, [cancelAutoContinue]);
 
   const hasPendingAutoContinue = useCallback(() => Boolean(pendingAutoContinuePromptRef.current), []);
@@ -70,61 +55,36 @@ export function useAutoContinue(
   const finalizeAutoContinueTurn = useCallback(({
     responseInterrupted,
     targetSessionId,
-    activeSessionId,
-    onSend,
   }: FinalizeAutoContinueArgs) => {
     const queuedPrompt = pendingAutoContinuePromptRef.current;
     const queuedReason = pendingAutoContinueReasonRef.current;
     const queuedSessionId = pendingAutoContinueSessionIdRef.current;
 
-    if (
-      !responseInterrupted
-      && queuedPrompt
-      && queuedReason
-      && queuedSessionId === targetSessionId
-      && autoContinueCountRef.current < CHAT_AUTO_CONTINUE_LIMIT
-    ) {
-      autoContinueCountRef.current += 1;
-      clearPendingAutoContinue();
-      setStreamFeedback({
-        tone: "warning",
-        label: queuedReason === "tool_use" ? "自动继续任务" : "自动续写中",
-        detail: queuedReason === "tool_use"
-          ? "继续未完成的步骤，避免任务中断"
-          : "继续补全被长度上限截断的回复",
-      });
-      autoContinueTimerRef.current = window.setTimeout(() => {
-        autoContinueTimerRef.current = null;
-        if (activeSessionId !== targetSessionId) {
-          return;
-        }
-        void onSend(queuedPrompt);
-      }, 180);
+    if (!queuedPrompt || !queuedReason || queuedSessionId !== targetSessionId) {
       return;
     }
 
-    if (
-      queuedPrompt
-      && queuedReason
-      && queuedSessionId === targetSessionId
-      && autoContinueCountRef.current >= CHAT_AUTO_CONTINUE_LIMIT
-    ) {
-      setStreamFeedback({
-        tone: "warning",
-        label: queuedReason === "tool_use" ? "任务仍可继续" : "回复仍可继续",
-        detail: "自动续写达到当前上限，可点击 Continue 继续",
-      });
-    }
-  }, [clearPendingAutoContinue, setStreamFeedback]);
+    setStreamFeedback({
+      tone: "warning",
+      label: responseInterrupted
+        ? "当前回复已停止"
+        : queuedReason === "tool_use"
+          ? "任务仍可继续"
+          : "回复仍可继续",
+      detail: responseInterrupted
+        ? "本轮执行已中止，可点击 Continue 从当前进度继续"
+        : queuedReason === "tool_use"
+          ? "已停止自动续写，避免额外消耗 Premium Request；点击 Continue 继续未完成步骤"
+          : "已停止自动续写，避免额外消耗 Premium Request；点击 Continue 从当前位置续写",
+    });
+  }, [setStreamFeedback]);
 
   const handleContinue = useCallback(({ sending, onSend }: HandleContinueArgs) => {
     if (!continuePrompt || sending) return;
-    autoContinueCountRef.current = 0;
+    const prompt = continuePrompt;
     cancelAutoContinue();
-    void onSend(continuePrompt);
+    void onSend(prompt);
   }, [cancelAutoContinue, continuePrompt]);
-
-  useEffect(() => () => clearAutoContinueTimer(), [clearAutoContinueTimer]);
 
   return {
     continuePrompt,

@@ -889,8 +889,9 @@ pub fn write_file(path: String, content: String) -> Result<DesktopWriteFileResul
 pub fn open_browser(url: String) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
-        Command::new("cmd")
-            .args(["/C", "start", "", &url])
+        Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", &url])
+            .creation_flags(0x08000000)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
