@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use std::process::{Command, Stdio};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -96,6 +97,8 @@ pub struct DesktopContextResult {
 static BALL_POS: Mutex<Option<BallPosition>> = Mutex::new(None);
 static WORKSPACE_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 static SUSPEND_CANCEL: Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> = Mutex::new(None);
+static CHAT_PANEL_OPENING: AtomicBool = AtomicBool::new(false);
+static CHAT_PANEL_PENDING_PRO_MODE: Mutex<Option<bool>> = Mutex::new(None);
 
 fn workspace_state_file() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
@@ -224,6 +227,10 @@ fn apply_chat_panel_mode(win: &tauri::WebviewWindow, pro_mode: bool) -> Result<(
 pub fn open_chat_panel(app: AppHandle, pro_mode: Option<bool>) -> Result<(), String> {
     let pro_mode = pro_mode.unwrap_or(false);
 
+    if let Ok(mut pending_mode) = CHAT_PANEL_PENDING_PRO_MODE.lock() {
+        *pending_mode = Some(pro_mode);
+    }
+
     // Cancel any pending suspend timer
     if let Ok(mut guard) = SUSPEND_CANCEL.lock() {
         if let Some(flag) = guard.take() {
@@ -237,8 +244,16 @@ pub fn open_chat_panel(app: AppHandle, pro_mode: Option<bool>) -> Result<(), Str
             win.show().map_err(|e| e.to_string())?;
         }
         win.set_focus().map_err(|e| e.to_string())?;
+        CHAT_PANEL_OPENING.store(false, Ordering::Release);
+        if let Ok(mut pending_mode) = CHAT_PANEL_PENDING_PRO_MODE.lock() {
+            *pending_mode = None;
+        }
         // Resume frontend state if it was suspended
         let _ = win.eval("window.__agentrix_resume?.()");
+        return Ok(());
+    }
+
+    if CHAT_PANEL_OPENING.swap(true, Ordering::AcqRel) {
         return Ok(());
     }
 
@@ -247,7 +262,16 @@ pub fn open_chat_panel(app: AppHandle, pro_mode: Option<bool>) -> Result<(), Str
     // event loop, which may be blocked by the IPC call).
     let app_clone = app.clone();
     std::thread::spawn(move || {
-        let (width, height, min_width, min_height) = if pro_mode {
+        let resolve_pro_mode = || {
+            CHAT_PANEL_PENDING_PRO_MODE
+                .lock()
+                .ok()
+                .and_then(|pending_mode| *pending_mode)
+                .unwrap_or(pro_mode)
+        };
+
+        let initial_pro_mode = resolve_pro_mode();
+        let (width, height, min_width, min_height) = if initial_pro_mode {
             (1100.0, 820.0, 720.0, 560.0)
         } else {
             (480.0, 640.0, 360.0, 480.0)
@@ -258,18 +282,27 @@ pub fn open_chat_panel(app: AppHandle, pro_mode: Option<bool>) -> Result<(), Str
             .inner_size(width, height)
             .min_inner_size(min_width, min_height)
             .decorations(false)
-            .always_on_top(!pro_mode)
+            .always_on_top(!initial_pro_mode)
             .resizable(true)
             .visible(false)
             .drag_and_drop(false)
             .build()
         {
-            let _ = apply_chat_panel_mode(&win, pro_mode);
+            let _ = apply_chat_panel_mode(&win, resolve_pro_mode());
             let _ = win.show();
             let _ = win.set_focus();
             // Grant WebView2 permissions (microphone, etc.) to the new chat-panel
             #[cfg(target_os = "windows")]
             crate::grant_webview2_permissions(&win);
+        } else if let Some(win) = app_clone.get_webview_window("chat-panel") {
+            let _ = apply_chat_panel_mode(&win, resolve_pro_mode());
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
+
+        CHAT_PANEL_OPENING.store(false, Ordering::Release);
+        if let Ok(mut pending_mode) = CHAT_PANEL_PENDING_PRO_MODE.lock() {
+            *pending_mode = None;
         }
     });
 

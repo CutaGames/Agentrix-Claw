@@ -449,6 +449,7 @@ export default function App() {
           }
         }}
         networkStatus={networkStatus}
+        restorePersistedTabs={false}
       />
     );
   }

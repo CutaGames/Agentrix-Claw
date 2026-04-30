@@ -178,6 +178,7 @@ interface Props {
   networkStatus?: NetworkStatus;
   proMode?: boolean;
   onEnterProMode?: () => void;
+  restorePersistedTabs?: boolean;
 }
 
 function getConversationModelLabel(
@@ -385,6 +386,7 @@ export default function ChatPanel({
   networkStatus = "online",
   proMode = false,
   onEnterProMode,
+  restorePersistedTabs = true,
 }: Props) {
   // Use fine-grained Zustand selectors so typing in the textarea (which does not
   // touch auth store) does not trigger a full ChatPanel re-render when unrelated
@@ -1293,6 +1295,19 @@ export default function ChatPanel({
 
     void (async () => {
       try {
+        if (!restorePersistedTabs) {
+          const msgs = trimChatMessagesForDesktopMemory(await loadSessionMessages(sessionIdRef.current));
+          if (cancelled) {
+            return;
+          }
+          setMessages(msgs);
+          tabMessagesCache.current = trimSessionMessageCache({
+            ...tabMessagesCache.current,
+            [sessionIdRef.current]: msgs,
+          }, sessionIdRef.current);
+          return;
+        }
+
         const savedTabs = await loadTabs();
         const savedActiveId = await loadActiveTabId();
 
@@ -1339,7 +1354,7 @@ export default function ChatPanel({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [restorePersistedTabs]);
 
   // ── Tab management helpers ────────────────────────────
   const createNewTab = useCallback(() => {

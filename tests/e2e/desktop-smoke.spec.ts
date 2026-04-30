@@ -187,4 +187,51 @@ test.describe('Desktop Frontend Smoke Tests', () => {
     await expect(page.locator('text=可用能力按模式分层')).toHaveCount(0);
     await expect(page.locator('text=/skill_execute|Failed to execute skill|Session not found/i')).toHaveCount(0);
   });
+
+  test('chat-panel launch starts fresh instead of restoring the previous active tab', async ({ page }) => {
+    const staleMarker = `AUTO_RESUME_MARKER_${Date.now()}`;
+
+    await page.addInitScript(() => {
+      (window as typeof window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {
+        metadata: {
+          currentWindow: {
+            label: 'chat-panel',
+          },
+        },
+      };
+    });
+
+    await page.evaluate((marker) => {
+      localStorage.setItem('agentrix_onboarded', '1');
+      localStorage.setItem('agentrix_tabs', JSON.stringify([
+        {
+          id: 'persisted-tab-1',
+          sessionId: 'persisted-session-1',
+          title: 'Recovered tab',
+        },
+      ]));
+      localStorage.setItem('agentrix_active_tab', JSON.stringify('persisted-tab-1'));
+      localStorage.setItem('chat_session_persisted-session-1', JSON.stringify([
+        {
+          id: 'old-user-msg',
+          role: 'user',
+          content: 'resume the old task',
+          createdAt: 1,
+        },
+        {
+          id: 'old-assistant-msg',
+          role: 'assistant',
+          content: marker,
+          createdAt: 2,
+        },
+      ]));
+    }, staleMarker);
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('text=Agentrix Desktop')).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: /Skip as Guest/i }).dispatchEvent('click');
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator(`text=${staleMarker}`)).toHaveCount(0);
+  });
 });
