@@ -6,12 +6,12 @@
  * events for handoff:request / handoff:initiated.
  */
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
-import { acceptHandoffWs, rejectHandoffWs, type HandoffEvent } from "../services/agentPresence";
+import { rejectHandoffWs, type HandoffEvent } from "../services/agentPresence";
 
 const PENDING_HANDOFF_KEY = "agentrix_pending_handoff";
 
 interface Props {
-  onAccept?: (handoffId: string, context: Record<string, unknown>) => void;
+  onAccept?: (handoff: HandoffEvent) => void;
   onDismiss?: () => void;
 }
 
@@ -82,8 +82,7 @@ export default function HandoffBanner({ onAccept, onDismiss }: Props) {
     if (!handoff?.handoffId) return;
     setAccepting(true);
     try {
-      acceptHandoffWs(handoff.handoffId);
-      onAccept?.(handoff.handoffId, handoff.contextSnapshot ?? {});
+      onAccept?.(handoff);
     } finally {
       setAccepting(false);
       setHandoff(null);

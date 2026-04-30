@@ -234,4 +234,107 @@ test.describe('Desktop Frontend Smoke Tests', () => {
     await expect(page.locator('textarea')).toBeVisible({ timeout: 10000 });
     await expect(page.locator(`text=${staleMarker}`)).toHaveCount(0);
   });
+
+  test('main window pro mode starts fresh instead of restoring the previous active tab', async ({ page }) => {
+    const staleMarker = `MAIN_AUTO_RESUME_MARKER_${Date.now()}`;
+
+    await page.addInitScript(() => {
+      (window as typeof window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {
+        metadata: {
+          currentWindow: {
+            label: 'main',
+          },
+        },
+      };
+    });
+
+    await page.evaluate((marker) => {
+      localStorage.setItem('agentrix_onboarded', '1');
+      localStorage.setItem('agentrix_tabs', JSON.stringify([
+        {
+          id: 'persisted-tab-main-1',
+          sessionId: 'persisted-main-session-1',
+          title: 'Recovered main tab',
+        },
+      ]));
+      localStorage.setItem('agentrix_active_tab', JSON.stringify('persisted-tab-main-1'));
+      localStorage.setItem('chat_session_persisted-main-session-1', JSON.stringify([
+        {
+          id: 'old-main-user-msg',
+          role: 'user',
+          content: 'resume the previous main task',
+          createdAt: 1,
+        },
+        {
+          id: 'old-main-assistant-msg',
+          role: 'assistant',
+          content: marker,
+          createdAt: 2,
+        },
+      ]));
+    }, staleMarker);
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('text=Agentrix Desktop')).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: /Skip as Guest/i }).dispatchEvent('click');
+
+    const ball = page.locator('[title*="Agentrix"]').first();
+    await expect(ball).toBeVisible({ timeout: 5000 });
+    await ball.dblclick({ force: true });
+
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator(`text=${staleMarker}`)).toHaveCount(0);
+  });
+
+  test('main window keeps stale remote handoff gated behind the banner', async ({ page }) => {
+    const staleMarker = `STALE_HANDOFF_MARKER_${Date.now()}`;
+
+    await page.addInitScript(() => {
+      (window as typeof window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {
+        metadata: {
+          currentWindow: {
+            label: 'main',
+          },
+        },
+      };
+    });
+
+    await page.evaluate((marker) => {
+      localStorage.setItem('agentrix_onboarded', '1');
+      localStorage.setItem('agentrix_pending_handoff', JSON.stringify({
+        handoffId: 'stale-remote-handoff',
+        fromDeviceId: 'mobile-device-1',
+        agentId: 'agent-remote-1',
+        contextSnapshot: {
+          deviceName: 'iPhone 15',
+          deviceType: 'mobile',
+          sessionTitle: 'Old pending task',
+          messages: [
+            {
+              role: 'assistant',
+              content: marker,
+              createdAt: 1,
+            },
+          ],
+        },
+      }));
+    }, staleMarker);
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('text=Agentrix Desktop')).toBeVisible({ timeout: 20000 });
+
+    await page.getByRole('button', { name: /Skip as Guest/i }).dispatchEvent('click');
+
+    const ball = page.locator('[title*="Agentrix"]').first();
+    await expect(ball).toBeVisible({ timeout: 5000 });
+    await ball.dblclick({ force: true });
+
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=其他设备上有进行中的任务')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(`text=${staleMarker}`)).toHaveCount(0);
+
+    await page.getByRole('button', { name: /继续在桌面查看/i }).click();
+    await expect(page.locator(`text=${staleMarker}`)).toBeVisible({ timeout: 5000 });
+  });
 });

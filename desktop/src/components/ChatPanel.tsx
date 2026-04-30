@@ -1570,25 +1570,43 @@ export default function ChatPanel({
     trackEvent("handoff_received", { sourceDeviceId: payload.sourceDeviceId || "mobile", agentId: payload.agentId || "none" });
   }, [messages]);
 
+  const shouldAutoApplyHandoff = useCallback((payload: IncomingHandoffEvent | null | undefined) => {
+    if (!payload) {
+      return false;
+    }
+
+    if (payload.sourceDeviceId === "floating-ball") {
+      return true;
+    }
+
+    return !payload.handoffId && Boolean(payload.sessionId || payload.contextSnapshot?.messages?.length);
+  }, []);
+
   useEffect(() => {
     const consumePendingHandoff = () => {
       try {
         const raw = localStorage.getItem("agentrix_pending_handoff");
         if (!raw) return;
-        applyIncomingHandoff(JSON.parse(raw) as IncomingHandoffEvent);
+        const payload = JSON.parse(raw) as IncomingHandoffEvent;
+        if (shouldAutoApplyHandoff(payload)) {
+          applyIncomingHandoff(payload);
+        }
       } catch {
         localStorage.removeItem("agentrix_pending_handoff");
       }
     };
 
     const onIncomingHandoff = (event: Event) => {
-      applyIncomingHandoff((event as CustomEvent<IncomingHandoffEvent>).detail);
+      const payload = (event as CustomEvent<IncomingHandoffEvent>).detail;
+      if (shouldAutoApplyHandoff(payload)) {
+        applyIncomingHandoff(payload);
+      }
     };
 
     consumePendingHandoff();
     window.addEventListener("agentrix:handoff-incoming", onIncomingHandoff as EventListener);
     return () => window.removeEventListener("agentrix:handoff-incoming", onIncomingHandoff as EventListener);
-  }, [applyIncomingHandoff]);
+  }, [applyIncomingHandoff, shouldAutoApplyHandoff]);
 
   const serializeMessageForModel = useCallback(
     (content: string, attachments: ChatAttachment[] = []) => {
@@ -4316,16 +4334,13 @@ export default function ChatPanel({
       {/* Cross-device handoff banner */}
       <div style={{ padding: "0 16px" }}>
         <HandoffBanner
-          onAccept={(handoffId, ctx) => {
-            const msgs = (ctx as any)?.messages;
-            if (Array.isArray(msgs)) {
-              setMessages(trimChatMessagesForDesktopMemory(msgs.map((m: any, i: number) => ({
-                id: m.id || `handoff-${i}`,
-                role: m.role || "user",
-                content: m.content || "",
-                createdAt: m.createdAt || Date.now(),
-              }))));
-            }
+          onAccept={(handoff) => {
+            applyIncomingHandoff({
+              handoffId: handoff.handoffId,
+              sourceDeviceId: handoff.fromDeviceId,
+              agentId: handoff.agentId,
+              contextSnapshot: handoff.contextSnapshot as IncomingHandoffSnapshot | undefined,
+            });
           }}
         />
         <WearableNotification />

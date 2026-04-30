@@ -147,6 +147,10 @@ export default function App() {
         onHandoffInitiated: (event) => {
           localStorage.setItem("agentrix_pending_handoff", JSON.stringify(event));
           window.dispatchEvent(new CustomEvent("agentrix:handoff-incoming", { detail: event }));
+          if (windowLabel === "main" || windowLabel === "dev") {
+            openProPanel();
+            return;
+          }
           void import("@tauri-apps/api/core").then(({ invoke }) => invoke("desktop_bridge_open_chat_panel")).catch(() => {});
         },
         onTimelineEvent: (event) => {
@@ -187,7 +191,7 @@ export default function App() {
       destroyPresenceSocket();
       stopDesktopAgentSync();
     };
-  }, [loggedIn, token, windowLabel]);
+  }, [loggedIn, openProPanel, token, windowLabel]);
 
   // Global keyboard shortcuts (within webview)
   useEffect(() => {
@@ -481,6 +485,7 @@ export default function App() {
             networkStatus={networkStatus}
             proMode={panelMode === "pro"}
             onEnterProMode={openProPanel}
+            restorePersistedTabs={windowLabel !== "main"}
           />
         ) : (
           <div
