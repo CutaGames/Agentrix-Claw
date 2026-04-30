@@ -232,8 +232,10 @@ pub fn open_chat_panel(app: AppHandle, pro_mode: Option<bool>) -> Result<(), Str
     }
 
     if let Some(win) = app.get_webview_window("chat-panel") {
-        win.show().map_err(|e| e.to_string())?;
         apply_chat_panel_mode(&win, pro_mode)?;
+        if !win.is_visible().unwrap_or(false) {
+            win.show().map_err(|e| e.to_string())?;
+        }
         win.set_focus().map_err(|e| e.to_string())?;
         // Resume frontend state if it was suspended
         let _ = win.eval("window.__agentrix_resume?.()");
@@ -258,11 +260,12 @@ pub fn open_chat_panel(app: AppHandle, pro_mode: Option<bool>) -> Result<(), Str
             .decorations(false)
             .always_on_top(!pro_mode)
             .resizable(true)
-            .visible(true)
+            .visible(false)
             .drag_and_drop(false)
             .build()
         {
             let _ = apply_chat_panel_mode(&win, pro_mode);
+            let _ = win.show();
             let _ = win.set_focus();
             // Grant WebView2 permissions (microphone, etc.) to the new chat-panel
             #[cfg(target_os = "windows")]
@@ -1712,7 +1715,9 @@ try { Get-Clipboard -Raw -ErrorAction Stop } catch { "" }
 /// Open (or show) the Spotlight window. Creates it if it doesn't exist.
 pub fn open_spotlight(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("spotlight") {
-        win.show().map_err(|e| e.to_string())?;
+        if !win.is_visible().unwrap_or(false) {
+            win.show().map_err(|e| e.to_string())?;
+        }
         win.set_focus().map_err(|e| e.to_string())?;
         // Notify frontend to re-focus input
         let _ = win.eval("window.dispatchEvent(new CustomEvent('agentrix:spotlight-focus'))");
@@ -1748,10 +1753,12 @@ pub fn open_spotlight(app: AppHandle) -> Result<(), String> {
         .decorations(false)
         .always_on_top(true)
         .transparent(true)
-        .visible(true)
+        .visible(false)
         .drag_and_drop(true)
         .build()
         {
+            let _ = win.show();
+            let _ = win.set_focus();
             #[cfg(target_os = "windows")]
             crate::grant_webview2_permissions(&win);
         }

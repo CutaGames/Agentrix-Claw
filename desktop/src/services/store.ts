@@ -575,6 +575,32 @@ async function fetchWithBackoff(
   throw lastErr || new Error('fetch failed after retries');
 }
 
+type StreamTransport = "native" | "tauri";
+
+let preferredStreamTransport: StreamTransport = "native";
+
+async function fetchStreamingResponse(url: string, init: RequestInit): Promise<Response> {
+  if (preferredStreamTransport === "tauri") {
+    try {
+      return await tauriFetch(url, init as any);
+    } catch (err) {
+      preferredStreamTransport = "native";
+      throw err;
+    }
+  }
+
+  try {
+    const response = await fetch(url, init);
+    preferredStreamTransport = "native";
+    return response;
+  } catch (err) {
+    // Do not fall back within the same premium turn. Retrying a POST stream can
+    // create duplicate billable requests on the backend.
+    preferredStreamTransport = "tauri";
+    throw err;
+  }
+}
+
 
 /** SSE streaming chat via OpenClaw proxy */
 export function streamChat(opts: {
@@ -623,24 +649,7 @@ export function streamChat(opts: {
     signal: ac.signal,
   };
 
-  // IMPORTANT: SSE must use native fetch. The Tauri HTTP plugin buffers the
-  // whole response body before resolving, which destroys first-token latency.
-  // However, some production backends have not yet whitelisted the Tauri
-  // origin (`http://tauri.localhost` on Windows) in their CORS config. When
-  // native fetch is blocked by CORS it throws a `TypeError: Failed to fetch`
-  // with no Response — fall back to the Tauri HTTP plugin, which runs in
-  // Rust and is not subject to browser CORS. Streaming will be buffered in
-  // that degraded path but the user still gets an answer.
-  const doFetch = async () => {
-    try {
-      return await fetch(url, fetchInit);
-    } catch (err: any) {
-      console.warn("[streamChat] native fetch failed, falling back to tauriFetch:", err?.message || err);
-      return await tauriFetch(url, fetchInit as any);
-    }
-  };
-
-  fetchWithBackoff(doFetch, { signal: ac.signal })
+  fetchWithBackoff(() => fetchStreamingResponse(url, fetchInit), { signal: ac.signal, retries: 0 })
     .then(async (res) => {
       if (!res.ok || !res.body) {
         let detail = `HTTP ${res.status}`;
@@ -709,20 +718,10 @@ export function streamDirectChat(opts: {
     signal: ac.signal,
   };
 
-  // IMPORTANT: SSE must use native fetch. The Tauri HTTP plugin buffers the
-  // whole response body before resolving, which destroys first-token latency.
-  // CORS fallback: if native fetch is blocked (backend missing tauri origin)
-  // we degrade to tauriFetch so the user still receives a response.
-  const doFetch = async () => {
-    try {
-      return await fetch(`${API_BASE}/openclaw/proxy/stream`, fetchInit);
-    } catch (err: any) {
-      console.warn("[streamDirectChat] native fetch failed, falling back to tauriFetch:", err?.message || err);
-      return await tauriFetch(`${API_BASE}/openclaw/proxy/stream`, fetchInit as any);
-    }
-  };
-
-  fetchWithBackoff(doFetch, { signal: ac.signal })
+  fetchWithBackoff(
+    () => fetchStreamingResponse(`${API_BASE}/openclaw/proxy/stream`, fetchInit),
+    { signal: ac.signal, retries: 0 },
+  )
     .then(async (res) => {
       if (!res.ok || !res.body) {
         let detail = `HTTP ${res.status}`;

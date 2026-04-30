@@ -63,7 +63,7 @@ export interface DesktopContextResult {
 }
 
 const DEVICE_ID_KEY = "agentrix_desktop_device_id";
-const READ_ONLY_COMMAND_PATTERN = /^(dir|ls|get-childitem|pwd|rg|find|type|cat|get-content)(\s|$)/i;
+const READ_ONLY_COMMAND_SEGMENT_PATTERN = /^(?:(?:dir|ls|get-childitem|pwd|rg|find|type|cat|get-content|echo)(?:\s|$)|git\s+(?:status|diff|show|log|branch|rev-parse|grep|ls-files|remote(?:\s+-v)?)(?:\s|$))/i;
 
 function isTauriAvailable() {
   return Boolean((window as any).__TAURI_INTERNALS__?.invoke);
@@ -154,6 +154,25 @@ function normalizeShellCommand(command?: string) {
   return `${command || ""}`.trim().replace(/\s+/g, " ");
 }
 
+function normalizeShellSegment(segment: string) {
+  return segment
+    .replace(/\s+\d*(?:>>?|<)\s*\S+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitShellCommand(command?: string) {
+  return normalizeShellCommand(command)
+    .split(/\s*(?:&&|\|\||;|\|)\s*/)
+    .map(normalizeShellSegment)
+    .filter(Boolean);
+}
+
+function isReadOnlyShellCommand(command?: string) {
+  const segments = splitShellCommand(command);
+  return segments.length > 0 && segments.every((segment) => READ_ONLY_COMMAND_SEGMENT_PATTERN.test(segment));
+}
+
 export function classifyDesktopRisk(kind: DesktopActionKind, payload?: Record<string, string>): ApprovalRiskLevel {
   if (kind === "clipboard" || kind === "context" || kind === "active-window" || kind === "list-windows" || kind === "list-directory" || kind === "read-file") {
     return "L0";
@@ -168,7 +187,7 @@ export function classifyDesktopRisk(kind: DesktopActionKind, payload?: Record<st
   }
 
   const command = normalizeShellCommand(payload?.command).toLowerCase();
-  if (READ_ONLY_COMMAND_PATTERN.test(command)) {
+  if (isReadOnlyShellCommand(command)) {
     return "L0";
   }
 
@@ -200,7 +219,7 @@ export function buildDesktopApprovalSessionKey(kind: DesktopActionKind, payload?
     if (!command) {
       return undefined;
     }
-    const sessionCommand = READ_ONLY_COMMAND_PATTERN.test(command)
+    const sessionCommand = isReadOnlyShellCommand(command)
       ? command.split(" ")[0]
       : command;
     return `run-command:${sessionCommand}`;

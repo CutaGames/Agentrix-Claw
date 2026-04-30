@@ -1075,7 +1075,15 @@ export default function ChatPanel({
           decision,
           rememberForSession: decision === "approved" ? rememberForSession : false,
         });
-        const responseApproval = normalizeDesktopApproval(response.approval);
+        const normalizedResponseApproval = normalizeDesktopApproval(response.approval);
+        const responseApproval = {
+          ...approval,
+          ...(normalizedResponseApproval || {}),
+          approvalId,
+          status: decision,
+          rememberForSession: decision === "approved" ? rememberForSession : false,
+          sessionKey: normalizedResponseApproval?.sessionKey || approval.sessionKey,
+        } as DesktopRemoteApproval;
         window.dispatchEvent(new CustomEvent("agentrix:approval-response-local", { detail: responseApproval }));
         replaceSessionRuntime((prev) => {
           const next = { ...prev };
