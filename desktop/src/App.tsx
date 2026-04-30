@@ -28,6 +28,18 @@ function getWindowView(): string {
   }
 }
 
+function toApprovalBadgeLevel(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.min(3, Math.round(value)));
+  }
+
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "L3") return 3;
+  if (normalized === "L2") return 2;
+  if (normalized === "L1") return 1;
+  return 0;
+}
+
 export default function App() {
   const windowLabel = getWindowView();
   const [panelOpen, setPanelOpen] = useState(false);
@@ -141,6 +153,17 @@ export default function App() {
           window.dispatchEvent(new CustomEvent("agentrix:timeline-event", { detail: event }));
         },
         onApprovalNew: (event) => {
+          const eventPayload = event as unknown;
+          const approval = (eventPayload && typeof eventPayload === "object" && "approval" in eventPayload)
+            ? (eventPayload as { approval?: Record<string, unknown> }).approval
+            : eventPayload as Record<string, unknown> | null | undefined;
+          window.dispatchEvent(new CustomEvent("agentrix:approval-needed", {
+            detail: {
+              toolName: String(approval?.title || approval?.kind || "Approval"),
+              riskLevel: toApprovalBadgeLevel(approval?.riskLevel),
+              reason: String(approval?.description || approval?.title || "High-risk action waiting for review"),
+            },
+          }));
           window.dispatchEvent(new CustomEvent("agentrix:approval-new", { detail: event }));
         },
         onConnectionChange: (connected) => {
@@ -197,12 +220,6 @@ export default function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [openProPanel, openSpotlightOrPanel, panelMode, panelOpen]);
-
-  useEffect(() => {
-    const handler = () => setPanelOpen(true);
-    window.addEventListener("agentrix:approval-new", handler);
-    return () => window.removeEventListener("agentrix:approval-new", handler);
-  }, []);
 
   // Register Tauri global shortcuts (runs once, chat/default only)
   useEffect(() => {

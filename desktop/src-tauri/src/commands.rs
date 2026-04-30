@@ -725,6 +725,18 @@ pub fn write_workspace_file(relative_path: String, content: String) -> Result<()
     std::fs::write(&target, &content).map_err(|e| e.to_string())
 }
 
+pub fn delete_workspace_file(relative_path: String) -> Result<(), String> {
+    let workspace = require_workspace_dir()?;
+    let target = validate_path(&workspace, &relative_path)?;
+    if !target.exists() {
+        return Ok(());
+    }
+    if !target.is_file() {
+        return Err(format!("Not a file: {}", target.display()));
+    }
+    std::fs::remove_file(&target).map_err(|e| e.to_string())
+}
+
 pub fn list_directory(path: String) -> Result<DesktopListDirectoryResult, String> {
     let target = if path.trim().is_empty() {
         load_workspace_dir()?

@@ -23,13 +23,11 @@ import {
   type OpenClawInstance,
   uploadChatAttachment,
 } from "../services/store";
-import MessageBubble from "./MessageBubble";
 import VoiceButton from "./VoiceButton";
 import FloatingBall from "./FloatingBall";
 import SettingsPanel from "./SettingsPanel";
 import FileTreePanel from "./FileTreePanel";
-import ApprovalSheet from "./ApprovalSheet";
-import TaskTimeline, { type TaskRunState, type TaskTimelineEntry, type TaskTimelineStatus } from "./TaskTimeline";
+import { type TaskRunState, type TaskTimelineEntry, type TaskTimelineStatus } from "./TaskTimeline";
 import { gitStatus, gitDiff, gitLog, gitCommit, gitBranchList, type GitFileChange } from "../services/git";
 import { captureScreen } from "../services/screenshot";
 import NotificationCenter, { NotificationBadge } from "./NotificationCenter";
@@ -94,21 +92,18 @@ import TabBar, { type ChatTab } from "./TabBar";
 import type { NetworkStatus } from "../services/network";
 import type { StreamEvent } from "../../../shared/stream-parser.ts";
 import DragDropOverlay from "./chatPanel/DragDropOverlay";
-import EmptyChatState from "./chatPanel/EmptyChatState";
 import OfflineStatusBanner from "./chatPanel/OfflineStatusBanner";
 import WindowDragHandle from "./chatPanel/WindowDragHandle";
-import ChatInputComposer from "./chatPanel/ChatInputComposer";
 import {
   extractDesktopApprovalEventDetail,
   getDesktopApprovalId,
   normalizeDesktopApproval,
   parseDesktopApprovalDecision,
 } from "./chatPanel/approvalState";
-import {
-  ChatQuickActions,
-  StreamStatusBanner,
-  TaskWorkbenchBanner,
-} from "./chatPanel/taskStatusUi";
+import MessageList from "./chatPanel/MessageList";
+import ToolExecutionBlock from "./chatPanel/ToolExecutionBlock";
+import InputZone from "./chatPanel/InputZone";
+import ApprovalModal from "./chatPanel/ApprovalModal";
 import {
   DESKTOP_LOCAL_MODEL_ID,
   DESKTOP_LOCAL_MODEL_LABEL,
@@ -151,7 +146,12 @@ import {
 } from "./chatPanel/contextBudget";
 import { createEmptySessionRuntimeState, type SessionRuntimeState } from "./chatPanel/sessionRuntime";
 import { buildToolTimelineEntry, buildToolWorkbenchEvent } from "./chatPanel/toolTimeline";
+import { useChatPanelRuntimeStore } from "./chatPanel/runtimeStore";
 import { useAutoContinue } from "./chatPanel/useAutoContinue";
+import {
+  parseWorkspaceWriteArtifact,
+  revertWorkspaceFileBackup,
+} from "../services/workspaceBackups";
 
 // Send desktop notification when app is in background
 async function notifyIfBackground(title: string, body: string) {
@@ -167,6 +167,10 @@ async function notifyIfBackground(title: string, body: string) {
       if (permitted) sendNotification({ title, body: body.slice(0, 100) });
     }
   } catch {}
+}
+
+function filterWorkspaceChangeList(changes: GitFileChange[]) {
+  return changes.filter((change) => !change.file.startsWith(".agentrix/backup/"));
 }
 
 interface Props {
@@ -436,7 +440,16 @@ export default function ChatPanel({
   const [mcpPanelOpen, setMcpPanelOpen] = useState(false);
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
   const [approvalSubmitting, setApprovalSubmitting] = useState(false);
-  const [workspaceChanges, setWorkspaceChanges] = useState<GitFileChange[]>([]);
+  const sessionRuntime = useChatPanelRuntimeStore((state) => state.sessionRuntime);
+  const workspaceChanges = useChatPanelRuntimeStore((state) => state.workspaceChanges);
+  const workspaceBackups = useChatPanelRuntimeStore((state) => state.workspaceBackups);
+  const patchSessionRuntime = useChatPanelRuntimeStore((state) => state.patchSessionRuntime);
+  const replaceSessionRuntime = useChatPanelRuntimeStore((state) => state.replaceSessionRuntime);
+  const clearSessionRuntime = useChatPanelRuntimeStore((state) => state.clearSessionRuntime);
+  const removeSessionRuntime = useChatPanelRuntimeStore((state) => state.removeSessionRuntime);
+  const setWorkspaceChanges = useChatPanelRuntimeStore((state) => state.setWorkspaceChanges);
+  const upsertWorkspaceBackup = useChatPanelRuntimeStore((state) => state.upsertWorkspaceBackup);
+  const removeWorkspaceBackup = useChatPanelRuntimeStore((state) => state.removeWorkspaceBackup);
   const desktopDeviceId = useMemo(() => getDesktopDeviceId(), []);
   const [chatMode, setChatMode] = useState<ChatMode>(() => {
     const saved = localStorage.getItem("agentrix_chat_mode");
@@ -454,7 +467,6 @@ export default function ChatPanel({
   const [activeTabId, setActiveTabId] = useState(defaultTabId);
   const [tabsHydrated, setTabsHydrated] = useState(false);
   const tabMessagesCache = useRef<Record<string, ChatMessage[]>>({});
-  const [sessionRuntime, setSessionRuntime] = useState<Record<string, SessionRuntimeState>>({});
   const sessionRuntimeRef = useRef<Record<string, SessionRuntimeState>>({});
   const pendingApprovalSnapshotRef = useRef<DesktopRemoteApproval | null>(null);
   const [sessionPlans, setSessionPlans] = useState<Record<string, AgentPlan | null>>({});
@@ -765,28 +777,6 @@ export default function ChatPanel({
     sessionRuntimeRef.current = sessionRuntime;
   }, [sessionRuntime]);
 
-  const patchSessionRuntime = useCallback(
-    (
-      sessionId: string,
-      patch:
-        | Partial<SessionRuntimeState>
-        | ((current: SessionRuntimeState) => Partial<SessionRuntimeState>),
-    ) => {
-      setSessionRuntime((prev) => {
-        const current = prev[sessionId] || createEmptySessionRuntimeState();
-        const delta = typeof patch === "function" ? patch(current) : patch;
-        return {
-          ...prev,
-          [sessionId]: {
-            ...current,
-            ...delta,
-          },
-        };
-      });
-    },
-    [],
-  );
-
   const setPlanForSession = useCallback((sessionId: string, plan: AgentPlan | null) => {
     setSessionPlans((prev) => ({
       ...prev,
@@ -837,11 +827,11 @@ export default function ChatPanel({
   const refreshWorkspaceChanges = useCallback(async () => {
     try {
       const status = await gitStatus();
-      setWorkspaceChanges(status.changes || []);
+      setWorkspaceChanges(filterWorkspaceChangeList(status.changes || []));
     } catch {
       setWorkspaceChanges([]);
     }
-  }, []);
+  }, [setWorkspaceChanges]);
 
   const persistMessagesForSession = useCallback(
     (sessionId: string, nextMessages: ChatMessage[]) => {
@@ -1026,7 +1016,7 @@ export default function ChatPanel({
       ...approvalBySession.keys(),
     ]);
 
-    setSessionRuntime((prev) => {
+    replaceSessionRuntime((prev) => {
       const next = { ...prev };
       for (const sessionId of knownSessionIds) {
         const current = next[sessionId] || createEmptySessionRuntimeState();
@@ -1043,7 +1033,7 @@ export default function ChatPanel({
       }
       return next;
     });
-  }, [desktopDeviceId, tabs]);
+  }, [desktopDeviceId, replaceSessionRuntime, tabs]);
 
   const submitDesktopApprovalDecision = useCallback(
     async (
@@ -1087,7 +1077,7 @@ export default function ChatPanel({
         });
         const responseApproval = normalizeDesktopApproval(response.approval);
         window.dispatchEvent(new CustomEvent("agentrix:approval-response-local", { detail: responseApproval }));
-        setSessionRuntime((prev) => {
+        replaceSessionRuntime((prev) => {
           const next = { ...prev };
           for (const [sessionId, runtime] of Object.entries(next)) {
             if (getDesktopApprovalId(runtime.pendingApproval) === approvalId) {
@@ -1120,7 +1110,7 @@ export default function ChatPanel({
         setApprovalSubmitting(false);
       }
     },
-    [applyDesktopSyncState, approvalSubmitting, token],
+    [applyDesktopSyncState, approvalSubmitting, replaceSessionRuntime, token],
   );
 
   const approvalSheetRequest = useMemo(
@@ -1169,7 +1159,7 @@ export default function ChatPanel({
       return;
     }
     void refreshWorkspaceChanges();
-  }, [desktopTaskStatus, desktopTimelineEntries.length, refreshWorkspaceChanges, taskWorkbenchOpen, workspaceDir]);
+  }, [desktopTaskStatus, desktopTimelineEntries.length, refreshWorkspaceChanges, setWorkspaceChanges, taskWorkbenchOpen, workspaceDir]);
 
   useEffect(() => {
     if (!token) {
@@ -1192,12 +1182,13 @@ export default function ChatPanel({
 
   useEffect(() => {
     if (!token) {
-      setSessionRuntime({});
+      clearSessionRuntime();
       setSessionPlans({});
+      setWorkspaceChanges([]);
       return;
     }
     fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
-  }, [token, activeTabId, applyDesktopSyncState]);
+  }, [token, activeTabId, applyDesktopSyncState, clearSessionRuntime, setWorkspaceChanges]);
 
   useEffect(() => {
     const activeInst = instances.find((i) => i.id === activeInstanceId);
@@ -1407,11 +1398,7 @@ export default function ChatPanel({
     setTabs(newTabs);
     if (closingTab) {
       abortSession(closingTab.sessionId);
-      setSessionRuntime((prev) => {
-        const next = { ...prev };
-        delete next[closingTab.sessionId];
-        return next;
-      });
+      removeSessionRuntime(closingTab.sessionId);
       setSessionPlans((prev) => {
         const next = { ...prev };
         delete next[closingTab.sessionId];
@@ -1437,7 +1424,7 @@ export default function ChatPanel({
       if (textareaRef.current) textareaRef.current.value = "";
       setBallState((sessionRuntimeRef.current[nextTab.sessionId] || createEmptySessionRuntimeState()).sending ? "thinking" : "idle");
     }
-  }, [tabs, activeTabId, abortSession]);
+  }, [tabs, activeTabId, abortSession, removeSessionRuntime]);
 
   // Persist tabs whenever they change
   useEffect(() => {
@@ -1697,6 +1684,46 @@ export default function ChatPanel({
       createdAt: Date.now(),
     }]));
   }, [abortSession]);
+
+  const handleWorkspaceWriteArtifact = useCallback((toolName: string, rawResult: unknown) => {
+    if (!/(write|edit)/i.test(toolName)) {
+      return;
+    }
+
+    const artifact = parseWorkspaceWriteArtifact(rawResult);
+    if (!artifact) {
+      return;
+    }
+
+    if (artifact.backup) {
+      upsertWorkspaceBackup(artifact.backup);
+    }
+
+    if (artifact.diffPreview?.trim()) {
+      addSystemMessage([
+        `🧩 Workspace file updated: ${artifact.path}`,
+        "Inline diff preview:",
+        `\`\`\`diff\n${artifact.diffPreview.slice(0, 4000)}\n\`\`\``,
+        "Undo is available from Task Workbench.",
+      ].join("\n"));
+    }
+  }, [addSystemMessage, upsertWorkspaceBackup]);
+
+  const handleRevertWorkspaceChange = useCallback(async (filePath: string) => {
+    const backup = workspaceBackups[filePath];
+    if (!backup) {
+      return;
+    }
+
+    try {
+      await revertWorkspaceFileBackup(backup);
+      removeWorkspaceBackup(filePath);
+      await refreshWorkspaceChanges();
+      addSystemMessage(`↩️ Reverted workspace change for ${filePath}.`);
+    } catch (error: any) {
+      addSystemMessage(`❌ Failed to revert ${filePath}: ${error?.message || String(error)}`);
+    }
+  }, [addSystemMessage, refreshWorkspaceChanges, removeWorkspaceBackup, workspaceBackups]);
 
   const settleRealtimeVoiceTurn = useCallback((options?: { interrupted?: boolean; errorMessage?: string }) => {
     const activeTurn = activeRealtimeVoiceTurnRef.current;
@@ -2638,6 +2665,7 @@ export default function ChatPanel({
             sawToolEventAfterLastText = true;
             setActiveToolRun(null);
             void refreshWorkspaceChanges();
+            handleWorkspaceWriteArtifact(event.toolName, event.result);
             recordToolTimelineEvent(targetSessionId, {
               id: event.toolCallId,
               toolName: event.toolName,
@@ -3008,6 +3036,9 @@ export default function ChatPanel({
                           const id = queuedIds.shift() || `local-${name}-${Date.now()}`;
                           localToolRunIds.set(name, queuedIds);
                           const failed = /^error\b|"error"\s*:|"success"\s*:\s*false/i.test(result);
+                          if (!failed) {
+                            handleWorkspaceWriteArtifact(name, result);
+                          }
                           recordToolTimelineEvent(targetSessionId, {
                             id,
                             toolName: name,
@@ -3488,13 +3519,7 @@ export default function ChatPanel({
     const handleApprovalNew = (event: Event) => {
       const { approval, sessionId } = extractDesktopApprovalEventDetail((event as CustomEvent).detail);
       if (approval && sessionId) {
-        setSessionRuntime((prev) => ({
-          ...prev,
-          [sessionId]: {
-            ...(prev[sessionId] || createEmptySessionRuntimeState()),
-            pendingApproval: approval,
-          },
-        }));
+        patchSessionRuntime(sessionId, { pendingApproval: approval });
       }
       if (approval?.deviceId === desktopDeviceId && approval.status === "pending" && token) {
         fetchDesktopSyncState(token).then(applyDesktopSyncState).catch(() => {});
@@ -3506,7 +3531,7 @@ export default function ChatPanel({
         if (getDesktopApprovalId(pendingApprovalSnapshotRef.current) === getDesktopApprovalId(approval)) {
           pendingApprovalSnapshotRef.current = null;
         }
-        setSessionRuntime((prev) => {
+        replaceSessionRuntime((prev) => {
           const current = prev[sessionId];
           if (!current || getDesktopApprovalId(current.pendingApproval) !== getDesktopApprovalId(approval)) {
             return prev;
@@ -3534,7 +3559,7 @@ export default function ChatPanel({
       window.removeEventListener("agentrix:approval-new", handleApprovalNew as EventListener);
       window.removeEventListener("agentrix:approval-response-local", handleApprovalResponse as EventListener);
     };
-  }, [applyDesktopSyncState, desktopDeviceId, token]);
+  }, [applyDesktopSyncState, desktopDeviceId, patchSessionRuntime, replaceSessionRuntime, token]);
 
   useEffect(() => {
     if (!taskWorkbenchOpen || !token) {
@@ -4122,6 +4147,8 @@ export default function ChatPanel({
         operationsOverview={operationsOverview}
         operationsContinuity={operationsContinuity}
         workspaceChanges={workspaceChanges}
+        workspaceBackups={workspaceBackups}
+        onRevertWorkspaceChange={handleRevertWorkspaceChange}
         onApprovePlan={async () => {
           if (!token) return;
           const updated = await approvePlanApi(token, sessionIdRef.current);
@@ -4254,13 +4281,13 @@ export default function ChatPanel({
         </div>
       )}
 
-      <TaskWorkbenchBanner
+      <ToolExecutionBlock
         taskStatus={desktopTaskStatus}
         activePlanStatus={activePlan?.status || null}
         pendingApprovalTitle={pendingApproval?.title || null}
         workspaceChanges={workspaceChanges}
-        timelineCount={desktopTimelineEntries.length}
-        onOpen={() => setTaskWorkbenchOpen(true)}
+        timelineEntries={desktopTimelineEntries}
+        onOpenWorkbench={() => setTaskWorkbenchOpen(true)}
       />
 
       {/* Cross-device handoff banner */}
@@ -4297,30 +4324,19 @@ export default function ChatPanel({
         </div>
       )}
 
-      {/* Messages */}
-      <div
-        ref={messageListRef}
+      <MessageList
+        messageListRef={messageListRef}
+        listEndRef={listEndRef}
+        messages={messages}
         onScroll={handleMessagesScroll}
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "12px 16px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        {messages.length === 0 && <EmptyChatState />}
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} onRetry={handleRetryMessage} />
-        ))}        {activePlan && (
+        onRetry={handleRetryMessage}
+        planPanel={activePlan && (
           <PlanPanel
             plan={activePlan}
             onApprove={async () => {
               if (!token) return;
               const updated = await approvePlanApi(token, sessionIdRef.current);
               if (updated) setPlanForSession(sessionIdRef.current, updated);
-              // Auto-switch to agent mode to track execution
               if (chatMode === "plan") setChatMode("agent");
               handleSend("approve");
             }}
@@ -4331,249 +4347,76 @@ export default function ChatPanel({
             }}
           />
         )}
-        {token && sessionIdRef.current && (
+        contextVisualizer={token && sessionIdRef.current ? (
           <ContextVisualizer
             sessionId={sessionIdRef.current}
             token={token}
             instanceId={activeInstanceId || undefined}
           />
-        )}
-        <div ref={listEndRef} />
-      </div>
+        ) : undefined}
+      />
 
-      {/* Input area */}
-      <div
-        style={{
-          padding: "12px 16px",
-          borderTop: "1px solid var(--border)",
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
+      <InputZone
+        tokenUsage={tokenUsage}
+        streamCost={streamCost}
+        visibleStreamFeedback={visibleStreamFeedback}
+        continuePrompt={continuePrompt}
+        sending={sending}
+        chatMode={chatMode}
+        chatModeOptions={CHAT_MODE_OPTIONS}
+        setChatMode={setChatMode}
+        pendingApproval={Boolean(pendingApproval)}
+        approvalSubmitting={approvalSubmitting}
+        hasActiveWorkbench={desktopTaskStatus !== "idle" || Boolean(activePlan) || workspaceChanges.length > 0}
+        workspaceChanges={workspaceChanges}
+        onOpenWorkbench={() => setTaskWorkbenchOpen(true)}
+        onContinue={triggerContinue}
+        activePlanStatus={activePlan?.status || null}
+        deepThinkActive={deepThinkActive}
+        deepThinkTargetModel={deepThinkTargetModel}
+        fabricDevices={fabricDevices}
+        pendingAttachments={pendingAttachments}
+        pendingAttachmentSummary={pendingAttachmentSummary}
+        removePendingAttachment={removePendingAttachment}
+        executionMode={executionMode}
+        setExecutionMode={setExecutionMode}
+        textareaRef={textareaRef}
+        fileInputRef={fileInputRef}
+        onKeyDown={handleKeyDown}
+        onAttachmentChange={handleAttachmentChange}
+        attachDisabled={!token}
+        uploadingAttachments={uploadingAttachments}
+        onSend={() => {
+          void handleSend();
         }}
-      >
-        {/* Token usage bar + real-time cost */}
-        {(tokenUsage || streamCost) && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>Context</span>
-            <div style={{ flex: 1, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
-              <div style={{
-                height: "100%", borderRadius: 2, transition: "width 0.4s ease",
-                width: `${Math.min(tokenUsage?.percent ?? 0, 100)}%`,
-                background: (tokenUsage?.percent ?? 0) > 75 ? "#ef4444" : (tokenUsage?.percent ?? 0) > 50 ? "#f59e0b" : "#6C5CE7",
-              }} />
-            </div>
-            <span style={{ fontSize: 9, color: "var(--text-dim)", flexShrink: 0 }}>
-              {tokenUsage ? `${tokenUsage.percent}% · ${(tokenUsage.used / 1000).toFixed(1)}k/${(tokenUsage.total / 1000).toFixed(0)}k` : ""}
-              {streamCost ? ` · $${streamCost.totalCostUsd.toFixed(4)}` : ""}
-              {streamCost?.cacheReadTokens ? " ♻️" : ""}
-              {streamCost?.model ? ` · ${streamCost.model.split("/").pop()?.split("-").slice(0, 3).join("-") || streamCost.model}` : ""}
-            </span>
-          </div>
-        )}
-        <StreamStatusBanner
-          feedback={visibleStreamFeedback}
-          continuePrompt={continuePrompt}
-          sending={sending}
-          onContinue={triggerContinue}
-        />
-        <div style={inputToolbarStyle}>
-          <div style={modeRailStyle}>
-            {CHAT_MODE_OPTIONS.map((option) => {
-              const active = option.id === chatMode;
-              return (
-                <button
-                  key={option.id}
-                  onClick={() => setChatMode(option.id)}
-                  style={{
-                    ...modeChipStyle,
-                    ...(active ? modeChipActiveStyle : {}),
-                  }}
-                  title={option.description}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
-          <ChatQuickActions
-            hasPendingApproval={Boolean(pendingApproval)}
-            approvalSubmitting={approvalSubmitting}
-            hasActiveWorkbench={desktopTaskStatus !== "idle" || Boolean(activePlan) || workspaceChanges.length > 0}
-            workspaceChanges={workspaceChanges}
-            continuePrompt={continuePrompt}
-            sending={sending}
-            onOpenWorkbench={() => setTaskWorkbenchOpen(true)}
-            onContinue={triggerContinue}
+        onStop={stopCurrentTurn}
+        iconButtonStyle={iconBtnStyle}
+        voiceButton={(
+          <VoiceButton
+            onTranscript={handleVoiceTranscript}
+            voiceState={voiceState}
+            onStateChange={setVoiceState}
+            onBargeIn={() => {
+              audioPlayerRef.current?.stopAll();
+              sentenceAccRef.current?.reset();
+            }}
+            realtime={{
+              enabled: Boolean(token && activeInstanceId),
+              instanceId: activeInstanceId || undefined,
+              model: selectedModel || undefined,
+              onTranscriptFinal: handleRealtimeVoiceTranscript,
+              onAgentText: handleRealtimeVoiceAgentText,
+              onAgentEnd: handleRealtimeVoiceAgentEnd,
+              onDeepThinkStart: handleRealtimeDeepThinkStart,
+              onDeepThinkDone: handleRealtimeDeepThinkDone,
+              onFabricDevicesChanged: handleRealtimeFabricDevicesChanged,
+              onError: handleRealtimeVoiceError,
+            }}
           />
-          {activePlan && chatMode === "plan" && (
-            <span style={{
-              fontSize: 10, fontWeight: 600, padding: "4px 8px", borderRadius: 999,
-              border: "1px solid rgba(134,239,172,0.3)", background: "rgba(134,239,172,0.08)", color: "#86efac",
-            }}>
-              📋 Plan {activePlan.status === "pending" ? "ready" : activePlan.status}
-            </span>
-          )}
-        </div>
-        {/* Deep-think indicator */}
-        {deepThinkActive && (
-          <div style={{
-            display: "flex", alignItems: "center", gap: 8,
-            padding: "6px 12px", borderRadius: 8,
-            background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.3)",
-            animation: "pulse 2s ease-in-out infinite",
-          }}>
-            <span style={{ fontSize: 16 }}>🧠</span>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#c084fc" }}>
-              深度思考中…
-            </span>
-            {deepThinkTargetModel && (
-              <span style={{ fontSize: 10, color: "rgba(192,132,252,0.7)" }}>
-                → {deepThinkTargetModel}
-              </span>
-            )}
-          </div>
         )}
-        {/* Fabric device bar */}
-        {fabricDevices.length > 1 && (
-          <div style={{
-            display: "flex", alignItems: "center", gap: 6,
-            padding: "4px 10px", borderRadius: 8,
-            background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.25)",
-          }}>
-            <span style={{ fontSize: 12, color: "#93c5fd", fontWeight: 600 }}>
-              🔗 {fabricDevices.length} 设备
-            </span>
-            {fabricDevices.map((d, i) => (
-              <span key={i} style={{
-                fontSize: 11, padding: "2px 6px", borderRadius: 999,
-                background: d.isPrimary ? "rgba(59,130,246,0.25)" : "rgba(255,255,255,0.06)",
-                color: d.isPrimary ? "#60a5fa" : "var(--text-dim)",
-                border: d.isPrimary ? "1px solid rgba(59,130,246,0.4)" : "1px solid transparent",
-              }}>
-                {d.isPrimary ? "👑 " : ""}{d.deviceType}
-              </span>
-            ))}
-          </div>
-        )}
-        {!!pendingAttachments.length && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }} title={pendingAttachmentSummary}>
-            {pendingAttachments.map((attachment) => (
-              <div
-                key={attachment.fileName}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid var(--border)",
-                  maxWidth: 260,
-                }}
-              >
-                <span style={{ fontSize: 14 }}>
-                  {attachment.kind === "image"
-                    ? "🖼️"
-                    : attachment.kind === "video"
-                      ? "🎬"
-                      : attachment.kind === "audio"
-                        ? "🎵"
-                        : "📎"}
-                </span>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {attachment.originalName}
-                  </div>
-                  <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{formatBytes(attachment.size)}</div>
-                </div>
-                <button onClick={() => removePendingAttachment(attachment.fileName)} style={chipCloseBtnStyle}>✕</button>
-              </div>
-            ))}
-          </div>
-        )}
-        {/* Tri-tier execution mode selector — single source of truth for local vs cloud. */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            marginBottom: 6,
-            fontSize: 11,
-            color: "var(--text-dim)",
-          }}
-        >
-          <span style={{ opacity: 0.7 }}>执行</span>
-          {(["local-only", "auto", "cloud-only"] as ExecutionMode[]).map((mode) => {
-            const active = executionMode === mode;
-            const label = mode === "local-only" ? "🔒 端侧" : mode === "cloud-only" ? "☁️ 云端" : "🤖 智能";
-            const hint =
-              mode === "local-only"
-                ? "强制本地 · 失败不切换云端"
-                : mode === "cloud-only"
-                  ? "强制云端 · 忽略本地模型"
-                  : "自动 · 简单问题本地，复杂用云端";
-            return (
-              <button
-                key={mode}
-                onClick={() => setExecutionMode(mode)}
-                title={hint}
-                style={{
-                  padding: "3px 10px",
-                  borderRadius: 999,
-                  border: "1px solid var(--border)",
-                  background: active ? "var(--accent)" : "var(--bg-input)",
-                  color: active ? "white" : "var(--text-dim)",
-                  fontSize: 11,
-                  cursor: "pointer",
-                  transition: "background 0.15s, color 0.15s",
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-        <ChatInputComposer
-          textareaRef={textareaRef}
-          fileInputRef={fileInputRef}
-          onKeyDown={handleKeyDown}
-          onAttachmentChange={handleAttachmentChange}
-          onOpenFilePicker={() => fileInputRef.current?.click()}
-          attachDisabled={!token}
-          uploadingAttachments={uploadingAttachments}
-          sending={sending}
-          onSend={() => {
-            void handleSend();
-          }}
-          onStop={stopCurrentTurn}
-          iconButtonStyle={iconBtnStyle}
-          voiceButton={(
-            <VoiceButton
-              onTranscript={handleVoiceTranscript}
-              voiceState={voiceState}
-              onStateChange={setVoiceState}
-              onBargeIn={() => {
-                audioPlayerRef.current?.stopAll();
-                sentenceAccRef.current?.reset();
-              }}
-              realtime={{
-                enabled: Boolean(token && activeInstanceId),
-                instanceId: activeInstanceId || undefined,
-                model: selectedModel || undefined,
-                onTranscriptFinal: handleRealtimeVoiceTranscript,
-                onAgentText: handleRealtimeVoiceAgentText,
-                onAgentEnd: handleRealtimeVoiceAgentEnd,
-                onDeepThinkStart: handleRealtimeDeepThinkStart,
-                onDeepThinkDone: handleRealtimeDeepThinkDone,
-                onFabricDevicesChanged: handleRealtimeFabricDevicesChanged,
-                onError: handleRealtimeVoiceError,
-              }}
-            />
-          )}
-        />
-      </div>
+      />
 
-      <ApprovalSheet
+      <ApprovalModal
         request={approvalSheetRequest}
         rememberForSession={rememberApprovalForSession}
         onRememberChange={setRememberApprovalForSession}
@@ -4639,52 +4482,9 @@ const windowActionBtnStyle: CSSProperties = {
   WebkitAppRegion: "no-drag",
 };
 
-const chipCloseBtnStyle: CSSProperties = {
-  background: "transparent",
-  border: "none",
-  color: "var(--text-dim)",
-  cursor: "pointer",
-  fontSize: 12,
-  padding: 0,
-};
-
 const CHAT_MODE_OPTIONS: Array<{ id: ChatMode; label: string; description: string }> = [
   { id: "ask", label: "Ask", description: "Fast reply mode without tool execution" },
   { id: "agent", label: "Agent", description: "Tool-enabled desktop agent mode" },
   { id: "plan", label: "Plan", description: "Plan-first mode for longer multi-step tasks" },
 ];
-
-const inputToolbarStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
-  flexWrap: "wrap",
-};
-
-const modeRailStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 4,
-  padding: 4,
-  borderRadius: 999,
-  border: "1px solid var(--border)",
-  background: "rgba(255,255,255,0.04)",
-};
-
-const modeChipStyle: CSSProperties = {
-  border: "none",
-  borderRadius: 999,
-  background: "transparent",
-  color: "var(--text-dim)",
-  cursor: "pointer",
-  fontSize: 11,
-  fontWeight: 600,
-  padding: "6px 10px",
-};
-
-const modeChipActiveStyle: CSSProperties = {
-  background: "var(--accent)",
-  color: "white",
-};
 

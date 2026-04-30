@@ -113,6 +113,11 @@ fn desktop_bridge_write_workspace_file(relative_path: String, content: String) -
     commands::write_workspace_file(relative_path, content)
 }
 
+#[tauri::command]
+fn desktop_bridge_delete_workspace_file(relative_path: String) -> Result<(), String> {
+    commands::delete_workspace_file(relative_path)
+}
+
 // ── Desktop Bridge: Commands / Files / Context ────────────────────────────────
 
 #[tauri::command]
@@ -682,6 +687,7 @@ pub fn run() {
             desktop_bridge_read_workspace_file,
             desktop_bridge_search_workspace_files,
             desktop_bridge_write_workspace_file,
+            desktop_bridge_delete_workspace_file,
             // Desktop bridge: commands / files / context
             desktop_bridge_run_command,
             desktop_bridge_list_directory,

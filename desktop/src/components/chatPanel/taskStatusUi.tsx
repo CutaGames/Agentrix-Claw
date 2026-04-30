@@ -310,14 +310,15 @@ const feedbackDetailStyle: CSSProperties = {
 };
 
 const continueActionBtnStyle: CSSProperties = {
-  border: "none",
+  border: "1px solid rgba(134,239,172,0.32)",
   borderRadius: 999,
-  background: "rgba(255,255,255,0.12)",
-  color: "inherit",
-  fontSize: 11,
+  background: "linear-gradient(135deg, rgba(74,222,128,0.24), rgba(34,197,94,0.16))",
+  color: "#dcfce7",
+  fontSize: 12,
   fontWeight: 700,
-  padding: "8px 12px",
+  padding: "10px 14px",
   whiteSpace: "nowrap",
+  boxShadow: "0 8px 18px rgba(22,163,74,0.16)",
 };
 
 const pendingApprovalButtonStyle: CSSProperties = {
@@ -343,11 +344,12 @@ const taskWorkbenchPillStyle: CSSProperties = {
 };
 
 const continueQuickActionStyle: CSSProperties = {
-  fontSize: 10,
+  fontSize: 11,
   fontWeight: 700,
   borderRadius: 999,
-  border: "1px solid rgba(134,239,172,0.28)",
-  background: "rgba(134,239,172,0.1)",
-  color: "#bbf7d0",
-  padding: "6px 10px",
+  border: "1px solid rgba(134,239,172,0.34)",
+  background: "linear-gradient(135deg, rgba(74,222,128,0.18), rgba(34,197,94,0.1))",
+  color: "#dcfce7",
+  padding: "7px 12px",
+  boxShadow: "0 8px 18px rgba(22,163,74,0.14)",
 };

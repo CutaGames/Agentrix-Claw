@@ -5,6 +5,8 @@ import type { AgentPlan } from "../services/agentIntelligence";
 import type { DesktopRemoteApproval } from "../services/desktopSync";
 import type { OperationsContinuity, OperationsOverview } from "../services/operations";
 import type { GitFileChange } from "../services/git";
+import WorkspaceFileStatus from "./WorkspaceFileStatus";
+import type { WorkspaceFileBackup } from "../services/workspaceBackups";
 
 export interface TaskWorkbenchEvent {
   id: string;
@@ -35,6 +37,8 @@ interface Props {
   operationsOverview?: OperationsOverview | null;
   operationsContinuity?: OperationsContinuity | null;
   workspaceChanges?: GitFileChange[];
+  workspaceBackups?: Record<string, WorkspaceFileBackup>;
+  onRevertWorkspaceChange?: (filePath: string) => void | Promise<void>;
   onApprovePlan: () => void | Promise<void>;
   onRejectPlan: () => void | Promise<void>;
   onOpenApprovals: () => void;
@@ -71,6 +75,8 @@ export default function TaskWorkbenchPanel({
   operationsOverview,
   operationsContinuity,
   workspaceChanges = [],
+  workspaceBackups = {},
+  onRevertWorkspaceChange,
   onApprovePlan,
   onRejectPlan,
   onOpenApprovals,
@@ -237,16 +243,13 @@ export default function TaskWorkbenchPanel({
             <div>
               <div style={sectionTitle}>Workspace Changes</div>
               <div style={changesTitle}>{workspaceChanges.length} file{workspaceChanges.length === 1 ? "" : "s"} modified</div>
+              <div style={overviewSubtle}>Agent writes are backed up in .agentrix/backup and can be reverted inline.</div>
             </div>
-            <div style={changesList}>
-              {workspaceChanges.slice(0, 10).map((change) => (
-                <div key={`${change.status}-${change.file}`} style={changeRow}>
-                  <span style={changeStatus}>{change.status}</span>
-                  <span style={changePath}>{change.file}</span>
-                </div>
-              ))}
-              {workspaceChanges.length > 10 && <div style={changeMore}>+{workspaceChanges.length - 10} more</div>}
-            </div>
+            <WorkspaceFileStatus
+              changes={workspaceChanges}
+              backups={workspaceBackups}
+              onRevert={onRevertWorkspaceChange}
+            />
           </div>
         )}
 

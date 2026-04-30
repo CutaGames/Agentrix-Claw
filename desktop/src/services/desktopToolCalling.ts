@@ -675,6 +675,7 @@ async function executeWriteFile(args: Record<string, unknown>, context: DesktopT
 
   try {
     const { writeWorkspaceFile } = await import("./workspace");
+    const { createWorkspaceFileBackup } = await import("./workspaceBackups");
     const { requireDesktopActionApproval } = await import("./desktopAgentSync");
     const workspaceDir = await requireSelectedWorkspace();
     const hintedPath = applyWorkspacePathHint(relativePath, context);
@@ -686,12 +687,17 @@ async function executeWriteFile(args: Record<string, unknown>, context: DesktopT
       payload: { path: hintedPath },
       sessionId: context.sessionId,
     });
+    const backupResult = hintedPath.startsWith(".agentrix/backup/")
+      ? null
+      : await createWorkspaceFileBackup(hintedPath, content);
     await writeWorkspaceFile(hintedPath, content);
     return JSON.stringify({
       success: true,
       path: hintedPath,
       workspaceRoot: workspaceDir,
       bytesWritten: new TextEncoder().encode(content).length,
+      backup: backupResult?.backup,
+      diffPreview: backupResult?.diffPreview,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

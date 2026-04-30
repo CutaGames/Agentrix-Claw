@@ -136,6 +136,32 @@ function deriveGroupStatus(entries: TaskTimelineEntry[]): TaskTimelineStatus {
   return "running";
 }
 
+function extractOutputTail(output?: string) {
+  if (!output) return "";
+
+  let normalized = output;
+  try {
+    const parsed = JSON.parse(output) as {
+      stdout?: string;
+      stderr?: string;
+      output?: string;
+      error?: string;
+    };
+    normalized = [parsed.stdout, parsed.stderr, parsed.output, parsed.error]
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .join("\n") || output;
+  } catch {
+    normalized = output;
+  }
+
+  return normalized
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0)
+    .slice(-8)
+    .join("\n");
+}
+
 export default function TaskTimeline({ status, entries }: Props) {
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const groups = useMemo(() => groupEntries(entries), [entries]);
@@ -195,7 +221,9 @@ export default function TaskTimeline({ status, entries }: Props) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {groups.map((group, gIdx) => {
-            const isExpanded = expandedGroups.has(gIdx);
+            const isExpanded = expandedGroups.has(gIdx)
+              || group.status === "running"
+              || group.status === "waiting-approval";
             return (
               <div key={gIdx} style={groupCard}>
                 {/* Group header (click to expand details) */}
@@ -227,6 +255,9 @@ export default function TaskTimeline({ status, entries }: Props) {
                             <div style={{ fontSize: 10, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {entry.detail}
                             </div>
+                          )}
+                          {entry.output && (
+                            <pre style={detailOutputStyle}>{extractOutputTail(entry.output)}</pre>
                           )}
                         </div>
                         <span style={{ fontSize: 9, color: "var(--text-dim)", flexShrink: 0 }}>
@@ -336,4 +367,18 @@ const detailStepStyle: CSSProperties = {
   gap: 6,
   padding: "3px 0",
   borderTop: "1px solid rgba(255,255,255,0.03)",
+};
+
+const detailOutputStyle: CSSProperties = {
+  marginTop: 6,
+  marginBottom: 0,
+  padding: "8px 10px",
+  borderRadius: 8,
+  background: "rgba(2,6,23,0.72)",
+  border: "1px solid rgba(255,255,255,0.05)",
+  color: "#cbd5e1",
+  fontSize: 10,
+  lineHeight: 1.5,
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
 };

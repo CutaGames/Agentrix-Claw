@@ -48,6 +48,10 @@ export async function writeWorkspaceFile(relativePath: string, content: string):
   return invoke<void>("desktop_bridge_write_workspace_file", { relativePath, content });
 }
 
+export async function deleteWorkspaceFile(relativePath: string): Promise<void> {
+  return invoke<void>("desktop_bridge_delete_workspace_file", { relativePath });
+}
+
 export async function searchWorkspaceFiles(params: WorkspaceSearchParams): Promise<WorkspaceSearchResult> {
   return invoke<WorkspaceSearchResult>("desktop_bridge_search_workspace_files", {
     query: params.query,
