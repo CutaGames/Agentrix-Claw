@@ -146,6 +146,11 @@ fn desktop_bridge_open_browser(url: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn desktop_bridge_open_in_ide(path: String, line: Option<usize>, column: Option<usize>, editor: Option<String>) -> Result<String, String> {
+    commands::open_in_ide(path, line, column, editor)
+}
+
+#[tauri::command]
 fn desktop_bridge_get_active_window() -> Result<Option<commands::DesktopWindowInfo>, String> {
     commands::get_active_window()
 }
@@ -694,6 +699,7 @@ pub fn run() {
             desktop_bridge_read_file,
             desktop_bridge_write_file,
             desktop_bridge_open_browser,
+            desktop_bridge_open_in_ide,
             desktop_bridge_get_active_window,
             desktop_bridge_list_windows,
             desktop_bridge_get_clipboard_text,

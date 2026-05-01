@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, type CSSProperties } from "react";
+import { apiFetch, API_BASE } from "../services/store";
 
 interface DreamInsight {
   type: string;
@@ -45,14 +46,24 @@ export default function DreamPanel({ open, onClose }: Props) {
   const token = localStorage.getItem("agentrix_token");
 
   const fetchSessions = useCallback(async () => {
-    if (!token) return;
+    if (!token) {
+      setSessions([]);
+      return;
+    }
     setLoading(true);
     try {
-      const res = await fetch("/dreaming/sessions?limit=15", {
+      const res = await apiFetch(`${API_BASE}/dreaming/sessions?limit=15`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) setSessions(await res.json());
-    } catch {}
+      if (res.ok) {
+        const data = await res.json();
+        setSessions(Array.isArray(data) ? data : data?.items || []);
+      } else {
+        setSessions([]);
+      }
+    } catch {
+      setSessions([]);
+    }
     setLoading(false);
   }, [token]);
 
@@ -64,7 +75,7 @@ export default function DreamPanel({ open, onClose }: Props) {
     if (!token) return;
     setStarting(true);
     try {
-      await fetch("/dreaming/start", {
+      await apiFetch(`${API_BASE}/dreaming/start`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ phase: selectedPhase, triggerType: "manual" }),

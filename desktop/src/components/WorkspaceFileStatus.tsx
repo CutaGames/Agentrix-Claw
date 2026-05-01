@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { GitFileChange } from "../services/git";
 import { gitDiff } from "../services/git";
 import DiffView from "./DiffView";
+import { openInIde } from "../services/ideBridge";
 import type { WorkspaceFileBackup } from "../services/workspaceBackups";
 
 interface Props {
@@ -18,6 +19,7 @@ export default function WorkspaceFileStatus({
   const [selectedPath, setSelectedPath] = useState<string | null>(changes[0]?.file || null);
   const [diffByPath, setDiffByPath] = useState<Record<string, string>>({});
   const [loadingPath, setLoadingPath] = useState<string | null>(null);
+  const [openingEditor, setOpeningEditor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedPath || !changes.some((change) => change.file === selectedPath)) {
@@ -71,6 +73,24 @@ export default function WorkspaceFileStatus({
     [changes, selectedPath],
   );
 
+  const handleOpenInIde = async (editor: "cursor" | "vscode") => {
+    if (!selectedChange) {
+      return;
+    }
+    const key = `${editor}:${selectedChange.file}`;
+    setOpeningEditor(key);
+    try {
+      await openInIde({
+        path: selectedChange.file,
+        line: 1,
+        column: 1,
+        editor,
+      });
+    } finally {
+      setOpeningEditor((current) => (current === key ? null : current));
+    }
+  };
+
   if (changes.length === 0) {
     return null;
   }
@@ -105,14 +125,33 @@ export default function WorkspaceFileStatus({
           <>
             <div style={detailHeaderStyle}>
               <div>
-                <div style={detailEyebrowStyle}>Workspace Diff</div>
+                <div style={detailEyebrowStyle}>Workspace Review</div>
                 <div style={detailTitleStyle}>{selectedChange.file}</div>
+                <div style={detailMetaStyle}>
+                  {selectedBackup ? "Backup captured · diff + revert available" : "Live diff available"}
+                </div>
               </div>
-              {selectedBackup && onRevert && (
-                <button onClick={() => void onRevert(selectedChange.file)} style={revertButtonStyle}>
-                  Undo
+              <div style={actionRowStyle}>
+                <button
+                  onClick={() => void handleOpenInIde("cursor")}
+                  disabled={openingEditor === `cursor:${selectedChange.file}`}
+                  style={secondaryActionButtonStyle}
+                >
+                  {openingEditor === `cursor:${selectedChange.file}` ? "Opening…" : "Open in Cursor"}
                 </button>
-              )}
+                <button
+                  onClick={() => void handleOpenInIde("vscode")}
+                  disabled={openingEditor === `vscode:${selectedChange.file}`}
+                  style={secondaryActionButtonStyle}
+                >
+                  {openingEditor === `vscode:${selectedChange.file}` ? "Opening…" : "Open in VS Code"}
+                </button>
+                {selectedBackup && onRevert && (
+                  <button onClick={() => void onRevert(selectedChange.file)} style={revertButtonStyle}>
+                    Undo
+                  </button>
+                )}
+              </div>
             </div>
             {loadingPath === selectedPath ? (
               <div style={emptyStyle}>Loading diff…</div>
@@ -212,6 +251,30 @@ const detailTitleStyle: CSSProperties = {
   fontSize: 14,
   fontWeight: 700,
   color: "#f8fafc",
+};
+
+const detailMetaStyle: CSSProperties = {
+  marginTop: 6,
+  fontSize: 11,
+  color: "#94a3b8",
+};
+
+const actionRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
+};
+
+const secondaryActionButtonStyle: CSSProperties = {
+  border: "1px solid rgba(125,211,252,0.24)",
+  borderRadius: 999,
+  padding: "8px 12px",
+  background: "rgba(125,211,252,0.08)",
+  color: "#bae6fd",
+  fontWeight: 600,
+  cursor: "pointer",
 };
 
 const revertButtonStyle: CSSProperties = {

@@ -225,10 +225,8 @@ fn apply_chat_panel_mode(win: &tauri::WebviewWindow, pro_mode: bool) -> Result<(
 }
 
 pub fn open_chat_panel(app: AppHandle, pro_mode: Option<bool>) -> Result<(), String> {
-    let pro_mode = pro_mode.unwrap_or(false);
-
     if let Ok(mut pending_mode) = CHAT_PANEL_PENDING_PRO_MODE.lock() {
-        *pending_mode = Some(pro_mode);
+        *pending_mode = pro_mode;
     }
 
     // Cancel any pending suspend timer
@@ -239,11 +237,16 @@ pub fn open_chat_panel(app: AppHandle, pro_mode: Option<bool>) -> Result<(), Str
     }
 
     if let Some(win) = app.get_webview_window("chat-panel") {
-        apply_chat_panel_mode(&win, pro_mode)?;
-        if !win.is_visible().unwrap_or(false) {
+        if let Some(requested_pro_mode) = pro_mode {
+            apply_chat_panel_mode(&win, requested_pro_mode)?;
+        }
+        let was_visible = win.is_visible().unwrap_or(false);
+        if !was_visible {
             win.show().map_err(|e| e.to_string())?;
         }
-        win.set_focus().map_err(|e| e.to_string())?;
+        if !was_visible || pro_mode.is_some() {
+            win.set_focus().map_err(|e| e.to_string())?;
+        }
         CHAT_PANEL_OPENING.store(false, Ordering::Release);
         if let Ok(mut pending_mode) = CHAT_PANEL_PENDING_PRO_MODE.lock() {
             *pending_mode = None;
@@ -267,10 +270,9 @@ pub fn open_chat_panel(app: AppHandle, pro_mode: Option<bool>) -> Result<(), Str
                 .lock()
                 .ok()
                 .and_then(|pending_mode| *pending_mode)
-                .unwrap_or(pro_mode)
         };
 
-        let initial_pro_mode = resolve_pro_mode();
+        let initial_pro_mode = resolve_pro_mode().unwrap_or(false);
         let (width, height, min_width, min_height) = if initial_pro_mode {
             (1100.0, 820.0, 720.0, 560.0)
         } else {
@@ -288,16 +290,21 @@ pub fn open_chat_panel(app: AppHandle, pro_mode: Option<bool>) -> Result<(), Str
             .drag_and_drop(false)
             .build()
         {
-            let _ = apply_chat_panel_mode(&win, resolve_pro_mode());
+            let _ = apply_chat_panel_mode(&win, resolve_pro_mode().unwrap_or(initial_pro_mode));
             let _ = win.show();
             let _ = win.set_focus();
             // Grant WebView2 permissions (microphone, etc.) to the new chat-panel
             #[cfg(target_os = "windows")]
             crate::grant_webview2_permissions(&win);
         } else if let Some(win) = app_clone.get_webview_window("chat-panel") {
-            let _ = apply_chat_panel_mode(&win, resolve_pro_mode());
-            let _ = win.show();
-            let _ = win.set_focus();
+            if let Some(requested_pro_mode) = resolve_pro_mode() {
+                let _ = apply_chat_panel_mode(&win, requested_pro_mode);
+                let _ = win.set_focus();
+            }
+            if !win.is_visible().unwrap_or(false) {
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
         }
 
         CHAT_PANEL_OPENING.store(false, Ordering::Release);
@@ -963,6 +970,78 @@ pub fn open_browser(url: String) -> Result<String, String> {
     Ok(url)
 }
 
+pub fn open_in_ide(path: String, line: Option<usize>, column: Option<usize>, editor: Option<String>) -> Result<String, String> {
+    let target = resolve_user_path(&path)?;
+    let line = line.unwrap_or(1).max(1);
+    let column = column.unwrap_or(1).max(1);
+    let target_display = target.display().to_string();
+    let goto_arg = format!("{}:{}:{}", target_display, line, column);
+
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let requested = editor.unwrap_or_default().trim().to_lowercase();
+        let candidates: Vec<&str> = match requested.as_str() {
+            "cursor" => vec!["cursor", "cursor.cmd"],
+            "vscode" | "code" => vec!["code", "code.cmd"],
+            _ => vec!["cursor", "cursor.cmd", "code", "code.cmd"],
+        };
+
+        let mut failures: Vec<String> = Vec::new();
+        for candidate in candidates {
+            let mut command = Command::new(candidate);
+            command
+                .args(["--goto", &goto_arg])
+                .creation_flags(CREATE_NO_WINDOW);
+            match command.spawn() {
+                Ok(_) => return Ok(goto_arg),
+                Err(error) => failures.push(format!("{}: {}", candidate, error)),
+            }
+        }
+
+        return Err(format!(
+            "Unable to open the file in VS Code or Cursor. Tried: {}",
+            failures.join("; ")
+        ));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let requested = editor.unwrap_or_default().trim().to_lowercase();
+        let candidates: Vec<&str> = match requested.as_str() {
+            "cursor" => vec!["cursor", "code"],
+            "vscode" | "code" => vec!["code", "cursor"],
+            _ => vec!["cursor", "code"],
+        };
+
+        for candidate in candidates {
+            if Command::new(candidate).args(["--goto", &goto_arg]).spawn().is_ok() {
+                return Ok(goto_arg);
+            }
+        }
+
+        return Err("Unable to open the file in VS Code or Cursor.".into());
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let requested = editor.unwrap_or_default().trim().to_lowercase();
+        let candidates: Vec<&str> = match requested.as_str() {
+            "cursor" => vec!["cursor", "code"],
+            "vscode" | "code" => vec!["code", "cursor"],
+            _ => vec!["cursor", "code"],
+        };
+
+        for candidate in candidates {
+            if Command::new(candidate).args(["--goto", &goto_arg]).spawn().is_ok() {
+                return Ok(goto_arg);
+            }
+        }
+
+        return Err("Unable to open the file in VS Code or Cursor.".into());
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn run_powershell_script(script: &str) -> Result<String, String> {
     const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -1406,13 +1485,15 @@ pub struct GitCommandResult {
 }
 
 fn git_command(args: &[&str], cwd: &Path) -> Result<String, String> {
-    let output = Command::new("git")
+    let mut command = Command::new("git");
+    command
         .args(args)
         .current_dir(cwd)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to run git: {}", e))?;
+        .stderr(Stdio::piped());
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x08000000);
+    let output = command.output().map_err(|e| format!("Failed to run git: {}", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();

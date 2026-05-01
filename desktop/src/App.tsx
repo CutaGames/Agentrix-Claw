@@ -12,6 +12,7 @@ import { initPresenceSocket, destroyPresenceSocket } from "./services/agentPrese
 import { startDesktopAgentSync, stopDesktopAgentSync } from "./services/desktopAgentSync";
 import { startClipboardWatch, stopClipboardWatch } from "./services/clipboard";
 import { initAnalytics, destroyAnalytics, trackEvent } from "./services/analytics";
+import { addNotification } from "./services/notifications";
 import { startNetworkMonitor, stopNetworkMonitor, getNetworkStatus, onNetworkStatusChange, type NetworkStatus } from "./services/network";
 import { DesktopWakeWordService } from "./services/wakeWord";
 import { DESKTOP_WAKE_WORD_EVENT, readDesktopWakeWordConfig } from "./services/wakeWordConfig";
@@ -64,6 +65,42 @@ export default function App() {
     }
   }, [openProPanel]);
 
+  const triggerVoiceFlow = useCallback(async () => {
+    if (windowLabel === "chat-panel") {
+      window.dispatchEvent(new CustomEvent("agentrix:voice-start"));
+      return;
+    }
+
+    if (windowLabel === "floating-ball") {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("desktop_bridge_open_chat_panel");
+      } catch {}
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("agentrix:voice-start"));
+      }, 250);
+      return;
+    }
+
+    openCompactPanel();
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("agentrix:voice-start"));
+    }, 250);
+  }, [openCompactPanel, windowLabel]);
+
+  useEffect(() => {
+    window.addEventListener("agentrix:open-panel-pro", openProPanel);
+    return () => window.removeEventListener("agentrix:open-panel-pro", openProPanel);
+  }, [openProPanel]);
+
+  useEffect(() => {
+    const handleVoiceActivate = () => {
+      void triggerVoiceFlow();
+    };
+    window.addEventListener("agentrix:voice-activate", handleVoiceActivate);
+    return () => window.removeEventListener("agentrix:voice-activate", handleVoiceActivate);
+  }, [triggerVoiceFlow]);
+
   // ── Window resize helper for single-window mode ──
   const resizeMainWindow = useCallback(async (width: number, height: number) => {
     try {
@@ -110,6 +147,7 @@ export default function App() {
   }, []);
 
   const loggedIn = !!token || isGuest;
+  const isServiceHostWindow = windowLabel === "main" || windowLabel === "dev";
 
   // Initialize services when logged in
   useEffect(() => {
@@ -126,7 +164,7 @@ export default function App() {
     initAnalytics(token);
 
     // Session sync (needs real token, not guest)
-    if (token) {
+    if (token && isServiceHostWindow) {
       initSessionSync(token, {
         onSessionUpdated: (snapshot) => {
           // Store remote sessions to localStorage so ChatPanel can access them
@@ -148,7 +186,12 @@ export default function App() {
           localStorage.setItem("agentrix_pending_handoff", JSON.stringify(event));
           window.dispatchEvent(new CustomEvent("agentrix:handoff-incoming", { detail: event }));
           if (windowLabel === "main" || windowLabel === "dev") {
-            openProPanel();
+            addNotification(
+              "sync",
+              "Desktop handoff ready",
+              "Another device has a task you can continue on desktop.",
+              { label: "Open", event: "agentrix:open-panel-pro" },
+            );
             return;
           }
           void import("@tauri-apps/api/core").then(({ invoke }) => invoke("desktop_bridge_open_chat_panel")).catch(() => {});
@@ -175,9 +218,7 @@ export default function App() {
         },
       });
 
-      if (windowLabel !== "floating-ball") {
-        startDesktopAgentSync(token);
-      }
+      startDesktopAgentSync(token);
     }
 
     trackEvent("session_start");
@@ -191,7 +232,7 @@ export default function App() {
       destroyPresenceSocket();
       stopDesktopAgentSync();
     };
-  }, [loggedIn, openProPanel, token, windowLabel]);
+  }, [isServiceHostWindow, loggedIn, openProPanel, token, windowLabel]);
 
   // Global keyboard shortcuts (within webview)
   useEffect(() => {
@@ -280,22 +321,6 @@ export default function App() {
     let disposed = false;
     let wakeWord: DesktopWakeWordService | null = null;
 
-    const triggerVoiceFlow = async () => {
-      if (disposed) return;
-
-      if (windowLabel === "chat-panel") {
-        window.dispatchEvent(new CustomEvent("agentrix:voice-start"));
-        return;
-      }
-
-      openCompactPanel();
-      setTimeout(() => {
-        if (!disposed) {
-          window.dispatchEvent(new CustomEvent("agentrix:voice-start"));
-        }
-      }, 250);
-    };
-
     const startWakeWord = async () => {
       if (!(await DesktopWakeWordService.isAvailable()) || disposed) {
         return;
@@ -310,7 +335,9 @@ export default function App() {
         customKeywordPath: desktopWakeWordConfig.customKeywordPath || undefined,
         sensitivity: desktopWakeWordConfig.sensitivity,
         onWakeWord: () => {
-          void triggerVoiceFlow();
+          if (!disposed) {
+            void triggerVoiceFlow();
+          }
         },
       });
 
@@ -332,7 +359,7 @@ export default function App() {
     desktopWakeWordConfig.enabled,
     desktopWakeWordConfig.sensitivity,
     loggedIn,
-    openCompactPanel,
+    triggerVoiceFlow,
     wakeWordRevision,
     windowLabel,
   ]);
@@ -453,7 +480,7 @@ export default function App() {
           }
         }}
         networkStatus={networkStatus}
-        restorePersistedTabs={false}
+        restorePersistedTabs={true}
       />
     );
   }

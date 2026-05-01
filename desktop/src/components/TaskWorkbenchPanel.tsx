@@ -56,6 +56,27 @@ interface PlaybackItem {
   output?: string;
 }
 
+interface AgentTeamRoleCard {
+  role: "Planner" | "Coder" | "Reviewer";
+  status: "idle" | "active" | "completed";
+  count: number;
+  latestTitle: string;
+  latestDetail?: string;
+}
+
+function inferAgentTeamRole(item: { kind?: string; title?: string; detail?: string; output?: string }) {
+  const haystack = [item.kind, item.title, item.detail, item.output]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .join(" ")
+    .toLowerCase();
+
+  if (/(plan|planner|checkpoint|coordinate|delegate|spawn)/.test(haystack)) return "Planner" as const;
+  if (/(code|coder|write|edit|patch|diff|workspace|file)/.test(haystack)) return "Coder" as const;
+  if (/(review|reviewer|approval|approve|reject|audit|verify|test)/.test(haystack)) return "Reviewer" as const;
+  if (/agent_/.test(haystack)) return "Planner" as const;
+  return null;
+}
+
 const toneColor: Record<TaskWorkbenchEvent["tone"], string> = {
   info: "#7dd3fc",
   success: "#86efac",
@@ -161,6 +182,41 @@ export default function TaskWorkbenchPanel({
       .sort((left, right) => right.createdAt - left.createdAt)
       .slice(0, 18);
   }, [checkpoint, sortedEvents, timelineEntries]);
+  const agentTeamCards = useMemo<AgentTeamRoleCard[]>(() => {
+    const seed: AgentTeamRoleCard[] = [
+      { role: "Planner", status: "idle", count: 0, latestTitle: "No planner activity yet" },
+      { role: "Coder", status: "idle", count: 0, latestTitle: "No coder activity yet" },
+      { role: "Reviewer", status: "idle", count: 0, latestTitle: "No reviewer activity yet" },
+    ];
+
+    const roleMap = new Map(seed.map((card) => [card.role, { ...card }]));
+
+    for (const entry of timelineEntries) {
+      const role = inferAgentTeamRole(entry);
+      if (!role) continue;
+      const current = roleMap.get(role)!;
+      current.count += 1;
+      current.latestTitle = entry.title;
+      current.latestDetail = entry.detail || entry.output;
+      current.status = entry.status === "running" || entry.status === "waiting-approval"
+        ? "active"
+        : "completed";
+    }
+
+    for (const event of sortedEvents) {
+      const role = inferAgentTeamRole(event);
+      if (!role) continue;
+      const current = roleMap.get(role)!;
+      if (current.count === 0) {
+        current.latestTitle = event.title;
+        current.latestDetail = event.detail;
+        current.status = event.tone === "warning" ? "active" : "completed";
+      }
+      current.count += 1;
+    }
+
+    return ["Planner", "Coder", "Reviewer"].map((role) => roleMap.get(role as AgentTeamRoleCard["role"])!);
+  }, [sortedEvents, timelineEntries]);
   const selectedPlayback = playbackItems.find((item) => item.id === selectedPlaybackId) || playbackItems[0] || null;
 
   if (!open) {
@@ -173,7 +229,7 @@ export default function TaskWorkbenchPanel({
         <div style={header}>
           <div>
             <div style={eyebrow}>Task Workbench</div>
-            <div style={title}>Plan, approvals, playback, checkpoint</div>
+            <div style={title}>Audit, review, playback, checkpoint</div>
           </div>
           <button onClick={onClose} style={closeButton}>✕</button>
         </div>
@@ -241,9 +297,9 @@ export default function TaskWorkbenchPanel({
         {workspaceChanges.length > 0 && (
           <div style={changesCard}>
             <div>
-              <div style={sectionTitle}>Workspace Changes</div>
+              <div style={sectionTitle}>Workspace Review</div>
               <div style={changesTitle}>{workspaceChanges.length} file{workspaceChanges.length === 1 ? "" : "s"} modified</div>
-              <div style={overviewSubtle}>Agent writes are backed up in .agentrix/backup and can be reverted inline.</div>
+              <div style={overviewSubtle}>Every agent write shows inline diff, backup state, IDE jump, and revert.</div>
             </div>
             <WorkspaceFileStatus
               changes={workspaceChanges}
@@ -395,6 +451,23 @@ export default function TaskWorkbenchPanel({
           </div>
 
           <div style={column}>
+            <div style={sectionTitle}>Agent Team Sandbox (MVP)</div>
+            <div style={teamGrid}>
+              {agentTeamCards.map((card) => (
+                <div key={card.role} style={teamCard}>
+                  <div style={teamCardTop}>
+                    <div style={teamRoleLabel}>{card.role}</div>
+                    <div style={{ ...teamRoleStatus, color: card.status === "active" ? "#fbbf24" : card.status === "completed" ? "#86efac" : "#94a3b8" }}>
+                      {card.status}
+                    </div>
+                  </div>
+                  <div style={teamRoleTitle}>{card.latestTitle}</div>
+                  <div style={teamRoleMeta}>{card.count} audit event{card.count === 1 ? "" : "s"}</div>
+                  {card.latestDetail && <div style={teamRoleDetail}>{card.latestDetail}</div>}
+                </div>
+              ))}
+            </div>
+
             <div style={sectionTitle}>Plan Control</div>
             {plan ? (
               <PlanPanel plan={plan} onApprove={onApprovePlan} onReject={onRejectPlan} />
@@ -755,6 +828,66 @@ const opsHint: CSSProperties = {
   color: "#fde68a",
   fontSize: 12,
   lineHeight: 1.5,
+};
+
+const teamGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: 10,
+};
+
+const teamCard: CSSProperties = {
+  borderRadius: 14,
+  padding: 12,
+  background: "rgba(255,255,255,0.03)",
+  border: "1px solid rgba(255,255,255,0.06)",
+  minWidth: 0,
+};
+
+const teamCardTop: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+};
+
+const teamRoleLabel: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#7dd3fc",
+  textTransform: "uppercase",
+  letterSpacing: 0.8,
+};
+
+const teamRoleStatus: CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: 0.7,
+};
+
+const teamRoleTitle: CSSProperties = {
+  marginTop: 10,
+  fontSize: 13,
+  fontWeight: 600,
+  color: "#f8fafc",
+};
+
+const teamRoleMeta: CSSProperties = {
+  marginTop: 6,
+  fontSize: 11,
+  color: "#94a3b8",
+};
+
+const teamRoleDetail: CSSProperties = {
+  marginTop: 8,
+  fontSize: 11,
+  lineHeight: 1.45,
+  color: "#cbd5e1",
+  display: "-webkit-box",
+  WebkitLineClamp: 4,
+  WebkitBoxOrient: "vertical",
+  overflow: "hidden",
 };
 
 const emptyCard: CSSProperties = {

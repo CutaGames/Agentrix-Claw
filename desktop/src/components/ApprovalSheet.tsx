@@ -2,6 +2,25 @@ import { type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { ApprovalRiskLevel } from "../services/desktop";
 
+const RISK_COPY: Record<ApprovalRiskLevel, { label: string; description: string }> = {
+  L0: {
+    label: "Read-only / safe by default",
+    description: "Read context, list files, inspect windows, and other non-mutating actions. No approval is normally required.",
+  },
+  L1: {
+    label: "Low-risk write / navigation",
+    description: "Opens browser links or writes files with session-level remember support.",
+  },
+  L2: {
+    label: "Command execution / medium risk",
+    description: "Runs local commands or similar actions that may change workspace or environment state.",
+  },
+  L3: {
+    label: "High-risk / destructive",
+    description: "Potentially destructive actions such as dangerous shell commands always require explicit approval.",
+  },
+};
+
 export interface PendingApprovalRequest {
   title: string;
   description: string;
@@ -28,6 +47,7 @@ export default function ApprovalSheet({
 }: Props) {
   if (!request) return null;
   if (typeof document === "undefined") return null;
+  const riskCopy = RISK_COPY[request.riskLevel];
 
   return createPortal(
     <div
@@ -53,6 +73,10 @@ export default function ApprovalSheet({
           {request.description}
         </div>
         <div style={riskPill}>Risk {request.riskLevel}</div>
+        <div style={riskMetaCard}>
+          <div style={riskMetaTitle}>{riskCopy.label}</div>
+          <div style={riskMetaText}>{riskCopy.description}</div>
+        </div>
 
         {request.canRememberForSession && (
           <label style={checkboxRow}>
@@ -121,6 +145,27 @@ const checkboxRow: CSSProperties = {
   marginTop: 14,
   fontSize: 12,
   color: "var(--text)",
+};
+
+const riskMetaCard: CSSProperties = {
+  marginTop: 10,
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,0.08)",
+  background: "rgba(255,255,255,0.03)",
+  padding: "10px 12px",
+};
+
+const riskMetaTitle: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#f8fafc",
+};
+
+const riskMetaText: CSSProperties = {
+  marginTop: 4,
+  fontSize: 11,
+  lineHeight: 1.5,
+  color: "var(--text-dim)",
 };
 
 const primaryBtn: CSSProperties = {
