@@ -1187,7 +1187,7 @@ export class OpenClawProxyService {
     return [
       {
         name: 'desktop_read_file',
-        description: 'Read a file from the user\'s desktop/local filesystem. Relative paths are resolved from the selected workspace root when available, so include explicit prefixes like desktop/, backend/, docs/, or src/ when targeting a subdirectory. Prefer targeted reads with startLine/endLine for large source files.',
+        description: 'Read a file from the user\'s desktop/local filesystem. Relative paths are resolved from the selected workspace root when available, and that selected workspace root is the authoritative base path. Do not guess WSL, UNC, or alternate shell path variants unless the user explicitly asks for them. Prefer `.` or explicit workspace-relative prefixes like desktop/, backend/, docs/, or src/, and use targeted reads with startLine/endLine for large source files.',
         input_schema: {
           type: 'object' as const,
           properties: {
@@ -1200,7 +1200,7 @@ export class OpenClawProxyService {
       },
       {
         name: 'desktop_list_directory',
-        description: 'List files and directories in a local folder. Relative paths are resolved from the selected workspace root when available, so include explicit prefixes like desktop/, backend/, docs/, or src/ when targeting a subdirectory. Returns structured entries instead of raw shell output.',
+        description: 'List files and directories in a local folder. Relative paths are resolved from the selected workspace root when available, and that selected workspace root is the authoritative base path. Do not guess WSL, UNC, or alternate shell path variants unless the user explicitly asks for them. Prefer starting with `.` or explicit workspace-relative prefixes like desktop/, backend/, docs/, or src/. Returns structured entries instead of raw shell output.',
         input_schema: {
           type: 'object' as const,
           properties: {
@@ -1211,7 +1211,7 @@ export class OpenClawProxyService {
       },
       {
         name: 'desktop_write_file',
-        description: 'Write content to a file on the user\'s desktop. Relative paths are resolved from the selected workspace root when available, so include explicit prefixes like desktop/, backend/, docs/, or src/ when writing into a subdirectory. Creates the file if it doesn\'t exist. REQUIRES USER APPROVAL.',
+        description: 'Write content to a file on the user\'s desktop. Relative paths are resolved from the selected workspace root when available, and that selected workspace root is the authoritative base path. Do not guess WSL, UNC, or alternate shell path variants unless the user explicitly asks for them. Prefer explicit workspace-relative prefixes like desktop/, backend/, docs/, or src/ when writing into a subdirectory. Creates the file if it doesn\'t exist. REQUIRES USER APPROVAL.',
         input_schema: {
           type: 'object' as const,
           properties: {
@@ -1223,7 +1223,7 @@ export class OpenClawProxyService {
       },
       {
         name: 'desktop_run_command',
-        description: 'Execute a shell command on the user\'s desktop (PowerShell on Windows, bash on Linux/Mac). Use workingDirectory when the command should run inside a workspace subdirectory such as desktop or backend. REQUIRES USER APPROVAL.',
+        description: 'Execute a shell command on the user\'s desktop (PowerShell on Windows, bash on Linux/Mac). Use workingDirectory when the command should run inside the selected workspace root or a workspace subdirectory such as desktop or backend. Do not guess WSL or UNC working directories unless the user explicitly asks for them. REQUIRES USER APPROVAL.',
         input_schema: {
           type: 'object' as const,
           properties: {
@@ -2481,6 +2481,7 @@ export class OpenClawProxyService {
       planModeAddition: planModeSystemAddition || undefined,
       mode: dto.mode,
       platform: dto.platform,
+      runtimeContext: dto.context,
     });
 
     if (seamContext.hookBlocked) {

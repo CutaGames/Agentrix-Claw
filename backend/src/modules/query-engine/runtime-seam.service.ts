@@ -74,6 +74,8 @@ export interface RuntimeSeamInput {
 
   /** Platform: desktop, mobile, web */
   platform?: string;
+
+  runtimeContext?: Record<string, any>;
 }
 
 export interface RuntimeSeamResult {
@@ -137,7 +139,7 @@ export class RuntimeSeamService {
   }> {
     const {
       userId, sessionId, agentId, instanceName,
-      modelLabel, needsTools, permissionProfile, planModeAddition,
+      modelLabel, needsTools, permissionProfile, planModeAddition, runtimeContext,
       baseTools = [], onToolCall,
     } = input;
 
@@ -221,8 +223,25 @@ export class RuntimeSeamService {
       .map((tool) => tool?.name || tool?.function?.name)
       .filter((name): name is string => typeof name === 'string' && name.length > 0);
     const runtimeHints: string[] = [];
+    const workspaceHint = typeof runtimeContext?.workspaceHint === 'string' ? runtimeContext.workspaceHint.trim() : '';
+    const fileHint = typeof runtimeContext?.fileHint === 'string' ? runtimeContext.fileHint.trim() : '';
+    const activeWindowTitle = typeof runtimeContext?.activeWindowTitle === 'string' ? runtimeContext.activeWindowTitle.trim() : '';
+    const processName = typeof runtimeContext?.processName === 'string' ? runtimeContext.processName.trim() : '';
     if (toolNames.some((name) => name.startsWith('desktop_'))) {
       runtimeHints.push('- Desktop tools are available in this chat: use desktop_read_file / desktop_list_directory for inspection, and desktop_write_file / desktop_run_command when needed (approval may be required).');
+      runtimeHints.push('- For desktop_* tools, treat the selected desktop workspace root as authoritative. Do not invent or rewrite paths into WSL, UNC, Linux, or shell-specific variants unless the user explicitly asks for that transformation. Prefer `.` or workspace-relative subpaths from the selected workspace root.');
+      if (workspaceHint) {
+        runtimeHints.push(`- Selected desktop workspace root: ${workspaceHint}`);
+      }
+      if (fileHint) {
+        runtimeHints.push(`- Current desktop file hint: ${fileHint}`);
+      }
+      if (activeWindowTitle) {
+        runtimeHints.push(`- Active desktop window: ${activeWindowTitle}`);
+      }
+      if (processName) {
+        runtimeHints.push(`- Active desktop process: ${processName}`);
+      }
     }
     if (toolNames.includes('web_search') || toolNames.includes('search_web') || toolNames.includes('web_fetch') || toolNames.includes('open_url')) {
       runtimeHints.push('- Web access tools are available in this chat for weather, current events, docs, and URL fetch/open tasks.');

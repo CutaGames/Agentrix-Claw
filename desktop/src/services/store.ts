@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-import { getDesktopDeviceId } from "./desktop";
+import { getDesktopContext, getDesktopDeviceId } from "./desktop";
 import { AgentrixStreamParser, type StreamEvent } from "../../../shared/stream-parser.ts";
 
 export const DEFAULT_API_BASE = "https://api.agentrix.top/api";
@@ -601,65 +601,83 @@ async function fetchStreamingResponse(url: string, init: RequestInit): Promise<R
   }
 }
 
+async function buildDesktopRequestContext(baseContext: Record<string, unknown>): Promise<Record<string, unknown>> {
+  try {
+    const desktopContext = await getDesktopContext();
+    return {
+      ...baseContext,
+      workspaceHint: desktopContext.workspaceHint || undefined,
+      fileHint: desktopContext.fileHint || undefined,
+      activeWindowTitle: desktopContext.activeWindow?.title || undefined,
+      processName: desktopContext.activeWindow?.processName || undefined,
+      clipboardTextPreview: desktopContext.clipboardTextPreview || undefined,
+    };
+  } catch {
+    return baseContext;
+  }
+}
 
 /** SSE streaming chat via OpenClaw proxy */
-export function streamChat(opts: {
-  instanceId: string;
-  message: string;
-  history?: Array<{ role: "user" | "assistant"; content: string }>;
-  sessionId: string;
+export function streamAgentChat(opts: {
   token: string;
+  instanceId: string;
+  sessionId: string;
+  message: string;
+  history: Array<{ role: string; content: string }>;
   model?: string;
-  mode?: "ask" | "agent" | "plan";
   maxTokens?: number;
+  mode?: "ask" | "agent" | "plan";
   onChunk: (chunk: string) => void;
-  onMeta?: (meta: { resolvedModel?: string; resolvedModelLabel?: string }) => void;
-  onEvent?: (event: StreamEvent) => void;
+  onMeta?: (meta: any) => void;
   onDone: () => void;
   onError: (err: string) => void;
+  onEvent?: (event: StreamEvent) => void;
 }): AbortController {
   const ac = new AbortController();
   const url = `${API_BASE}/openclaw/proxy/${opts.instanceId}/stream`;
 
-  const fetchInit: RequestInit = {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${opts.token}`,
-      Accept: "text/event-stream",
-    },
-    body: JSON.stringify({
-      message: opts.message,
-      history: opts.history,
-      sessionId: opts.sessionId,
-      context: {
-        sessionId: opts.sessionId,
-        maxOutputTokens: opts.maxTokens ?? 12288,
-        enableParallelLanes: true,
-      },
-      model: opts.model,
-      options: {
-        maxTokens: opts.maxTokens ?? 12288,
-        enableParallelLanes: true,
-      },
-      mode: opts.mode || "agent",
-      platform: "desktop",
-      deviceId: getDesktopDeviceId(),
-    }),
-    signal: ac.signal,
-  };
+  void buildDesktopRequestContext({
+    sessionId: opts.sessionId,
+    maxOutputTokens: opts.maxTokens ?? 12288,
+    enableParallelLanes: true,
+  })
+    .then((context) => {
+      const fetchInit: RequestInit = {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${opts.token}`,
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify({
+          message: opts.message,
+          history: opts.history,
+          sessionId: opts.sessionId,
+          context,
+          model: opts.model,
+          options: {
+            maxTokens: opts.maxTokens ?? 12288,
+            enableParallelLanes: true,
+          },
+          mode: opts.mode || "agent",
+          platform: "desktop",
+          deviceId: getDesktopDeviceId(),
+        }),
+        signal: ac.signal,
+      };
 
-  fetchWithBackoff(() => fetchStreamingResponse(url, fetchInit), { signal: ac.signal, retries: 0 })
+      return fetchWithBackoff(() => fetchStreamingResponse(url, fetchInit), { signal: ac.signal, retries: 0 });
+    })
     .then(async (res) => {
-      if (!res.ok || !res.body) {
-        let detail = `HTTP ${res.status}`;
+      if (!res || !res.ok || !res.body) {
+        let detail = res ? `HTTP ${res.status}` : "Request failed";
         try {
-          const text = await res.text();
+          const text = res ? await res.text() : "";
           if (text) {
             const json = JSON.parse(text);
             detail = json.message || json.error || detail;
           }
-        } catch { /* ignore */ }
+        } catch {}
         opts.onError(detail);
         return;
       }
@@ -673,12 +691,33 @@ export function streamChat(opts: {
       });
     })
     .catch((err) => {
-      if (err.name !== "AbortError") {
+      if (err?.name !== "AbortError") {
         opts.onError(err?.message || String(err));
       }
     });
 
   return ac;
+}
+
+export function streamChat(opts: {
+  token: string;
+  instanceId: string;
+  sessionId: string;
+  message: string;
+  history?: Array<{ role: string; content: string }>;
+  model?: string;
+  maxTokens?: number;
+  mode?: "ask" | "agent" | "plan";
+  onChunk: (chunk: string) => void;
+  onMeta?: (meta: any) => void;
+  onDone: () => void;
+  onError: (err: string) => void;
+  onEvent?: (event: StreamEvent) => void;
+}): AbortController {
+  return streamAgentChat({
+    ...opts,
+    history: opts.history || [],
+  });
 }
 
 /** Default OpenClaw proxy chat via the user's primary instance */
@@ -696,42 +735,45 @@ export function streamDirectChat(opts: {
 }): AbortController {
   const ac = new AbortController();
 
-  const fetchInit: RequestInit = {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${opts.token}`,
-      Accept: "text/event-stream",
-    },
-    body: JSON.stringify({
-      messages: opts.messages,
-      sessionId: opts.sessionId,
-      context: {
-        sessionId: opts.sessionId,
-      },
-      mode: opts.mode || "agent",
-      platform: "desktop",
-      deviceId: getDesktopDeviceId(),
-      options: { model: opts.model, maxTokens: 12288, enableParallelLanes: true },
-      ...(opts.agentId ? { agentId: opts.agentId } : {}),
-    }),
-    signal: ac.signal,
-  };
+  void buildDesktopRequestContext({
+    sessionId: opts.sessionId,
+  })
+    .then((context) => {
+      const fetchInit: RequestInit = {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${opts.token}`,
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify({
+          messages: opts.messages,
+          sessionId: opts.sessionId,
+          context,
+          mode: opts.mode || "agent",
+          platform: "desktop",
+          deviceId: getDesktopDeviceId(),
+          options: { model: opts.model, maxTokens: 12288, enableParallelLanes: true },
+          ...(opts.agentId ? { agentId: opts.agentId } : {}),
+        }),
+        signal: ac.signal,
+      };
 
-  fetchWithBackoff(
-    () => fetchStreamingResponse(`${API_BASE}/openclaw/proxy/stream`, fetchInit),
-    { signal: ac.signal, retries: 0 },
-  )
+      return fetchWithBackoff(
+        () => fetchStreamingResponse(`${API_BASE}/openclaw/proxy/stream`, fetchInit),
+        { signal: ac.signal, retries: 0 },
+      );
+    })
     .then(async (res) => {
-      if (!res.ok || !res.body) {
-        let detail = `HTTP ${res.status}`;
+      if (!res || !res.ok || !res.body) {
+        let detail = res ? `HTTP ${res.status}` : "Request failed";
         try {
-          const text = await res.text();
+          const text = res ? await res.text() : "";
           if (text) {
             const json = JSON.parse(text);
             detail = json.message || json.error || detail;
           }
-        } catch { /* ignore */ }
+        } catch {}
         opts.onError(detail);
         return;
       }
@@ -744,7 +786,7 @@ export function streamDirectChat(opts: {
       });
     })
     .catch((err) => {
-      if (err.name !== "AbortError") opts.onError(err?.message || String(err));
+      if (err?.name !== "AbortError") opts.onError(err?.message || String(err));
     });
 
   return ac;
