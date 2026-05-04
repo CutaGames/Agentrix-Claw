@@ -137,6 +137,11 @@ import { LivingPetModule } from './modules/living-pet/living-pet.module';
 import { ApprovalModule } from './modules/approval/approval.module';
 import { HandoffV1Module } from './modules/handoff/handoff-v1.module';
 import { WalletProjectionModule } from './modules/wallet-projection/wallet-projection.module';
+// v3.0 P1 Pro Mode 升级
+import { VitalsBusModule } from './modules/vitals-bus/vitals-bus.module';
+import { MemoryTiersModule } from './modules/memory-tiers/memory-tiers.module';
+import { PlanRunnerModule } from './modules/plan-runner/plan-runner.module';
+import { SplitBudgetModule } from './modules/split-budget/split-budget.module';
 
 @Module({
   imports: [
@@ -289,6 +294,14 @@ import { WalletProjectionModule } from './modules/wallet-projection/wallet-proje
     HandoffV1Module,
     // v3.0 Wallet Projection (顿领 §5.3) — /api/v1/wallet/projection
     WalletProjectionModule,
+    // v3.0 P1-9 Vitals Bus + Living Agent reactor (顿领 §3.4.2 §6.1)
+    VitalsBusModule,
+    // v3.0 P1-10 Memory 4-tier API (顿领 §5.5)
+    MemoryTiersModule,
+    // v3.0 P1-4 Plan-Approval 闭环 (顿领 §5.4)
+    PlanRunnerModule,
+    // v3.0 P1-8 SplitPlan + BudgetPool + Audit (顿领 §9.3 §9.5)
+    SplitBudgetModule,
   ],
   controllers: [AppController],
   providers: [
