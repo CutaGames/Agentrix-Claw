@@ -6,6 +6,8 @@ import { AgentStackNavigator } from './AgentStackNavigator';
 import { DiscoverStackNavigator } from './DiscoverStackNavigator';
 import { TeamStackNavigator } from './TeamStackNavigator';
 import { MeStackNavigator } from './MeStackNavigator';
+import { TodayStackNavigator } from './TodayStackNavigator';
+import { WalletStackNavigator } from './WalletStackNavigator';
 import { colors } from '../theme/colors';
 import { useNotificationStore } from '../stores/notificationStore';
 import { useI18n } from '../stores/i18nStore';
@@ -40,7 +42,7 @@ export function MainTabNavigator() {
   const { t } = useI18n();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const approvalCount = useNotificationStore((s) => s.approvalCount);
-  const initialRouteName = 'Agent';
+  const initialRouteName: keyof MainTabParamList = 'Today';
 
   return (
     <Tab.Navigator id={undefined}
@@ -64,21 +66,21 @@ export function MainTabNavigator() {
         },
       }}
     >
-      {/* Agent tab — now visible as Chat tab (first position) */}
+      {/* P0-W2-1 5-Tab order: Today / Agents / Team / Wallet / Me (PRD mobile-prd-v3 §4.1.1) */}
+      <Tab.Screen
+        name="Today"
+        component={TodayStackNavigator}
+        options={{
+          title: t({ en: 'Today', zh: '今日' }),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🏠" focused={focused} />,
+        }}
+      />
       <Tab.Screen
         name="Agent"
         component={AgentStackNavigator}
         options={{
-          title: t({ en: 'Chat', zh: '对话' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="💬" focused={focused} />,
-        }}
-      />
-      <Tab.Screen
-        name="Discover"
-        component={DiscoverStackNavigator}
-        options={{
-          title: t({ en: 'Discover', zh: '发现' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🔍" focused={focused} />,
+          title: t({ en: 'Agents', zh: '智能体' }),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🤖" focused={focused} />,
         }}
       />
       <Tab.Screen
@@ -90,11 +92,29 @@ export function MainTabNavigator() {
         }}
       />
       <Tab.Screen
+        name="Wallet"
+        component={WalletStackNavigator}
+        options={{
+          title: t({ en: 'Wallet', zh: '钱包' }),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="💰" focused={focused} />,
+        }}
+      />
+      <Tab.Screen
         name="Me"
         component={MeStackNavigator}
         options={{
           title: t({ en: 'Me', zh: '我的' }),
           tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} badge={unreadCount} />,
+        }}
+      />
+      {/* Hidden: legacy Discover stack still mounted so existing navigate('Discover', ...) calls work */}
+      <Tab.Screen
+        name="Discover"
+        component={DiscoverStackNavigator}
+        options={{
+          title: t({ en: 'Discover', zh: '发现' }),
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
         }}
       />
     </Tab.Navigator>

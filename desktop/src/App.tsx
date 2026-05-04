@@ -298,6 +298,33 @@ export default function App() {
             void openSpotlightOrPanel();
           }
         });
+        // P0-W2-4 Explicit dual-form mutex (PRD desktop-prd-v3 §4.2)
+        // CmdOrCtrl+Space → Living Agent (compact) form
+        await register("CmdOrCtrl+Space", (event) => {
+          if (event.state === "Pressed") {
+            if (panelOpen && panelMode === "compact") {
+              setPanelOpen(false);
+            } else {
+              openCompactPanel();
+              window.dispatchEvent(new CustomEvent("agentrix:form-switched", {
+                detail: { form: "living", source: "shortcut" },
+              }));
+            }
+          }
+        });
+        // CmdOrCtrl+Shift+Space → Pro Mode form
+        await register("CmdOrCtrl+Shift+Space", (event) => {
+          if (event.state === "Pressed") {
+            if (panelOpen && panelMode === "pro") {
+              setPanelOpen(false);
+            } else {
+              openProPanel();
+              window.dispatchEvent(new CustomEvent("agentrix:form-switched", {
+                detail: { form: "pro", source: "shortcut" },
+              }));
+            }
+          }
+        });
         cleanup = () => {
           unregisterAll();
         };

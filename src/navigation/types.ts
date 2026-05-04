@@ -164,11 +164,15 @@ export type TeamStackParamList = {
   };
 };
 
+// P0-W2-1: 5-Tab refactor (Today/Agents/Team/Wallet/Me) per mobile-prd-v3 §4.1.1
+// Discover kept as registered (not visible) for backward-compat deep links.
 export type MainTabParamList = {
-  Agent: undefined;
-  Discover: undefined;
+  Today: undefined;
+  Agent: undefined;   // labeled "Agents"
   Team: undefined;
+  Wallet: undefined;
   Me: undefined;
+  Discover: undefined; // hidden, retained for legacy navigate('Discover', ...)
 };
 
 export type RootStackParamList = {

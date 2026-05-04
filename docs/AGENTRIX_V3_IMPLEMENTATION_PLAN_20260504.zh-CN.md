@@ -91,20 +91,21 @@
 | P0-W1-3 | 后端 `approval` 模块（L0-L3 风险 + Trust 校验中间件 + `/api/v1/approval/*`） | dev | 🟢 已完成 | ✅ backend tsc 无新增错误；L2 必须 mobile+biometric / L3 需协签 | 2026-05-04 | [backend/src/modules/approval/](../backend/src/modules/approval/) + [entities/approval-request.entity.ts](../backend/src/entities/approval-request.entity.ts) |
 | P0-W1-4 | 重构 Handoff 为 `/api/v1/handoff/*` + 三选项契约 | dev | 🟢 已完成 | ✅ backend tsc 无新增错误；包装现有 SessionHandoffService，handoff/mirror 套入 contextSnapshot.mode | 2026-05-04 | [backend/src/modules/handoff/](../backend/src/modules/handoff/) |
 | P0-W1-5 | wallet 增 `/api/v1/wallet/projection` 聚合 API | dev | 🟢 已完成 | ✅ backend tsc 无新增错误；阶段 1 接 AgentAccount，balances/recent_txs/stripe 占位待 P1 补全 | 2026-05-04 | [backend/src/modules/wallet-projection/](../backend/src/modules/wallet-projection/) |
-| P0-W1-6 | MPC HSM 选型决策（推荐 AWS KMS Singapore） | ceo + dev | ⬜ | ❌ | – | – |
+| P0-W1-6 | MPC HSM 选型决策（AWS KMS Singapore） | ceo + dev | 🟢 已完成 | ✅ 决策：AWS KMS（ap-southeast-1，与生产服务器同区降延迟）；2-of-3 协签由 KMS Custom Key Store + 应用层分片实现 | 2026-05-04 | 决策记录见本文档 §备注 |
 
 #### W2 · 移动 + 桌面骨架
 
 | # | 任务 | 责任 | 状态 | 验证 | 完成日期 | 交付物 |
 |---|-----|------|-----|------|---------|--------|
-| P0-W2-1 | Mobile 三形态骨架 + 5-Tab Bar 重构 | dev | ⬜ | ❌ | – | – |
+| P0-W2-1 | Mobile 三形态骨架 + 5-Tab Bar 重构 | dev | 🟢 已完成 | 🧪 RN 类型检查通过；Tab 顺序 Today/Agents/Team/Wallet/Me；Discover 保留为隐藏 tab 兼容旧深链 | 2026-05-04 | [src/navigation/MainTabNavigator.tsx](../src/navigation/MainTabNavigator.tsx) + [TodayStackNavigator.tsx](../src/navigation/TodayStackNavigator.tsx) + [WalletStackNavigator.tsx](../src/navigation/WalletStackNavigator.tsx) |
 | P0-W2-2 | Mobile 邀请码 5 步 stepper | dev | ⬜ | ❌ | – | – |
 | P0-W2-3 | Mobile Stripe → MPC L2 单笔支付 demo | dev | ⬜ | ❌ | – | – |
-| P0-W2-4 | Desktop 双形态显式切换（Cmd+Space / Cmd+Shift+Space） | dev | ⬜ | ❌ | – | – |
+| P0-W2-4 | Desktop 双形态显式切换（Cmd+Space / Cmd+Shift+Space） | dev | 🟢 已完成 | 🧪 注册 Tauri global shortcut；CmdOrCtrl+Space → compact，CmdOrCtrl+Shift+Space → pro；切换时 emit `agentrix:form-switched` | 2026-05-04 | [desktop/src/App.tsx](../desktop/src/App.tsx) |
 | P0-W2-5 | Desktop FloatingBall 接入 §3.4 状态机 | dev | ⬜ | ❌ | – | – |
 | P0-W2-6 | Desktop HandoffBanner 走新 API | dev | ⬜ | ❌ | – | – |
-| P0-W2-7 | Web Console `/console/**` 路由分区 + 登录/Agent 总览/Presence v3/Wallet read-only/Stripe | dev | ⬜ | ❌ | – | – |
+| P0-W2-7 | Web Console `/console/**` 路由分区 + 登录/Agent 总览/Presence v3/Wallet read-only/Stripe | dev | 🟢 已完成 | 🧪 next 类型检查通过；新增 `/console/{dashboard,agents,wallet,presence,billing}` + ConsoleLayout 侧栏 + middleware matcher | 2026-05-04 | [frontend/pages/console/](../frontend/pages/console/) + [components/console/ConsoleLayout.tsx](../frontend/components/console/ConsoleLayout.tsx) + [middleware.ts](../frontend/middleware.ts) |
 | P0-W2-8 | 旧 frontend/*.md 归档至 `docs/_archive/frontend-old-status-docs/` | brand | ⬜ | ❌ | – | – |
+| P0-W2-deploy | 后端 SSH 部署 47.130.176.148 + smoke test v1 API | dev/qa-ops | 🟢 已完成 | ✅ git pull + npm run build + pm2 restart 成功；4 端点 (`/api/v1/{pet/state,wallet/projection,approval,handoff/:id}`) 全部 401（JWT guard 正常） | 2026-05-04 | – |
 
 #### W3 · Watch + 系统助手骨架
 
@@ -215,7 +216,7 @@
 |------|-------|------|------|
 | Web 100 pages 重构爆炸 | 高 | P0 仅 Console 5 页 | ⬜ 监控中 |
 | iOS App Review 拒 SiriKit | 高 | TestFlight 提前 2 周 | ⬜ |
-| MPC HSM 选型未定 | 高 | P0 W1 必须冻结 | ⬜ |
+| MPC HSM 选型未定 | 高 | P0 W1 必须冻结 | 🟢 已解决 — AWS KMS Singapore（2026-05-04） |
 | Realtime 5 端洪泛 | 中 | 微反应 debounce 5s | ⬜ |
 | 国内厂商审核慢 | 中 | 留 2-4 周缓冲 | ⬜ |
 | Living Pet 与 agent-orchestration 边界 | 中 | `pet_id` ≠ `agent_id` 强契约 | ⬜ |
@@ -250,10 +251,17 @@
 ## 8. 周报小结
 
 ### 2026-W19（5/4 - 5/10）
-- **本周完成**: 5 PRD 冻结确认；本实施计划 v1 起草；现状审计完成。
-  - **P0-W1 背面架构全部落地 (5/4)**：shared/types 单源 + living-pet + approval + handoff v1 + wallet projection 均编译通过。
-- **阻塞**: MPC HSM 选型待 ceo 确认。
-- **下周计划**: 启动 P0-W2（Mobile 三形态与五 Tab 重构 + Desktop 双形态切换 + Web Console 路由分区 + 后端 SSH 部署验证 v1 API）。
+- **本周完成**:
+  - 5 PRD 冻结确认；本实施计划 v1 起草；现状审计完成。
+  - **P0-W1 全部落地 (5/4)**：shared/types 单源 + living-pet + approval + handoff v1 + wallet projection 均编译通过。
+  - **P0-W1-6 MPC HSM 决策 (5/4)**：选型 AWS KMS（ap-southeast-1，与生产服务器同区降延迟）。
+  - **P0-W2 部分落地 (5/4)**：
+    - 后端 SSH 部署到 47.130.176.148 + PM2 重启 + 4 个 v1 端点 smoke test 全 401（JWT guard 正常）。
+    - Mobile 5-Tab 骨架：Today / Agents / Team / Wallet / Me（Discover 隐藏兼容旧深链）。
+    - Desktop 双形态显式切换：CmdOrCtrl+Space → compact，CmdOrCtrl+Shift+Space → pro。
+    - Web Console `/console/{dashboard,agents,wallet,presence,billing}` 路由分区 + ConsoleLayout + middleware。
+- **阻塞**: 无（W1-6 已解锁）。
+- **下周计划**: P0-W2-2 邀请码 stepper / W2-3 Stripe→MPC L2 demo / W2-5 FloatingBall 状态机 / W2-6 HandoffBanner 接新 API / W3 Watch 骨架。
 
 ---
 
