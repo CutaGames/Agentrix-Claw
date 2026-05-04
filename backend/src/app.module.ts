@@ -142,6 +142,11 @@ import { VitalsBusModule } from './modules/vitals-bus/vitals-bus.module';
 import { MemoryTiersModule } from './modules/memory-tiers/memory-tiers.module';
 import { PlanRunnerModule } from './modules/plan-runner/plan-runner.module';
 import { SplitBudgetModule } from './modules/split-budget/split-budget.module';
+// v3.0 P2 Doer + Economy + 厂商接入
+import { A2AMatchingModule } from './modules/a2a-matching/a2a-matching.module';
+import { WorkflowTemplatesModule } from './modules/workflow-templates/workflow-templates.module';
+import { SkillListingsModule } from './modules/skill-listings/skill-listings.module';
+import { AutoEarnTimelineModule } from './modules/auto-earn-timeline/auto-earn-timeline.module';
 
 @Module({
   imports: [
@@ -302,6 +307,14 @@ import { SplitBudgetModule } from './modules/split-budget/split-budget.module';
     PlanRunnerModule,
     // v3.0 P1-8 SplitPlan + BudgetPool + Audit (顿领 §9.3 §9.5)
     SplitBudgetModule,
+    // v3.0 P2-8 A2A 跨用户撮合 (顿领 §10)
+    A2AMatchingModule,
+    // v3.0 P2-8 联合工作流模板 (顿领 §10.3)
+    WorkflowTemplatesModule,
+    // v3.0 P2-6 Skill Marketplace + 开发者后台 (顿领 §11)
+    SkillListingsModule,
+    // v3.0 P2-2 Auto-Earn 仪表盘 + A2A 时间线 (顿领 §9.4)
+    AutoEarnTimelineModule,
   ],
   controllers: [AppController],
   providers: [
