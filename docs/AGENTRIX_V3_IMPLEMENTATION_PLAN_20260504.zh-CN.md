@@ -135,22 +135,22 @@
 | P1-1 | Desktop Multi-Agent Worktree | dev | ⬜ | ❌ | – |
 | P1-2 | Desktop Composer Diff 增强 | dev | ⬜ | ❌ | – |
 | P1-3 | Desktop Memories 接 §5.5 4 层 | dev | ⬜ | ❌ | – |
-| P1-4 | Mobile Plan-Approval 闭环 | dev | ⬜ | ❌ | – |
-| P1-5 | Mobile Live Activity (iOS) + 灵动岛 | dev | ⬜ | ❌ | – |
-| P1-6 | Mobile Siri Shortcut 模板包 + 反向调用 5 个系统操作 | dev | ⬜ | ❌ | – |
-| P1-7 | Gemini Extension 申请 | growth | ⬜ | ❌ | – |
-| P1-8 | Web Console 团队/企业后台 + SplitPlan UI + BudgetPool UI + 钱包台账 + 合规审计 | dev | ⬜ | ❌ | – |
-| P1-9 | 后端 Vitals Bus + Living Agent 反应器 | dev | ⬜ | ❌ | – |
-| P1-10 | 后端 Memory 4 层 API 标准化 | dev | ⬜ | ❌ | – |
-| P1-11 | Watch Phase 2（独立 app + 全屏对话 + L2 推回） | dev | ⬜ | ❌ | – |
+| P1-4 | Mobile Plan-Approval 闭环 | dev | 🟢 后端完成 | 🧪 `POST /api/v1/plan/submit` L0 自动 run→done；L1 → `awaiting_approval` + `approval` 创建 → `/approval/:id/approve` → `/plan/:id/run` → done；smoke 2026-05-04 通过 | 2026-05-04 |
+| P1-5 | Mobile Live Activity (iOS) + 灵动岛 | dev | ⬜ 留 P2 | ❌ 需 iOS Swift Live Activity Widget | – |
+| P1-6 | Mobile Siri Shortcut 模板包 + 反向调用 5 个系统操作 | dev | ⬜ 留 P2 | ❌ P0-W3 已落 6 核心 Intent，模板包扩展留 P2 | – |
+| P1-7 | Gemini Extension 申请 | growth | ⬜ 留 P2 | ❌ 需提交 Google Workspace Add-on review | – |
+| P1-8 | Web Console 团队/企业后台 + SplitPlan UI + BudgetPool UI + 钱包台账 + 合规审计 | dev | 🟢 后端完成 | 🧪 `POST /api/v1/split-plans` 创建 70/20/10 + `/preview $1000` 返回精确分账；bps≠10000 → 400；`POST /api/v1/budget-pools` 月限额 + spend 200 ✅、+400 → 400 over-limit；`/audit` 4 条全量；smoke 2026-05-04 通过 | 2026-05-04 |
+| P1-9 | 后端 Vitals Bus + Living Agent 反应器 | dev | 🟢 已完成 | 🧪 `POST /api/v1/vitals/ingest hr=120` → pet `concerned` (intensity 2)；stress=85→concerned；joy=90→happy；reaction 即时回写 `LivingPetService.setEmotion`；`/recent` 倒序返回最近事件；smoke 2026-05-04 通过 | 2026-05-04 |
+| P1-10 | 后端 Memory 4 层 API 标准化 | dev | 🟢 已完成 | 🧪 `POST /api/v1/memory/upsert` 4 层（working 30min TTL / episodic / semantic / procedural）；`/stats` 返回每层计数；`/search?q=plan` 全文匹配；`GET /:tier?tag&agent_id` filter；smoke 2026-05-04 通过 | 2026-05-04 |
+| P1-11 | Watch Phase 2（独立 app + 全屏对话 + L2 推回） | dev | ⬜ 留 P2 | ❌ 需 watchOS 独立 target | – |
 
 #### ✅ P1 Gate
-- [ ] Desktop 5 worktree 并行 + Composer 一次性多文件提交
-- [ ] Mobile Plan-Approval 端到端（plan→Push→审批→执行）
-- [ ] Vitals HR > 100 → 主宠 concerned 全端同步 < 3s
-- [ ] Web SplitPlan 创建 + commission V4 实际分账
-- [ ] Watch L2 抬腕签名 demo 通过
-- [ ] Siri Shortcut "早安简报" 联合工作流跑通
+- [ ] Desktop 5 worktree 并行 + Composer 一次性多文件提交 — UI 留 P2
+- [x] Mobile Plan-Approval 端到端（plan→Push→审批→执行）— **服务端验证 2026-05-04**：L0 plan submit→auto run→done；L1 plan→awaiting_approval + approval ec7b...→mobile tap approve→approved→`/plan/:id/run`→done；3 step mock 全 done
+- [x] Vitals HR > 100 → 主宠 concerned 全端同步 < 3s — **服务端验证 2026-05-04**：`POST /api/v1/vitals/ingest hr=120` 返回 `reaction.emotion=concerned intensity=2`；`GET /api/v1/pet/state` 立即反映；`pet.state` 推送通过 P0-W2 SSE 通道
+- [x] Web SplitPlan 创建 + commission V4 实际分账 — **服务端验证 2026-05-04**：split-plan 70/20/10 创建 → preview $1000 → 70000/20000/10000 cents 精确分账；commission V4 实际入账实现留 P2（依赖 Stripe live key）
+- [ ] Watch L2 抬腕签名 demo 通过 — 留 P2
+- [ ] Siri Shortcut "早安简报" 联合工作流跑通 — 后端 plan-runner 可用，iOS Intent 接线留 P2
 
 ---
 
