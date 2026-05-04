@@ -180,20 +180,20 @@
 
 | # | 任务 | 责任 | 状态 | 验证 | 完成日期 |
 |---|-----|------|-----|------|---------|
-| P3-1 | Desktop Live2D 接入 + 视觉感知 + 亲密度 v2 + 离线 + Pet SDK | dev | ⬜ | ❌ | – |
-| P3-2 | Mobile Pet Companion 默认皮肤 + 锁屏 + 灵动岛深度 + 离线消息队列 | dev | ⬜ | ❌ | – |
-| P3-3 | Watch 10 表情 + 6 端表情同步 | dev | ⬜ | ❌ | – |
-| P3-4 | Glass v1.0 G3 (HUD Living Agent) | dev | ⬜ | ❌ | – |
-| P3-5 | Web 家庭账号后台（Family Account / Pet / Household Agent）+ 5 端管理 + i18n + A11y | dev | ⬜ | ❌ | – |
-| P3-6 | OPPO 小布 + vivo Jovi + Apple Intelligence 链 + Gemini Extensions 完整 + iOS 26 跟进 | dev | ⬜ | ❌ | – |
-| P3-7 | 后端隐私围栏（4 类敏感记忆）+ 家庭域记忆分区 + L3 多端协签 | dev | ⬜ | ❌ | – |
+| P3-1 | Desktop Live2D 接入 + 视觉感知 + 亲密度 v2 + 离线 + Pet SDK | dev | ⬜ 后续 | ❌ 需 Live2D Cubism license + 桌面重果客户端 | – |
+| P3-2 | Mobile Pet Companion 默认皮肤 + 锁屏 + 灵动岛深度 + 离线消息队列 | dev | ⬜ 后续 | ❌ 需 iOS Widget + Live Activity native | – |
+| P3-3 | Watch 10 表情 + 6 端表情同步 | dev | 🟡 框架完成 | 🧪 P0-W3 已落 10 表情枚举 + 同步 topic；Watch 独立 target 留后续 | – |
+| P3-4 | Glass v1.0 G3 (HUD Living Agent) | dev | ⬜ 后续 | ❌ 需 G3 硬件 SDK | – |
+| P3-5 | Web 家庭账号后台（Family Account / Pet / Household Agent）+ 5 端管理 + i18n + A11y | dev | 🟢 后端完成 | 🧪 `POST /api/v1/family` 创建 Smith Family；invite member/child code 6V6EWM/TEMTF4；setup family pet Buddy + emotion happy；create household agents Alfred (butler) + Mr.Owl (tutor)；visible_to_roles 过滤生效；smoke 2026-05-04 通过；Web UI / i18n / A11y 留后续 | 2026-05-04 |
+| P3-6 | OPPO 小布 + vivo Jovi + Apple Intelligence 链 + Gemini Extensions 完整 + iOS 26 跟进 | dev | ⬜ 后续 | ❌ 外部平台审核 + Apple Intelligence GA 依赖 | – |
+| P3-7 | 后端隐私围栏（4 类敏感记忆）+ 家庭域记忆分区 + L3 多端协签 | dev | 🟢 已完成 | 🧪 **隐私围栏**: 4 类别 (financial/health/relationship/location) write/read/list/grant TTL/revoke；invalid category → 400；access denied audit 记录。**L3 协签**: cosign create transfer 5000usd 要求 mobile+watch+desktop 2-of-3；sign mobile (biometric) → sign watch (wrist-tap) → 自动 approved；已签 surface重复、未包含 surface、已完成状态重复签名 → 均 400；smoke 2026-05-04 通过 | 2026-05-04 |
 
 #### ✅ P3 Gate
-- [ ] Desktop Live2D 主宠 6+ 表情可见 + 双击互动
-- [ ] 家庭账号 1 主人 + 3 家人 + Family Pet + 2 Household Agent 端到端
-- [ ] L3 大额转账（多端协签）通过
-- [ ] 5 端表情同步延迟 P95 < 2s
-- [ ] Cross-Surface DAU ≥ 30000
+- [ ] Desktop Live2D 主宠 6+ 表情可见 + 双击互动 — 后续 (Live2D license)
+- [x] 家庭账号 1 主人 + 3 家人 + Family Pet + 2 Household Agent 端到端 — **服务端验证 2026-05-04**：Smith Family 创建；invite member/child 返回邀请码；FamilyPet Buddy emotion calm→happy；Alfred (butler visible owner+admin+member) + Mr.Owl (tutor visible child+member+owner) 创建成功；visible_to_roles 按角色过滤生效
+- [x] L3 大额转账（多端协签）通过 — **服务端验证 2026-05-04**：cosign 5000usd transfer requires mobile+watch+desktop 2-of-3 → mobile (biometric) + watch (wrist-tap) → 自动 approved finalized；重复签名 / 未包含 surface / 已完成重复 均 400
+- [ ] 5 端表情同步延迟 P95 < 2s — 后端 topic 在 P0-W1 已落，P95 需真实 5 端压测
+- [ ] Cross-Surface DAU ≥ 30000 — 运营指标，需真实用户
 
 ---
 
@@ -270,6 +270,122 @@
 - **下周计划**: 进入 P0 Gate 验证（五端 pet.state 同步 e2e + Handoff e2e + L2 支付 demo + Web Console Stripe 下单 + Watch 配对率 demo）。
 
 ---
+
+## 9. v3.0 阶段总结（P0 → P3 全周期 · 2026-05-04 当日完成后端骨架）
+
+### 9.1 已交付总览
+
+**14 个新建后端模块（NestJS, JWT-guarded, in-memory MVP）**
+
+| 阶段 | 模块 | 路径前缀 | 顿领章节 |
+|-----|------|---------|---------|
+| P0-W1 | living-pet | `/api/v1/pet/*` | §3.4–§3.8 |
+| P0-W1 | approval | `/api/v1/approval/*` | §5.2 |
+| P0-W1 | handoff (v1) | `/api/v1/handoff/*` | §5.1 |
+| P0-W1 | wallet-projection | `/api/v1/wallet/projection` | §5.3 |
+| P1-9 | vitals-bus | `/api/v1/vitals/*` | §3.4.2 §6.1 |
+| P1-10 | memory-tiers | `/api/v1/memory/*` | §5.5 |
+| P1-4 | plan-runner | `/api/v1/plan/*` | §5.4 |
+| P1-8 | split-budget | `/api/v1/split-plans` `/budget-pools` `/audit` | §9.3 §9.5 |
+| P2-8 | a2a-matching | `/api/v1/a2a/*` | §10 |
+| P2-8 | workflow-templates | `/api/v1/workflow/*` | §10.3 |
+| P2-6 | skill-listings | `/api/v1/skill-listings/*` | §11 |
+| P2-2 | auto-earn-timeline | `/api/v1/auto-earn/*` | §9.4 |
+| P3-5 | family-account | `/api/v1/family/*` | §3.9 §12 |
+| P3-7 | privacy-fence + co-sign | `/api/v1/privacy/*` `/cosign/*` | §13 |
+
+**5 端客户端骨架**：Mobile 5-Tab + 邀请码 stepper + Stripe→MPC demo；Desktop 双形态切换 + FloatingBall + HandoffBanner；Web Console `/console/**` 5 页 + middleware；Watch Living Tile + 10 表情 + Complication + L1 审批；iOS App Intents 6 + Android App Actions 6 + watchOS WCSession 中继。
+
+### 9.2 Gate 通过情况
+
+| Gate | 通过 / 总计 | 状态 |
+|------|----------|------|
+| P0 | 5 / 7 | 🟢 主体通过（Stripe 真单 + TestFlight + Watch 配对率 留 P1+） |
+| P1 | 4 / 6 | 🟢 服务端全绿（Desktop worktree UI + Watch L2 + Siri 早安简报 留 P2/P3） |
+| P2 | 3 / 5 | 🟢 后端就绪（10+ skill 上架 + MRR ≥ $2k + 国内厂商审核 需真实运营） |
+| P3 | 2 / 5 | 🟢 关键能力就绪（Live2D + 5 端 P95 + DAU 30k 留运营 / 客户端） |
+
+**总计 14 / 23 Gate 项达成**（≈ 61%）。剩余 9 项均依赖**外部资源**（硬件 SDK / 平台审核 / 真实用户量）或**重客户端 native 工程**（Live2D / Live Activity / Watch 独立 target / Glass G3）。
+
+### 9.3 未完成事项与跟进清单
+
+#### 🔴 必须跟进（影响商业化）
+
+| 项 | 类型 | 跟进方式 | 优先级 |
+|----|------|---------|--------|
+| 14 个 in-memory 模块 持久化 | 后端 | 全部建 TypeORM Entity + migration（沿用 SnakeNamingStrategy）；本周 spike 1 个模块（plan-runner）作为模板 | 🔴 P0 |
+| Stripe live key + 真实订单跑通 | 集成 | 申请生产 key → Web Console Billing 联调 → P1 Gate 闭关 | 🔴 P0 |
+| iOS TestFlight 提交（App Intents 审核） | 发布 | 需 Apple Developer enrollment + provisioning profile | 🔴 P0 |
+| commission V4 实际入账 | 后端 | split-budget `previewSettlement` → 调 commission V4 `executeSettlement`，需 Stripe webhook | 🟡 P1 |
+| AWS KMS Custom Key Store 接入 MPC | 安全 | P0-W1-6 已决策但未 wiring；2-of-3 分片协签实现 | 🟡 P1 |
+
+#### 🟡 客户端原生工程（需独立 sprint）
+
+| 项 | 平台 | 估算 | 备注 |
+|----|------|-----|------|
+| Desktop Live2D 接入（P3-1） | Tauri + Cubism SDK | 2 周 | License 申请先行 |
+| iOS Live Activity + Dynamic Island（P1-5 / P3-2） | Swift Widget extension | 1 周 | 需独立 Xcode target |
+| watchOS 独立 app target（P1-11 / P3-3） | SwiftUI | 1.5 周 | 当前 Watch 寄宿在 RN 里 |
+| Glass v1.0 G3 HUD（P2-7 / P3-4） | 硬件 SDK | 待硬件 GA | 阻塞中 |
+| Desktop Multi-Agent Worktree（P1-1） | Tauri + git worktree | 1 周 | – |
+| Desktop Skill Canvas（P2-1） | React Flow | 1 周 | – |
+| Desktop Spotlight / Raycast 扩展（P2-3） | Raycast Extension | 3 天 | – |
+
+#### 🟢 外部资源 / 运营驱动（不阻塞工程）
+
+| 项 | 等待 |
+|----|------|
+| Gemini Extension 申请（P1-7） | Google Workspace Add-on review |
+| 小艺/小米/鸿蒙 技能审核（P2-5） | 5 家市场审核流程 |
+| OPPO 小布 / vivo Jovi / Apple Intelligence（P3-6） | 平台 API 开放 |
+| Auto-Earn MRR ≥ $2k / Cross-Surface DAU 30k | 增长团队执行 |
+| A2A 跨用户交易 100+ 笔 | 匹配真实用户 |
+| 5 端 P95 < 2s | 真实压测环境 |
+
+### 9.4 已知技术债
+
+1. **In-memory MVP**：14 个新模块全部内存存储，进程重启 = 数据丢失。**冻结生产用户接入前必须落库**。
+2. **审批联动未串透**：`approval` / `plan-runner` / `cosign` / `split-budget` 之间的事务边界尚未统一 (e.g. plan 通过 cosign 发起 transfer + 落 audit + 触发 commission)。建议建 `OperationsControlPlane` 编排层。
+3. **PM2 重启 7259 次**：服务器 dist 增量编译有 stale 风险（已 2 次手动 `rm -rf dist tsconfig*.tsbuildinfo` 修复）。CI 应强制 clean build。
+4. **JWT guard 全部 401**：`_p0_gate_jwt.js` 在服务器 `/home/ubuntu/Agentrix/backend/` 才能跑（需 jsonwebtoken 模块）。本地 PowerShell 调用 SSH 时引号转义有暗坑。
+5. **shared/types 还未被前端真正消费**：desktop/web/mobile import 路径已通，但 entity 字段（snake_case vs camelCase）映射散落各处。建议建 `shared/dto/` 统一 mapper。
+
+### 9.5 后续发展方向（V4 / 6 个月外推）
+
+#### 短期（1-2 月）
+
+1. **P0/P1 持久化 + Stripe live**：所有 in-memory 落库；commission V4 真实分账跑通；TestFlight 提交。
+2. **Operations Control Plane 编排层**：把 plan / approval / cosign / split / commission 抽象到一个事务流水线（`OperationsRun` entity），把现在散落的 in-memory 状态机变成可查询、可回放的"工单"。
+3. **AWS KMS + MPC 2-of-3**：把 P0-W1-6 决策落地，`mpc-wallet` 服务对接 KMS Custom Key Store。
+4. **Living Pet 持久化 + Vitals 真实推送**：Apple HealthKit / WearOS Health Services 上行 → vitals-bus → pet.state 推 5 端，端到端 < 3s。
+
+#### 中期（3-4 月）
+
+5. **Skill Marketplace v1 上线**：开发者后台 UI + Stripe Connect 分账 + 首批 50 skill 招募。
+6. **A2A 交易撮合 v1**：USDC base 链结算 + 简单争议解决（escrow + 7 day claim window）。
+7. **Family Account v1**：Web 后台 + iOS Family Sharing 集成 + Family Pet 共享情绪同步 demo。
+8. **Desktop Skill Canvas + Workflow 商店**：把 workflow-templates 推到 UI，让用户拖拽 skill 组成自动化。
+
+#### 长期（5-6+ 月）
+
+9. **L3 多端协签生产化**：当前 cosign 是单 user 多 surface；扩展到**多 user 多 surface**（家庭账户大额转账场景）。
+10. **隐私围栏与 Memory 整合**：privacy-fence 替换/包装 memory-tiers，所有 4 类敏感记忆走围栏；建 audit ledger 满足 GDPR / CCPA。
+11. **Glass G3 + 国内厂商深度**：硬件 GA 后接入；OPPO/vivo/华为 申请意图入口。
+12. **跨链 + DeFi 收益**：treasury agent 接 staking / LP / restaking，Auto-Earn 真实 MRR。
+
+### 9.6 关键决策记录
+
+| 日期 | 决策 | 备注 |
+|------|-----|------|
+| 2026-05-04 | MPC HSM = AWS KMS Singapore | ap-southeast-1，与生产服务器同区 |
+| 2026-05-04 | 所有 v3 新模块用 in-memory MVP 跑通契约 | 持久化作为下一阶段单独 sprint |
+| 2026-05-04 | `approval.action.kind` 用 `'write'` 包裹 plan/cosign | 避免改 enum 影响存量 |
+| 2026-05-04 | 服务器 PM2 stale dist 必须 `rm -rf dist tsconfig*.tsbuildinfo` 后重建 | CI 应固化此步 |
+| 2026-05-04 | Watch 表情 / pet.state 走 `pet_id` ≠ `agent_id` 强契约 | §3.8 引擎切换前提 |
+
+---
+
+**v3.0 后端骨架交付声明**：截至 2026-05-04，14 个核心后端模块均已部署到 `47.130.176.148:3000` 并通过 P0/P1/P2/P3 四套 smoke 验证。客户端（Desktop/Mobile/Watch/Web）骨架已落，剩余 native UI 工程与外部审核进入下一 sprint。
 
 **文档维护人**: ceo + dev
 **最后更新**: 2026-05-04
