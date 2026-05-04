@@ -2,7 +2,7 @@ name: Build → Test → Release APK
 
 on:
   push:
-    branches: [main, master, build*]
+    branches: [main, master, build*, v*]
   workflow_dispatch:
 
 permissions:

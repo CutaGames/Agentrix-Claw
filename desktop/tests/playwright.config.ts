@@ -1,4 +1,9 @@
+import path from "path";
+import { fileURLToPath } from "url";
 import { defineConfig } from "@playwright/test";
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+const desktopRoot = path.resolve(configDir, "..");
 
 export default defineConfig({
   testDir: "./e2e",
@@ -15,13 +20,20 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
+  webServer: {
+    command: "npm run dev -- --host 127.0.0.1 --port 1420",
+    cwd: desktopRoot,
+    url: "http://127.0.0.1:1420",
+    reuseExistingServer: true,
+    timeout: 120000,
+  },
   projects: [
     {
       name: "desktop-webview",
       use: {
         // In Tauri E2E, we connect to the running WebView via CDP
         // or use the dev server URL for faster iteration
-        baseURL: "http://localhost:1420",
+        baseURL: "http://127.0.0.1:1420",
       },
     },
   ],

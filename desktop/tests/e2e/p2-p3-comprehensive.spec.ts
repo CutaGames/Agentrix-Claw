@@ -62,6 +62,11 @@ async function openProMode(page: Page) {
   await expect(page.locator("textarea")).toBeVisible({ timeout: 10_000 });
 }
 
+async function openMorePanel(page: Page, label: string | RegExp) {
+  await page.getByTestId("chat-toolbar-more").click({ force: true });
+  await page.getByRole("button", { name: label }).click({ force: true });
+}
+
 async function expectEndpoint(
   request: APIRequestContext,
   path: string,
@@ -99,7 +104,7 @@ test.describe("P2-P3 Backend API Verification", () => {
   });
 
   test("skills endpoint available", async ({ request }) => {
-    const res = await request.get(`${API}/skills`, { timeout: 60_000 });
+    const res = await request.get(`${API}/skills?view=summary&limit=1`, { timeout: 60_000 });
     expect(res.status()).toBeLessThan(500);
   });
 
@@ -136,7 +141,7 @@ test.describe("P2-P3 Component Rendering", () => {
 
   test("economy panel opens and shows tabs", async ({ page }) => {
     await openProMode(page);
-    await page.locator("[title='Agent Economy']").click({ force: true });
+    await openMorePanel(page, /^💰\s*Agent Economy$/);
     await expect(page.locator("text=Overview")).toBeVisible({ timeout: 5_000 });
     await expect(page.locator("text=Transactions")).toBeVisible();
     await expect(page.locator("text=Skills")).toBeVisible();
@@ -144,7 +149,7 @@ test.describe("P2-P3 Component Rendering", () => {
 
   test("memory panel opens and shows memory layers", async ({ page }) => {
     await openProMode(page);
-    await page.locator("[title='Memory']").click({ force: true });
+    await openMorePanel(page, /^🧠\s*Memory$/);
     await expect(page.getByRole("button", { name: /^💬 Session$/ })).toBeVisible({ timeout: 5_000 });
     await expect(page.getByRole("button", { name: /^🤖 Agent$/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /^👤 User$/ })).toBeVisible();

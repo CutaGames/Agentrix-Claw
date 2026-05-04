@@ -64,8 +64,12 @@ export class SkillController {
   findAll(
     @Query('status') status?: SkillStatus,
     @Query('view') view?: 'summary' | 'full',
+    @Query('page') page = '1',
+    @Query('limit') limit?: string,
   ) {
-    return this.skillService.findAll(status, view === 'full' ? 'full' : 'summary');
+    const parsedPage = Math.max(1, Number.parseInt(page, 10) || 1);
+    const parsedLimit = limit ? Math.max(1, Number.parseInt(limit, 10) || 1) : undefined;
+    return this.skillService.findAll(status, view === 'full' ? 'full' : 'summary', parsedPage, parsedLimit);
   }
 
   @Get(':id')

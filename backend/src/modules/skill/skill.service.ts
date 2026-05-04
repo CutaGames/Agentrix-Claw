@@ -43,7 +43,12 @@ export class SkillService {
     }
   }
 
-  private buildFindAllQuery(status?: SkillStatus, view: SkillListView = 'summary') {
+  private buildFindAllQuery(
+    status?: SkillStatus,
+    view: SkillListView = 'summary',
+    page = 1,
+    limit?: number,
+  ) {
     const query = this.skillRepository.createQueryBuilder('skill');
     if (status) {
       query.where('skill.status = :status', { status });
@@ -53,11 +58,15 @@ export class SkillService {
       query.select([...SKILL_SUMMARY_SELECT_FIELDS]);
     }
 
+    if (limit) {
+      query.skip((page - 1) * limit).take(limit);
+    }
+
     return query;
   }
 
-  async findAll(status?: SkillStatus, view: SkillListView = 'summary') {
-    return this.buildFindAllQuery(status, view).getMany();
+  async findAll(status?: SkillStatus, view: SkillListView = 'summary', page = 1, limit?: number) {
+    return this.buildFindAllQuery(status, view, page, limit).getMany();
   }
 
   async findById(id: string) {
