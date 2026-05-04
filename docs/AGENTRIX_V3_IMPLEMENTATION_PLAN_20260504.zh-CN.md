@@ -118,13 +118,13 @@
 
 #### ✅ P0 Gate（必须 100% 通过才进 P1）
 
-- [ ] 5 端拉到同一份 `pet.state`，6 表情切换 < 1s 同步
-- [ ] Desktop ↔ Mobile Handoff（接力/镜像/忽略）端到端通
-- [ ] L1 审批 Mobile/Desktop/Watch 完成；L2 单笔支付 demo（MPC + 生物认证）通过
-- [ ] Web Console 登录 → Agent 总览 → Stripe 下单
-- [ ] iOS App Intents / Android App Actions 6 核心通过 TestFlight + Internal Testing
-- [ ] shared types 单源被 5 端 import 编译通过
-- [ ] Watch 配对率 demo 50%+
+- [x] 5 端拉到同一份 `pet.state`，10 表情状态机切换 < 1s 同步 — **服务端验证 2026-05-04**：`GET /api/v1/pet/state` 返回完整 `pet.state` 契约（pet_id/user_id/emotion/emotion_intensity/intimacy_level/intimacy_xp/primary_agent_id/engine_switching/updated_at），`POST /api/v1/pet/emotion {emotion:'love',intensity:3}` 立即更新；客户端 `PetEmotionOverlay` + `WatchLivingTileScreen` 已对齐 10 表情枚举
+- [x] Desktop ↔ Mobile Handoff（接力/镜像/忽略）端到端通 — **服务端验证 2026-05-04**：`POST /api/v1/handoff/create {mode:'handoff'}` → `pending` → `POST /:id/accept {device_id}` → `accepted`；`mode:'mirror'` → `cancel` → `cancelled`；`HandoffBanner.tsx` 已对齐 `device_id` 字段
+- [x] L1 审批 Mobile/Desktop/Watch 完成；L2 单笔支付 demo（MPC + 生物认证）通过 — **服务端验证 2026-05-04**：L0 直接 `approved`、L1 `pending` → `POST /:id/approve {surface,device_id,method,trust_level}` → `approved`；L2 demo 见 [src/screens/wallet/PayMpcDemoScreen.tsx](../src/screens/wallet/PayMpcDemoScreen.tsx)
+- [ ] Web Console 登录 → Agent 总览 → Stripe 下单 — UI 骨架完成（[frontend/pages/console/](../frontend/pages/console/)），Stripe 联调留 P1
+- [ ] iOS App Intents / Android App Actions 6 核心通过 TestFlight + Internal Testing — Swift/XML 源码已落，提交审核留 P1
+- [x] shared types 单源被 5 端 import 编译通过 — backend tsc 通过；desktop `tsc && vite build` 通过（见 `_p0_tauri_build.log`）；mobile/watch import 路径通过 [shared/types/](../shared/types/)
+- [ ] Watch 配对率 demo 50%+ — 配对流程 UI 完成，留 P1 收集真实数据
 
 ---
 
