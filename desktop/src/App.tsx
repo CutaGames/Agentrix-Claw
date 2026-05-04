@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import FloatingBall from "./components/FloatingBall";
+import PetEmotionOverlay from "./components/PetEmotionOverlay";
 import ChatPanel from "./components/ChatPanel";
 import LoginPanel from "./components/LoginPanel";
 import OnboardingPanel from "./components/OnboardingPanel";
@@ -468,10 +469,13 @@ export default function App() {
           background: "#FF0000",
         }}
       >
-        <FloatingBall
-          onTap={handleBallClick}
-          onOpenPro={handleOpenPro}
-        />
+        <div style={{ position: "relative" }}>
+          <FloatingBall
+            onTap={handleBallClick}
+            onOpenPro={handleOpenPro}
+          />
+          <PetEmotionOverlay />
+        </div>
       </div>
     );
   }
@@ -552,7 +556,10 @@ export default function App() {
               background: "transparent",
             }}
           >
-            <FloatingBall onTap={openCompactPanel} onOpenPro={openProPanel} />
+            <div style={{ position: "relative" }}>
+              <FloatingBall onTap={openCompactPanel} onOpenPro={openProPanel} />
+              <PetEmotionOverlay />
+            </div>
           </div>
         )}
       </div>

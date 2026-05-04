@@ -98,23 +98,23 @@
 | # | 任务 | 责任 | 状态 | 验证 | 完成日期 | 交付物 |
 |---|-----|------|-----|------|---------|--------|
 | P0-W2-1 | Mobile 三形态骨架 + 5-Tab Bar 重构 | dev | 🟢 已完成 | 🧪 RN 类型检查通过；Tab 顺序 Today/Agents/Team/Wallet/Me；Discover 保留为隐藏 tab 兼容旧深链 | 2026-05-04 | [src/navigation/MainTabNavigator.tsx](../src/navigation/MainTabNavigator.tsx) + [TodayStackNavigator.tsx](../src/navigation/TodayStackNavigator.tsx) + [WalletStackNavigator.tsx](../src/navigation/WalletStackNavigator.tsx) |
-| P0-W2-2 | Mobile 邀请码 5 步 stepper | dev | ⬜ | ❌ | – | – |
-| P0-W2-3 | Mobile Stripe → MPC L2 单笔支付 demo | dev | ⬜ | ❌ | – | – |
+| P0-W2-2 | Mobile 邀请码 5 步 stepper | dev | 🟢 已完成 | 🧪 RN 类型检查通过；Welcome / EnterCode / Verify / Handle / Confirm 五步状态机 + 进度条 | 2026-05-04 | [src/screens/onboarding/InvitationStepperScreen.tsx](../src/screens/onboarding/InvitationStepperScreen.tsx) |
+| P0-W2-3 | Mobile Stripe → MPC L2 单笔支付 demo | dev | 🟢 已完成 | 🧪 Stripe 付款模拟 → `/api/v1/approval/request` → 生物认证 → `/api/v1/approval/:id/approve` 五段状态机 | 2026-05-04 | [src/screens/wallet/PayMpcDemoScreen.tsx](../src/screens/wallet/PayMpcDemoScreen.tsx) |
 | P0-W2-4 | Desktop 双形态显式切换（Cmd+Space / Cmd+Shift+Space） | dev | 🟢 已完成 | 🧪 注册 Tauri global shortcut；CmdOrCtrl+Space → compact，CmdOrCtrl+Shift+Space → pro；切换时 emit `agentrix:form-switched` | 2026-05-04 | [desktop/src/App.tsx](../desktop/src/App.tsx) |
-| P0-W2-5 | Desktop FloatingBall 接入 §3.4 状态机 | dev | ⬜ | ❌ | – | – |
-| P0-W2-6 | Desktop HandoffBanner 走新 API | dev | ⬜ | ❌ | – | – |
+| P0-W2-5 | Desktop FloatingBall 接入 §3.4 状态机 | dev | 🟢 已完成 | 🧪 PetEmotionOverlay 订阅 `presence:pet.state` → `agentrix:pet-state`；10 表情 emoji + 环状色标；强度映射辉光 | 2026-05-04 | [desktop/src/components/PetEmotionOverlay.tsx](../desktop/src/components/PetEmotionOverlay.tsx) + [agentPresence.ts](../desktop/src/services/agentPresence.ts) |
+| P0-W2-6 | Desktop HandoffBanner 走新 API | dev | 🟢 已完成 | 🧪 增加 `acceptHandoffRest` / `cancelHandoffRest`，Banner 增加 mode 下拉 (handoff/mirror)，优先 REST `/api/v1/handoff/:id/accept`，失败 fallback WS | 2026-05-04 | [desktop/src/components/HandoffBanner.tsx](../desktop/src/components/HandoffBanner.tsx) + [agentPresence.ts](../desktop/src/services/agentPresence.ts) |
 | P0-W2-7 | Web Console `/console/**` 路由分区 + 登录/Agent 总览/Presence v3/Wallet read-only/Stripe | dev | 🟢 已完成 | 🧪 next 类型检查通过；新增 `/console/{dashboard,agents,wallet,presence,billing}` + ConsoleLayout 侧栏 + middleware matcher | 2026-05-04 | [frontend/pages/console/](../frontend/pages/console/) + [components/console/ConsoleLayout.tsx](../frontend/components/console/ConsoleLayout.tsx) + [middleware.ts](../frontend/middleware.ts) |
-| P0-W2-8 | 旧 frontend/*.md 归档至 `docs/_archive/frontend-old-status-docs/` | brand | ⬜ | ❌ | – | – |
+| P0-W2-8 | 旧 frontend/*.md 归档至 `docs/_archive/frontend-old-status-docs/` | brand | 🟢 已完成 | ✅ 10 份历史状态文档已移入归档目录，README.md 保留原位 | 2026-05-04 | [docs/_archive/frontend-old-status-docs/](../docs/_archive/frontend-old-status-docs/) |
 | P0-W2-deploy | 后端 SSH 部署 47.130.176.148 + smoke test v1 API | dev/qa-ops | 🟢 已完成 | ✅ git pull + npm run build + pm2 restart 成功；4 端点 (`/api/v1/{pet/state,wallet/projection,approval,handoff/:id}`) 全部 401（JWT guard 正常） | 2026-05-04 | – |
 
 #### W3 · Watch + 系统助手骨架
 
 | # | 任务 | 责任 | 状态 | 验证 | 完成日期 | 交付物 |
 |---|-----|------|-----|------|---------|--------|
-| P0-W3-1 | Watch Living Tile + 6 表情 + Complication（Corner + Rectangular） + L1 审批 | dev | ⬜ | ❌ | – | – |
-| P0-W3-2 | iOS App Intents 6 核心（ask-aira / draft / approve / wallet-status / invoke-agent / pet-mood） | dev | ⬜ | ❌ | – | – |
-| P0-W3-3 | Android App Actions 等价 6 个 | dev | ⬜ | ❌ | – | – |
-| P0-W3-4 | iOS Watch Shortcut 贯通手机 Aira | dev | ⬜ | ❌ | – | – |
+| P0-W3-1 | Watch Living Tile + 6 表情 + Complication（Corner + Rectangular） + L1 审批 | dev | 🟢 已完成 | 🧪 RN tsc 通过；WatchLivingTileScreen 订阅 `/agentrix/session/state` 推送；10 表情 + 强度 dot + Lv badge；L1 审批 inline 接受·拒绝；Corner & Rectangular Complication 渲染函数导出 | 2026-05-04 | [src/screens/watch/WatchLivingTileScreen.tsx](../src/screens/watch/WatchLivingTileScreen.tsx) |
+| P0-W3-2 | iOS App Intents 6 核心（ask-aira / draft / approve / wallet-status / invoke-agent / pet-mood） | dev | 🟢 已完成 | ✅ Swift 源码 + AppShortcutsProvider 注册；运行时转发至 RN 桥 `AgentrixIntentBridge` | 2026-05-04 | [ios/AgentrixIntents/AgentrixAppIntents.swift](../ios/AgentrixIntents/AgentrixAppIntents.swift) + [src/services/intents/intentBridge.ts](../src/services/intents/intentBridge.ts) |
+| P0-W3-3 | Android App Actions 等价 6 个 | dev | 🟢 已完成 | ✅ actions.xml 声明 GET_THING / CREATE_MESSAGE / GET_ACCOUNT 及 3 个 custom intent；`agentrix://intent/<name>` 深链 → `handleDeepLink` 调度 | 2026-05-04 | [android/app/src/main/res/xml/actions.xml](../android/app/src/main/res/xml/actions.xml) + [src/services/intents/intentBridge.ts](../src/services/intents/intentBridge.ts) |
+| P0-W3-4 | iOS Watch Shortcut 贯通手机 Aira | dev | 🟢 已完成 | ✅ watchOS Swift 文件，通过 WCSession 中继手机 `intentBridge`；4 个 Watch 专用 Shortcut（AskAira/PetMood/Approve/Wallet） | 2026-05-04 | [ios/AgentrixIntents/AgentrixWatchShortcuts.swift](../ios/AgentrixIntents/AgentrixWatchShortcuts.swift) |
 
 #### ✅ P0 Gate（必须 100% 通过才进 P1）
 
@@ -255,13 +255,19 @@
   - 5 PRD 冻结确认；本实施计划 v1 起草；现状审计完成。
   - **P0-W1 全部落地 (5/4)**：shared/types 单源 + living-pet + approval + handoff v1 + wallet projection 均编译通过。
   - **P0-W1-6 MPC HSM 决策 (5/4)**：选型 AWS KMS（ap-southeast-1，与生产服务器同区降延迟）。
-  - **P0-W2 部分落地 (5/4)**：
+  - **P0-W2 全部落地 (5/4)**：
     - 后端 SSH 部署到 47.130.176.148 + PM2 重启 + 4 个 v1 端点 smoke test 全 401（JWT guard 正常）。
     - Mobile 5-Tab 骨架：Today / Agents / Team / Wallet / Me（Discover 隐藏兼容旧深链）。
-    - Desktop 双形态显式切换：CmdOrCtrl+Space → compact，CmdOrCtrl+Shift+Space → pro。
+    - Mobile 邀请码 5 步 stepper + Stripe→MPC L2 demo。
+    - Desktop 双形态显式切换 + FloatingBall PetEmotionOverlay（10 表情 emoji + 轉色轉强度辉光） + HandoffBanner 接 REST §6.3 v1 API。
     - Web Console `/console/{dashboard,agents,wallet,presence,billing}` 路由分区 + ConsoleLayout + middleware。
-- **阻塞**: 无（W1-6 已解锁）。
-- **下周计划**: P0-W2-2 邀请码 stepper / W2-3 Stripe→MPC L2 demo / W2-5 FloatingBall 状态机 / W2-6 HandoffBanner 接新 API / W3 Watch 骨架。
+    - 旧 frontend/*.md（10 份历史状态文档）归档至 `docs/_archive/frontend-old-status-docs/`。
+  - **P0-W3 全部落地 (5/4)**：
+    - WatchLivingTileScreen + 10 表情 + Corner/Rectangular Complication 渲染 + L1 审批 inline。
+    - iOS AppIntents 6 核心 + AppShortcutsProvider；Android actions.xml + 6 deep-link；统一 `intentBridge.ts` JS 调度。
+    - watchOS WCSession 中继，4 个 Watch 专用 Shortcut。
+- **阻塞**: 无。
+- **下周计划**: 进入 P0 Gate 验证（五端 pet.state 同步 e2e + Handoff e2e + L2 支付 demo + Web Console Stripe 下单 + Watch 配对率 demo）。
 
 ---
 

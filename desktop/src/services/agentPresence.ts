@@ -181,6 +181,13 @@ function connectPresence(token: string) {
   _presenceSocket.on("timeline:new_event", (data) => _presenceHandlers.onTimelineEvent?.(data));
   _presenceSocket.on("approval:new", (data) => _presenceHandlers.onApprovalNew?.(data));
 
+  // P0-W2-5: Living Pet emotion broadcast (PRD agentrix-cross-platform-prd-v3 §3.4)
+  // Backend emits via desktopSyncEventBus -> 'presence:pet.state'.
+  // Forwarded to window for FloatingBall / PetEmotionOverlay subscribers.
+  _presenceSocket.on("presence:pet.state", (data) => {
+    window.dispatchEvent(new CustomEvent("agentrix:pet-state", { detail: data }));
+  });
+
   // Forward all events to window for other components
   _presenceSocket.onAny((event, data) => {
     window.dispatchEvent(new CustomEvent("agentrix:presence-event", { detail: { event, data } }));
@@ -208,6 +215,42 @@ export function acceptHandoffWs(handoffId: string) {
 /** Reject a handoff via WebSocket */
 export function rejectHandoffWs(handoffId: string) {
   _presenceSocket?.emit("handoff:reject", { handoffId });
+}
+
+// ── P0-W2-6: REST handoff v1 wrappers (PRD agentrix-cross-platform-prd-v3 §6.3)
+// Backend route: /api/v1/handoff/:id/{accept,cancel}
+
+export async function acceptHandoffRest(
+  token: string,
+  handoffId: string,
+  options?: { mode?: 'handoff' | 'mirror' },
+): Promise<{ status: string; sessionId?: string }> {
+  const res = await apiFetch(`${API_BASE}/v1/handoff/${encodeURIComponent(handoffId)}/accept`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ mode: options?.mode ?? 'handoff' }),
+  });
+  if (!res.ok) {
+    throw new Error(`accept handoff failed: ${res.status}`);
+  }
+  return readJson(res);
+}
+
+export async function cancelHandoffRest(
+  token: string,
+  handoffId: string,
+): Promise<{ status: string }> {
+  const res = await apiFetch(`${API_BASE}/v1/handoff/${encodeURIComponent(handoffId)}/cancel`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    throw new Error(`cancel handoff failed: ${res.status}`);
+  }
+  return readJson(res);
 }
 
 // ── REST API Wrappers ────────────────────────────────────────────────────────

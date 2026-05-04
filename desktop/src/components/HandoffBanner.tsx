@@ -6,7 +6,8 @@
  * events for handoff:request / handoff:initiated.
  */
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
-import { rejectHandoffWs, type HandoffEvent } from "../services/agentPresence";
+import { rejectHandoffWs, acceptHandoffRest, cancelHandoffRest, type HandoffEvent } from "../services/agentPresence";
+import { useAuthStore } from "../services/store";
 
 const PENDING_HANDOFF_KEY = "agentrix_pending_handoff";
 
@@ -28,6 +29,8 @@ export default function HandoffBanner({ onAccept, onDismiss }: Props) {
   const [accepting, setAccepting] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [mode, setMode] = useState<'handoff' | 'mirror'>('handoff');
+  const token = useAuthStore((s) => s.token);
 
   useEffect(() => {
     const setIncomingHandoff = (next: HandoffEvent | null) => {
@@ -82,22 +85,38 @@ export default function HandoffBanner({ onAccept, onDismiss }: Props) {
     if (!handoff?.handoffId) return;
     setAccepting(true);
     try {
+      // P0-W2-6: prefer REST /api/v1/handoff/:id/accept (PRD §6.3 three-option contract)
+      if (token) {
+        try {
+          await acceptHandoffRest(token, handoff.handoffId, { mode });
+        } catch (err) {
+          console.warn('[HandoffBanner] REST accept failed, falling back to WS', err);
+        }
+      }
       onAccept?.(handoff);
     } finally {
       setAccepting(false);
       setHandoff(null);
       localStorage.removeItem(PENDING_HANDOFF_KEY);
     }
-  }, [handoff, onAccept]);
+  }, [handoff, mode, onAccept, token]);
 
   const handleReject = useCallback(() => {
     if (handoff?.handoffId) {
-      rejectHandoffWs(handoff.handoffId);
+      // P0-W2-6: prefer REST cancel; WS as fallback for legacy listeners
+      if (token) {
+        cancelHandoffRest(token, handoff.handoffId).catch((err) => {
+          console.warn('[HandoffBanner] REST cancel failed, falling back to WS', err);
+          rejectHandoffWs(handoff.handoffId);
+        });
+      } else {
+        rejectHandoffWs(handoff.handoffId);
+      }
     }
     setDismissed(true);
     localStorage.removeItem(PENDING_HANDOFF_KEY);
     onDismiss?.();
-  }, [handoff, onDismiss]);
+  }, [handoff, onDismiss, token]);
 
   if (!handoff || dismissed) return null;
 
@@ -120,6 +139,16 @@ export default function HandoffBanner({ onAccept, onDismiss }: Props) {
         </div>
       </div>
       <div style={styles.actions}>
+        {/* P0-W2-6: explicit mode toggle (handoff vs mirror) */}
+        <select
+          value={mode}
+          onChange={(e) => setMode(e.target.value as 'handoff' | 'mirror')}
+          style={styles.modeSelect}
+          disabled={accepting}
+        >
+          <option value="handoff">接力（转移）</option>
+          <option value="mirror">镜像（同步）</option>
+        </select>
         <button style={styles.acceptBtn} onClick={handleAccept} disabled={accepting}>
           {accepting ? "接续中…" : "继续在桌面查看"}
         </button>
@@ -193,6 +222,15 @@ const styles: Record<string, CSSProperties> = {
     background: "transparent",
     color: "#94a3b8",
     fontSize: 12,
+    cursor: "pointer",
+  },
+  modeSelect: {
+    padding: "6px 8px",
+    borderRadius: 6,
+    border: "1px solid rgba(148,163,184,0.3)",
+    background: "#1e293b",
+    color: "#e2e8f0",
+    fontSize: 11,
     cursor: "pointer",
   },
 };
