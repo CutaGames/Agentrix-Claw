@@ -219,19 +219,24 @@ export function rejectHandoffWs(handoffId: string) {
 
 // ── P0-W2-6: REST handoff v1 wrappers (PRD agentrix-cross-platform-prd-v3 §6.3)
 // Backend route: /api/v1/handoff/:id/{accept,cancel}
+// Note: backend HandoffV1Controller.accept expects body { device_id }; the
+// `mode` toggle (handoff/mirror) is currently embedded server-side in
+// contextSnapshot.mode at create time. We still accept `mode` here for forward
+// compat with future per-acceptance toggling.
 
 export async function acceptHandoffRest(
   token: string,
   handoffId: string,
-  options?: { mode?: 'handoff' | 'mirror' },
+  options?: { mode?: 'handoff' | 'mirror'; deviceId?: string },
 ): Promise<{ status: string; sessionId?: string }> {
+  const deviceId = options?.deviceId || getDesktopDeviceId();
   const res = await apiFetch(`${API_BASE}/v1/handoff/${encodeURIComponent(handoffId)}/accept`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ mode: options?.mode ?? 'handoff' }),
+    body: JSON.stringify({ device_id: deviceId, mode: options?.mode ?? 'handoff' }),
   });
   if (!res.ok) {
     throw new Error(`accept handoff failed: ${res.status}`);
