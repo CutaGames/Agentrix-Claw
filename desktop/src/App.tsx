@@ -511,7 +511,7 @@ export default function App() {
           }
         }}
         networkStatus={networkStatus}
-        restorePersistedTabs={true}
+        restorePersistedTabs={false}
       />
     );
   }

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, QueryFailedError } from 'typeorm';
 import { Plugin, PluginCategory } from '../../entities/plugin.entity';
 import { UserPlugin } from '../../entities/user-plugin.entity';
 import { User } from '../../entities/user.entity';
@@ -68,22 +68,127 @@ export class PluginService {
       );
     }
 
-    return qb.getMany();
+    try {
+      return await qb.getMany();
+    } catch (error) {
+      if (!this.isLegacyPluginSchemaError(error)) {
+        throw error;
+      }
+
+      this.logger.warn('Legacy plugin schema detected while listing plugins; falling back to a compatible select set');
+      return this.getPluginsLegacyCompat(params);
+    }
   }
 
   /**
    * 获取插件详情
    */
   async getPlugin(pluginId: string): Promise<Plugin> {
-    const plugin = await this.pluginRepository.findOne({
-      where: { id: pluginId, isActive: true },
-    });
+    let plugin: Plugin | null;
+
+    try {
+      plugin = await this.pluginRepository.findOne({
+        where: { id: pluginId, isActive: true },
+      });
+    } catch (error) {
+      if (!this.isLegacyPluginSchemaError(error)) {
+        throw error;
+      }
+
+      this.logger.warn(`Legacy plugin schema detected while loading plugin ${pluginId}; falling back to a compatible select set`);
+      plugin = await this.getPluginLegacyCompat(pluginId);
+    }
 
     if (!plugin) {
       throw new NotFoundException('Plugin not found');
     }
 
     return plugin;
+  }
+
+  private isLegacyPluginSchemaError(error: unknown): boolean {
+    if (!(error instanceof QueryFailedError)) {
+      return false;
+    }
+
+    const message = String((error as { message?: unknown }).message || '').toLowerCase();
+    return [
+      'required_permissions',
+      'sandbox_level',
+      'security_policy',
+      'manifest',
+    ].some((field) => message.includes(field));
+  }
+
+  private buildLegacyPluginSelectQuery() {
+    return this.pluginRepository
+      .createQueryBuilder('plugin')
+      .select([
+        'plugin.id',
+        'plugin.name',
+        'plugin.description',
+        'plugin.version',
+        'plugin.author',
+        'plugin.category',
+        'plugin.price',
+        'plugin.currency',
+        'plugin.isFree',
+        'plugin.rating',
+        'plugin.downloadCount',
+        'plugin.icon',
+        'plugin.screenshots',
+        'plugin.capabilities',
+        'plugin.dependencies',
+        'plugin.metadata',
+        'plugin.isActive',
+        'plugin.createdAt',
+        'plugin.updatedAt',
+      ]);
+  }
+
+  private withLegacyPluginDefaults(plugin: Plugin | null): Plugin | null {
+    if (!plugin) {
+      return null;
+    }
+
+    plugin.requiredPermissions = plugin.requiredPermissions || [];
+    plugin.sandboxLevel = plugin.sandboxLevel || 'none';
+    plugin.securityPolicy = plugin.securityPolicy || {};
+    return plugin;
+  }
+
+  private async getPluginsLegacyCompat(params?: {
+    category?: PluginCategory;
+    search?: string;
+    role?: 'user' | 'merchant' | 'developer';
+  }): Promise<Plugin[]> {
+    const qb = this.buildLegacyPluginSelectQuery()
+      .where('plugin.isActive = :isActive', { isActive: true })
+      .orderBy('plugin.downloadCount', 'DESC')
+      .addOrderBy('plugin.rating', 'DESC');
+
+    if (params?.category) {
+      qb.andWhere('plugin.category = :category', { category: params.category });
+    }
+
+    if (params?.search) {
+      qb.andWhere(
+        '(plugin.name ILIKE :search OR plugin.description ILIKE :search)',
+        { search: `%${params.search}%` },
+      );
+    }
+
+    const plugins = await qb.getMany();
+    return plugins.map((plugin) => this.withLegacyPluginDefaults(plugin) as Plugin);
+  }
+
+  private async getPluginLegacyCompat(pluginId: string): Promise<Plugin | null> {
+    const plugin = await this.buildLegacyPluginSelectQuery()
+      .where('plugin.id = :pluginId', { pluginId })
+      .andWhere('plugin.isActive = :isActive', { isActive: true })
+      .getOne();
+
+    return this.withLegacyPluginDefaults(plugin);
   }
 
   /**
