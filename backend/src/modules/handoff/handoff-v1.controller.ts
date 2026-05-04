@@ -25,7 +25,7 @@ import { HandoffStatus } from '../../entities/session-handoff.entity';
  *   ignore   忽略（10s 自动消失）— 客户端层处理，不入服务端
  */
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/handoff')
+@Controller('v1/handoff')
 export class HandoffV1Controller {
   constructor(private readonly handoff: SessionHandoffService) {}
 

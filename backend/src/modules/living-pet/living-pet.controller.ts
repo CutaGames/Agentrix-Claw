@@ -12,7 +12,7 @@ import { LivingPetService, PetEmotion } from './living-pet.service';
  *   POST /api/v1/pet/engine/switch   §3.8 切换 primary agent
  */
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/pet')
+@Controller('v1/pet')
 export class LivingPetController {
   constructor(private readonly service: LivingPetService) {}
 

@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WalletProjectionService } from './wallet-projection.service';
 
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/wallet')
+@Controller('v1/wallet')
 export class WalletProjectionController {
   constructor(private readonly service: WalletProjectionService) {}
 

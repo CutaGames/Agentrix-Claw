@@ -20,7 +20,7 @@ import { ApprovalService, CreateApprovalInput, Surface, ApprovalMethod } from '.
  *   GET  /api/v1/approval               pending 列表
  */
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/approval')
+@Controller('v1/approval')
 export class ApprovalController {
   constructor(private readonly service: ApprovalService) {}
 
