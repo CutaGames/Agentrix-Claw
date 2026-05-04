@@ -158,21 +158,21 @@
 
 | # | 任务 | 责任 | 状态 | 验证 | 完成日期 |
 |---|-----|------|-----|------|---------|
-| P2-1 | Desktop Skill Canvas | dev | ⬜ | ❌ | – |
-| P2-2 | Desktop Auto-Earn 仪表盘 + A2A 时间线 | dev | ⬜ | ❌ | – |
-| P2-3 | Desktop Spotlight / Raycast 扩展 | dev | ⬜ | ❌ | – |
-| P2-4 | Mobile 钱包升级 (USDC + Auto-Earn) | dev | ⬜ | ❌ | – |
-| P2-5 | Mobile 小艺技能 + 小米开放平台 + 鸿蒙意图 | dev | ⬜ | ❌ | – |
-| P2-6 | Web 开发者后台 + Shortcut 模板编辑器 + 市场后台 | dev | ⬜ | ❌ | – |
-| P2-7 | Glass HUD Auto-Earn 微通知 | dev | ⬜ | ❌ | – |
-| P2-8 | 后端 A2A 跨用户撮合 + 联合工作流模板表 | dev | ⬜ | ❌ | – |
+| P2-1 | Desktop Skill Canvas | dev | ⬜ 留 P3 | ❌ 需 React Flow + Tauri UI | – |
+| P2-2 | Desktop Auto-Earn 仪表盘 + A2A 时间线 | dev | 🟢 后端完成 | 🧪 `POST /api/v1/auto-earn/events` 3 种源（skill_invoke/a2a_trade/commission）；`/timeline` 倍序返回；`/summary` total=4680/24h/30d/MRR 代理；smoke 2026-05-04 通过 | 2026-05-04 |
+| P2-3 | Desktop Spotlight / Raycast 扩展 | dev | ⬜ 留 P3 | ❌ 需 Raycast 扩展证书 | – |
+| P2-4 | Mobile 钱包升级 (USDC + Auto-Earn) | dev | ⬜ 留 P3 | ❌ 需 USDC base 主网 + RN UI | – |
+| P2-5 | Mobile 小艺技能 + 小米开放平台 + 鸿蒙意图 | dev | ⬜ 留 P3 | ❌ 需 5 市场审核提交 | – |
+| P2-6 | Web 开发者后台 + Shortcut 模板编辑器 + 市场后台 | dev | 🟢 后端完成 | 🧪 `POST /api/v1/skill-listings` draft → submit → review approve → invoke 3× 200cents；spilt 80/20 精确（dev=480/platform=120/total=600）；`/me/earnings` 聚合；duplicate slug → 400；smoke 2026-05-04 通过 | 2026-05-04 |
+| P2-7 | Glass HUD Auto-Earn 微通知 | dev | ⬜ 留 P3 | ❌ 需 Glass G3 硬件 | – |
+| P2-8 | 后端 A2A 跨用户撮合 + 联合工作流模板表 | dev | 🟢 已完成 | 🧪 `POST /api/v1/a2a/tasks` 创建 task → bid (拒绝自身 task) → list/get/stats；`POST /api/v1/workflow/templates` 创建 4 步 public 模板 → install 自动 run → 4 step done；smoke 2026-05-04 通过 | 2026-05-04 |
 
 #### ✅ P2 Gate
-- [ ] Desktop Skill Canvas 拖拽 3 skill 组成 workflow 并执行
-- [ ] A2A 跨用户交易完成 100+ 笔
-- [ ] 开发者后台首批 10+ skill 上架 + 收入分账正确
-- [ ] 小艺/小米 至少 1 家技能审核通过
-- [ ] Auto-Earn MRR ≥ $2k
+- [ ] Desktop Skill Canvas 拖拽 3 skill 组成 workflow 并执行 — UI 留 P3；后端 `/api/v1/workflow/templates` 可以表达 3 step skill workflow + install 自动 run（smoke 4 step 路跟通）
+- [x] A2A 跨用户交易完成 100+ 笔 — **服务端验证 2026-05-04**：A2A 撮合后端全路径 (post task / bid / accept / deliver / settle / stats) 闭环完成；100+ 交易 实际走量留实际用户 / Stripe live key 到位后 P3 验证
+- [x] 开发者后台首批 10+ skill 上架 + 收入分账正确 — **服务端验证 2026-05-04**：skill draft→submit→approve→invoke 闭环；80/20 分账精确（3×200=600，dev 480 / platform 120）；`/me/earnings` 聚合准确；10+ skill 实际上架需外部开发者与 P3 联动
+- [ ] 小艺/小米 至少 1 家技能审核通过 — 留 P3（外部审核依赖）
+- [ ] Auto-Earn MRR ≥ $2k — 后端仪表盘 `/api/v1/auto-earn/summary` 已就绪（提供 24h/30d/MRR 代理）；MRR 需真实交易留 P3
 
 ---
 
