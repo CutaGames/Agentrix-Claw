@@ -147,6 +147,9 @@ import { A2AMatchingModule } from './modules/a2a-matching/a2a-matching.module';
 import { WorkflowTemplatesModule } from './modules/workflow-templates/workflow-templates.module';
 import { SkillListingsModule } from './modules/skill-listings/skill-listings.module';
 import { AutoEarnTimelineModule } from './modules/auto-earn-timeline/auto-earn-timeline.module';
+// v3.0 P3 壁垒强化 + 家庭账号 + 隐私围栏
+import { FamilyAccountModule } from './modules/family-account/family-account.module';
+import { PrivacyFenceModule } from './modules/privacy-fence/privacy-fence.module';
 
 @Module({
   imports: [
@@ -315,6 +318,10 @@ import { AutoEarnTimelineModule } from './modules/auto-earn-timeline/auto-earn-t
     SkillListingsModule,
     // v3.0 P2-2 Auto-Earn 仪表盘 + A2A 时间线 (顿领 §9.4)
     AutoEarnTimelineModule,
+    // v3.0 P3-5 家庭账号 (顿领 §3.9 §12)
+    FamilyAccountModule,
+    // v3.0 P3-7 隐私围栏 + L3 多端协签 (顿领 §13)
+    PrivacyFenceModule,
   ],
   controllers: [AppController],
   providers: [
