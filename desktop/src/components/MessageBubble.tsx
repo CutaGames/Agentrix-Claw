@@ -69,6 +69,41 @@ function MessageBubbleImpl({ message, onRetry }: Props) {
       return '';
     });
 
+    // Strip pseudo-XML tool-call markup that some cloud models hallucinate
+    // (e.g. <anythingllm-function_calls>, <function_calls>, <invoke name="...">).
+    // These get rendered as raw text and dominate the bubble; we surface them
+    // as small "tool" chips instead so the user understands what was attempted.
+    const collectInvokeNames = (block: string) => {
+      const re = /<(?:[a-z-]+-)?invoke\s+name=["']([^"']+)["']/gi;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(block)) !== null) {
+        const name = m[1].trim();
+        if (name && !tools.includes(name)) tools.push(name);
+      }
+    };
+    // Closed blocks
+    rest = rest.replace(/<([a-z-]*function_calls)>([\s\S]*?)<\/\1>/gi, (_m, _tag, body) => {
+      collectInvokeNames(body);
+      return '';
+    });
+    // Open-ended (still streaming) block — drop everything from the opening tag onward
+    rest = rest.replace(/<([a-z-]*function_calls)>([\s\S]*)$/i, (_m, _tag, body) => {
+      collectInvokeNames(body);
+      return '';
+    });
+    // Bare invoke blocks without surrounding function_calls
+    rest = rest.replace(/<(?:[a-z-]+-)?invoke\s+name=["']([^"']+)["'][\s\S]*?<\/(?:[a-z-]+-)?invoke>/gi, (_m, name) => {
+      const n = String(name).trim();
+      if (n && !tools.includes(n)) tools.push(n);
+      return '';
+    });
+    // Bare invoke still streaming
+    rest = rest.replace(/<(?:[a-z-]+-)?invoke\s+name=["']([^"']+)["'][\s\S]*$/i, (_m, name) => {
+      const n = String(name).trim();
+      if (n && !tools.includes(n)) tools.push(n);
+      return '';
+    });
+
     // Extract [Tool Start], [Tool Done], [Tool Error] markers
     const progress: { name: string; status: 'running' | 'done' | 'error'; detail?: string }[] = [];
     rest = rest.replace(/\[Tool Start\]\s*([^\n]+)/g, (_m, name) => {

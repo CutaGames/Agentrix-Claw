@@ -1,7 +1,7 @@
 import { CSSProperties, useState, useCallback, useRef, useEffect } from "react";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import PetCanvas from "./PetCanvas";
+import PetRenderer from "./PetRenderer";
 import { type ClipboardCapture, type ClipboardAction, buildClipboardPrompt } from "../services/clipboard";
 import VoiceResultCard from "./VoiceResultCard";
 import { useAuthStore, streamChat, streamDirectChat, type ChatMessage } from "../services/store";
@@ -771,7 +771,7 @@ export default function FloatingBall({
           Pointer events stay enabled so double-click → triggerPetInteraction
           ('double_click') still fires; the parent ball's onClick is OK
           because PetCanvas only handles dblclick / mouseenter / mouseleave. */}
-      <PetCanvas
+      <PetRenderer
         size={compact ? 36 : 52}
         showLevelBadge={!compact}
         style={{ flexShrink: 0 }}

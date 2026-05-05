@@ -341,6 +341,9 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
         {/* Local Models */}
         <LocalModelSection />
 
+        {/* Living Pet (3D / VRM) */}
+        <PetVrmSection />
+
         {/* Version & Update */}
         <div style={{ ...section, borderBottom: "none" }}>
           <div style={sectionTitle}>About</div>
@@ -522,6 +525,78 @@ const logoutBtn: CSSProperties = {
   cursor: "pointer",
   marginTop: 8,
 };
+
+function PetVrmSection() {
+  const [vrmUrl, setVrmUrl] = useState<string | null>(() => {
+    try { return localStorage.getItem("agentrix_pet_vrm_url") || null; } catch { return null; }
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  const persist = (next: string | null) => {
+    try {
+      if (next) localStorage.setItem("agentrix_pet_vrm_url", next);
+      else localStorage.removeItem("agentrix_pet_vrm_url");
+    } catch {}
+    setVrmUrl(next);
+    window.dispatchEvent(new CustomEvent("agentrix:pet-vrm-changed"));
+  };
+
+  const handlePick = async () => {
+    setError(null);
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        directory: false,
+        multiple: false,
+        title: "Select VRM file",
+        filters: [{ name: "VRM Model", extensions: ["vrm"] }],
+      });
+      const path = Array.isArray(selected) ? selected[0] : selected;
+      if (!path) return;
+      // Tauri returns an absolute filesystem path; convert to a file:// URL
+      // so three.js GLTFLoader can fetch it.
+      const url = path.startsWith("file:") ? path : `file://${path.replace(/\\/g, "/")}`;
+      persist(url);
+    } catch (err: any) {
+      setError(err?.message || "Failed to pick VRM file.");
+    }
+  };
+
+  const handleClear = () => persist(null);
+
+  return (
+    <div style={section}>
+      <div style={sectionTitle}>Living Pet (3D / VRM)</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {vrmUrl ? (
+            <div style={{ fontSize: 12, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              🐱 {vrmUrl.replace(/^file:\/\//, "")}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "var(--text-dim)" }}>Using fallback SVG pet</div>
+          )}
+        </div>
+        <button onClick={handlePick} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)" }}>
+          {vrmUrl ? "Change" : "Import VRM"}
+        </button>
+        {vrmUrl && (
+          <button onClick={handleClear} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)" }}>
+            Reset
+          </button>
+        )}
+      </div>
+      {error ? (
+        <div style={{ fontSize: 11, color: "#f87171", padding: "2px 0" }}>{error}</div>
+      ) : null}
+      <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "2px 0", lineHeight: 1.5 }}>
+        Export a character from VRoid Studio as <code>.vrm</code>, then pick it here.
+        Standard VRM expressions (happy / sad / angry / surprised / relaxed) drive the
+        10 Agentrix emotions.
+      </div>
+    </div>
+  );
+}
 
 function LocalModelSection() {
   const [models, setModels] = useState<Array<{ name: string; path: string; sizeBytes: number }>>([]);

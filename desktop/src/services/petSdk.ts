@@ -325,9 +325,14 @@ registerPetRenderer(RIVE_RENDERER);
 const VRM_RENDERER: PetRenderer = {
   id: "vrm",
   isAvailable() {
+    // The runtime renderer (PetVRM via PetRenderer) self-activates as soon as
+    // a `.vrm` URL is set in localStorage.agentrix_pet_vrm_url. Both keys are
+    // accepted so external skill packs can still seed via readPetAssetUrl.
     return Boolean(readPetAssetUrl("agentrix_pet_vrm_url"));
   },
   applyEmotion(state) {
+    // PetVRM listens directly on `agentrix:pet-state`, so we just rebroadcast
+    // for any external listeners that key off the renderer-applied channel.
     window.dispatchEvent(new CustomEvent("agentrix:pet-emotion-applied", { detail: state }));
   },
   applyInteraction(kind) {
