@@ -1,22 +1,19 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ApprovalService } from '../approval/approval.service';
+import { Plan as PlanEntity, PlanStepSnapshot, PlanStatus } from '../../entities/plan.entity';
 
 /**
- * 顿领 §5.4 Plan-Approval 闭环（P1-4）
+ * 顿领 §5.4 Plan-Approval 闭环（v3 持久化版 / §9.3 spike）
  *
  *   submit  → 创建 Plan + 关联 ApprovalRequest（risk 由 plan 自评） → 推送审批
  *   approve → ApprovalRequest 通过后由 Plan Runner 执行（mock 顺序执行步骤）
  *
- * 当前 P1 阶段：进程内 plans，run 用 setTimeout mock，每步生成 result 摘要。
+ *   持久化：plans 表（PlanEntity）。原 in-memory `plans` Map / `approvalToPlan`
+ *   反向索引 全部由数据库承载。
  */
-export interface PlanStep {
-  id: string;
-  kind: string;
-  description: string;
-  args?: Record<string, unknown>;
-  status: 'pending' | 'running' | 'done' | 'failed';
-  result?: string;
-}
+export type PlanStep = PlanStepSnapshot;
 
 export interface Plan {
   id: string;
@@ -25,7 +22,7 @@ export interface Plan {
   intent: string;
   steps: PlanStep[];
   approvalId?: string;
-  status: 'draft' | 'awaiting_approval' | 'approved' | 'denied' | 'running' | 'done' | 'failed';
+  status: PlanStatus;
   createdAt: number;
   startedAt?: number;
   finishedAt?: number;
@@ -43,16 +40,17 @@ export interface SubmitPlanInput {
 @Injectable()
 export class PlanRunnerService {
   private readonly logger = new Logger(PlanRunnerService.name);
-  private plans = new Map<string, Plan>();
-  /** approvalId → planId reverse index */
-  private approvalToPlan = new Map<string, string>();
 
-  constructor(private readonly approvals: ApprovalService) {}
+  constructor(
+    @InjectRepository(PlanEntity)
+    private readonly planRepo: Repository<PlanEntity>,
+    private readonly approvals: ApprovalService,
+  ) {}
 
   async submit(userId: string, input: SubmitPlanInput): Promise<Plan> {
-    const id = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const externalId = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const steps: PlanStep[] = input.steps.map((s, i) => ({
-      id: `${id}.s${i}`,
+      id: `${externalId}.s${i}`,
       kind: s.kind,
       description: s.description,
       args: s.args,
@@ -65,75 +63,91 @@ export class PlanRunnerService {
       action: {
         kind: 'write',
         resource: `plan:${input.title.slice(0, 40)}`,
-        payload: { plan_id: id, steps_count: steps.length, intent: input.intent, kind: 'plan' },
+        payload: {
+          plan_id: externalId,
+          steps_count: steps.length,
+          intent: input.intent,
+          kind: 'plan',
+        },
       },
       riskLevel: risk,
       initiatorSurface: input.initiator_surface,
     });
 
-    const plan: Plan = {
-      id,
+    const status: PlanStatus =
+      approval.status === 'approved' ? 'approved' : 'awaiting_approval';
+
+    const entity = this.planRepo.create({
+      externalId,
       userId,
       title: input.title,
       intent: input.intent,
       steps,
       approvalId: approval.id,
-      status: approval.status === 'approved' ? 'approved' : 'awaiting_approval',
-      createdAt: Date.now(),
-    };
-    this.plans.set(id, plan);
-    this.approvalToPlan.set(approval.id, id);
+      status,
+      createdAtMs: String(Date.now()),
+      startedAtMs: null,
+      finishedAtMs: null,
+    });
+    const saved = await this.planRepo.save(entity);
 
-    if (plan.status === 'approved') {
-      this.runAsync(plan).catch((e) => this.logger.warn(`auto-run failed: ${e.message}`));
+    if (saved.status === 'approved') {
+      this.runAsync(saved.externalId).catch((e) =>
+        this.logger.warn(`auto-run failed: ${e?.message ?? e}`),
+      );
     }
 
-    return plan;
+    return this.toPlan(saved);
   }
 
   async onApprovalApproved(approvalId: string): Promise<Plan | undefined> {
-    const planId = this.approvalToPlan.get(approvalId);
-    if (!planId) return undefined;
-    const plan = this.plans.get(planId);
-    if (!plan || plan.status !== 'awaiting_approval') return plan;
-    plan.status = 'approved';
-    this.runAsync(plan).catch((e) => this.logger.warn(`run failed: ${e.message}`));
-    return plan;
+    const entity = await this.planRepo.findOne({ where: { approvalId } });
+    if (!entity) return undefined;
+    if (entity.status !== 'awaiting_approval') return this.toPlan(entity);
+    entity.status = 'approved';
+    const saved = await this.planRepo.save(entity);
+    this.runAsync(saved.externalId).catch((e) =>
+      this.logger.warn(`run failed: ${e?.message ?? e}`),
+    );
+    return this.toPlan(saved);
   }
 
   /** Mobile/Desktop/Watch 任一端审批通过后，前端调此 endpoint 触发执行 */
   async runAfterApproval(planId: string, userId: string): Promise<Plan> {
-    const plan = this.plans.get(planId);
-    if (!plan || plan.userId !== userId) throw new NotFoundException('plan not found');
-    if (plan.status !== 'awaiting_approval' && plan.status !== 'approved') return plan;
+    const entity = await this.planRepo.findOne({ where: { externalId: planId } });
+    if (!entity || entity.userId !== userId) throw new NotFoundException('plan not found');
+    if (entity.status !== 'awaiting_approval' && entity.status !== 'approved') {
+      return this.toPlan(entity);
+    }
 
-    // 检查 approval 状态
-    if (plan.approvalId) {
-      const a = await this.approvals.get(plan.approvalId, userId).catch(() => null);
+    if (entity.approvalId) {
+      const a = await this.approvals.get(entity.approvalId, userId).catch(() => null);
       if (!a || a.status !== 'approved') {
-        return plan;
+        return this.toPlan(entity);
       }
     }
-    plan.status = 'approved';
-    this.runAsync(plan).catch((e) => this.logger.warn(`run failed: ${e.message}`));
-    return plan;
+    entity.status = 'approved';
+    const saved = await this.planRepo.save(entity);
+    this.runAsync(saved.externalId).catch((e) =>
+      this.logger.warn(`run failed: ${e?.message ?? e}`),
+    );
+    return this.toPlan(saved);
   }
 
-  get(planId: string, userId: string): Plan {
-    const plan = this.plans.get(planId);
-    if (!plan || plan.userId !== userId) throw new NotFoundException('plan not found');
-    return plan;
+  async get(planId: string, userId: string): Promise<Plan> {
+    const entity = await this.planRepo.findOne({ where: { externalId: planId } });
+    if (!entity || entity.userId !== userId) throw new NotFoundException('plan not found');
+    return this.toPlan(entity);
   }
 
-  list(userId: string, status?: Plan['status']): Plan[] {
-    const out: Plan[] = [];
-    for (const p of this.plans.values()) {
-      if (p.userId !== userId) continue;
-      if (status && p.status !== status) continue;
-      out.push(p);
-    }
-    out.sort((a, b) => b.createdAt - a.createdAt);
-    return out;
+  async list(userId: string, status?: Plan['status']): Promise<Plan[]> {
+    const where: Record<string, unknown> = { userId };
+    if (status) where.status = status;
+    const rows = await this.planRepo.find({
+      where,
+      order: { createdAtMs: 'DESC' },
+    });
+    return rows.map((e) => this.toPlan(e));
   }
 
   // ── internals ─────────────────────────────────────────────────────────
@@ -145,18 +159,47 @@ export class PlanRunnerService {
     return 0;
   }
 
-  private async runAsync(plan: Plan) {
-    plan.status = 'running';
-    plan.startedAt = Date.now();
-    for (const step of plan.steps) {
+  private async runAsync(externalId: string): Promise<void> {
+    const entity = await this.planRepo.findOne({ where: { externalId } });
+    if (!entity) return;
+    entity.status = 'running';
+    entity.startedAtMs = String(Date.now());
+    await this.planRepo.save(entity);
+
+    for (let i = 0; i < entity.steps.length; i++) {
+      const step = entity.steps[i];
       step.status = 'running';
+      entity.steps = [...entity.steps];
+      await this.planRepo.save(entity);
+
       // mock 执行 — 50ms / step
       await new Promise((r) => setTimeout(r, 50));
+
       step.status = 'done';
       step.result = `[mock] ${step.kind} executed: ${step.description.slice(0, 40)}`;
+      entity.steps = [...entity.steps];
+      await this.planRepo.save(entity);
     }
-    plan.status = 'done';
-    plan.finishedAt = Date.now();
-    this.logger.log(`plan ${plan.id} completed (${plan.steps.length} steps)`);
+
+    entity.status = 'done';
+    entity.finishedAtMs = String(Date.now());
+    await this.planRepo.save(entity);
+    this.logger.log(`plan ${entity.externalId} completed (${entity.steps.length} steps)`);
+  }
+
+  private toPlan(entity: PlanEntity): Plan {
+    return {
+      id: entity.externalId,
+      userId: entity.userId,
+      title: entity.title,
+      intent: entity.intent,
+      steps: entity.steps ?? [],
+      approvalId: entity.approvalId ?? undefined,
+      status: entity.status,
+      createdAt: Number(entity.createdAtMs),
+      startedAt: entity.startedAtMs ? Number(entity.startedAtMs) : undefined,
+      finishedAt: entity.finishedAtMs ? Number(entity.finishedAtMs) : undefined,
+    };
   }
 }
+

@@ -313,23 +313,24 @@
 
 | 项 | 类型 | 跟进方式 | 优先级 |
 |----|------|---------|--------|
-| 14 个 in-memory 模块 持久化 | 后端 | 全部建 TypeORM Entity + migration（沿用 SnakeNamingStrategy）；本周 spike 1 个模块（plan-runner）作为模板 | 🔴 P0 |
+| 14 个 in-memory 模块 持久化 | 后端 | 已 4 / 14 落库（split-budget / plan-runner 真实持久化；approval / living-pet / wallet-projection 已使用 DB）。剩余沿用 plan-runner 模板批量推进 | 🟡 P1 |
 | Stripe live key + 真实订单跑通 | 集成 | 申请生产 key → Web Console Billing 联调 → P1 Gate 闭关 | 🔴 P0 |
 | iOS TestFlight 提交（App Intents 审核） | 发布 | 需 Apple Developer enrollment + provisioning profile | 🔴 P0 |
 | commission V4 实际入账 | 后端 | split-budget `previewSettlement` → 调 commission V4 `executeSettlement`，需 Stripe webhook | 🟡 P1 |
-| AWS KMS Custom Key Store 接入 MPC | 安全 | 🟢 代码已完成 wiring：`mpc-wallet` 已接入 real 2-of-3、AWS KMS / local-secret / legacy 兼容；已通过 backend tsc + `mpc-wallet.service.spec.ts`，生产配置与部署验证执行中 | 🟢 已完成 |
+| AWS KMS Custom Key Store 接入 MPC | 安全 | 🟢 代码完整：`mpc-wallet` 已接入 real 2-of-3 + AWS KMS / local-secret / legacy 三路；已部署到生产并就地通过 `mpc-wallet.service.spec.ts`（Node v22.22 / local-secret 路径，3/3 用例全过）。剩余仅“在 ap-southeast-1 创建 Customer Managed KMS Key 并设 `MPC_AWS_KMS_KEY_ID` env”这一步 AWS 控制台操作，无需改代码 | 🟢 代码完成 / KMS Key 待 AWS 控制台 |
 
 #### 🟡 客户端原生工程（需独立 sprint）
 
 | 项 | 平台 | 估算 | 备注 |
 |----|------|-----|------|
-| Desktop Live2D 接入（P3-1） | Tauri + Cubism SDK | 2 周 | License 申请先行 |
-| iOS Live Activity + Dynamic Island（P1-5 / P3-2） | Swift Widget extension | 1 周 | 需独立 Xcode target |
-| watchOS 独立 app target（P1-11 / P3-3） | SwiftUI | 1.5 周 | 当前 Watch 寄宿在 RN 里 |
-| Glass v1.0 G3 HUD（P2-7 / P3-4） | 硬件 SDK | 待硬件 GA | 阻塞中 |
-| Desktop Multi-Agent Worktree（P1-1） | Tauri + git worktree | 1 周 | – |
-| Desktop Skill Canvas（P2-1） | React Flow | 1 周 | – |
-| Desktop Spotlight / Raycast 扩展（P2-3） | Raycast Extension | 3 天 | – |
+| Desktop Spotlight 原生桥接 | Tauri | ✅ 已完成 | `desktop_bridge_open_spotlight / close_spotlight / get_selected_text` 已接入 invoke handler；`cargo check` 通过；本地 NSIS 打包成功（`desktop/src-tauri/target/release/bundle/nsis/Agentrix Desktop_0.1.1_x64-setup.exe`） |
+| Desktop Multi-Agent Worktree（P1-1） | Tauri + git worktree | 1 周 | 当前 Windows 工程可直接做，未阻塞 |
+| Desktop Skill Canvas（P2-1） | React Flow | 1 周 | 当前 Windows 工程可直接做，未阻塞 |
+| Desktop Live2D 接入（P3-1） | Tauri + Cubism SDK | 2 周 | 阻塞：Live2D Cubism license 未申请 |
+| Desktop Raycast 扩展（P2-3） | Raycast Extension | 3 天 | 阻塞：Raycast 仅 macOS，需要 macOS 验证机 |
+| iOS Live Activity + Dynamic Island（P1-5 / P3-2） | Swift Widget extension | 1 周 | 阻塞：需 macOS + Xcode + Apple Developer enrollment |
+| watchOS 独立 app target（P1-11 / P3-3） | SwiftUI | 1.5 周 | 阻塞：需 macOS + Xcode（当前 Watch 寄宿在 RN 里） |
+| Glass v1.0 G3 HUD（P2-7 / P3-4） | 硬件 SDK | 待硬件 GA | 阻塞：硬件未到位 |
 
 #### 🟢 外部资源 / 运营驱动（不阻塞工程）
 
@@ -356,7 +357,7 @@
 
 1. **P0/P1 持久化 + Stripe live**：所有 in-memory 落库；commission V4 真实分账跑通；TestFlight 提交。
 2. **Operations Control Plane 编排层**：把 plan / approval / cosign / split / commission 抽象到一个事务流水线（`OperationsRun` entity），把现在散落的 in-memory 状态机变成可查询、可回放的"工单"。
-3. **AWS KMS + MPC 2-of-3 生产化**：代码、单测与本地编译已完成；下一步仅剩生产环境密钥配置、部署与联调验证。
+3. **AWS KMS + MPC 2-of-3 生产化**：代码、本地单测、生产部署、生产单测全部完成；最后一步是在 AWS Console 的 ap-southeast-1 创建 Customer Managed Key 并把 `MPC_AWS_KMS_KEY_ID` 写入服务器 `.env`，重启 PM2 后自动从 local-secret 路径切换到 aws-kms（无须改代码）。
 4. **Living Pet 持久化 + Vitals 真实推送**：Apple HealthKit / WearOS Health Services 上行 → vitals-bus → pet.state 推 5 端，端到端 < 3s。
 
 #### 中期（3-4 月）
@@ -383,6 +384,8 @@
 | 2026-05-04 | 服务器 PM2 stale dist 必须 `rm -rf dist tsconfig*.tsbuildinfo` 后重建 | CI 应固化此步 |
 | 2026-05-04 | Watch 表情 / pet.state 走 `pet_id` ≠ `agent_id` 强契约 | §3.8 引擎切换前提 |
 | 2026-05-05 | `mpc-wallet` 已落地 real 2-of-3 + AWS KMS / local-secret / legacy 兼容路径 | `mpc-wallet.service.spec.ts` 通过；生产仅剩环境配置与部署验证 |
+| 2026-05-05 | `plan-runner` 落库（`plans` 表 + `1782400000000-CreatePlansTable` 迁移） | spec `plan-runner.service.spec.ts` 2/2 通过；用作剩余 in-memory 模块持久化模板 |
+| 2026-05-05 | 生产 `mpc-wallet.service.spec.ts` 在 prod node v22.22 上 3/3 通过 | 真实生产闭环（local-secret 路径）；KMS Key 创建是 AWS 控制台操作，不属于代码工作 |
 
 ---
 
