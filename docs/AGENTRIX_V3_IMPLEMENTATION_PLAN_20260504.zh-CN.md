@@ -49,7 +49,7 @@
 
 ### 1.4 Desktop — [desktop/](../desktop/) Tauri 2.0
 - 已落地（出乎意料完整）: `FloatingBall` / `HandoffBanner` / `AgentEconomyPanel` / `ApprovalSheet` / `TaskWorkbenchPanel` / `MemoryPanel` / `DiffView` / `ChatPanel` / `WearableNotification` / `SpotlightPanel` / `McpPanel` / `PluginPanel` / `DreamPanel` / `ProactivePanel` / `CrossDevicePanel` / `WorktreePanel` / `SkillCanvasPanel`
-- 缺口: Live2D 实接、Spotlight/Raycast 扩展；`Worktree` 与 `Skill Canvas` 已接入现有 desktop shell
+- 缺口: Live2D 实接、Spotlight/Raycast 扩展；`Worktree` 已可执行 `git worktree add -b ...`，`Skill Canvas` 已接 `/api/v1/workflow/templates` 执行链
 
 ### 1.5 Wearable — [src/watch/](../src/watch/) + Glass v1.0 + BLE
 - 已落地: watchOS SwiftUI 雏形 + Watch Connectivity；Glass / BLE PRD 完整
@@ -132,7 +132,7 @@
 
 | # | 任务 | 责任 | 状态 | 验证 | 完成日期 |
 |---|-----|------|-----|------|---------|
-| P1-1 | Desktop Multi-Agent Worktree | dev | 🟢 已完成 | 🧪 新增 `WorktreePanel`，接入 `ChatPanelImpl` + `ChatTitleBar` More menu；真实 git branch/status 刷新 + agent lane board + command preview；`desktop npm run build` 通过 | 2026-05-05 |
+| P1-1 | Desktop Multi-Agent Worktree | dev | 🟢 已完成 | 🧪 新增 `WorktreePanel`，接入 `ChatPanelImpl` + `ChatTitleBar` More menu；真实 git branch/status 刷新 + agent lane board + 派生 lane branch 的 `git worktree add -b ...` 执行；`desktop npm run build` 通过 | 2026-05-05 |
 | P1-2 | Desktop Composer Diff 增强 | dev | ⬜ | ❌ | – |
 | P1-3 | Desktop Memories 接 §5.5 4 层 | dev | ⬜ | ❌ | – |
 | P1-4 | Mobile Plan-Approval 闭环 | dev | 🟢 后端完成 | 🧪 `POST /api/v1/plan/submit` L0 自动 run→done；L1 → `awaiting_approval` + `approval` 创建 → `/approval/:id/approve` → `/plan/:id/run` → done；smoke 2026-05-04 通过 | 2026-05-04 |
@@ -158,7 +158,7 @@
 
 | # | 任务 | 责任 | 状态 | 验证 | 完成日期 |
 |---|-----|------|-----|------|---------|
-| P2-1 | Desktop Skill Canvas | dev | 🟢 已完成 | 🧪 新增 `SkillCanvasPanel`，使用原生 SVG + localStorage + drag，不引入 React Flow；已接入 `ChatPanelImpl` + `ChatTitleBar`；`desktop npm run build` 通过 | 2026-05-05 |
+| P2-1 | Desktop Skill Canvas | dev | 🟢 已完成 | 🧪 新增 `SkillCanvasPanel`，使用原生 SVG + localStorage + drag，不引入 React Flow；已接入 `ChatPanelImpl` + `ChatTitleBar`；可把画布提交到 `/api/v1/workflow/templates` 并 install/poll instance；`desktop npm run build` 通过 | 2026-05-05 |
 | P2-2 | Desktop Auto-Earn 仪表盘 + A2A 时间线 | dev | 🟢 后端完成 | 🧪 `POST /api/v1/auto-earn/events` 3 种源（skill_invoke/a2a_trade/commission）；`/timeline` 倍序返回；`/summary` total=4680/24h/30d/MRR 代理；smoke 2026-05-04 通过 | 2026-05-04 |
 | P2-3 | Desktop Spotlight / Raycast 扩展 | dev | ⬜ 留 P3 | ❌ 需 Raycast 扩展证书 | – |
 | P2-4 | Mobile 钱包升级 (USDC + Auto-Earn) | dev | ⬜ 留 P3 | ❌ 需 USDC base 主网 + RN UI | – |
@@ -168,7 +168,7 @@
 | P2-8 | 后端 A2A 跨用户撮合 + 联合工作流模板表 | dev | 🟢 已完成 | 🧪 `POST /api/v1/a2a/tasks` 创建 task → bid (拒绝自身 task) → list/get/stats；`POST /api/v1/workflow/templates` 创建 4 步 public 模板 → install 自动 run → 4 step done；smoke 2026-05-04 通过 | 2026-05-04 |
 
 #### ✅ P2 Gate
-- [ ] Desktop Skill Canvas 拖拽 3 skill 组成 workflow 并执行 — UI 留 P3；后端 `/api/v1/workflow/templates` 可以表达 3 step skill workflow + install 自动 run（smoke 4 step 路跟通）
+- [x] Desktop Skill Canvas 拖拽 3 skill 组成 workflow 并执行 — **桌面验证 2026-05-05**：`SkillCanvasPanel` 已支持拖拽节点 → create template → install → poll instance；后端仍沿用现有 mock step runner，但 UI 执行链已打通
 - [x] A2A 跨用户交易完成 100+ 笔 — **服务端验证 2026-05-04**：A2A 撮合后端全路径 (post task / bid / accept / deliver / settle / stats) 闭环完成；100+ 交易 实际走量留实际用户 / Stripe live key 到位后 P3 验证
 - [x] 开发者后台首批 10+ skill 上架 + 收入分账正确 — **服务端验证 2026-05-04**：skill draft→submit→approve→invoke 闭环；80/20 分账精确（3×200=600，dev 480 / platform 120）；`/me/earnings` 聚合准确；10+ skill 实际上架需外部开发者与 P3 联动
 - [ ] 小艺/小米 至少 1 家技能审核通过 — 留 P3（外部审核依赖）
@@ -180,7 +180,7 @@
 
 | # | 任务 | 责任 | 状态 | 验证 | 完成日期 |
 |---|-----|------|-----|------|---------|
-| P3-1 | Desktop Live2D 接入 + 视觉感知 + 亲密度 v2 + 离线 + Pet SDK | dev | ⬜ 后续 | ❌ 需 Live2D Cubism license + 桌面重果客户端 | – |
+| P3-1 | Desktop Live2D 接入 + 视觉感知 + 亲密度 v2 + 离线 + Pet SDK | dev | ⬜ 后续 | ❌ 详见 [DESKTOP_LIVE2D_BLOCKERS_20260505.zh-CN.md](DESKTOP_LIVE2D_BLOCKERS_20260505.zh-CN.md)：当前缺 license / runtime / renderer / 视觉感知 wiring / 离线资源策略 / Pet SDK 契约 | – |
 | P3-2 | Mobile Pet Companion 默认皮肤 + 锁屏 + 灵动岛深度 + 离线消息队列 | dev | ⬜ 后续 | ❌ 需 iOS Widget + Live Activity native | – |
 | P3-3 | Watch 10 表情 + 6 端表情同步 | dev | 🟡 框架完成 | 🧪 P0-W3 已落 10 表情枚举 + 同步 topic；Watch 独立 target 留后续 | – |
 | P3-4 | Glass v1.0 G3 (HUD Living Agent) | dev | ⬜ 后续 | ❌ 需 G3 硬件 SDK | – |
@@ -324,9 +324,9 @@
 | 项 | 平台 | 估算 | 备注 |
 |----|------|-----|------|
 | Desktop Spotlight 原生桥接 | Tauri | ✅ 已完成 | `desktop_bridge_open_spotlight / close_spotlight / get_selected_text` 已接入 invoke handler；`cargo check` 通过；本地 NSIS 打包成功（`desktop/src-tauri/target/release/bundle/nsis/Agentrix Desktop_0.1.1_x64-setup.exe`） |
-| Desktop Multi-Agent Worktree（P1-1） | Tauri + git branch/status + lane board | ✅ 已完成 | `WorktreePanel` 已接入 shell；当前方案是 agent lane board + CLI preview，不直接执行 `git worktree add` |
-| Desktop Skill Canvas（P2-1） | Tauri + 原生 SVG graph | ✅ 已完成 | `SkillCanvasPanel` 已接入 shell；当前方案是本地拖拽编排画布，后续再接 workflow execute |
-| Desktop Live2D 接入（P3-1） | Tauri + Cubism SDK | 2 周 | 阻塞：Live2D Cubism license 未申请 |
+| Desktop Multi-Agent Worktree（P1-1） | Tauri + git branch/status + lane board | ✅ 已完成 | `WorktreePanel` 已接入 shell；当前方案支持 base branch → lane branch → `git worktree add -b ...` 真实执行，并回填命令结果 |
+| Desktop Skill Canvas（P2-1） | Tauri + 原生 SVG graph | ✅ 已完成 | `SkillCanvasPanel` 可把画布提交到 `/api/v1/workflow/templates`，install 后轮询 instance 结果 |
+| Desktop Live2D 接入（P3-1） | Tauri + Cubism SDK | 2 周 | 阻塞清单见 [DESKTOP_LIVE2D_BLOCKERS_20260505.zh-CN.md](DESKTOP_LIVE2D_BLOCKERS_20260505.zh-CN.md) |
 | Desktop Raycast 扩展（P2-3） | Raycast Extension | 3 天 | 阻塞：Raycast 仅 macOS，需要 macOS 验证机 |
 | iOS Live Activity + Dynamic Island（P1-5 / P3-2） | Swift Widget extension | 1 周 | 阻塞：需 macOS + Xcode + Apple Developer enrollment |
 | watchOS 独立 app target（P1-11 / P3-3） | SwiftUI | 1.5 周 | 阻塞：需 macOS + Xcode（当前 Watch 寄宿在 RN 里） |
@@ -387,11 +387,11 @@
 | 2026-05-05 | `plan-runner` 落库（`plans` 表 + `1782400000000-CreatePlansTable` 迁移） | spec `plan-runner.service.spec.ts` 2/2 通过；用作剩余 in-memory 模块持久化模板 |
 | 2026-05-05 | 生产 `mpc-wallet.service.spec.ts` 在 prod node v22.22 上 3/3 通过 | 真实生产闭环（local-secret 路径）；KMS Key 创建是 AWS 控制台操作，不属于代码工作 |
 | 2026-05-05 | public-build 镜像链在推送前强制执行 `validate_mobile_mirror.cjs` | 堵住 stale Expo plugin path 泄漏到 `Agentrix-Claw` 导致 build255 持续失败 |
-| 2026-05-05 | Desktop `Worktree` 先做 git 元数据面板与命令预览，`Skill Canvas` 先做原生 SVG 编排画布 | 先把 desktop shell 能力接入并通过 build，后续再补执行链路；Live2D 仍受 license 阻塞 |
+| 2026-05-05 | Desktop `Worktree` 从预览推进到可执行 lane worktree；`Skill Canvas` 接上 workflow-templates create/install/poll | 两条 desktop 面板都已进入真实执行链；Live2D 仍按 blocker 清单后置 |
 
 ---
 
-**v3.0 后端骨架交付声明**：截至 2026-05-05，14 个核心后端模块均已部署到 `47.130.176.148:3000` 并完成本轮持久化收口；P0/P1/P2/P3 四套 smoke 已跑通。客户端侧 `Desktop Multi-Agent Worktree` 与 `Desktop Skill Canvas` 已接入现有 shell 并通过桌面 build；剩余重客户端阻塞主要是 Live2D license、Live Activity、Watch 独立 target 与外部审核。
+**v3.0 后端骨架交付声明**：截至 2026-05-05，14 个核心后端模块均已部署到 `47.130.176.148:3000` 并完成本轮持久化收口；P0/P1/P2/P3 四套 smoke 已跑通。客户端侧 `Desktop Multi-Agent Worktree` 与 `Desktop Skill Canvas` 已进入真实执行链并通过桌面 build；剩余重客户端阻塞主要是 Live2D（见 blocker 清单）、Live Activity、Watch 独立 target 与外部审核。
 
 **文档维护人**: ceo + dev
 **最后更新**: 2026-05-05
