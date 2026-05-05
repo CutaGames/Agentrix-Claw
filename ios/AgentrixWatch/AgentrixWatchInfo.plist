@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Mirror this into the watchOS App target's Info.plist when adding the target
+  in Xcode. See README.md for setup steps.
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Agentrix</string>
+    <key>CFBundleIdentifier</key>
+    <string>app.agentrix.claw.watchkitapp</string>
+    <key>WKApplication</key>
+    <true/>
+    <key>WKWatchOnly</key>
+    <false/>
+    <key>WKBackgroundModes</key>
+    <array>
+        <string>workout-processing</string>
+        <string>self-care</string>
+    </array>
+    <key>NSHealthShareUsageDescription</key>
+    <string>Agentrix reads heart rate, blood oxygen and HRV to keep your AI pet's emotions accurate.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>Agentrix never writes back to Apple Health.</string>
+    <key>NSMotionUsageDescription</key>
+    <string>Used to detect raise-wrist gestures for approving requests securely.</string>
+</dict>
+</plist>

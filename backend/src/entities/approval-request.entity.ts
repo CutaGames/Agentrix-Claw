@@ -65,7 +65,7 @@ export class ApprovalRequest {
     surface: string;
     deviceId: string;
     at: number;
-    method: 'tap' | 'biometric' | 'voice';
+    method: 'tap' | 'biometric' | 'voice' | 'wrist-tap';
   }>;
 
   @CreateDateColumn()

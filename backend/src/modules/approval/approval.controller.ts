@@ -78,6 +78,22 @@ export class ApprovalController {
     return this.service.toDto(updated);
   }
 
+  /**
+   * Wearable PRD L2 wrist-tap: watch records intent (raise-wrist 1s),
+   * server broadcasts `approval:wrist-trigger` so the paired phone surfaces a
+   * biometric prompt. The phone then calls POST /:id/approve as usual.
+   */
+  @Post(':id/wrist-trigger')
+  async wristTrigger(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Body() body: { device_id: string },
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    const updated = await this.service.wristTrigger(id, { userId, deviceId: body.device_id });
+    return this.service.toDto(updated);
+  }
+
   @Get(':id')
   async get(@Param('id') id: string, @Req() req: any) {
     const userId = req.user?.userId || req.user?.sub || req.user?.id;

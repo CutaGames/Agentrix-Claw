@@ -44,7 +44,11 @@
         "NSBluetoothAlwaysUsageDescription": "Agentrix uses Bluetooth to scan and connect to nearby wearable devices.",
         "NSMicrophoneUsageDescription": "Agentrix Claw uses the microphone for voice commands to your AI agent.",
         "NSPhotoLibraryAddUsageDescription": "Agentrix Claw saves share cards to your photo library.",
-        "NSPhotoLibraryUsageDescription": "Agentrix Claw reads the photo library to select images."
+        "NSPhotoLibraryUsageDescription": "Agentrix Claw reads the photo library to select images.",
+        "NSHealthShareUsageDescription": "Agentrix reads heart rate, blood oxygen and HRV to keep your AI pet's emotions accurate and to power L2 wrist-tap signing.",
+        "NSHealthUpdateUsageDescription": "Agentrix never writes back to Apple Health.",
+        "NSMotionUsageDescription": "Used to detect raise-wrist gestures for approving requests securely.",
+        "NSFaceIDUsageDescription": "Face ID is used to sign payments and approvals triggered from your watch."
       }
     },
     "android": {

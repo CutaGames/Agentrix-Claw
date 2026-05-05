@@ -14,7 +14,7 @@ import {
 } from '../desktop-sync/desktop-sync.events';
 
 export type Surface = 'web' | 'desktop' | 'mobile' | 'watch' | 'glass';
-export type ApprovalMethod = 'tap' | 'biometric' | 'voice';
+export type ApprovalMethod = 'tap' | 'biometric' | 'voice' | 'wrist-tap';
 
 export interface CreateApprovalInput {
   userId: string;
@@ -96,6 +96,31 @@ export class ApprovalService {
     return saved;
   }
 
+  /**
+   * §5.2 + Wearable PRD: · watch “wrist-tap” L2 触发。
+   *
+   * Watch 不能独立完成 L2 签名（不足 Trust=3）。本接口让 watch 抬腕 1s 记录一个
+   * `wrist-tap` 部分批准（作为意图证据），同时广播一个 `approval:wrist-trigger` 事件
+   * 让配对的手机弹出 Face/Touch ID；手机生物认证后调普通 `approve`
+   * （surface=mobile, method=biometric, trust_level=3），完成真正的 L2/L3 批准。
+   *
+   * 在 `allRequiredApproved` 计数中 wrist-tap 不算有效签名。
+   */
+  async wristTrigger(
+    requestId: string,
+    by: { userId: string; deviceId: string },
+  ): Promise<ApprovalRequest> {
+    const req = await this.requireOwned(requestId, by.userId);
+    this.assertNotExpired(req);
+    req.approvals = [
+      ...req.approvals,
+      { surface: 'watch', deviceId: by.deviceId, at: Date.now(), method: 'wrist-tap' },
+    ];
+    const saved = await this.repo.save(req);
+    this.broadcast(saved, 'approval:wrist-trigger');
+    return saved;
+  }
+
   async deny(requestId: string, userId: string, surface: Surface, deviceId: string): Promise<ApprovalRequest> {
     const req = await this.requireOwned(requestId, userId);
     if (req.status !== 'pending') return req;
@@ -131,15 +156,17 @@ export class ApprovalService {
   }
 
   private allRequiredApproved(req: ApprovalRequest): boolean {
-    const approvedSurfaces = new Set(req.approvals.map((a) => a.surface));
-    if (req.riskLevel === 1) return req.approvals.length >= 1;
+    // wrist-tap only counts as intent signal, not as a valid signature
+    const signed = req.approvals.filter((a) => a.method !== 'wrist-tap');
+    const approvedSurfaces = new Set(signed.map((a) => a.surface));
+    if (req.riskLevel === 1) return signed.length >= 1;
     if (req.riskLevel === 2) {
-      return req.approvals.some(
+      return signed.some(
         (a) => a.surface === 'mobile' && a.method === 'biometric',
       );
     }
     if (req.riskLevel === 3) {
-      const mobileBio = req.approvals.some(
+      const mobileBio = signed.some(
         (a) => a.surface === 'mobile' && a.method === 'biometric',
       );
       const coSigner = [...approvedSurfaces].some((s) => s !== 'mobile');
@@ -152,6 +179,8 @@ export class ApprovalService {
     req: ApprovalRequest,
     by: { surface: Surface; trustLevel: 0 | 1 | 2 | 3; method: ApprovalMethod },
   ): void {
+    // wrist-tap is intent-only; never participates in trust gating
+    if (by.method === 'wrist-tap') return;
     if (req.riskLevel >= 2) {
       if (by.surface === 'mobile') {
         if (by.trustLevel !== 3 || by.method !== 'biometric') {
