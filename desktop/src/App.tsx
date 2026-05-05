@@ -17,6 +17,8 @@ import { addNotification } from "./services/notifications";
 import { startNetworkMonitor, stopNetworkMonitor, getNetworkStatus, onNetworkStatusChange, type NetworkStatus } from "./services/network";
 import { DesktopWakeWordService } from "./services/wakeWord";
 import { DESKTOP_WAKE_WORD_EVENT, readDesktopWakeWordConfig } from "./services/wakeWordConfig";
+import { bootPetSdk } from "./services/petSdk";
+import { startVisionPerception, stopVisionPerception, isVisionPerceptionEnabled } from "./services/visionPerception";
 import "./services/suspend"; // Register __agentrix_suspend / __agentrix_resume on window
 
 // Determine view from Tauri window label without importing @tauri-apps/api/window
@@ -224,6 +226,14 @@ export default function App() {
 
     trackEvent("session_start");
 
+    // P3-1 partial — Pet SDK boot + opt-in vision perception (default OFF).
+    // Live2D runtime ships later via petAssets manifest; fallback renderer
+    // (PetCanvas) is always available regardless.
+    bootPetSdk();
+    if (isVisionPerceptionEnabled()) {
+      startVisionPerception();
+    }
+
     return () => {
       stopNetworkMonitor();
       unsub();
@@ -232,8 +242,31 @@ export default function App() {
       destroySessionSync();
       destroyPresenceSocket();
       stopDesktopAgentSync();
+      stopVisionPerception();
     };
   }, [isServiceHostWindow, loggedIn, openProPanel, token, windowLabel]);
+
+  // P3 双形态互斥 + 15min 空闲自动回 Living (compact)。
+  // Pro mode 是显式生产力形态，长时间无交互应回到悬浮状态减少打扰。
+  useEffect(() => {
+    if (windowLabel !== "main" && windowLabel !== "dev") return;
+    if (!panelOpen || panelMode !== "pro") return;
+    const IDLE_MS = 15 * 60 * 1000;
+    let lastActive = Date.now();
+    const reset = () => { lastActive = Date.now(); };
+    const events: Array<keyof WindowEventMap> = ["mousemove", "keydown", "mousedown", "wheel", "touchstart"];
+    events.forEach((ev) => window.addEventListener(ev, reset, { passive: true }));
+    const interval = window.setInterval(() => {
+      if (Date.now() - lastActive >= IDLE_MS) {
+        setPanelMode("compact");
+        window.dispatchEvent(new CustomEvent("agentrix:form-switched", { detail: { from: "pro", to: "compact", reason: "idle_15min" } }));
+      }
+    }, 30_000);
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, reset));
+      window.clearInterval(interval);
+    };
+  }, [panelMode, panelOpen, windowLabel]);
 
   // Global keyboard shortcuts (within webview)
   useEffect(() => {

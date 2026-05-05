@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type CSSProperties } from "react";
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react";
 import { apiFetch, API_BASE, useAuthStore } from "../services/store";
 
 interface AgentAccountInfo {
@@ -27,9 +27,41 @@ interface InstalledSkill {
   installedAt: string;
 }
 
+interface A2AEvent {
+  id: string;
+  source: "skill_invoke" | "a2a_trade" | "commission" | string;
+  amountCents: number;
+  description?: string;
+  createdAt?: string;
+  ts?: number;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
+}
+
+/** Smooth-animate a number from prev to next over ~600ms. */
+function useAnimatedNumber(target: number, durationMs = 600): number {
+  const [display, setDisplay] = useState(target);
+  const fromRef = useRef(target);
+  const startRef = useRef<number>(0);
+  useEffect(() => {
+    const from = fromRef.current;
+    if (from === target) return;
+    startRef.current = performance.now();
+    let raf = 0;
+    const step = (now: number) => {
+      const t = Math.min(1, (now - startRef.current) / durationMs);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(from + (target - from) * eased);
+      if (t < 1) raf = requestAnimationFrame(step);
+      else fromRef.current = target;
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, durationMs]);
+  return display;
 }
 
 export default function AgentEconomyPanel({ open, onClose }: Props) {
@@ -37,8 +69,11 @@ export default function AgentEconomyPanel({ open, onClose }: Props) {
   const [account, setAccount] = useState<AgentAccountInfo | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [skills, setSkills] = useState<InstalledSkill[]>([]);
-  const [tab, setTab] = useState<"overview" | "transactions" | "skills">("overview");
+  const [a2aEvents, setA2aEvents] = useState<A2AEvent[]>([]);
+  const [tab, setTab] = useState<"overview" | "transactions" | "a2a" | "skills">("overview");
   const [loading, setLoading] = useState(false);
+  const animatedBalance = useAnimatedNumber(account?.balance ?? 0);
+  const animatedEarned = useAnimatedNumber(account?.totalEarned ?? 0);
 
   const fetchAccountInfo = useCallback(async () => {
     if (!token) return;
@@ -88,12 +123,32 @@ export default function AgentEconomyPanel({ open, onClose }: Props) {
     } catch {}
   }, [token, activeInstanceId]);
 
+  const fetchA2A = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await apiFetch(`${API_BASE}/v1/auto-earn/timeline?limit=20`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const items = Array.isArray(data) ? data : data?.events || data?.items || [];
+        setA2aEvents(items);
+      }
+    } catch {}
+  }, [token]);
+
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    fetchAccountInfo();
+    fetchSkills();
+    fetchA2A();
+    // Real-time refresh: 6s poll while open.
+    const id = window.setInterval(() => {
       fetchAccountInfo();
-      fetchSkills();
-    }
-  }, [open, fetchAccountInfo, fetchSkills]);
+      fetchA2A();
+    }, 6000);
+    return () => window.clearInterval(id);
+  }, [open, fetchAccountInfo, fetchSkills, fetchA2A]);
 
   if (!open) return null;
 
@@ -108,13 +163,13 @@ export default function AgentEconomyPanel({ open, onClose }: Props) {
 
         {/* Tabs */}
         <div style={tabBar}>
-          {(["overview", "transactions", "skills"] as const).map((t) => (
+          {(["overview", "transactions", "a2a", "skills"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               style={{ ...tabBtn, ...(tab === t ? tabBtnActive : {}) }}
             >
-              {t === "overview" ? "📊 Overview" : t === "transactions" ? "📋 Transactions" : "🧩 Skills"}
+              {t === "overview" ? "📊" : t === "transactions" ? "📋" : t === "a2a" ? "🔗 A2A" : "🧩"}
             </button>
           ))}
         </div>
@@ -125,20 +180,20 @@ export default function AgentEconomyPanel({ open, onClose }: Props) {
 
           {!loading && tab === "overview" && account && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {/* Balance card */}
+              {/* Balance card — animated */}
               <div style={card}>
-                <div style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 0.5 }}>Balance</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: "#86efac" }}>
-                  ${account.balance.toFixed(2)}
+                <div style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 0.5 }}>Balance · live</div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: "#86efac", transition: "color 0.3s" }}>
+                  ${animatedBalance.toFixed(2)}
                 </div>
-                <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{account.currency}</div>
+                <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{account.currency} · auto-refresh 6s</div>
               </div>
 
               {/* Stats grid */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 <div style={statCard}>
                   <div style={{ fontSize: 10, color: "var(--text-dim)" }}>Total Earned</div>
-                  <div style={{ fontSize: 16, fontWeight: 600, color: "#86efac" }}>${account.totalEarned.toFixed(2)}</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "#86efac" }}>${animatedEarned.toFixed(2)}</div>
                 </div>
                 <div style={statCard}>
                   <div style={{ fontSize: 10, color: "var(--text-dim)" }}>Total Spent</div>
@@ -153,6 +208,43 @@ export default function AgentEconomyPanel({ open, onClose }: Props) {
                   <div style={{ fontSize: 16, fontWeight: 600, color: "#7dd3fc" }}>{account.creditScore || "—"}</div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {!loading && tab === "a2a" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {a2aEvents.length === 0 ? (
+                <div style={emptyText}>No A2A activity yet</div>
+              ) : (
+                a2aEvents.map((ev) => {
+                  const ts = ev.createdAt ? new Date(ev.createdAt).getTime() : ev.ts ?? Date.now();
+                  const fresh = Date.now() - ts < 8000;
+                  const dollars = (ev.amountCents ?? 0) / 100;
+                  const icon = ev.source === "a2a_trade" ? "🔁"
+                    : ev.source === "commission" ? "💼" : "⚡";
+                  return (
+                    <div key={ev.id} style={{
+                      ...txRow,
+                      borderColor: fresh ? "rgba(134,239,172,0.6)" : "var(--border)",
+                      animation: fresh ? "agentrix-econ-pulse 1.6s ease-out" : undefined,
+                    }}>
+                      <span style={{ fontSize: 14 }}>{icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {ev.description || ev.source}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--text-dim)" }}>
+                          {new Date(ts).toLocaleTimeString()}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: dollars >= 0 ? "#86efac" : "#fca5a5" }}>
+                        {dollars >= 0 ? "+" : ""}${dollars.toFixed(2)}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+              <style>{`@keyframes agentrix-econ-pulse { 0% { background: rgba(134,239,172,0.2); } 100% { background: rgba(255,255,255,0.03); } }`}</style>
             </div>
           )}
 
