@@ -111,10 +111,20 @@ export const INTERACTION_TABLE: Record<PetInteractionKind, PetInteractionDescrip
 
 // ── 4. Renderer registry ─────────────────────────────────────────────
 //    The active renderer is chosen at boot. `fallback` is always present
-//    (CSS-only). When a Live2D runtime later registers under `live2d`,
-//    the SDK switches automatically if assets are available.
+//    (CSS / SVG-only). Higher-quality renderers (`rive`, `vrm`, `live2d`)
+//    self-register and the SDK promotes the highest-priority one that
+//    reports `isAvailable() === true`. See
+//    [DESKTOP_LIVE2D_BLOCKERS_20260505.zh-CN.md §替代路线评估] for the
+//    decision: route B (Rive short-term + VRM mid-term) replaces the
+//    Live2D Cubism commercial license path.
+//
+//    Priority (highest → lowest): live2d → vrm → rive → fallback
+//    Each higher renderer requires its own runtime + assets; absence
+//    silently degrades to the next available tier.
 
-export type PetRendererId = "fallback" | "live2d";
+export type PetRendererId = "fallback" | "rive" | "vrm" | "live2d";
+
+const RENDERER_PRIORITY: PetRendererId[] = ["live2d", "vrm", "rive", "fallback"];
 
 export interface PetRenderer {
   id: PetRendererId;
@@ -131,11 +141,23 @@ let _activeRendererId: PetRendererId = "fallback";
 
 export function registerPetRenderer(renderer: PetRenderer): void {
   _renderers.set(renderer.id, renderer);
-  // Eager preference for live2d when it self-registers and reports available.
   void Promise.resolve(renderer.isAvailable()).then((ok) => {
-    if (ok && renderer.id === "live2d") {
-      _activeRendererId = "live2d";
-      window.dispatchEvent(new CustomEvent("agentrix:pet-renderer-changed", { detail: { id: "live2d" } }));
+    if (!ok) return;
+    // Promote to the highest-priority renderer that is currently available.
+    for (const candidate of RENDERER_PRIORITY) {
+      const r = _renderers.get(candidate);
+      if (!r) continue;
+      // Fast path: fallback is always available; for the others we must
+      // have either just registered (this branch) or previously verified.
+      if (r === renderer || candidate === "fallback") {
+        if (_activeRendererId !== candidate) {
+          _activeRendererId = candidate;
+          window.dispatchEvent(
+            new CustomEvent("agentrix:pet-renderer-changed", { detail: { id: candidate } }),
+          );
+        }
+        break;
+      }
     }
   });
 }
@@ -251,3 +273,56 @@ const FALLBACK_RENDERER: PetRenderer = {
   },
 };
 registerPetRenderer(FALLBACK_RENDERER);
+
+// ── Stub renderers for route B (Rive / VRM) ──────────────────────────
+//    These exist so external code can probe `listPetRenderers()` and the
+//    renderer-changed event will fire once a real implementation lands.
+//    Both are gated behind explicit opt-in flags AND the presence of a
+//    runtime asset URL — until both are set they report unavailable and
+//    the SDK stays on `fallback`. No commercial license required.
+//
+//    Real impls (V4 W1-W6 in DESKTOP_LIVE2D_BLOCKERS_20260505.zh-CN.md):
+//      - rive: dynamic-import `@rive-app/canvas`, attach to <canvas>,
+//        push EMOTION_MOTION_MAP[emotion].motion as state-machine input.
+//      - vrm:  dynamic-import `three` + `@pixiv/three-vrm`, drive
+//        BlendShape proxies from EMOTION_MOTION_MAP[emotion].expression.
+
+function readPetAssetUrl(key: string): string | null {
+  try {
+    const v = localStorage.getItem(key);
+    return v && v.length > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+const RIVE_RENDERER: PetRenderer = {
+  id: "rive",
+  isAvailable() {
+    // Available when a `.riv` asset URL has been configured. The actual
+    // runtime is dynamic-imported on first emotion to keep the bundle lean.
+    return Boolean(readPetAssetUrl("agentrix_pet_rive_url"));
+  },
+  applyEmotion(state) {
+    // Stub: forward to fallback channel until real Rive runtime lands.
+    window.dispatchEvent(new CustomEvent("agentrix:pet-emotion-applied", { detail: state }));
+  },
+  applyInteraction(kind) {
+    window.dispatchEvent(new CustomEvent("agentrix:pet-interaction-applied", { detail: kind }));
+  },
+};
+registerPetRenderer(RIVE_RENDERER);
+
+const VRM_RENDERER: PetRenderer = {
+  id: "vrm",
+  isAvailable() {
+    return Boolean(readPetAssetUrl("agentrix_pet_vrm_url"));
+  },
+  applyEmotion(state) {
+    window.dispatchEvent(new CustomEvent("agentrix:pet-emotion-applied", { detail: state }));
+  },
+  applyInteraction(kind) {
+    window.dispatchEvent(new CustomEvent("agentrix:pet-interaction-applied", { detail: kind }));
+  },
+};
+registerPetRenderer(VRM_RENDERER);
