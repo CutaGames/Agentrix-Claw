@@ -1034,6 +1034,8 @@ export default function FloatingBall({
           { label: "💬 Open Pro Mode", action: () => { if (onOpenPro) onOpenPro(); else onTap(); } },
           { label: "🆕 New Chat", action: () => window.dispatchEvent(new CustomEvent("agentrix:new-chat")) },
           { label: "🎤 Voice Input", action: () => { onTap(); setTimeout(() => window.dispatchEvent(new CustomEvent("agentrix:voice-start")), 200); } },
+          { label: "🎬 视频工作室", action: () => { onTap(); setTimeout(() => window.dispatchEvent(new CustomEvent("agentrix:open-video-studio")), 200); } },
+          { label: "🐾 创建梦聪", action: () => { onTap(); setTimeout(() => window.dispatchEvent(new CustomEvent("agentrix:open-pet-creator")), 200); } },
           { label: "⚙️ Settings", action: () => { onTap(); setTimeout(() => window.dispatchEvent(new CustomEvent("agentrix:open-settings")), 200); } },
         ].map((item) => (
           <div

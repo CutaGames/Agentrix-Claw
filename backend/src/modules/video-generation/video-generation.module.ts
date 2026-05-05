@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { VideoGenerationTask } from '../../entities/video-generation-task.entity';
 import { VideoGenerationService } from './video-generation.service';
+import { VideoGenerationController } from './video-generation.controller';
 import { FalVideoGenerationProvider } from './fal-video-generation.provider';
 import { HfVideoGenerationProvider } from './hf-video-generation.provider';
 import { AiProviderModule } from '../ai-provider/ai-provider.module';
@@ -17,6 +18,7 @@ import { AgentMessage } from '../../entities/agent-message.entity';
     AiProviderModule,
     DesktopSyncModule,
   ],
+  controllers: [VideoGenerationController],
   providers: [VideoGenerationService, FalVideoGenerationProvider, HfVideoGenerationProvider],
   exports: [VideoGenerationService, HfVideoGenerationProvider, FalVideoGenerationProvider],
 })

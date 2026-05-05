@@ -27,6 +27,7 @@ import { OpenClawBridgeService } from '../openclaw-bridge/openclaw-bridge.servic
 import { OpenClawSkillHubService } from '../openclaw-bridge/openclaw-skill-hub.service';
 import { VideoGenerationService } from '../video-generation/video-generation.service';
 import { VideoComposerService } from '../video-composer/video-composer.service';
+import { PetGenerationService } from '../pet-generation/pet-generation.service';
 import axios from 'axios';
 
 export interface ExecutionContext {
@@ -83,6 +84,7 @@ export class SkillExecutorService {
     private readonly openClawSkillHubService: OpenClawSkillHubService,
     private readonly videoGenerationService: VideoGenerationService,
     private readonly videoComposerService: VideoComposerService,
+    private readonly petGenerationService: PetGenerationService,
   ) {
     this.registerDefaultHandlers();
   }
@@ -1691,6 +1693,15 @@ export class SkillExecutorService {
      */
     this.registerHandler('video_generate', async (params, context) => {
       return this.videoGenerationService.executeTool(params || {}, context);
+    });
+
+    /**
+     * pet_generate — Submit or query an asynchronous 3D pet/avatar generation task.
+     * Provider: meshy (default, paid) or hunyuan3d (HF Inference Endpoint).
+     * Returns immediately with a taskId; call again with { taskId } to poll.
+     */
+    this.registerHandler('pet_generate', async (params, context) => {
+      return this.petGenerationService.executeTool(params || {}, context);
     });
 
     /**

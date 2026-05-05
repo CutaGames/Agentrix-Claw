@@ -188,6 +188,15 @@ export class VideoGenerationService {
     return task;
   }
 
+  /** List user's recent video generation tasks for the desktop Video Studio panel. */
+  async listUserTasks(userId: string, limit = 30): Promise<VideoGenerationTask[]> {
+    return this.taskRepo.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      take: Math.min(100, Math.max(1, limit)),
+    });
+  }
+
   private async submitTask(task: VideoGenerationTask): Promise<VideoGenerationTask> {
     if (task.provider === 'hf') {
       return this.submitHfTask(task);

@@ -237,6 +237,25 @@ export class ClaudeIntegrationService {
         },
       },
       {
+        name: 'pet_generate',
+        description: 'Generate or refine a 3D pet/avatar mesh asynchronously from a text prompt or a reference image. Returns a taskId immediately; call again with { taskId } to poll status. Output is a .glb mesh URL (also exposed as vrmUrl) that the desktop pet renderer can load directly. Use this when the user wants to create, customize, or remix their personal Living Pet (梦聪) avatar.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            mode: { type: 'string', enum: ['text', 'image'], description: 'Generation mode. text = prompt-only; image = transform a reference photo into a 3D model.' },
+            prompt: { type: 'string', description: 'Description of the pet/avatar (style, colors, vibe). Required for mode=text.' },
+            taskId: { type: 'string', description: 'Existing async task id to query instead of creating a new task.' },
+            provider: { type: 'string', enum: ['meshy', 'hunyuan3d'], description: 'Provider id. "meshy" (default) uses Meshy.ai paid API. "hunyuan3d" uses a self-hosted Tencent Hunyuan3D-2 HF Inference Endpoint.' },
+            model: { type: 'string', description: 'Provider-specific model id (Meshy: meshy-4 / meshy-5 / etc.).' },
+            style: { type: 'string', enum: ['anime', 'realistic', 'chibi', 'sculpture', 'pbr', 'cartoon'], description: 'Visual style hint (provider-dependent).' },
+            referenceImageUrl: { type: 'string', description: 'Reference photo URL. Required for mode=image.' },
+            negativePrompt: { type: 'string', description: 'Things the model should avoid generating.' },
+            enableAnimation: { type: 'boolean', description: 'Request quad topology suitable for skeleton/animation rigging. Default true.' },
+            targetPolycount: { type: 'number', description: 'Target polygon count for the preview mesh (lower = faster).' },
+          },
+        },
+      },
+      {
         name: 'add_to_agentrix_cart',
         description: '将商品加入购物车',
         input_schema: {
@@ -924,8 +943,68 @@ export class ClaudeIntegrationService {
       .replace(/<\/?tool_use>/g, '')
       .replace(/<tool_name>[\s\S]*?<\/tool_name>/g, '')
       .replace(/<tool_parameters>[\s\S]*?<\/tool_parameters>/g, '')
+      .replace(/<\/?anythingllm_function_calls>/gi, '')
+      .replace(/<\/?anythingllm\s+invoke[^>]*>/gi, '')
+      .replace(/<\/?anythingllm\s+parameter[^>]*>/gi, '')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
+  }
+
+  private parseAnythingLLMFunctionCalls(text?: string): Array<{
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }> {
+    const rawText = String(text || '');
+    if (!rawText || !/anythingllm_function_calls|anythingllm\s+invoke/i.test(rawText)) {
+      return [];
+    }
+
+    const calls: Array<{
+      id: string;
+      type: 'function';
+      function: { name: string; arguments: string };
+    }> = [];
+    const invokePattern = /<anythingllm\s+invoke\s+name=["']([^"']+)["'][^>]*>([\s\S]*?)<\/anythingllm\s+invoke>/gi;
+    let invokeMatch: RegExpExecArray | null = null;
+    let index = 0;
+
+    while ((invokeMatch = invokePattern.exec(rawText)) !== null) {
+      const name = String(invokeMatch[1] || '').trim();
+      const body = String(invokeMatch[2] || '');
+      if (!name) {
+        continue;
+      }
+
+      const args: Record<string, string> = {};
+      const paramPattern = /<anythingllm\s+parameter\s+name=["']([^"']+)["'][^>]*>([\s\S]*?)<\/anythingllm\s+parameter>/gi;
+      let paramMatch: RegExpExecArray | null = null;
+      while ((paramMatch = paramPattern.exec(body)) !== null) {
+        const key = String(paramMatch[1] || '').trim();
+        const value = String(paramMatch[2] || '')
+          .replace(/<[^>]+>/g, '')
+          .replace(/&quot;/g, '"')
+          .replace(/&apos;/g, "'")
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&amp;/g, '&')
+          .trim();
+        if (key) {
+          args[key] = value;
+        }
+      }
+
+      calls.push({
+        id: `anythingllm-${Date.now()}-${index++}`,
+        type: 'function',
+        function: {
+          name,
+          arguments: JSON.stringify(args),
+        },
+      });
+    }
+
+    return calls;
   }
 
   async executeFunctionCall(
@@ -1046,7 +1125,8 @@ export class ClaudeIntegrationService {
         case 'resource_publish':
         case 'marketplace_purchase':
         case 'video_generate':
-        case 'video_compose': {
+        case 'video_compose':
+        case 'pet_generate': {
           const executor = this.getSkillExecutor();
           if (!executor) {
             return { success: false, error: 'Skill service unavailable' };
@@ -1175,6 +1255,16 @@ export class ClaudeIntegrationService {
 
       lastText = llmResult.text || '';
       lastStopReason = llmResult.stopReason || (llmResult.functionCalls?.length > 0 ? 'tool_use' : 'end_turn');
+
+      const fallbackFunctionCalls = (!llmResult.functionCalls || llmResult.functionCalls.length === 0)
+        ? this.parseAnythingLLMFunctionCalls(lastText)
+        : [];
+      if (fallbackFunctionCalls.length > 0) {
+        this.logger.warn(`Bedrock agent loop: recovered ${fallbackFunctionCalls.length} textual AnythingLLM tool call(s)`);
+        llmResult.functionCalls = fallbackFunctionCalls;
+        lastStopReason = 'tool_use';
+        lastText = this.stripToolUseXml(lastText);
+      }
 
       // No tool calls → done
       if (!llmResult.functionCalls || llmResult.functionCalls.length === 0) {
@@ -1336,9 +1426,9 @@ export class ClaudeIntegrationService {
           content:
             `Answer the original request using the tool results below. Be concise and direct. ` +
             `Do not say you lack web access or tool access when tool results are present. ` +
-            `Do NOT output <tool_use> XML tags — if you need to call another tool, use the provided tool API.\n\n` +
-            `Original request:\n${lastUserMessage}\n\n` +
-            `Tool results:\n${truncatedResults.join('\n')}`,
+            `Do NOT output <tool_use> XML tags or anythingllm_function_calls pseudo-markup — if you need to call another tool, use the provided tool API.\n\n` +
+            `Original user request:\n${lastUserMessage}\n\n` +
+            `Tool results:\n${truncatedResults.map((r, i) => `Tool ${i + 1}: ${r.content}`).join('\n\n')}`,
         },
       ];
     }

@@ -150,6 +150,8 @@ import { AutoEarnTimelineModule } from './modules/auto-earn-timeline/auto-earn-t
 // v3.0 P3 壁垒强化 + 家庭账号 + 隐私围栏
 import { FamilyAccountModule } from './modules/family-account/family-account.module';
 import { PrivacyFenceModule } from './modules/privacy-fence/privacy-fence.module';
+// Pet Generation: 3D mesh / avatar generation (Meshy + Hunyuan3D)
+import { PetGenerationModule } from './modules/pet-generation/pet-generation.module';
 
 @Module({
   imports: [
@@ -214,6 +216,7 @@ import { PrivacyFenceModule } from './modules/privacy-fence/privacy-fence.module
     VoiceModule,
     CartModule,
     SkillModule,
+    PetGenerationModule,
     ProtocolModule,
     McpModule,
     UCPModule,

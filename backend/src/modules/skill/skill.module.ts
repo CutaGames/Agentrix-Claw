@@ -49,6 +49,7 @@ import { ClaudeIntegrationModule } from '../ai-integration/claude/claude-integra
 import { OpenClawBridgeModule } from '../openclaw-bridge/openclaw-bridge.module';
 import { VideoGenerationModule } from '../video-generation/video-generation.module';
 import { VideoComposerModule } from '../video-composer/video-composer.module';
+import { PetGenerationModule } from '../pet-generation/pet-generation.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { VideoComposerModule } from '../video-composer/video-composer.module';
     forwardRef(() => OpenClawBridgeModule),
     VideoGenerationModule,
     VideoComposerModule,
+    PetGenerationModule,
   ],
   controllers: [SkillController, SkillAdminController, DeveloperRevenueController, OnboardingController],
   providers: [

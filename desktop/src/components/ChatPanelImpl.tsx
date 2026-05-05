@@ -22,6 +22,8 @@ import {
 } from "../services/store";
 import VoiceButton from "./VoiceButton";
 import SettingsPanel from "./SettingsPanel";
+import VideoStudioPanel from "./VideoStudioPanel";
+import PetCreatorPanel from "./PetCreatorPanel";
 import FileTreePanel from "./FileTreePanel";
 import { type TaskRunState, type TaskTimelineEntry, type TaskTimelineStatus } from "./TaskTimeline";
 import { gitStatus, gitDiff, gitLog, gitCommit, gitBranchList, type GitFileChange } from "../services/git";
@@ -408,6 +410,8 @@ export default function ChatPanel({
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [videoStudioOpen, setVideoStudioOpen] = useState(false);
+  const [petCreatorOpen, setPetCreatorOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
@@ -2515,11 +2519,17 @@ export default function ChatPanel({
   useEffect(() => {
     const onNewChat = () => handleNewChat();
     const onOpenSettings = () => setSettingsOpen(true);
+    const onOpenVideoStudio = () => setVideoStudioOpen(true);
+    const onOpenPetCreator = () => setPetCreatorOpen(true);
     window.addEventListener("agentrix:new-chat", onNewChat);
     window.addEventListener("agentrix:open-settings", onOpenSettings);
+    window.addEventListener("agentrix:open-video-studio", onOpenVideoStudio);
+    window.addEventListener("agentrix:open-pet-creator", onOpenPetCreator);
     return () => {
       window.removeEventListener("agentrix:new-chat", onNewChat);
       window.removeEventListener("agentrix:open-settings", onOpenSettings);
+      window.removeEventListener("agentrix:open-video-studio", onOpenVideoStudio);
+      window.removeEventListener("agentrix:open-pet-creator", onOpenPetCreator);
     };
   }, []);
 
@@ -2930,6 +2940,16 @@ export default function ChatPanel({
           selectedModel={selectedModel}
           onModelChange={(id) => { void persistSelectedModel(id); }}
         />
+      )}
+
+      {/* Video Studio overlay */}
+      {videoStudioOpen && (
+        <VideoStudioPanel onClose={() => setVideoStudioOpen(false)} />
+      )}
+
+      {/* Pet Creator overlay */}
+      {petCreatorOpen && (
+        <PetCreatorPanel onClose={() => setPetCreatorOpen(false)} />
       )}
 
       {/* File tree sidebar */}

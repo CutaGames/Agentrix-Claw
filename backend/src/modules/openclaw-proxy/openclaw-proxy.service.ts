@@ -815,6 +815,20 @@ export class OpenClawProxyService {
           characterOrientation: { type: 'string', enum: ['image', 'video'], description: 'For video_to_video, choose whether subject orientation should follow the reference image or the reference video.' },
         },
       },
+      pet_generate: {
+        properties: {
+          mode: { type: 'string', enum: ['text', 'image'], description: '3D pet generation mode. text = prompt-only; image = transform a reference photo into 3D.' },
+          prompt: { type: 'string', description: 'Description of the pet/avatar (style, colors, vibe). Required for mode=text.' },
+          taskId: { type: 'string', description: 'Existing async pet task id to query.' },
+          provider: { type: 'string', enum: ['meshy', 'hunyuan3d'], description: 'Provider id. Default meshy.' },
+          model: { type: 'string', description: 'Provider-specific model id.' },
+          style: { type: 'string', enum: ['anime', 'realistic', 'chibi', 'sculpture', 'pbr', 'cartoon'], description: 'Visual style hint.' },
+          referenceImageUrl: { type: 'string', description: 'Reference photo URL. Required for mode=image.' },
+          negativePrompt: { type: 'string', description: 'Things the model should avoid.' },
+          enableAnimation: { type: 'boolean', description: 'Request quad topology suitable for skeleton/animation. Default true.' },
+          targetPolycount: { type: 'number', description: 'Target polygon count for the preview mesh.' },
+        },
+      },
       code_eval: {
         properties: {
           code: { type: 'string', description: 'JavaScript code to execute. Has access to Math, JSON, Date, Array, Object, String, Number, RegExp. No network or filesystem access.' },
