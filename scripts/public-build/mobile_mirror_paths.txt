@@ -26,4 +26,3 @@ shared
 src
 .maestro
 plugins/withLlamaRN.js
-scripts/build/with-llama-rn-plugin.cjs

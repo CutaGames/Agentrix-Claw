@@ -64,6 +64,11 @@ if (-not (Test-Path $KeyPath)) {
 $repoRoot = Get-RepoRoot
 Set-Location $repoRoot
 
+node scripts/public-build/validate_mobile_mirror.cjs
+if ($LASTEXITCODE -ne 0) {
+    throw "Public build mirror validation failed."
+}
+
 if (-not $Branch) {
     $Branch = (git rev-parse --abbrev-ref HEAD).Trim()
 }
