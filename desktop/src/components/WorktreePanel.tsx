@@ -1,17 +1,33 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import { runDesktopCommand, type DesktopCommandResult } from "../services/desktop";
 import { gitBranchList, gitStatus, type GitStatusResult } from "../services/git";
 import { getWorkspaceDir } from "../services/workspace";
 
 type LaneStatus = "idle" | "running" | "review" | "blocked";
 
+interface WorktreeCommandState {
+  command: string;
+  worktreePath: string;
+  stdout: string;
+  stderr: string;
+  exitCode?: number | null;
+  timedOut: boolean;
+  durationMs: number;
+  succeeded: boolean;
+}
+
 interface WorktreeLane {
   id: string;
   agent: string;
-  branch: string;
+  baseBranch: string;
+  worktreeBranch: string;
+  worktreeDirectory: string;
   mission: string;
   focusFiles: string;
   status: LaneStatus;
   updatedAt: number;
+  worktreePath?: string;
+  lastCommand?: WorktreeCommandState;
 }
 
 interface Props {
@@ -32,20 +48,116 @@ function sanitizeBranchName(value: string) {
   return value.replace(/^\*\s*/, "").trim();
 }
 
+function sanitizeWorktreeBranch(value: string) {
+  return sanitizeBranchName(value)
+    .replace(/[^a-zA-Z0-9._/-]+/g, "-")
+    .replace(/\/{2,}/g, "/")
+    .replace(/^[-/.]+|[-/.]+$/g, "") || "lane";
+}
+
+function sanitizeDirectoryName(value: string) {
+  return value.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "worktree";
+}
+
+function isLaneStatus(value: unknown): value is LaneStatus {
+  return value === "idle" || value === "running" || value === "review" || value === "blocked";
+}
+
+function toSlugSegment(value: string) {
+  return sanitizeWorktreeBranch(value).replace(/\//g, "-").toLowerCase();
+}
+
+function ensureUniqueValue(baseValue: string, existingValues: string[]) {
+  const normalizedExisting = new Set(existingValues.map((value) => value.toLowerCase()));
+  let candidate = baseValue;
+  let counter = 2;
+  while (normalizedExisting.has(candidate.toLowerCase())) {
+    candidate = `${baseValue}-${counter}`;
+    counter += 1;
+  }
+  return candidate;
+}
+
+function buildDefaultWorktreeBranch(agent: string, baseBranch: string) {
+  return `lanes/${toSlugSegment(agent)}/${toSlugSegment(baseBranch.replace(/^origin\//, ""))}`;
+}
+
+function buildDefaultWorktreeDirectory(worktreeBranch: string) {
+  return `worktree-${sanitizeDirectoryName(worktreeBranch.replace(/\//g, "-"))}`;
+}
+
+function buildDraftDefaults(agent: string, baseBranch: string, lanes: WorktreeLane[], excludeLaneId?: string) {
+  if (!baseBranch) {
+    return { worktreeBranch: "", worktreeDirectory: "" };
+  }
+
+  const laneScope = lanes.filter((lane) => lane.id !== excludeLaneId);
+  const worktreeBranch = ensureUniqueValue(
+    buildDefaultWorktreeBranch(agent, baseBranch),
+    laneScope.map((lane) => lane.worktreeBranch),
+  );
+  const worktreeDirectory = ensureUniqueValue(
+    buildDefaultWorktreeDirectory(worktreeBranch),
+    laneScope.map((lane) => lane.worktreeDirectory),
+  );
+  return { worktreeBranch, worktreeDirectory };
+}
+
+function useWindowsSeparators(path: string | null | undefined) {
+  return Boolean(path && path.includes("\\"));
+}
+
+function buildRelativeWorktreePath(worktreeDirectory: string, workspaceDir?: string | null) {
+  const separator = useWindowsSeparators(workspaceDir) ? "\\" : "/";
+  return `..${separator}${sanitizeDirectoryName(worktreeDirectory)}`;
+}
+
+function resolveWorktreePath(workspaceDir: string, worktreeDirectory: string) {
+  const separator = useWindowsSeparators(workspaceDir) ? "\\" : "/";
+  const normalized = workspaceDir.replace(/[\\/]+$/, "");
+  const cutIndex = Math.max(normalized.lastIndexOf("\\"), normalized.lastIndexOf("/"));
+  const parentDir = cutIndex >= 0 ? normalized.slice(0, cutIndex) : normalized;
+  return `${parentDir}${separator}${sanitizeDirectoryName(worktreeDirectory)}`;
+}
+
+function quoteCommandArg(value: string) {
+  return `"${value.replace(/"/g, "")}"`;
+}
+
+function buildWorktreePreview(baseBranch: string, worktreeBranch: string, worktreeDirectory: string, workspaceDir?: string | null) {
+  const targetPath = buildRelativeWorktreePath(worktreeDirectory, workspaceDir);
+  return `git worktree add ${quoteCommandArg(targetPath)} -b ${quoteCommandArg(sanitizeWorktreeBranch(worktreeBranch))} ${quoteCommandArg(sanitizeBranchName(baseBranch))}`;
+}
+
+function normalizeLane(rawLane: Partial<WorktreeLane & { branch?: string }> | null | undefined, index: number): WorktreeLane {
+  const agent = typeof rawLane?.agent === "string" && rawLane.agent.trim() ? rawLane.agent : AGENT_OPTIONS[0];
+  const baseBranch = sanitizeBranchName(typeof rawLane?.baseBranch === "string" ? rawLane.baseBranch : typeof rawLane?.branch === "string" ? rawLane.branch : "");
+  const draftDefaults = buildDraftDefaults(agent, baseBranch, []);
+
+  return {
+    id: typeof rawLane?.id === "string" && rawLane.id.trim() ? rawLane.id : `lane-${index + 1}`,
+    agent,
+    baseBranch,
+    worktreeBranch: sanitizeWorktreeBranch(typeof rawLane?.worktreeBranch === "string" ? rawLane.worktreeBranch : draftDefaults.worktreeBranch),
+    worktreeDirectory: sanitizeDirectoryName(typeof rawLane?.worktreeDirectory === "string" ? rawLane.worktreeDirectory : buildDefaultWorktreeDirectory(draftDefaults.worktreeBranch)),
+    mission: typeof rawLane?.mission === "string" ? rawLane.mission : "",
+    focusFiles: typeof rawLane?.focusFiles === "string" ? rawLane.focusFiles : "",
+    status: isLaneStatus(rawLane?.status) ? rawLane.status : "idle",
+    updatedAt: Number.isFinite(rawLane?.updatedAt) ? Number(rawLane?.updatedAt) : Date.now(),
+    worktreePath: typeof rawLane?.worktreePath === "string" ? rawLane.worktreePath : undefined,
+    lastCommand: rawLane?.lastCommand,
+  };
+}
+
 function loadStoredLanes(): WorktreeLane[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed.map((lane, index) => normalizeLane(lane, index)) : [];
   } catch {
     return [];
   }
-}
-
-function buildWorktreePreview(branch: string) {
-  const safeDir = sanitizeBranchName(branch).replace(/[^a-zA-Z0-9._-]+/g, "-");
-  return `git worktree add ../${safeDir} ${sanitizeBranchName(branch)}`;
 }
 
 export default function WorktreePanel({ open, onClose }: Props) {
@@ -54,55 +166,70 @@ export default function WorktreePanel({ open, onClose }: Props) {
   const [workspaceDir, setWorkspaceDir] = useState<string | null>(null);
   const [gitState, setGitState] = useState<GitStatusResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [executingLaneId, setExecutingLaneId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
   const [draft, setDraft] = useState({
     agent: AGENT_OPTIONS[0],
-    branch: "",
+    baseBranch: "",
+    worktreeBranch: "",
+    worktreeDirectory: "",
     mission: "",
     focusFiles: "",
   });
-  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(lanes));
-    } catch {}
+    } catch {
+      // Ignore local persistence failures.
+    }
   }, [lanes]);
 
   useEffect(() => {
-    if (!copyFeedback) return;
-    const timer = window.setTimeout(() => setCopyFeedback(null), 1200);
+    if (!feedback) return;
+    const timer = window.setTimeout(() => setFeedback(null), 1800);
     return () => window.clearTimeout(timer);
-  }, [copyFeedback]);
+  }, [feedback]);
+
+  const refreshWorkspaceState = async () => {
+    setLoading(true);
+    try {
+      const [branchList, status, workspace] = await Promise.all([
+        gitBranchList(),
+        gitStatus(),
+        getWorkspaceDir(),
+      ]);
+      const normalizedBranches = branchList.map(sanitizeBranchName).filter(Boolean);
+      setBranches(normalizedBranches);
+      setGitState(status);
+      setWorkspaceDir(workspace);
+      setDraft((prev) => {
+        const nextBaseBranch = prev.baseBranch || status.branch || normalizedBranches[0] || "";
+        const defaults = prev.worktreeBranch && prev.worktreeDirectory
+          ? { worktreeBranch: prev.worktreeBranch, worktreeDirectory: prev.worktreeDirectory }
+          : buildDraftDefaults(prev.agent, nextBaseBranch, lanes);
+        return {
+          ...prev,
+          baseBranch: nextBaseBranch,
+          worktreeBranch: defaults.worktreeBranch,
+          worktreeDirectory: defaults.worktreeDirectory,
+        };
+      });
+    } catch {
+      setBranches([]);
+      setGitState(null);
+      setWorkspaceDir(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     const refresh = async () => {
-      setLoading(true);
-      try {
-        const [branchList, status, workspace] = await Promise.all([
-          gitBranchList(),
-          gitStatus(),
-          getWorkspaceDir(),
-        ]);
-        if (cancelled) return;
-        const normalizedBranches = branchList.map(sanitizeBranchName).filter(Boolean);
-        setBranches(normalizedBranches);
-        setGitState(status);
-        setWorkspaceDir(workspace);
-        setDraft((prev) => ({
-          ...prev,
-          branch: prev.branch || status.branch || normalizedBranches[0] || "",
-        }));
-      } catch {
-        if (!cancelled) {
-          setBranches([]);
-          setGitState(null);
-          setWorkspaceDir(null);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      await refreshWorkspaceState();
+      if (cancelled) return;
     };
     void refresh();
     return () => {
@@ -113,38 +240,132 @@ export default function WorktreePanel({ open, onClose }: Props) {
   if (!open) return null;
 
   const activeLaneCount = lanes.filter((lane) => lane.status === "running" || lane.status === "review").length;
-  const currentBranch = gitState?.branch || draft.branch || "(unknown)";
+  const currentBranch = gitState?.branch || draft.baseBranch || "(unknown)";
+  const draftPreview = draft.baseBranch
+    ? buildWorktreePreview(
+        draft.baseBranch,
+        draft.worktreeBranch || buildDefaultWorktreeBranch(draft.agent, draft.baseBranch),
+        draft.worktreeDirectory || buildDefaultWorktreeDirectory(draft.worktreeBranch || buildDefaultWorktreeBranch(draft.agent, draft.baseBranch)),
+        workspaceDir,
+      )
+    : "Select a base branch to preview the worktree command.";
+
+  const updateLane = (laneId: string, patch: Partial<WorktreeLane>) => {
+    setLanes((prev) => prev.map((lane) => lane.id === laneId ? { ...lane, ...patch, updatedAt: Date.now() } : lane));
+  };
 
   const addLane = () => {
-    if (!draft.branch.trim() || !draft.mission.trim()) return;
+    if (!draft.baseBranch.trim() || !draft.mission.trim()) return;
+
+    const baseBranch = sanitizeBranchName(draft.baseBranch);
+    const worktreeBranch = ensureUniqueValue(
+      sanitizeWorktreeBranch(draft.worktreeBranch || buildDefaultWorktreeBranch(draft.agent, baseBranch)),
+      lanes.map((lane) => lane.worktreeBranch),
+    );
+    const worktreeDirectory = ensureUniqueValue(
+      sanitizeDirectoryName(draft.worktreeDirectory || buildDefaultWorktreeDirectory(worktreeBranch)),
+      lanes.map((lane) => lane.worktreeDirectory),
+    );
+
     const nextLane: WorktreeLane = {
       id: `lane-${Date.now()}`,
       agent: draft.agent,
-      branch: sanitizeBranchName(draft.branch),
+      baseBranch,
+      worktreeBranch,
+      worktreeDirectory,
       mission: draft.mission.trim(),
       focusFiles: draft.focusFiles.trim(),
       status: "idle",
       updatedAt: Date.now(),
     };
     setLanes((prev) => [nextLane, ...prev]);
-    setDraft((prev) => ({ ...prev, mission: "", focusFiles: "" }));
-  };
-
-  const updateLane = (laneId: string, patch: Partial<WorktreeLane>) => {
-    setLanes((prev) => prev.map((lane) => lane.id === laneId ? { ...lane, ...patch, updatedAt: Date.now() } : lane));
+    const defaults = buildDraftDefaults(draft.agent, baseBranch, [nextLane, ...lanes]);
+    setDraft((prev) => ({
+      ...prev,
+      worktreeBranch: defaults.worktreeBranch,
+      worktreeDirectory: defaults.worktreeDirectory,
+      mission: "",
+      focusFiles: "",
+    }));
   };
 
   const removeLane = (laneId: string) => {
     setLanes((prev) => prev.filter((lane) => lane.id !== laneId));
   };
 
-  const copyPreview = async (branch: string) => {
+  const copyPreview = async (lane: Pick<WorktreeLane, "baseBranch" | "worktreeBranch" | "worktreeDirectory">) => {
     try {
-      await navigator.clipboard.writeText(buildWorktreePreview(branch));
-      setCopyFeedback(`Copied command for ${branch}`);
+      await navigator.clipboard.writeText(buildWorktreePreview(lane.baseBranch, lane.worktreeBranch, lane.worktreeDirectory, workspaceDir));
+      setFeedback(`Copied command for ${lane.worktreeBranch}`);
     } catch {
-      setCopyFeedback("Clipboard unavailable");
+      setFeedback("Clipboard unavailable");
     }
+  };
+
+  const executeWorktree = async (lane: WorktreeLane) => {
+    if (!workspaceDir) {
+      setFeedback("Select a workspace before creating a worktree.");
+      return;
+    }
+
+    const command = buildWorktreePreview(lane.baseBranch, lane.worktreeBranch, lane.worktreeDirectory, workspaceDir);
+    setExecutingLaneId(lane.id);
+
+    try {
+      const result = await runDesktopCommand(command, workspaceDir, 120_000);
+      const worktreePath = resolveWorktreePath(workspaceDir, lane.worktreeDirectory);
+      const commandState: WorktreeCommandState = {
+        command,
+        worktreePath,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+        timedOut: result.timedOut,
+        durationMs: result.durationMs,
+        succeeded: !result.timedOut && (result.exitCode ?? -1) === 0,
+      };
+
+      updateLane(lane.id, {
+        status: commandState.succeeded ? "running" : "blocked",
+        worktreePath,
+        lastCommand: commandState,
+      });
+
+      setFeedback(commandState.succeeded ? `Created ${lane.worktreeBranch}` : `Worktree command failed for ${lane.worktreeBranch}`);
+
+      if (commandState.succeeded) {
+        await refreshWorkspaceState();
+      }
+    } catch (error) {
+      updateLane(lane.id, {
+        status: "blocked",
+        lastCommand: {
+          command,
+          worktreePath: resolveWorktreePath(workspaceDir, lane.worktreeDirectory),
+          stdout: "",
+          stderr: error instanceof Error ? error.message : "Unknown desktop command failure.",
+          exitCode: null,
+          timedOut: false,
+          durationMs: 0,
+          succeeded: false,
+        },
+      });
+      setFeedback(error instanceof Error ? error.message : "Failed to run git worktree add.");
+    } finally {
+      setExecutingLaneId(null);
+    }
+  };
+
+  const applyDraftBaseBranch = (baseBranch: string, agent: string = draft.agent) => {
+    const normalizedBaseBranch = sanitizeBranchName(baseBranch);
+    const defaults = buildDraftDefaults(agent, normalizedBaseBranch, lanes);
+    setDraft((prev) => ({
+      ...prev,
+      agent,
+      baseBranch: normalizedBaseBranch,
+      worktreeBranch: defaults.worktreeBranch,
+      worktreeDirectory: defaults.worktreeDirectory,
+    }));
   };
 
   return (
@@ -153,7 +374,7 @@ export default function WorktreePanel({ open, onClose }: Props) {
         <div style={header}>
           <div>
             <div style={title}>Multi-Agent Worktree</div>
-            <div style={subtitle}>Assign branches to focused agent lanes without leaving the desktop shell.</div>
+            <div style={subtitle}>Turn a base branch into an executable lane branch and create the worktree without leaving the desktop shell.</div>
           </div>
           <button onClick={onClose} style={closeButton}>Close</button>
         </div>
@@ -180,17 +401,17 @@ export default function WorktreePanel({ open, onClose }: Props) {
               <label style={fieldLabel}>Agent role</label>
               <select
                 value={draft.agent}
-                onChange={(event) => setDraft((prev) => ({ ...prev, agent: event.target.value }))}
+                onChange={(event) => applyDraftBaseBranch(draft.baseBranch, event.target.value)}
                 style={input}
               >
                 {AGENT_OPTIONS.map((agent) => (
                   <option key={agent} value={agent}>{agent}</option>
                 ))}
               </select>
-              <label style={fieldLabel}>Branch</label>
+              <label style={fieldLabel}>Base branch</label>
               <select
-                value={draft.branch}
-                onChange={(event) => setDraft((prev) => ({ ...prev, branch: event.target.value }))}
+                value={draft.baseBranch}
+                onChange={(event) => applyDraftBaseBranch(event.target.value)}
                 style={input}
               >
                 {branches.length === 0 && <option value="">No branches found</option>}
@@ -198,6 +419,20 @@ export default function WorktreePanel({ open, onClose }: Props) {
                   <option key={branch} value={branch}>{branch}</option>
                 ))}
               </select>
+              <label style={fieldLabel}>Lane branch</label>
+              <input
+                value={draft.worktreeBranch}
+                onChange={(event) => setDraft((prev) => ({ ...prev, worktreeBranch: event.target.value }))}
+                placeholder="lanes/builder/main"
+                style={input}
+              />
+              <label style={fieldLabel}>Worktree folder</label>
+              <input
+                value={draft.worktreeDirectory}
+                onChange={(event) => setDraft((prev) => ({ ...prev, worktreeDirectory: event.target.value }))}
+                placeholder="worktree-builder-main"
+                style={input}
+              />
               <label style={fieldLabel}>Mission</label>
               <textarea
                 value={draft.mission}
@@ -212,10 +447,13 @@ export default function WorktreePanel({ open, onClose }: Props) {
                 placeholder="backend/src/... , desktop/src/..."
                 style={input}
               />
-              <button onClick={addLane} style={primaryButton}>Add lane</button>
+              <div style={laneActions}>
+                <button onClick={addLane} style={primaryButton}>Add lane</button>
+                <button onClick={() => void refreshWorkspaceState()} style={secondaryButton}>Refresh git</button>
+              </div>
               <div style={previewBox}>
                 <div style={previewLabel}>CLI preview</div>
-                <code style={previewCode}>{draft.branch ? buildWorktreePreview(draft.branch) : "Select a branch to preview the worktree command."}</code>
+                <code style={previewCode}>{draftPreview}</code>
               </div>
             </div>
 
@@ -227,8 +465,8 @@ export default function WorktreePanel({ open, onClose }: Props) {
                 {branches.map((branch) => (
                   <button
                     key={branch}
-                    onClick={() => setDraft((prev) => ({ ...prev, branch }))}
-                    style={{ ...branchChip, ...(draft.branch === branch ? branchChipActive : {}) }}
+                    onClick={() => applyDraftBaseBranch(branch)}
+                    style={{ ...branchChip, ...(draft.baseBranch === branch ? branchChipActive : {}) }}
                   >
                     {branch}
                   </button>
@@ -253,21 +491,26 @@ export default function WorktreePanel({ open, onClose }: Props) {
           <div style={rightColumn}>
             <div style={laneHeaderRow}>
               <div style={sectionTitle}>Agent lanes</div>
-              {copyFeedback && <div style={copyFeedbackText}>{copyFeedback}</div>}
+              {feedback && <div style={copyFeedbackText}>{feedback}</div>}
             </div>
             {lanes.length === 0 && (
               <div style={emptyState}>
-                Create a lane to pin a branch, mission, and focus files for a specific agent role.
+                Create a lane to pin a base branch, derived lane branch, mission, and focus files for a specific agent role.
               </div>
             )}
             {lanes.map((lane) => {
               const statusMeta = STATUS_META[lane.status];
+              const commandPreview = buildWorktreePreview(lane.baseBranch, lane.worktreeBranch, lane.worktreeDirectory, workspaceDir);
+              const lastOutput = lane.lastCommand?.stderr || lane.lastCommand?.stdout || "";
+              const laneCreated = Boolean(lane.lastCommand?.succeeded);
+
               return (
                 <div key={lane.id} style={{ ...laneCard, borderColor: statusMeta.accent, background: statusMeta.tint }}>
                   <div style={laneTopRow}>
                     <div>
                       <div style={laneAgent}>{lane.agent}</div>
-                      <div style={laneBranch}>{lane.branch}</div>
+                      <div style={laneBranch}>{lane.worktreeBranch}</div>
+                      <div style={laneBaseBranch}>from {lane.baseBranch}</div>
                     </div>
                     <select
                       value={lane.status}
@@ -282,14 +525,35 @@ export default function WorktreePanel({ open, onClose }: Props) {
                   <div style={laneMission}>{lane.mission}</div>
                   <div style={laneMetaRow}>
                     <span style={metaPill}>Focus: {lane.focusFiles || "No files pinned"}</span>
+                    <span style={metaPill}>Folder: {lane.worktreeDirectory}</span>
+                    {lane.worktreePath && <span style={metaPill}>Path: {lane.worktreePath}</span>}
                     <span style={metaPill}>Updated {new Date(lane.updatedAt).toLocaleTimeString()}</span>
                   </div>
                   <div style={previewBox}>
                     <div style={previewLabel}>Command preview</div>
-                    <code style={previewCode}>{buildWorktreePreview(lane.branch)}</code>
+                    <code style={previewCode}>{commandPreview}</code>
                   </div>
+                  {lane.lastCommand && (
+                    <div style={resultCard}>
+                      <div style={resultHeaderRow}>
+                        <span style={previewLabel}>Last execution</span>
+                        <span style={{ ...resultBadge, ...(lane.lastCommand.succeeded ? resultBadgeSuccess : resultBadgeFailure) }}>
+                          {lane.lastCommand.succeeded ? "success" : lane.lastCommand.timedOut ? "timed out" : "failed"}
+                        </span>
+                      </div>
+                      <div style={subtleText}>exit={lane.lastCommand.exitCode ?? "n/a"} · duration={lane.lastCommand.durationMs}ms</div>
+                      <code style={resultCode}>{lastOutput || lane.lastCommand.command}</code>
+                    </div>
+                  )}
                   <div style={laneActions}>
-                    <button onClick={() => copyPreview(lane.branch)} style={secondaryButton}>Copy command</button>
+                    <button
+                      onClick={() => void executeWorktree(lane)}
+                      style={primaryButton}
+                      disabled={!workspaceDir || laneCreated || executingLaneId === lane.id}
+                    >
+                      {executingLaneId === lane.id ? "Creating..." : laneCreated ? "Worktree created" : "Create worktree"}
+                    </button>
+                    <button onClick={() => void copyPreview(lane)} style={secondaryButton}>Copy command</button>
                     <button onClick={() => removeLane(lane.id)} style={ghostButton}>Archive</button>
                   </div>
                 </div>
@@ -471,7 +735,8 @@ const laneCard: CSSProperties = {
 };
 const laneTopRow: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" };
 const laneAgent: CSSProperties = { fontSize: 16, fontWeight: 700, color: "#f8fafc" };
-const laneBranch: CSSProperties = { marginTop: 4, fontSize: 12, color: "#94a3b8" };
+const laneBranch: CSSProperties = { marginTop: 4, fontSize: 13, color: "#e0f2fe", fontWeight: 600 };
+const laneBaseBranch: CSSProperties = { marginTop: 4, fontSize: 12, color: "#94a3b8" };
 const statusSelect: CSSProperties = {
   borderRadius: 999,
   background: "rgba(2,8,23,0.44)",
@@ -490,3 +755,36 @@ const metaPill: CSSProperties = {
   fontSize: 11,
 };
 const laneActions: CSSProperties = { display: "flex", gap: 10, flexWrap: "wrap" };
+const resultCard: CSSProperties = {
+  padding: 12,
+  borderRadius: 14,
+  background: "rgba(2,8,23,0.54)",
+  border: "1px solid rgba(148,163,184,0.14)",
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+};
+const resultHeaderRow: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" };
+const resultBadge: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 999,
+  padding: "5px 9px",
+  fontSize: 11,
+  textTransform: "uppercase",
+  letterSpacing: 0.7,
+  border: "1px solid transparent",
+};
+const resultBadgeSuccess: CSSProperties = { color: "#bbf7d0", borderColor: "rgba(34,197,94,0.24)", background: "rgba(20,83,45,0.24)" };
+const resultBadgeFailure: CSSProperties = { color: "#fecaca", borderColor: "rgba(248,113,113,0.24)", background: "rgba(127,29,29,0.22)" };
+const resultCode: CSSProperties = {
+  display: "block",
+  color: "#e2e8f0",
+  fontSize: 12,
+  lineHeight: 1.5,
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+  maxHeight: 140,
+  overflow: "auto",
+};
