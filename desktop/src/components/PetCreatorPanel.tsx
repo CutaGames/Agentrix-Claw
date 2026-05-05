@@ -1,5 +1,5 @@
 /**
- * PetCreatorPanel — desktop UI for generating a custom 3D pet (梦聪).
+ * PetCreatorPanel — desktop UI for generating a custom 3D pet (萌宠).
  *
  * Flow:
  *   1. User picks mode (text or image), provider, style, prompt / reference image
@@ -129,7 +129,7 @@ export default function PetCreatorPanel({ onClose }: Props) {
           background: "rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ fontSize: 16, fontWeight: 600 }}>🐾 创建专属梦聪 · Pet Creator</div>
+        <div style={{ fontSize: 16, fontWeight: 600 }}>🐾 创建专属萌宠 · Pet Creator</div>
         <button onClick={onClose} style={btnStyle}>关闭</button>
       </div>
 
@@ -303,7 +303,7 @@ export default function PetCreatorPanel({ onClose }: Props) {
                           fontWeight: 600,
                         }}
                       >
-                        ✨ 设为我的梦聪
+                        ✨ 设为我的萌宠
                       </button>
                       <a
                         href={activeTask.vrmUrl || activeTask.outputUrl || "#"}
@@ -372,7 +372,7 @@ export default function PetCreatorPanel({ onClose }: Props) {
             ))}
             {tasks.length === 0 && (
               <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 40, opacity: 0.5 }}>
-                还没有生成过梦聪 — 在左侧填写描述开始创作
+                还没有生成过萌宠 — 在左侧填写描述开始创作
               </div>
             )}
           </div>

@@ -236,31 +236,71 @@ export function useStreamingTurn({
   const chunkFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streamingResponseStartedRef = useRef<Set<string>>(new Set());
 
-  // Cache a short top-level listing of the workspace so we can hand the model
-  // an immediate snapshot of what's there (avoids the model guessing or
-  // hallucinating tool calls just to "see" the folder).
+  // Cache a multi-level listing of the workspace so we can hand the model
+  // a real snapshot of what's there. Without this the cloud LLM can only
+  // guess (it has no client-side filesystem tools), so a richer listing
+  // dramatically reduces "agent can't find anything" friction.
   const workspaceListingRef = useRef<string>("");
+  const workspacePathsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     let cancelled = false;
     if (!workspaceDir) {
       workspaceListingRef.current = "";
+      workspacePathsRef.current = new Set();
       return () => { cancelled = true; };
     }
+    const HEAVY_DIRS = new Set([
+      "node_modules", ".git", ".gradle", ".next", ".turbo", ".vscode-test",
+      "build", "dist", "target", "coverage", "test-results", ".cache",
+      "__pycache__", ".pytest_cache", "venv", ".venv", "vendor",
+    ]);
+    const MAX_ENTRIES_PER_DIR = 60;
+    const MAX_TOTAL_LINES = 400;
     (async () => {
+      const lines: string[] = [];
+      const allPaths = new Set<string>();
+      const sortEntries = (entries: FileEntry[]) =>
+        [...entries].sort((a, b) => {
+          if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
       try {
-        const entries: FileEntry[] = await listWorkspaceDir("");
+        const top = await listWorkspaceDir("");
         if (cancelled) return;
-        const sorted = [...entries]
-          .sort((a, b) => {
-            if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
-            return a.name.localeCompare(b.name);
-          })
-          .slice(0, 40);
-        const lines = sorted.map((e) => (e.is_dir ? `${e.name}/` : e.name));
-        const more = entries.length > sorted.length ? `\n…and ${entries.length - sorted.length} more` : "";
-        workspaceListingRef.current = lines.length ? `${lines.join("\n")}${more}` : "(empty)";
+        const sortedTop = sortEntries(top).slice(0, MAX_ENTRIES_PER_DIR);
+        for (const entry of sortedTop) {
+          if (lines.length >= MAX_TOTAL_LINES) break;
+          const name = entry.is_dir ? `${entry.name}/` : entry.name;
+          lines.push(name);
+          allPaths.add(entry.name);
+          // Recurse one level into non-heavy directories.
+          if (entry.is_dir && !HEAVY_DIRS.has(entry.name)) {
+            try {
+              const inner = await listWorkspaceDir(entry.name);
+              if (cancelled) return;
+              const sortedInner = sortEntries(inner).slice(0, MAX_ENTRIES_PER_DIR);
+              for (const child of sortedInner) {
+                if (lines.length >= MAX_TOTAL_LINES) break;
+                const childName = child.is_dir ? `${child.name}/` : child.name;
+                lines.push(`  ${childName}`);
+                allPaths.add(`${entry.name}/${child.name}`);
+              }
+              if (inner.length > sortedInner.length) {
+                lines.push(`  …(+${inner.length - sortedInner.length} more)`);
+              }
+            } catch {
+              // Permission / IO errors per-dir are non-fatal.
+            }
+          }
+        }
+        if (top.length > sortedTop.length) {
+          lines.push(`…and ${top.length - sortedTop.length} more top-level entries`);
+        }
+        workspaceListingRef.current = lines.length ? lines.join("\n") : "(empty)";
+        workspacePathsRef.current = allPaths;
       } catch {
         workspaceListingRef.current = "";
+        workspacePathsRef.current = new Set();
       }
     })();
     return () => { cancelled = true; };
@@ -288,9 +328,9 @@ export function useStreamingTurn({
       const displayDir = workspaceDir.replace(/^\\\\\?\\/, "").replace(/^\/\?\//, "");
       const listing = workspaceListingRef.current;
       const listingBlock = listing
-        ? `\nTop-level entries:\n${listing}\n`
+        ? `\nDirectory tree (2 levels, heavy dirs like node_modules/dist/.git collapsed):\n\`\`\`\n${listing}\n\`\`\`\n`
         : "";
-      result += `\n\n[Desktop Workspace]\nPath: ${displayDir}${listingBlock}\nGuidance: When the user asks about files in "the workspace" / "项目" / "代码库" / "this folder", they mean the path above. Reference relative paths (e.g. \`docs/foo.md\`). If you need to read or modify files, request the user to invoke the workspace tool (or the local agent) — do not invent <function_calls>/<invoke> XML; that markup is not executable in this chat.`;
+      result += `\n\n[Desktop Workspace]\nPath: ${displayDir}${listingBlock}\nFile-access notes:\n- The user has these workspace files locally on their machine. The full directory tree above is the ground truth.\n- You do NOT have a tool to read files yourself in this chat. If you need a file's contents, ask the user concisely (e.g. "可以贴一下 src/foo.ts 的内容吗?") or tell them to run \`/read <relative/path>\` (also \`/ls <subdir>\` for listing, \`/write <path> <content>\` for writes).\n- Reference workspace files by relative path only (e.g. \`docs/foo.md\`).\n- DO NOT emit \`<function_calls>\`/\`<invoke>\` XML tool-call markup; that syntax is not executable here and will be shown to the user as raw text.`;
     }
     return result;
   }, [formatBytes, workspaceDir]);

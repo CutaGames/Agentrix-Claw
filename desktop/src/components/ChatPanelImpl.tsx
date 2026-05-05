@@ -43,6 +43,7 @@ import {
   listWorkspaceDir,
   readWorkspaceFile,
   writeWorkspaceFile,
+  autoAttachMentionedFiles,
 } from "../services/workspace";
 import { getDesktopDeviceId } from "../services/desktop";
 import {
@@ -1985,7 +1986,27 @@ export default function ChatPanel({
         }
       }
 
-      const outboundText = serializeMessageForModel(text, pendingAttachments);
+      // Auto-attach: if the user mentions workspace-relative file paths in
+      // their message (e.g. `src/foo.ts`, `package.json`), read those files
+      // locally via Tauri and inline them so the cloud LLM (which has no
+      // direct filesystem tool) can answer with real content instead of
+      // guessing or asking the user to paste.
+      let autoAttachedBlock = "";
+      let autoAttachedFiles: string[] = [];
+      if (workspaceDir && text.trim().length > 0) {
+        try {
+          const result = await autoAttachMentionedFiles(text);
+          autoAttachedBlock = result.block;
+          autoAttachedFiles = result.files;
+        } catch (err) {
+          console.warn("[ChatPanel] auto-attach mentioned files failed:", err);
+        }
+      }
+      const textForModel = autoAttachedBlock ? `${text}${autoAttachedBlock}` : text;
+      const outboundText = serializeMessageForModel(textForModel, pendingAttachments);
+      if (autoAttachedFiles.length > 0) {
+        addSystemMessage(`📎 Auto-attached ${autoAttachedFiles.length} workspace file(s): ${autoAttachedFiles.join(", ")}`);
+      }
       const effectiveChatMode = resolveEffectiveChatMode(
         chatMode,
         text,
@@ -2525,11 +2546,36 @@ export default function ChatPanel({
     window.addEventListener("agentrix:open-settings", onOpenSettings);
     window.addEventListener("agentrix:open-video-studio", onOpenVideoStudio);
     window.addEventListener("agentrix:open-pet-creator", onOpenPetCreator);
+
+    // Cross-window: when the floating-ball window emits via Tauri, also bridge
+    // it back into a window event so the same handlers above pick it up here.
+    const tauriUnlisteners: Array<() => void> = [];
+    (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        const events = [
+          "agentrix:new-chat",
+          "agentrix:open-settings",
+          "agentrix:open-video-studio",
+          "agentrix:open-pet-creator",
+          "agentrix:voice-start",
+        ];
+        for (const eventName of events) {
+          const unlisten = await listen(eventName, () => {
+            window.dispatchEvent(new CustomEvent(eventName));
+          });
+          tauriUnlisteners.push(unlisten);
+        }
+      } catch {
+        // Tauri not available (browser dev) — same-window listeners suffice.
+      }
+    })();
     return () => {
       window.removeEventListener("agentrix:new-chat", onNewChat);
       window.removeEventListener("agentrix:open-settings", onOpenSettings);
       window.removeEventListener("agentrix:open-video-studio", onOpenVideoStudio);
       window.removeEventListener("agentrix:open-pet-creator", onOpenPetCreator);
+      for (const fn of tauriUnlisteners) fn();
     };
   }, []);
 

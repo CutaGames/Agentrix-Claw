@@ -92,7 +92,7 @@ export class PetGenerationService {
 
     const provider = ((params.provider || DEFAULT_PROVIDER) as string).toLowerCase() as PetGenerateProvider;
     if (!SUPPORTED_PROVIDERS.has(provider)) {
-      throw new Error(`Unsupported pet_generate provider: ${provider}. Supported: meshy (default, paid), hunyuan3d (HF Inference Endpoint).`);
+      throw new Error(`Unsupported pet_generate provider: ${provider}. Supported: meshy (default, paid), hunyuan3d (Tencent Cloud AI3D).`);
     }
     const style = params.style && SUPPORTED_STYLES.has(params.style) ? params.style : 'anime';
 
@@ -245,48 +245,48 @@ export class PetGenerationService {
   }
 
   private async submitHunyuanTask(task: PetGenerationTask): Promise<PetGenerationTask> {
-    const endpointUrl = this.configService.get<string>('HUNYUAN3D_ENDPOINT_URL') || '';
-    if (!endpointUrl) {
-      throw new Error('Hunyuan3D provider is not configured. Set HUNYUAN3D_ENDPOINT_URL to a deployed HF Inference Endpoint.');
-    }
-    const apiKey = await this.resolveHfApiKey(task.userId);
-    if (!apiKey) {
-      throw new Error('Hunyuan3D requires HF_TOKEN (or saved providerId="huggingface" key) to authenticate the Inference Endpoint.');
+    const credentials = this.resolveTencentCredentials();
+    if (!credentials) {
+      throw new Error('Hunyuan3D requires Tencent Cloud credentials. Set TC_SecretId and TC_SecretKey (or TENCENT_SECRET_ID / TENCENT_SECRET_KEY) on the backend .env.');
     }
 
-    task.status = PetGenerationStatusEnum.PROCESSING;
-    task.providerStatus = 'IN_PROGRESS';
+    task.status = PetGenerationStatusEnum.SUBMITTING;
+    task.providerStatus = 'SUBMITTING';
     task.error = null as any;
-    const inflight = await this.taskRepo.save(task);
-    await this.syncDesktopTask(inflight);
+    await this.taskRepo.save(task);
+    await this.syncDesktopTask(task);
 
-    // Hunyuan3D-2 endpoints are synchronous from the caller's perspective.
-    // We await the result here, then transition to COMPLETED in one step.
-    const result = await this.hunyuanProvider.generate(endpointUrl, apiKey, {
-      mode: task.mode as 'text' | 'image',
-      prompt: task.prompt,
-      imageUrl: task.referenceImageUrl,
-      style: task.style,
-    });
-    if (result.error || (!result.glb_url && !result.fbx_url)) {
-      throw new Error(result.error || 'Hunyuan3D returned no mesh URL');
-    }
-    inflight.outputUrl = result.glb_url || result.fbx_url;
-    inflight.thumbnailUrl = result.thumbnail_url;
-    inflight.result = { ...result } as Record<string, unknown>;
-    inflight.status = PetGenerationStatusEnum.COMPLETED;
-    inflight.providerStatus = 'SUCCEEDED';
-    inflight.completedAt = new Date();
-    inflight.vrmUrl = inflight.outputUrl; // best-effort: VRM auto-rig handler not yet wired
-    const saved = await this.taskRepo.save(inflight);
+    const input = (task.input || {}) as Record<string, unknown>;
+    const resultFormat = ((input.resultFormat as string | undefined)
+      || (input.format as string | undefined)
+      || 'GLB').toUpperCase() as 'GLB' | 'OBJ' | 'STL' | 'USDZ' | 'FBX' | 'MP4';
+    const enablePBR = input.enablePBR !== false;
+
+    const submitResult = await this.hunyuanProvider.submit(
+      credentials.secretId,
+      credentials.secretKey,
+      {
+        prompt: task.mode === 'text' ? task.prompt : undefined,
+        imageUrl: task.mode === 'image' ? task.referenceImageUrl : undefined,
+        resultFormat,
+        enablePBR,
+      },
+    );
+
+    task.providerRequestId = submitResult.jobId;
+    task.providerStatus = 'WAIT';
+    task.status = PetGenerationStatusEnum.PROCESSING;
+    const saved = await this.taskRepo.save(task);
     await this.syncDesktopTask(saved);
-    await this.emitCompletion(saved);
     return saved;
   }
 
   private async refreshTask(task: PetGenerationTask): Promise<void> {
+    if (task.provider === 'hunyuan3d') {
+      await this.refreshHunyuanTask(task);
+      return;
+    }
     if (task.provider !== 'meshy') {
-      // Hunyuan3D completes synchronously inside submitTask; nothing to poll.
       return;
     }
     if (!task.providerRequestId) {
@@ -557,5 +557,78 @@ export class PetGenerationService {
       if (saved?.apiKey) return saved.apiKey;
     }
     return null;
+  }
+
+  private resolveTencentCredentials(): { secretId: string; secretKey: string } | null {
+    const secretId = (this.configService.get<string>('TC_SecretId')
+      || this.configService.get<string>('TENCENT_SECRET_ID')
+      || this.configService.get<string>('TENCENTCLOUD_SECRET_ID')
+      || process.env.TC_SecretId
+      || process.env.TENCENT_SECRET_ID
+      || process.env.TENCENTCLOUD_SECRET_ID
+      || '').trim();
+    const secretKey = (this.configService.get<string>('TC_SecretKey')
+      || this.configService.get<string>('TENCENT_SECRET_KEY')
+      || this.configService.get<string>('TENCENTCLOUD_SECRET_KEY')
+      || process.env.TC_SecretKey
+      || process.env.TENCENT_SECRET_KEY
+      || process.env.TENCENTCLOUD_SECRET_KEY
+      || '').trim();
+    if (!secretId || !secretKey) return null;
+    return { secretId, secretKey };
+  }
+
+  private async refreshHunyuanTask(task: PetGenerationTask): Promise<void> {
+    const credentials = this.resolveTencentCredentials();
+    if (!credentials) {
+      await this.markFailed(task.taskId, 'Tencent Cloud credentials are no longer available');
+      return;
+    }
+    if (!task.providerRequestId) {
+      await this.submitTask(task);
+      return;
+    }
+
+    const result = await this.hunyuanProvider.query(
+      credentials.secretId,
+      credentials.secretKey,
+      task.providerRequestId,
+    );
+    task.providerStatus = result.status;
+
+    if (result.status === 'WAIT' || result.status === 'RUN') {
+      task.status = result.status === 'WAIT'
+        ? PetGenerationStatusEnum.QUEUED
+        : PetGenerationStatusEnum.PROCESSING;
+      await this.taskRepo.save(task);
+      await this.syncDesktopTask(task);
+      return;
+    }
+
+    if (result.status === 'FAIL') {
+      const reason = result.errorMessage || result.errorCode || 'Hunyuan3D job failed';
+      await this.markFailed(task.taskId, reason);
+      return;
+    }
+
+    // DONE
+    const meshFile = result.resultFile3Ds.find((f) => !!f.url);
+    if (!meshFile?.url) {
+      await this.markFailed(task.taskId, 'Hunyuan3D job completed without a mesh URL');
+      return;
+    }
+    task.outputUrl = meshFile.url;
+    task.thumbnailUrl = meshFile.previewImageUrl;
+    task.result = {
+      jobId: task.providerRequestId,
+      resultFile3Ds: result.resultFile3Ds,
+    } as Record<string, unknown>;
+    task.status = PetGenerationStatusEnum.COMPLETED;
+    task.completedAt = new Date();
+    // best-effort: VRM auto-rig handler not yet wired; expose mesh as vrmUrl too
+    task.vrmUrl = meshFile.url;
+    const saved = await this.taskRepo.save(task);
+    await this.syncDesktopTask(saved);
+    await this.emitCompletion(saved);
   }
 }

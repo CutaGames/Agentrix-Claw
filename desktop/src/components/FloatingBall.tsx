@@ -110,6 +110,52 @@ function getMicrophonePermissionGuidance() {
   };
 }
 
+/**
+ * Pop a native (OS-level) context menu via the Tauri Menu API. Used when the
+ * floating-ball window is too small (e.g. 100×100 in production) to render an
+ * in-DOM menu without it being clipped by the OS window bounds.
+ */
+async function showNativeBallMenu(
+  onTap: () => void,
+  onOpenPro?: () => void,
+): Promise<void> {
+  try {
+    const { Menu } = await import("@tauri-apps/api/menu");
+    const dispatchSafe = async (action:
+      | "open-video-studio"
+      | "open-pet-creator"
+      | "open-settings"
+      | "new-chat"
+      | "voice-start") => {
+      const { dispatchUiAction } = await import("../services/desktopBus");
+      await dispatchUiAction(action);
+    };
+
+    const menu = await Menu.new({
+      items: [
+        {
+          id: "ball-pro",
+          text: "💬 Open Pro Mode",
+          action: () => { if (onOpenPro) onOpenPro(); else onTap(); },
+        },
+        { item: "Separator" } as any,
+        { id: "ball-new-chat", text: "🆕 New Chat", action: () => { void dispatchSafe("new-chat"); } },
+        { id: "ball-voice", text: "🎤 Voice Input", action: () => { void dispatchSafe("voice-start"); } },
+        { item: "Separator" } as any,
+        { id: "ball-video", text: "🎬 视频工作室", action: () => { void dispatchSafe("open-video-studio"); } },
+        { id: "ball-pet", text: "🐾 创建萌宠", action: () => { void dispatchSafe("open-pet-creator"); } },
+        { item: "Separator" } as any,
+        { id: "ball-settings", text: "⚙️ Settings", action: () => { void dispatchSafe("open-settings"); } },
+      ],
+    });
+    await menu.popup();
+  } catch (err) {
+    console.warn("[FloatingBall] native menu failed, falling back to Pro Mode toggle:", err);
+    if (onOpenPro) onOpenPro();
+    else onTap();
+  }
+}
+
 export default function FloatingBall({
   onTap,
   onOpenPro,
@@ -708,8 +754,26 @@ export default function FloatingBall({
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!compact) setContextMenu({ x: e.clientX, y: e.clientY });
-  }, [compact]);
+    if (compact) return;
+
+    // Detect "small window" surfaces (the floating-ball window is ~100×100 in
+    // production). Rendering an in-DOM menu inside a 100×100 window puts most
+    // of the menu off-screen because the OS window itself doesn't extend.
+    // For those surfaces we use Tauri's native popup menu, which renders as a
+    // top-level OS menu unconstrained by the window bounds.
+    let useNative = false;
+    try {
+      useNative = typeof window !== "undefined"
+        && (window.innerWidth < 280 || window.innerHeight < 280)
+        && !!(window as any).__TAURI_INTERNALS__;
+    } catch {}
+
+    if (useNative) {
+      void showNativeBallMenu(onTap, onOpenPro);
+      return;
+    }
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, [compact, onTap, onOpenPro]);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
@@ -1032,11 +1096,11 @@ export default function FloatingBall({
       >
         {[
           { label: "💬 Open Pro Mode", action: () => { if (onOpenPro) onOpenPro(); else onTap(); } },
-          { label: "🆕 New Chat", action: () => window.dispatchEvent(new CustomEvent("agentrix:new-chat")) },
-          { label: "🎤 Voice Input", action: () => { onTap(); setTimeout(() => window.dispatchEvent(new CustomEvent("agentrix:voice-start")), 200); } },
-          { label: "🎬 视频工作室", action: () => { onTap(); setTimeout(() => window.dispatchEvent(new CustomEvent("agentrix:open-video-studio")), 200); } },
-          { label: "🐾 创建梦聪", action: () => { onTap(); setTimeout(() => window.dispatchEvent(new CustomEvent("agentrix:open-pet-creator")), 200); } },
-          { label: "⚙️ Settings", action: () => { onTap(); setTimeout(() => window.dispatchEvent(new CustomEvent("agentrix:open-settings")), 200); } },
+          { label: "🆕 New Chat", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("new-chat")); } },
+          { label: "🎤 Voice Input", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("voice-start")); } },
+          { label: "🎬 视频工作室", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-video-studio")); } },
+          { label: "🐾 创建萌宠", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-pet-creator")); } },
+          { label: "⚙️ Settings", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-settings")); } },
         ].map((item) => (
           <div
             key={item.label}
