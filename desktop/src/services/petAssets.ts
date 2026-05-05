@@ -1,30 +1,56 @@
 /**
  * Pet asset cache (Desktop · v0.1).
  *
- * Resolves blocker §5 (offline / distribution strategy) from
+ * Resolves blocker §5 (offline / distribution strategy) and partially
+ * unblocks §2 (renderer runtime gating) from
  * docs/DESKTOP_LIVE2D_BLOCKERS_20260505.zh-CN.md.
  *
- * Today the desktop runs without any `.moc3` assets — the fallback SVG
- * renderer is always usable. This module defines the manifest contract
- * and graceful degradation rules so a future Live2D bundle can be plugged
- * in without code churn.
+ * Today the desktop runs without any rendering bundle — the fallback SVG
+ * renderer (`PetCanvas`) is always usable. This module defines the
+ * manifest contract and graceful degradation rules so a Rive (`.riv`) /
+ * VRM (`.vrm`) / Live2D (`.moc3`) bundle can be plugged in without code
+ * churn.
  *
- * Manifest format (served by backend or bundled at build time):
+ * Manifest format v2 (route B — Rive + VRM, supersedes the v1 Live2D-only
+ * shape but keeps the v1 fields for backward compatibility):
  *
  * {
+ *   "schema": 2,
  *   "version": "2026-05-05",
+ *   "preferredRenderer": "rive",        // optional, SDK still verifies
  *   "assets": [
- *     { "id": "default-pet", "url": "https://cdn.agentrix.top/pets/default/default.zip",
- *       "sha256": "...", "sizeBytes": 4321000, "license": "free" }
+ *     { "id": "default-rive", "renderer": "rive",
+ *       "url": "https://cdn.agentrix.top/pets/default.riv",
+ *       "sha256": "...", "sizeBytes": 312000, "license": "free" },
+ *     { "id": "default-vrm",  "renderer": "vrm",
+ *       "url": "https://cdn.agentrix.top/pets/default.vrm",
+ *       "sha256": "...", "sizeBytes": 8200000, "license": "free" }
  *   ]
  * }
  *
- * The cache is intentionally small — each asset is a single zip pinned by
- * sha256. Verification + extraction is delegated to the Tauri backend
- * (Rust) once the runtime arrives; this TS layer just owns the manifest.
+ * The cache is intentionally small — each asset is a single bundle pinned
+ * by sha256. Verification + extraction is delegated to the Tauri backend
+ * (Rust) once a real downloader lands; this TS layer owns the manifest +
+ * URL hints that `petSdk.ts` reads on boot to decide which renderer to
+ * promote.
+ *
+ * Distribution policy:
+ *   - Default: no manifest URL → fallback SVG renderer always wins
+ *   - Opt-in: user pastes a manifest URL into Settings → Pet Assets
+ *   - Manifest is fetched once on boot, cached locally, and re-validated
+ *     every hour. Failed re-validation keeps last-known-good cache.
+ *   - Manifest only declares URLs; actual asset bytes are downloaded by
+ *     the renderer on first use (or never, if user stays offline).
  */
+import type { PetRendererId } from "./petSdk";
 
 const STORAGE_KEY = "agentrix_pet_assets_state";
+const MANIFEST_URL_KEY = "agentrix_pet_manifest_url";
+const MANIFEST_CACHE_KEY = "agentrix_pet_manifest_cache";
+const MANIFEST_CACHED_AT_KEY = "agentrix_pet_manifest_cached_at";
+const RIVE_ASSET_KEY = "agentrix_pet_rive_url";
+const VRM_ASSET_KEY = "agentrix_pet_vrm_url";
+const REVALIDATE_INTERVAL_MS = 60 * 60 * 1000; // 1h
 
 export interface PetAssetDescriptor {
   id: string;
@@ -32,11 +58,17 @@ export interface PetAssetDescriptor {
   sha256: string;
   sizeBytes: number;
   license: "free" | "commercial" | "premium";
+  /** Renderer family this asset feeds. Defaults to "live2d" for v1 manifests. */
+  renderer?: PetRendererId;
 }
 
 export interface PetAssetManifest {
   version: string;
   assets: PetAssetDescriptor[];
+  /** Manifest schema version. v1 = Live2D-only, v2 = route B (Rive/VRM/Live2D). */
+  schema?: 1 | 2;
+  /** Server hint of which renderer to promote (SDK still verifies). */
+  preferredRenderer?: PetRendererId;
 }
 
 export interface PetAssetState {
@@ -73,12 +105,20 @@ export function writeAssetState(state: PetAssetState): void {
 
 /**
  * Decide which renderer to use right now based on local asset state.
- * Today this always returns 'fallback' because no Live2D assets ship
- * with the build. When a real Live2D bundle is installed (id present in
- * `ready`), this will return 'live2d'.
+ *
+ * Order of preference (route B):
+ *   1. live2d (only if commercial license + assets land later)
+ *   2. vrm    (when a `.vrm` bundle id is in `ready`)
+ *   3. rive   (when a `.riv` bundle id is in `ready`)
+ *   4. fallback (always available — animated SVG via PetCanvas)
  */
-export function pickPetRendererId(state: PetAssetState = readAssetState()): "live2d" | "fallback" {
-  return state.ready.includes("default-pet") ? "live2d" : "fallback";
+export function pickPetRendererId(state: PetAssetState = readAssetState()): PetRendererId {
+  if (state.ready.includes("default-live2d")) return "live2d";
+  if (state.ready.includes("default-vrm") || state.ready.some((id) => id.endsWith("-vrm"))) return "vrm";
+  if (state.ready.includes("default-rive") || state.ready.some((id) => id.endsWith("-rive"))) return "rive";
+  // Legacy v1 manifest sentinel.
+  if (state.ready.includes("default-pet")) return "live2d";
+  return "fallback";
 }
 
 export function markAssetReady(id: string): void {
@@ -97,3 +137,148 @@ export function optOutAsset(id: string): void {
     writeAssetState(s);
   }
 }
+
+// ── Manifest pipeline (route B) ──────────────────────────────────────
+
+function isValidUrl(s: string): boolean {
+  if (!s || typeof s !== "string") return false;
+  try {
+    const u = new URL(s);
+    return u.protocol === "https:" || u.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function isValidManifest(m: unknown): m is PetAssetManifest {
+  if (!m || typeof m !== "object") return false;
+  const x = m as Record<string, unknown>;
+  if (typeof x.version !== "string") return false;
+  if (!Array.isArray(x.assets)) return false;
+  return x.assets.every((a) => {
+    if (!a || typeof a !== "object") return false;
+    const e = a as Record<string, unknown>;
+    if (typeof e.id !== "string" || e.id.length === 0) return false;
+    if (typeof e.url !== "string" || !isValidUrl(e.url)) return false;
+    if (typeof e.sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(e.sha256)) return false;
+    if (typeof e.sizeBytes !== "number" || e.sizeBytes <= 0) return false;
+    if (e.renderer !== undefined && !["fallback", "rive", "vrm", "live2d"].includes(e.renderer as string)) {
+      return false;
+    }
+    return true;
+  });
+}
+
+export function setManifestUrl(url: string | null): void {
+  try {
+    if (url && isValidUrl(url)) localStorage.setItem(MANIFEST_URL_KEY, url);
+    else localStorage.removeItem(MANIFEST_URL_KEY);
+  } catch {
+    /* non-fatal */
+  }
+}
+
+export function getManifestUrl(): string | null {
+  try {
+    return localStorage.getItem(MANIFEST_URL_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function getCachedManifest(): PetAssetManifest | null {
+  try {
+    const raw = localStorage.getItem(MANIFEST_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    return isValidManifest(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeRendererUrlHints(m: PetAssetManifest): void {
+  try {
+    const rive = m.assets.find((a) => a.renderer === "rive");
+    const vrm = m.assets.find((a) => a.renderer === "vrm");
+    if (rive) localStorage.setItem(RIVE_ASSET_KEY, rive.url);
+    else localStorage.removeItem(RIVE_ASSET_KEY);
+    if (vrm) localStorage.setItem(VRM_ASSET_KEY, vrm.url);
+    else localStorage.removeItem(VRM_ASSET_KEY);
+  } catch {
+    /* non-fatal */
+  }
+}
+
+/**
+ * Fetch + validate the manifest from the configured URL. Falls back to
+ * the cached copy on network or schema failure. Returns the active
+ * manifest (fresh or cached), or null if neither path produced one.
+ */
+export async function refreshPetAssetManifest(): Promise<PetAssetManifest | null> {
+  const url = getManifestUrl();
+  if (!url) {
+    // No manifest configured — clear renderer URL hints so SDK degrades
+    // to the always-available fallback renderer.
+    try {
+      localStorage.removeItem(RIVE_ASSET_KEY);
+      localStorage.removeItem(VRM_ASSET_KEY);
+    } catch {
+      /* non-fatal */
+    }
+    return null;
+  }
+  try {
+    const res = await fetch(url, { method: "GET", cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = (await res.json()) as unknown;
+    if (!isValidManifest(json)) throw new Error("invalid manifest schema");
+    try {
+      localStorage.setItem(MANIFEST_CACHE_KEY, JSON.stringify(json));
+      localStorage.setItem(MANIFEST_CACHED_AT_KEY, String(Date.now()));
+    } catch {
+      /* non-fatal */
+    }
+    writeRendererUrlHints(json);
+    return json;
+  } catch (err) {
+    const cached = getCachedManifest();
+    if (cached) {
+      writeRendererUrlHints(cached);
+      console.warn("[petAssets] refresh failed, using cached manifest:", err);
+      return cached;
+    }
+    console.warn("[petAssets] refresh failed and no cache available:", err);
+    return null;
+  }
+}
+
+let _bootDone = false;
+let _interval: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Boot the asset pipeline. Idempotent. Hydrates renderer URL hints
+ * synchronously from cache (so `petSdk` registration sees them on first
+ * call), then async-refreshes from the configured manifest URL and
+ * re-validates hourly.
+ */
+export function bootPetAssets(): void {
+  if (_bootDone) return;
+  _bootDone = true;
+  const cached = getCachedManifest();
+  if (cached) writeRendererUrlHints(cached);
+  void refreshPetAssetManifest();
+  if (_interval) clearInterval(_interval);
+  _interval = setInterval(() => {
+    void refreshPetAssetManifest();
+  }, REVALIDATE_INTERVAL_MS);
+}
+
+export function destroyPetAssets(): void {
+  if (_interval) {
+    clearInterval(_interval);
+    _interval = null;
+  }
+  _bootDone = false;
+}
+

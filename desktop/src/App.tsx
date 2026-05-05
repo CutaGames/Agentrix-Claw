@@ -18,6 +18,7 @@ import { startNetworkMonitor, stopNetworkMonitor, getNetworkStatus, onNetworkSta
 import { DesktopWakeWordService } from "./services/wakeWord";
 import { DESKTOP_WAKE_WORD_EVENT, readDesktopWakeWordConfig } from "./services/wakeWordConfig";
 import { bootPetSdk } from "./services/petSdk";
+import { bootPetAssets, destroyPetAssets } from "./services/petAssets";
 import { startVisionPerception, stopVisionPerception, isVisionPerceptionEnabled } from "./services/visionPerception";
 import "./services/suspend"; // Register __agentrix_suspend / __agentrix_resume on window
 
@@ -230,6 +231,7 @@ export default function App() {
     // Live2D runtime ships later via petAssets manifest; fallback renderer
     // (PetCanvas) is always available regardless.
     bootPetSdk();
+    bootPetAssets();
     if (isVisionPerceptionEnabled()) {
       startVisionPerception();
     }
@@ -243,6 +245,7 @@ export default function App() {
       destroyPresenceSocket();
       stopDesktopAgentSync();
       stopVisionPerception();
+      destroyPetAssets();
     };
   }, [isServiceHostWindow, loggedIn, openProPanel, token, windowLabel]);
 
