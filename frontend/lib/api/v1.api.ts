@@ -191,7 +191,117 @@ export const v1Api = {
     create: (name: string) => apiClient.post<FamilyAccount>('/v1/family', { name }),
     invite: (id: string, role: 'admin' | 'member' | 'child') =>
       apiClient.post<{ invitation_code: string }>(`/v1/family/${id}/invite`, { role }),
+    acceptInvitation: (code: string) =>
+      apiClient.post<FamilyAccount>('/v1/family/invitations/accept', { code }),
+    setupPet: (id: string, name: string, emotion: PetEmotion = 'happy') =>
+      apiClient.post<FamilyAccount>(`/v1/family/${id}/pet`, { name, emotion }),
+    createHouseholdAgent: (
+      id: string,
+      body: { name: string; role: string; visible_to_roles?: string[] },
+    ) => apiClient.post<FamilyAccount>(`/v1/family/${id}/agents`, body),
+  },
+
+  cosign: {
+    list: (status: 'pending' | 'signed' | 'rejected' = 'pending') =>
+      apiClient.get<CoSignRequest[]>('/v1/cosign', { params: { status } }),
+    get: (id: string) => apiClient.get<CoSignRequest>(`/v1/cosign/${id}`),
+    create: (body: { action: { kind: string; payload?: Record<string, unknown> }; required_surfaces: string[] }) =>
+      apiClient.post<CoSignRequest>('/v1/cosign', body),
+    sign: (id: string, surface: string, method: 'biometric' | 'pin' | 'wrist-tap' = 'biometric') =>
+      apiClient.post<CoSignRequest>(`/v1/cosign/${id}/sign`, { surface, method }),
+    reject: (id: string, reason?: string) =>
+      apiClient.post<CoSignRequest>(`/v1/cosign/${id}/reject`, { reason }),
+  },
+
+  privacy: {
+    listItems: (category?: PrivacyCategory) =>
+      apiClient.get<PrivacyItem[]>('/v1/privacy/items', {
+        params: category ? { category } : undefined,
+      }),
+    grant: (body: { item_id: string; grantee_id: string; ttl_ms?: number }) =>
+      apiClient.post<PrivacyGrant>('/v1/privacy/grants', body),
+    revoke: (id: string) => apiClient.post<PrivacyGrant>(`/v1/privacy/grants/${id}/revoke`, {}),
+    audit: (limit = 50) =>
+      apiClient.get<PrivacyAuditEntry[]>('/v1/privacy/audit', { params: { limit } }),
+  },
+
+  memory: {
+    stats: () => apiClient.get<MemoryStats>('/v1/memory/stats'),
+    list: (tier: MemoryTier, params?: { tag?: string; agent_id?: string; limit?: number }) =>
+      apiClient.get<MemoryItem[]>(`/v1/memory/${tier}`, { params }),
+    search: (q: string, tier?: MemoryTier, limit = 20) =>
+      apiClient.get<MemoryItem[]>('/v1/memory/search', { params: { q, tier, limit } }),
+    upsert: (body: {
+      tier: MemoryTier;
+      text: string;
+      key?: string;
+      tags?: string[];
+      agent_id?: string;
+      ttl_ms?: number;
+    }) => apiClient.post<MemoryItem>('/v1/memory/upsert', body),
+    delete: (id: string) => apiClient.delete<{ ok: boolean }>(`/v1/memory/item/${id}`),
   },
 };
+
+// ---------- additional v3 types ----------
+
+export interface CoSignRequest {
+  id: string;
+  user_id: string;
+  action: { kind: string; payload?: Record<string, unknown> };
+  required_surfaces: string[];
+  signed_surfaces: string[];
+  status: 'pending' | 'signed' | 'rejected' | 'expired';
+  created_at: string;
+}
+
+export type PrivacyCategory = 'financial' | 'health' | 'relationship' | 'location';
+
+export interface PrivacyItem {
+  id: string;
+  category: PrivacyCategory;
+  key: string;
+  preview?: string;
+  family_partition?: string | null;
+  created_at: string;
+}
+
+export interface PrivacyGrant {
+  id: string;
+  item_id: string;
+  grantee_id: string;
+  expires_at: string;
+  status: 'active' | 'revoked' | 'expired';
+}
+
+export interface PrivacyAuditEntry {
+  id: string;
+  actor_id: string;
+  action: 'read' | 'write' | 'grant' | 'revoke';
+  item_id?: string;
+  grant_id?: string;
+  created_at: string;
+}
+
+export type MemoryTier = 'working' | 'episodic' | 'semantic' | 'procedural';
+
+export interface MemoryStats {
+  working: number;
+  episodic: number;
+  semantic: number;
+  procedural: number;
+  total_bytes?: number;
+}
+
+export interface MemoryItem {
+  id: string;
+  tier: MemoryTier;
+  key?: string;
+  text: string;
+  tags?: string[];
+  agent_id?: string;
+  ttl_ms?: number;
+  created_at: string;
+}
 
 export default v1Api;

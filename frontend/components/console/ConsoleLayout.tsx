@@ -65,6 +65,7 @@ const SECTIONS: NavSection[] = [
       { href: '/console/wallet/split-plans', label: 'Split Plans' },
       { href: '/console/wallet/budgets', label: 'Budget Pools' },
       { href: '/console/wallet/auto-earn', label: 'Auto-Earn Timeline' },
+      { href: '/console/wallet/referral', label: 'Referral & Affiliate' },
       { href: '/console/wallet/audit', label: 'Audit Log' },
       { href: '/console/billing', label: 'Subscription / Billing' },
     ],
@@ -75,10 +76,11 @@ const SECTIONS: NavSection[] = [
     icon: '🛠️',
     requireRole: 'developer',
     links: [
-      { href: '/console/developer', label: 'API Keys & Webhooks' },
+      { href: '/console/developer', label: 'Overview' },
       { href: '/console/developer/skills', label: 'My Skill Listings' },
       { href: '/console/developer/workflows', label: 'Workflow Templates' },
       { href: '/console/developer/earnings', label: 'Earnings' },
+      { href: '/developers/console', label: 'API Keys & Webhooks', external: true },
     ],
   },
   {
@@ -87,6 +89,7 @@ const SECTIONS: NavSection[] = [
     icon: '🏪',
     requireRole: 'merchant',
     links: [
+      { href: '/console/merchant', label: 'Overview' },
       { href: '/console/merchant/products', label: 'Products' },
       { href: '/console/merchant/orders', label: 'Orders' },
       { href: '/console/merchant/settlements', label: 'Settlements' },
