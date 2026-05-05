@@ -24,6 +24,21 @@ async fn desktop_bridge_close_chat_panel(app: AppHandle) -> Result<(), String> {
     commands::close_chat_panel(app)
 }
 
+#[tauri::command]
+async fn desktop_bridge_open_spotlight(app: AppHandle) -> Result<(), String> {
+    commands::open_spotlight(app)
+}
+
+#[tauri::command]
+async fn desktop_bridge_close_spotlight(app: AppHandle) -> Result<(), String> {
+    commands::close_spotlight(app)
+}
+
+#[tauri::command]
+fn desktop_bridge_get_selected_text() -> Result<Option<String>, String> {
+    commands::get_selected_text()
+}
+
 // ── Floating Ball / Monitor ───────────────────────────────────────────────────
 
 #[tauri::command]
@@ -676,6 +691,10 @@ pub fn run() {
             // Chat panel
             desktop_bridge_open_chat_panel,
             desktop_bridge_close_chat_panel,
+            // Spotlight
+            desktop_bridge_open_spotlight,
+            desktop_bridge_close_spotlight,
+            desktop_bridge_get_selected_text,
             // Floating ball / monitor
             desktop_bridge_set_ball_position,
             desktop_bridge_get_ball_position,

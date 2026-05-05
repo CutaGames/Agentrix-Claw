@@ -317,7 +317,7 @@
 | Stripe live key + 真实订单跑通 | 集成 | 申请生产 key → Web Console Billing 联调 → P1 Gate 闭关 | 🔴 P0 |
 | iOS TestFlight 提交（App Intents 审核） | 发布 | 需 Apple Developer enrollment + provisioning profile | 🔴 P0 |
 | commission V4 实际入账 | 后端 | split-budget `previewSettlement` → 调 commission V4 `executeSettlement`，需 Stripe webhook | 🟡 P1 |
-| AWS KMS Custom Key Store 接入 MPC | 安全 | P0-W1-6 已决策但未 wiring；2-of-3 分片协签实现 | 🟡 P1 |
+| AWS KMS Custom Key Store 接入 MPC | 安全 | 🟢 代码已完成 wiring：`mpc-wallet` 已接入 real 2-of-3、AWS KMS / local-secret / legacy 兼容；已通过 backend tsc + `mpc-wallet.service.spec.ts`，生产配置与部署验证执行中 | 🟢 已完成 |
 
 #### 🟡 客户端原生工程（需独立 sprint）
 
@@ -356,7 +356,7 @@
 
 1. **P0/P1 持久化 + Stripe live**：所有 in-memory 落库；commission V4 真实分账跑通；TestFlight 提交。
 2. **Operations Control Plane 编排层**：把 plan / approval / cosign / split / commission 抽象到一个事务流水线（`OperationsRun` entity），把现在散落的 in-memory 状态机变成可查询、可回放的"工单"。
-3. **AWS KMS + MPC 2-of-3**：把 P0-W1-6 决策落地，`mpc-wallet` 服务对接 KMS Custom Key Store。
+3. **AWS KMS + MPC 2-of-3 生产化**：代码、单测与本地编译已完成；下一步仅剩生产环境密钥配置、部署与联调验证。
 4. **Living Pet 持久化 + Vitals 真实推送**：Apple HealthKit / WearOS Health Services 上行 → vitals-bus → pet.state 推 5 端，端到端 < 3s。
 
 #### 中期（3-4 月）
@@ -382,6 +382,7 @@
 | 2026-05-04 | `approval.action.kind` 用 `'write'` 包裹 plan/cosign | 避免改 enum 影响存量 |
 | 2026-05-04 | 服务器 PM2 stale dist 必须 `rm -rf dist tsconfig*.tsbuildinfo` 后重建 | CI 应固化此步 |
 | 2026-05-04 | Watch 表情 / pet.state 走 `pet_id` ≠ `agent_id` 强契约 | §3.8 引擎切换前提 |
+| 2026-05-05 | `mpc-wallet` 已落地 real 2-of-3 + AWS KMS / local-secret / legacy 兼容路径 | `mpc-wallet.service.spec.ts` 通过；生产仅剩环境配置与部署验证 |
 
 ---
 

@@ -3,7 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MPCWallet } from '../../entities/mpc-wallet.entity';
 import { Wallet } from 'ethers';
-import * as crypto from 'crypto';
+import { decryptShard, encryptShard } from './mpc-shard-crypto.util';
+import { MPCShardProtectionService } from './mpc-shard-protection.service';
+import { combineShares, splitSecret } from './mpc-threshold.util';
 
 /**
  * MPC 钱包服务
@@ -16,6 +18,7 @@ export class MPCWalletService {
   constructor(
     @InjectRepository(MPCWallet)
     private mpcWalletRepository: Repository<MPCWallet>,
+    private readonly shardProtectionService: MPCShardProtectionService,
   ) {}
 
   /**
@@ -46,13 +49,16 @@ export class MPCWalletService {
       const privateKey = wallet.privateKey.substring(2); // 去掉 0x 前缀
 
       // 3. 使用 Shamir Secret Sharing 分成 3 份，需要 2 份恢复
-      // 注意：这里使用简化实现，实际应该使用专门的库
       const shards = this.splitSecret(privateKey, 3, 2);
 
       // 4. 加密分片
       const encryptedShardA = this.encryptShard(shards[0], password);
-      const encryptedShardB = this.encryptShard(shards[1], password);
       const encryptedShardC = this.encryptShard(shards[2], password);
+      const protectedShardB = await this.shardProtectionService.protectShard(
+        merchantId,
+        shards[1],
+        password,
+      );
 
       // 5. 保存到数据库（只存储分片 B）
       const mpcWallet = this.mpcWalletRepository.create({
@@ -60,8 +66,16 @@ export class MPCWalletService {
         walletAddress: wallet.address,
         chain: 'BSC',
         currency: 'USDC',
-        encryptedShardB,
+        encryptedShardB: protectedShardB.encryptedShard,
         isActive: true,
+        metadata: {
+          mpcThreshold: {
+            totalShares: 3,
+            threshold: 2,
+            algorithm: 'shamirs-secret-sharing',
+          },
+          mpcShardProtection: protectedShardB.descriptor,
+        },
       });
 
       await this.mpcWalletRepository.save(mpcWallet);
@@ -71,7 +85,7 @@ export class MPCWalletService {
       return {
         walletAddress: wallet.address,
         encryptedShardA, // 返回给前端
-        encryptedShardB, // 已存储在数据库
+        encryptedShardB: protectedShardB.encryptedShard, // 已存储在数据库
         encryptedShardC, // 返回给商户备份
       };
     } catch (error) {
@@ -193,101 +207,28 @@ export class MPCWalletService {
    * 简化实现：使用随机分片（实际应该使用专门的库）
    */
   private splitSecret(secret: string, totalShares: number, threshold: number): string[] {
-    // 简化实现：将私钥分成 3 份
-    // 实际应该使用 shamir-secret-sharing 库
-    const secretBytes = Buffer.from(secret, 'hex');
-    const shareLength = Math.ceil(secretBytes.length / 2);
-
-    const shares: string[] = [];
-    for (let i = 0; i < totalShares; i++) {
-      const share = crypto.randomBytes(shareLength);
-      shares.push(share.toString('hex'));
-    }
-
-    // 计算最后一个分片，使得任意 2 个分片可以恢复私钥
-    // 简化实现：最后一个分片 = secret XOR (share1 XOR share2)
-    const share1 = Buffer.from(shares[0], 'hex');
-    const share2 = Buffer.from(shares[1], 'hex');
-    const share3 = Buffer.alloc(shareLength);
-
-    for (let i = 0; i < Math.min(secretBytes.length, shareLength); i++) {
-      share3[i] = secretBytes[i] ^ share1[i] ^ share2[i];
-    }
-
-    shares[2] = share3.toString('hex');
-
-    return shares;
+    return splitSecret(secret, totalShares, threshold);
   }
 
   /**
    * 恢复私钥（使用 2 个分片）
    */
   private combineShares(shares: string[]): string {
-    if (shares.length < 2) {
-      throw new BadRequestException('Need at least 2 shares to recover');
-    }
-
-    const share1 = Buffer.from(shares[0], 'hex');
-    const share2 = Buffer.from(shares[1], 'hex');
-    const share3 = shares[2] ? Buffer.from(shares[2], 'hex') : null;
-
-    const secret = Buffer.alloc(Math.max(share1.length, share2.length));
-
-    if (share3) {
-      // 使用 3 个分片恢复
-      for (let i = 0; i < secret.length; i++) {
-        secret[i] = share1[i] ^ share2[i] ^ share3[i];
-      }
-    } else {
-      // 使用 2 个分片恢复（简化实现）
-      for (let i = 0; i < secret.length; i++) {
-        secret[i] = share1[i] ^ share2[i];
-      }
-    }
-
-    return secret.toString('hex');
+    return combineShares(shares);
   }
 
   /**
    * 加密分片（AES-256-GCM）
    */
   private encryptShard(shard: string, password: string): string {
-    const algorithm = 'aes-256-gcm';
-    const key = crypto.scryptSync(password, 'salt', 32);
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(algorithm, key, iv);
-
-    let encrypted = cipher.update(shard, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-
-    const authTag = cipher.getAuthTag();
-
-    // 返回格式: iv:authTag:encrypted
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
+    return encryptShard(shard, password);
   }
 
   /**
    * 解密分片
    */
   private decryptShard(encryptedShard: string, password: string): string {
-    const algorithm = 'aes-256-gcm';
-    const parts = encryptedShard.split(':');
-    if (parts.length !== 3) {
-      throw new BadRequestException('Invalid encrypted shard format');
-    }
-
-    const iv = Buffer.from(parts[0], 'hex');
-    const authTag = Buffer.from(parts[1], 'hex');
-    const encrypted = parts[2];
-
-    const key = crypto.scryptSync(password, 'salt', 32);
-    const decipher = crypto.createDecipheriv(algorithm, key, iv);
-    decipher.setAuthTag(authTag);
-
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-
-    return decrypted;
+    return decryptShard(encryptedShard, password);
   }
 
   /**
