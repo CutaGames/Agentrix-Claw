@@ -1,4 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { MemoryItemEntity } from '../../entities/memory-item.entity';
 
 /**
  * 顿领 §5.5 4 层记忆 API 标准化
@@ -38,78 +41,79 @@ export interface UpsertMemoryInput {
 
 @Injectable()
 export class MemoryTiersService {
-  private items = new Map<string, MemoryItem>();
+  constructor(
+    @InjectRepository(MemoryItemEntity)
+    private readonly memoryRepo: Repository<MemoryItemEntity>,
+  ) {}
 
-  upsert(userId: string, input: UpsertMemoryInput): MemoryItem {
+  async upsert(userId: string, input: UpsertMemoryInput): Promise<MemoryItem> {
     const now = Date.now();
     const id =
       input.key && input.tier
         ? `${userId}:${input.tier}:${input.key}`
         : `${userId}:${input.tier}:${now}:${Math.random().toString(36).slice(2, 8)}`;
     const ttl = input.ttl_ms ?? (input.tier === 'working' ? 30 * 60 * 1000 : undefined);
-    const item: MemoryItem = {
+
+    const row = this.memoryRepo.create({
       id,
       userId,
       tier: input.tier,
-      key: input.key,
+      memoryKey: input.key ?? null,
       text: input.text,
       tags: input.tags ?? [],
-      agent_id: input.agent_id,
-      ts: now,
-      expires_at: ttl ? now + ttl : undefined,
-      metadata: input.metadata,
-    };
-    this.items.set(id, item);
-    return item;
+      agentId: input.agent_id ?? null,
+      tsMs: String(now),
+      expiresAtMs: ttl ? String(now + ttl) : null,
+      metadata: input.metadata ?? null,
+    });
+    const saved = await this.memoryRepo.save(row);
+    return this.toMemoryItem(saved);
   }
 
-  list(userId: string, tier: MemoryTier, opts?: { limit?: number; tag?: string; agent_id?: string }) {
-    this.gc();
-    const arr: MemoryItem[] = [];
-    for (const m of this.items.values()) {
-      if (m.userId !== userId || m.tier !== tier) continue;
-      if (opts?.tag && !m.tags.includes(opts.tag)) continue;
-      if (opts?.agent_id && m.agent_id !== opts.agent_id) continue;
-      arr.push(m);
-    }
+  async list(userId: string, tier: MemoryTier, opts?: { limit?: number; tag?: string; agent_id?: string }) {
+    await this.gc(userId);
+    let arr = (await this.memoryRepo.find({
+      where: { userId, tier },
+      order: { tsMs: 'DESC' },
+      take: opts?.limit ?? 50,
+    })).map((row) => this.toMemoryItem(row));
+
+    if (opts?.tag) arr = arr.filter((m) => m.tags.includes(opts.tag!));
+    if (opts?.agent_id) arr = arr.filter((m) => m.agent_id === opts.agent_id);
     arr.sort((a, b) => b.ts - a.ts);
     return arr.slice(0, opts?.limit ?? 50).map((m) => this.toDto(m));
   }
 
-  get(userId: string, id: string) {
-    this.gc();
-    const m = this.items.get(id);
-    if (!m || m.userId !== userId) return null;
-    return this.toDto(m);
+  async get(userId: string, id: string) {
+    await this.gc(userId);
+    const row = await this.memoryRepo.findOne({ where: { id, userId } });
+    if (!row) return null;
+    return this.toDto(this.toMemoryItem(row));
   }
 
-  delete(userId: string, id: string) {
-    const m = this.items.get(id);
-    if (!m || m.userId !== userId) return { deleted: false };
-    this.items.delete(id);
+  async delete(userId: string, id: string) {
+    const row = await this.memoryRepo.findOne({ where: { id, userId } });
+    if (!row) return { deleted: false };
+    await this.memoryRepo.delete(id);
     return { deleted: true };
   }
 
   /** 简易语义搜索 — substring 匹配；P3 替换为 pgvector */
-  search(userId: string, q: string, opts?: { tier?: MemoryTier; limit?: number }) {
-    this.gc();
+  async search(userId: string, q: string, opts?: { tier?: MemoryTier; limit?: number }) {
+    await this.gc(userId);
     const ql = q.toLowerCase();
-    const out: MemoryItem[] = [];
-    for (const m of this.items.values()) {
-      if (m.userId !== userId) continue;
-      if (opts?.tier && m.tier !== opts.tier) continue;
-      if (m.text.toLowerCase().includes(ql) || m.tags.some((t) => t.toLowerCase().includes(ql))) {
-        out.push(m);
-      }
-    }
+    const rows = await this.memoryRepo.find({ where: { userId } });
+    let out = rows.map((row) => this.toMemoryItem(row));
+    if (opts?.tier) out = out.filter((m) => m.tier === opts.tier);
+    out = out.filter((m) => m.text.toLowerCase().includes(ql) || m.tags.some((t) => t.toLowerCase().includes(ql)));
     out.sort((a, b) => b.ts - a.ts);
     return out.slice(0, opts?.limit ?? 20).map((m) => this.toDto(m));
   }
 
-  stats(userId: string) {
-    this.gc();
+  async stats(userId: string) {
+    await this.gc(userId);
     const counts: Record<MemoryTier, number> = { working: 0, episodic: 0, semantic: 0, procedural: 0 };
-    for (const m of this.items.values()) {
+    for (const m of (await this.memoryRepo.find({ where: { userId } })).map((row) => this.toMemoryItem(row))) {
       if (m.userId === userId) counts[m.tier] += 1;
     }
     return counts;
@@ -129,10 +133,29 @@ export class MemoryTiersService {
     };
   }
 
-  private gc() {
+  private toMemoryItem(row: MemoryItemEntity): MemoryItem {
+    return {
+      id: row.id,
+      userId: row.userId,
+      tier: row.tier as MemoryTier,
+      key: row.memoryKey ?? undefined,
+      text: row.text,
+      tags: row.tags ?? [],
+      agent_id: row.agentId ?? undefined,
+      ts: Number(row.tsMs),
+      expires_at: row.expiresAtMs ? Number(row.expiresAtMs) : undefined,
+      metadata: row.metadata ?? undefined,
+    };
+  }
+
+  private async gc(userId: string) {
+    const rows = await this.memoryRepo.find({ where: { userId } });
     const now = Date.now();
-    for (const [id, m] of this.items) {
-      if (m.expires_at && m.expires_at < now) this.items.delete(id);
+    const expiredIds = rows
+      .filter((row) => row.expiresAtMs && Number(row.expiresAtMs) < now)
+      .map((row) => row.id);
+    if (expiredIds.length > 0) {
+      await this.memoryRepo.delete(expiredIds);
     }
   }
 }

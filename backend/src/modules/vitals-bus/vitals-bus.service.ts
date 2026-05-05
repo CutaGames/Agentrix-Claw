@@ -1,4 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { VitalEventEntity } from '../../entities/vital-event.entity';
 import { LivingPetService } from '../living-pet/living-pet.service';
 
 /**
@@ -41,14 +44,27 @@ export interface VitalsReaction {
 @Injectable()
 export class VitalsBusService {
   private readonly logger = new Logger(VitalsBusService.name);
-  private recent: Array<{ userId: string; event: VitalsEventInput; ts: number; reaction?: VitalsReaction }> = [];
 
-  constructor(private readonly pet: LivingPetService) {}
+  constructor(
+    @InjectRepository(VitalEventEntity)
+    private readonly vitalRepo: Repository<VitalEventEntity>,
+    private readonly pet: LivingPetService,
+  ) {}
 
   async ingest(userId: string, event: VitalsEventInput): Promise<{ ok: true; reaction?: VitalsReaction; pet?: any }> {
     const reaction = this.evaluate(event);
-    this.recent.unshift({ userId, event, ts: Date.now(), reaction });
-    if (this.recent.length > 200) this.recent.length = 200;
+    const eventTs = event.ts ?? Date.now();
+
+    const row = this.vitalRepo.create({
+      userId,
+      metric: event.metric,
+      value: event.value,
+      sourceDeviceId: event.source_device_id ?? null,
+      sourceSurface: event.source_surface ?? null,
+      eventTsMs: String(eventTs),
+      reaction: reaction ?? null,
+    });
+    await this.vitalRepo.save(row);
 
     let petDto: any;
     if (reaction?.emotion) {
@@ -68,18 +84,21 @@ export class VitalsBusService {
     return { ok: true, reaction, pet: petDto };
   }
 
-  list(userId: string, limit = 50) {
-    return this.recent
-      .filter((r) => r.userId === userId)
-      .slice(0, limit)
-      .map((r) => ({
-        metric: r.event.metric,
-        value: r.event.value,
-        source_device_id: r.event.source_device_id || null,
-        source_surface: r.event.source_surface || null,
-        ts: r.event.ts || r.ts,
-        reaction: r.reaction || null,
-      }));
+  async list(userId: string, limit = 50) {
+    const rows = await this.vitalRepo.find({
+      where: { userId },
+      order: { eventTsMs: 'DESC' },
+      take: limit,
+    });
+
+    return rows.map((row) => ({
+      metric: row.metric as VitalsMetric,
+      value: row.value,
+      source_device_id: row.sourceDeviceId ?? null,
+      source_surface: (row.sourceSurface as VitalsEventInput['source_surface']) ?? null,
+      ts: Number(row.eventTsMs),
+      reaction: row.reaction ?? null,
+    }));
   }
 
   private evaluate(e: VitalsEventInput): VitalsReaction | undefined {

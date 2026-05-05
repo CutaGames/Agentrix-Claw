@@ -1,4 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { AutoEarnEventEntity } from '../../entities/auto-earn-event.entity';
 
 /**
  * 顿领 §9.4 Auto-Earn 仪表盘 + A2A 时间线 (P2-2 backend)
@@ -19,54 +22,62 @@ export interface EarnEvent {
 
 @Injectable()
 export class AutoEarnTimelineService {
-  private events: EarnEvent[] = [];
+  constructor(
+    @InjectRepository(AutoEarnEventEntity)
+    private readonly earnRepo: Repository<AutoEarnEventEntity>,
+  ) {}
 
-  record(userId: string, body: {
+  async record(userId: string, body: {
     source: EarnSource;
     amount_cents: number;
     ref_id?: string;
     note?: string;
-  }): EarnEvent {
-    const e: EarnEvent = {
-      id: `earn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+  }): Promise<EarnEvent> {
+    const entity = this.earnRepo.create({
+      externalId: `earn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       userId,
       source: body.source,
-      amount_cents: body.amount_cents,
-      ref_id: body.ref_id,
-      note: body.note,
-      ts: Date.now(),
-    };
-    this.events.push(e);
-    if (this.events.length > 10000) this.events.shift();
-    return e;
+      amountCents: body.amount_cents,
+      refId: body.ref_id ?? null,
+      note: body.note ?? null,
+      eventTsMs: String(Date.now()),
+    });
+    const saved = await this.earnRepo.save(entity);
+    return this.toEarnEvent(saved);
   }
 
-  timeline(userId: string, opts?: { source?: EarnSource; limit?: number }): EarnEvent[] {
-    let arr = this.events.filter((e) => e.userId === userId);
-    if (opts?.source) arr = arr.filter((e) => e.source === opts.source);
-    arr = arr.slice().reverse();
-    return arr.slice(0, opts?.limit ?? 100);
+  async timeline(userId: string, opts?: { source?: EarnSource; limit?: number }): Promise<EarnEvent[]> {
+    const where: Record<string, unknown> = { userId };
+    if (opts?.source) where.source = opts.source;
+
+    const rows = await this.earnRepo.find({
+      where,
+      order: { eventTsMs: 'DESC' },
+      take: opts?.limit ?? 100,
+    });
+    return rows.map((row) => this.toEarnEvent(row));
   }
 
-  summary(userId: string): {
+  async summary(userId: string): Promise<{
     total_cents: number;
     by_source: Record<string, number>;
     last_24h_cents: number;
     last_30d_cents: number;
     estimated_mrr_cents: number;
-  } {
-    const mine = this.events.filter((e) => e.userId === userId);
+  }> {
+    const mine = await this.earnRepo.find({ where: { userId } });
     const now = Date.now();
     const day = 24 * 60 * 60 * 1000;
     let total = 0;
     let last24 = 0;
     let last30d = 0;
     const by: Record<string, number> = {};
-    for (const e of mine) {
-      total += e.amount_cents;
-      by[e.source] = (by[e.source] || 0) + e.amount_cents;
-      if (now - e.ts <= day) last24 += e.amount_cents;
-      if (now - e.ts <= 30 * day) last30d += e.amount_cents;
+    for (const row of mine) {
+      const event = this.toEarnEvent(row);
+      total += event.amount_cents;
+      by[event.source] = (by[event.source] || 0) + event.amount_cents;
+      if (now - event.ts <= day) last24 += event.amount_cents;
+      if (now - event.ts <= 30 * day) last30d += event.amount_cents;
     }
     return {
       total_cents: total,
@@ -74,6 +85,18 @@ export class AutoEarnTimelineService {
       last_24h_cents: last24,
       last_30d_cents: last30d,
       estimated_mrr_cents: last30d, // last 30d as MRR proxy
+    };
+  }
+
+  private toEarnEvent(row: AutoEarnEventEntity): EarnEvent {
+    return {
+      id: row.externalId,
+      userId: row.userId,
+      source: row.source as EarnSource,
+      amount_cents: row.amountCents,
+      ref_id: row.refId ?? undefined,
+      note: row.note ?? undefined,
+      ts: Number(row.eventTsMs),
     };
   }
 }

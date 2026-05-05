@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { MemoryItemEntity } from '../../entities/memory-item.entity';
 import { MemoryTiersService } from './memory-tiers.service';
 import { MemoryTiersController } from './memory-tiers.controller';
 
@@ -8,6 +10,7 @@ import { MemoryTiersController } from './memory-tiers.controller';
  * P1 阶段进程内实现，端契约稳定后 P2/P3 替换持久化层。
  */
 @Module({
+  imports: [TypeOrmModule.forFeature([MemoryItemEntity])],
   controllers: [MemoryTiersController],
   providers: [MemoryTiersService],
   exports: [MemoryTiersService],

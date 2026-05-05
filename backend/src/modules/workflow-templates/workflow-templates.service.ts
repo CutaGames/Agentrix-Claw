@@ -1,4 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { WorkflowInstanceEntity } from '../../entities/workflow-instance.entity';
+import { WorkflowTemplateEntity } from '../../entities/workflow-template.entity';
 
 /**
  * 顿领 §10.3 联合工作流模板 (P2-8 第二部分)
@@ -40,25 +44,31 @@ export interface WorkflowInstance {
 
 @Injectable()
 export class WorkflowTemplatesService {
-  private templates = new Map<string, WorkflowTemplate>();
-  private instances = new Map<string, WorkflowInstance>();
+  constructor(
+    @InjectRepository(WorkflowTemplateEntity)
+    private readonly templateRepo: Repository<WorkflowTemplateEntity>,
+    @InjectRepository(WorkflowInstanceEntity)
+    private readonly instanceRepo: Repository<WorkflowInstanceEntity>,
+  ) {}
 
   private genId(prefix: string) {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   }
 
-  createTemplate(userId: string, body: {
+  async createTemplate(userId: string, body: {
     name: string;
     description?: string;
     category?: WorkflowTemplate['category'];
     steps: Array<Omit<WorkflowStep, 'id'>>;
     required_skills?: string[];
     visibility?: WorkflowTemplate['visibility'];
-  }): WorkflowTemplate {
+  }): Promise<WorkflowTemplate> {
     if (!body?.name) throw new BadRequestException('name required');
     if (!body.steps || body.steps.length === 0) throw new BadRequestException('steps required');
 
-    const tpl: WorkflowTemplate = {
+    const now = Date.now();
+
+    const tpl = this.templateRepo.create({
       id: this.genId('wf'),
       authorUserId: userId,
       name: body.name,
@@ -68,18 +78,18 @@ export class WorkflowTemplatesService {
         ...s,
         id: `s${idx}`,
       })),
-      required_skills: body.required_skills || [],
+      requiredSkills: body.required_skills || [],
       visibility: body.visibility || 'private',
-      install_count: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    this.templates.set(tpl.id, tpl);
-    return tpl;
+      installCount: 0,
+      createdAtMs: String(now),
+      updatedAtMs: String(now),
+    });
+    const saved = await this.templateRepo.save(tpl);
+    return this.toTemplate(saved);
   }
 
-  listTemplates(userId: string, filter?: { category?: string; visibility?: string }): WorkflowTemplate[] {
-    let arr = Array.from(this.templates.values()).filter(
+  async listTemplates(userId: string, filter?: { category?: string; visibility?: string }): Promise<WorkflowTemplate[]> {
+    let arr = (await this.templateRepo.find()).map((row) => this.toTemplate(row)).filter(
       (t) => t.visibility === 'public' || t.authorUserId === userId,
     );
     if (filter?.category) arr = arr.filter((t) => t.category === filter.category);
@@ -87,67 +97,117 @@ export class WorkflowTemplatesService {
     return arr.sort((a, b) => b.install_count - a.install_count);
   }
 
-  getTemplate(id: string): WorkflowTemplate {
-    const t = this.templates.get(id);
-    if (!t) throw new NotFoundException('template not found');
-    return t;
+  async getTemplate(id: string): Promise<WorkflowTemplate> {
+    const row = await this.templateRepo.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('template not found');
+    return this.toTemplate(row);
   }
 
-  install(userId: string, templateId: string): WorkflowInstance {
-    const tpl = this.getTemplate(templateId);
-    tpl.install_count += 1;
+  async install(userId: string, templateId: string): Promise<WorkflowInstance> {
+    const tpl = await this.templateRepo.findOne({ where: { id: templateId } });
+    if (!tpl) throw new NotFoundException('template not found');
+    tpl.installCount += 1;
+    tpl.updatedAtMs = String(Date.now());
+    await this.templateRepo.save(tpl);
 
-    const inst: WorkflowInstance = {
+    const inst = this.instanceRepo.create({
       id: this.genId('wfi'),
       templateId,
       userId,
       status: 'queued',
       currentStep: 0,
       results: [],
-    };
-    this.instances.set(inst.id, inst);
-    setTimeout(() => this.runAsync(inst.id), 10);
-    return inst;
+    });
+    const saved = await this.instanceRepo.save(inst);
+    setTimeout(() => {
+      void this.runAsync(saved.id);
+    }, 10);
+    return this.toInstance(saved);
   }
 
   private async runAsync(instId: string) {
-    const inst = this.instances.get(instId);
+    const inst = await this.instanceRepo.findOne({ where: { id: instId } });
     if (!inst) return;
-    const tpl = this.templates.get(inst.templateId);
+    const tpl = await this.templateRepo.findOne({ where: { id: inst.templateId } });
     if (!tpl) {
       inst.status = 'failed';
+      inst.finishedAtMs = String(Date.now());
+      await this.instanceRepo.save(inst);
       return;
     }
     inst.status = 'running';
-    inst.startedAt = Date.now();
+    inst.startedAtMs = String(Date.now());
+    await this.instanceRepo.save(inst);
+
     try {
       for (let i = 0; i < tpl.steps.length; i++) {
         const step = tpl.steps[i];
         inst.currentStep = i;
-        await new Promise((r) => setTimeout(r, 30));
-        inst.results.push({
+        await this.instanceRepo.save(inst);
+        await new Promise((r) => setTimeout(r, 5));
+        inst.results = [
+          ...(inst.results ?? []),
+          {
           step_id: step.id,
           status: 'done',
           result: `[mock] ${step.kind} executed: ${step.description}`,
-        });
+          },
+        ];
+        await this.instanceRepo.save(inst);
       }
       inst.status = 'done';
-      inst.finishedAt = Date.now();
+      inst.finishedAtMs = String(Date.now());
+      await this.instanceRepo.save(inst);
     } catch (e: any) {
       inst.status = 'failed';
-      inst.finishedAt = Date.now();
+      inst.finishedAtMs = String(Date.now());
+      await this.instanceRepo.save(inst);
     }
   }
 
-  getInstance(id: string): WorkflowInstance {
-    const i = this.instances.get(id);
-    if (!i) throw new NotFoundException('instance not found');
-    return i;
+  async getInstance(id: string): Promise<WorkflowInstance> {
+    const row = await this.instanceRepo.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('instance not found');
+    return this.toInstance(row);
   }
 
-  listInstances(userId: string): WorkflowInstance[] {
-    return Array.from(this.instances.values())
-      .filter((i) => i.userId === userId)
-      .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+  async listInstances(userId: string): Promise<WorkflowInstance[]> {
+    const rows = await this.instanceRepo.find({
+      where: { userId },
+      order: { startedAtMs: 'DESC' },
+    });
+    return rows.map((row) => this.toInstance(row)).sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+  }
+
+  private toTemplate(row: WorkflowTemplateEntity): WorkflowTemplate {
+    return {
+      id: row.id,
+      authorUserId: row.authorUserId,
+      name: row.name,
+      description: row.description,
+      category: row.category as WorkflowTemplate['category'],
+      steps: row.steps.map((step) => ({
+        ...step,
+        kind: step.kind as WorkflowStep['kind'],
+      })),
+      required_skills: row.requiredSkills ?? [],
+      visibility: row.visibility as WorkflowTemplate['visibility'],
+      install_count: row.installCount,
+      createdAt: Number(row.createdAtMs),
+      updatedAt: Number(row.updatedAtMs),
+    };
+  }
+
+  private toInstance(row: WorkflowInstanceEntity): WorkflowInstance {
+    return {
+      id: row.id,
+      templateId: row.templateId,
+      userId: row.userId,
+      status: row.status as WorkflowInstance['status'],
+      currentStep: row.currentStep,
+      startedAt: row.startedAtMs ? Number(row.startedAtMs) : undefined,
+      finishedAt: row.finishedAtMs ? Number(row.finishedAtMs) : undefined,
+      results: row.results ?? [],
+    };
   }
 }
