@@ -55,14 +55,7 @@ export class AuthController {
     // R0-1: set HttpOnly cookie for browser clients (mobile/desktop ignore it).
     const token = (result as { access_token?: string })?.access_token;
     if (token && typeof token === 'string' && token.length >= 16) {
-      const isProd = (this.configService.get<string>('NODE_ENV') || 'development') === 'production';
-      res.cookie('agentrix_token', token, {
-        httpOnly: true,
-        secure: isProd,
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      this.setAuthCookie(res, token);
     }
     return result;
   }
@@ -82,20 +75,13 @@ export class AuthController {
     if (!token || typeof token !== 'string' || token.length < 16) {
       throw new BadRequestException('token required');
     }
-    const isProd = (this.configService.get<string>('NODE_ENV') || 'development') === 'production';
-    res.cookie('agentrix_token', token, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    this.setAuthCookie(res, token);
     return { ok: true };
   }
 
   @Post('cookie-clear')
   cookieClear(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie('agentrix_token', { path: '/' });
+    this.clearAuthCookie(res);
     return { ok: true };
   }
 
@@ -567,6 +553,35 @@ export class AuthController {
     return `${frontendUrl}/auth/callback`;
   }
 
+  /**
+   * R0-1 cookie helpers. We use Domain=.agentrix.top in production so the
+   * cookie set by api.agentrix.top is also visible to www.agentrix.top
+   * (frontend middleware on /console/** reads it).
+   */
+  private getAuthCookieOptions(): import('express').CookieOptions {
+    const isProd = (this.configService.get<string>('NODE_ENV') || 'development') === 'production';
+    const cookieDomain = this.configService.get<string>('AUTH_COOKIE_DOMAIN') || (isProd ? '.agentrix.top' : undefined);
+    const opts: import('express').CookieOptions = {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax',
+      path: '/',
+    };
+    if (cookieDomain) opts.domain = cookieDomain;
+    return opts;
+  }
+
+  private setAuthCookie(res: Response, token: string): void {
+    res.cookie('agentrix_token', token, {
+      ...this.getAuthCookieOptions(),
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+  }
+
+  private clearAuthCookie(res: Response): void {
+    res.clearCookie('agentrix_token', this.getAuthCookieOptions());
+  }
+
   private redirectWebAuthError(res: Response, error: string) {
     const errorUrl = new URL(this.getFrontendAuthCallbackUrl());
     errorUrl.searchParams.set('error', error);
@@ -579,6 +594,13 @@ export class AuthController {
     socialType?: string,
     socialId?: string,
   ) {
+    // R0-1: set HttpOnly cookie BEFORE the cross-domain redirect so that
+    // when the browser arrives at www.agentrix.top/auth/callback the
+    // middleware on /console/** can already see agentrix_token.
+    if (loginResult?.access_token && typeof loginResult.access_token === 'string') {
+      this.setAuthCookie(res, loginResult.access_token);
+    }
+
     const redirectUrl = new URL(this.getFrontendAuthCallbackUrl());
     redirectUrl.searchParams.set('token', loginResult.access_token);
     redirectUrl.searchParams.set('userId', loginResult.user.id);

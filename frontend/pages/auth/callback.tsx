@@ -67,7 +67,23 @@ export default function AuthCallback() {
     }
   }, [])
 
-  const completeLogin = useCallback((userId: string, agentrixId: string, email?: string, walletAddress?: string) => {
+  const completeLogin = useCallback(async (userId: string, agentrixId: string, email?: string, walletAddress?: string) => {
+    // R0-1: ensure HttpOnly cookie is set BEFORE navigating to /console/**
+    // (middleware reads agentrix_token cookie). Backend should already have
+    // set it on the OAuth redirect response, but call cookie-set as a
+    // defense-in-depth in case the cross-domain Set-Cookie was blocked.
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('access_token')
+      if (token) {
+        try {
+          const { apiClient } = await import('../../lib/api/client')
+          await apiClient.post('/auth/cookie-set', { token })
+        } catch (err) {
+          console.warn('cookie-set failed (continuing):', err)
+        }
+      }
+    }
+
     login({
       id: userId,
       agentrixId: agentrixId,
@@ -187,17 +203,7 @@ export default function AuthCallback() {
 
   const handleGoToWallet = () => {
     if (pendingLogin) {
-      login({
-        id: pendingLogin.userId,
-        agentrixId: pendingLogin.agentrixId,
-        email: pendingLogin.email,
-        walletAddress: pendingLogin.walletAddress,
-        roles: ['user'],
-        role: 'user',
-        createdAt: new Date().toISOString(),
-      })
-      toast.success('登录成功！')
-      router.push('/console/dashboard')
+      completeLogin(pendingLogin.userId, pendingLogin.agentrixId, pendingLogin.email, pendingLogin.walletAddress)
     }
   }
 
