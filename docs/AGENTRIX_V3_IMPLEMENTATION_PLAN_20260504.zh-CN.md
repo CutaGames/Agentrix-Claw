@@ -48,8 +48,8 @@
 - 缺口: 三形态架构、5-Tab 重组、Web3 签名链路、App Intents/Actions、Pet Companion、邀请码 5 步 stepper
 
 ### 1.4 Desktop — [desktop/](../desktop/) Tauri 2.0
-- 已落地（出乎意料完整）: `FloatingBall` / `HandoffBanner` / `AgentEconomyPanel` / `ApprovalSheet` / `TaskWorkbenchPanel` / `MemoryPanel` / `DiffView` / `ChatPanel` / `WearableNotification` / `SpotlightPanel` / `McpPanel` / `PluginPanel` / `DreamPanel` / `ProactivePanel` / `CrossDevicePanel`
-- 缺口: 双形态显式互斥切换、主宠状态机对齐 §3.4、Live2D 实接、Spotlight/Raycast 扩展
+- 已落地（出乎意料完整）: `FloatingBall` / `HandoffBanner` / `AgentEconomyPanel` / `ApprovalSheet` / `TaskWorkbenchPanel` / `MemoryPanel` / `DiffView` / `ChatPanel` / `WearableNotification` / `SpotlightPanel` / `McpPanel` / `PluginPanel` / `DreamPanel` / `ProactivePanel` / `CrossDevicePanel` / `WorktreePanel` / `SkillCanvasPanel`
+- 缺口: Live2D 实接、Spotlight/Raycast 扩展；`Worktree` 与 `Skill Canvas` 已接入现有 desktop shell
 
 ### 1.5 Wearable — [src/watch/](../src/watch/) + Glass v1.0 + BLE
 - 已落地: watchOS SwiftUI 雏形 + Watch Connectivity；Glass / BLE PRD 完整
@@ -132,7 +132,7 @@
 
 | # | 任务 | 责任 | 状态 | 验证 | 完成日期 |
 |---|-----|------|-----|------|---------|
-| P1-1 | Desktop Multi-Agent Worktree | dev | ⬜ | ❌ | – |
+| P1-1 | Desktop Multi-Agent Worktree | dev | 🟢 已完成 | 🧪 新增 `WorktreePanel`，接入 `ChatPanelImpl` + `ChatTitleBar` More menu；真实 git branch/status 刷新 + agent lane board + command preview；`desktop npm run build` 通过 | 2026-05-05 |
 | P1-2 | Desktop Composer Diff 增强 | dev | ⬜ | ❌ | – |
 | P1-3 | Desktop Memories 接 §5.5 4 层 | dev | ⬜ | ❌ | – |
 | P1-4 | Mobile Plan-Approval 闭环 | dev | 🟢 后端完成 | 🧪 `POST /api/v1/plan/submit` L0 自动 run→done；L1 → `awaiting_approval` + `approval` 创建 → `/approval/:id/approve` → `/plan/:id/run` → done；smoke 2026-05-04 通过 | 2026-05-04 |
@@ -158,7 +158,7 @@
 
 | # | 任务 | 责任 | 状态 | 验证 | 完成日期 |
 |---|-----|------|-----|------|---------|
-| P2-1 | Desktop Skill Canvas | dev | ⬜ 留 P3 | ❌ 需 React Flow + Tauri UI | – |
+| P2-1 | Desktop Skill Canvas | dev | 🟢 已完成 | 🧪 新增 `SkillCanvasPanel`，使用原生 SVG + localStorage + drag，不引入 React Flow；已接入 `ChatPanelImpl` + `ChatTitleBar`；`desktop npm run build` 通过 | 2026-05-05 |
 | P2-2 | Desktop Auto-Earn 仪表盘 + A2A 时间线 | dev | 🟢 后端完成 | 🧪 `POST /api/v1/auto-earn/events` 3 种源（skill_invoke/a2a_trade/commission）；`/timeline` 倍序返回；`/summary` total=4680/24h/30d/MRR 代理；smoke 2026-05-04 通过 | 2026-05-04 |
 | P2-3 | Desktop Spotlight / Raycast 扩展 | dev | ⬜ 留 P3 | ❌ 需 Raycast 扩展证书 | – |
 | P2-4 | Mobile 钱包升级 (USDC + Auto-Earn) | dev | ⬜ 留 P3 | ❌ 需 USDC base 主网 + RN UI | – |
@@ -313,7 +313,7 @@
 
 | 项 | 类型 | 跟进方式 | 优先级 |
 |----|------|---------|--------|
-| 14 个 in-memory 模块 持久化 | 后端 | 已 4 / 14 落库（split-budget / plan-runner 真实持久化；approval / living-pet / wallet-projection 已使用 DB）。剩余沿用 plan-runner 模板批量推进 | 🟡 P1 |
+| 14 个 in-memory 模块 持久化 | 后端 | 本轮已补齐 8 个真实余项：`vitals-bus` / `auto-earn-timeline` / `memory-tiers` / `workflow-templates` / `skill-listings` / `a2a-matching` / `family-account` / `privacy-fence + co-sign` 均已落库并带 focused spec；`plan-runner` 作为模板复用；`handoff` 不再重复迁移 | 🟢 已完成 |
 | Stripe live key + 真实订单跑通 | 集成 | 申请生产 key → Web Console Billing 联调 → P1 Gate 闭关 | 🔴 P0 |
 | iOS TestFlight 提交（App Intents 审核） | 发布 | 需 Apple Developer enrollment + provisioning profile | 🔴 P0 |
 | commission V4 实际入账 | 后端 | split-budget `previewSettlement` → 调 commission V4 `executeSettlement`，需 Stripe webhook | 🟡 P1 |
@@ -324,8 +324,8 @@
 | 项 | 平台 | 估算 | 备注 |
 |----|------|-----|------|
 | Desktop Spotlight 原生桥接 | Tauri | ✅ 已完成 | `desktop_bridge_open_spotlight / close_spotlight / get_selected_text` 已接入 invoke handler；`cargo check` 通过；本地 NSIS 打包成功（`desktop/src-tauri/target/release/bundle/nsis/Agentrix Desktop_0.1.1_x64-setup.exe`） |
-| Desktop Multi-Agent Worktree（P1-1） | Tauri + git worktree | 1 周 | 当前 Windows 工程可直接做，未阻塞 |
-| Desktop Skill Canvas（P2-1） | React Flow | 1 周 | 当前 Windows 工程可直接做，未阻塞 |
+| Desktop Multi-Agent Worktree（P1-1） | Tauri + git branch/status + lane board | ✅ 已完成 | `WorktreePanel` 已接入 shell；当前方案是 agent lane board + CLI preview，不直接执行 `git worktree add` |
+| Desktop Skill Canvas（P2-1） | Tauri + 原生 SVG graph | ✅ 已完成 | `SkillCanvasPanel` 已接入 shell；当前方案是本地拖拽编排画布，后续再接 workflow execute |
 | Desktop Live2D 接入（P3-1） | Tauri + Cubism SDK | 2 周 | 阻塞：Live2D Cubism license 未申请 |
 | Desktop Raycast 扩展（P2-3） | Raycast Extension | 3 天 | 阻塞：Raycast 仅 macOS，需要 macOS 验证机 |
 | iOS Live Activity + Dynamic Island（P1-5 / P3-2） | Swift Widget extension | 1 周 | 阻塞：需 macOS + Xcode + Apple Developer enrollment |
@@ -345,7 +345,7 @@
 
 ### 9.4 已知技术债
 
-1. **In-memory MVP**：14 个新模块全部内存存储，进程重启 = 数据丢失。**冻结生产用户接入前必须落库**。
+1. **持久化 sprint 已完成，但真实流量验证仍缺**：`plan-runner` 模板已推广到 `vitals-bus` / `auto-earn-timeline` / `memory-tiers` / `workflow-templates` / `skill-listings` / `a2a-matching` / `family-account` / `privacy-fence + co-sign`；当前技术债从“内存数据会丢”转为“迁移上线后的真实流量回归与压测”。
 2. **审批联动未串透**：`approval` / `plan-runner` / `cosign` / `split-budget` 之间的事务边界尚未统一 (e.g. plan 通过 cosign 发起 transfer + 落 audit + 触发 commission)。建议建 `OperationsControlPlane` 编排层。
 3. **PM2 重启 7259 次**：服务器 dist 增量编译有 stale 风险（已 2 次手动 `rm -rf dist tsconfig*.tsbuildinfo` 修复）。CI 应强制 clean build。
 4. **JWT guard 全部 401**：`_p0_gate_jwt.js` 在服务器 `/home/ubuntu/Agentrix/backend/` 才能跑（需 jsonwebtoken 模块）。本地 PowerShell 调用 SSH 时引号转义有暗坑。
@@ -386,10 +386,12 @@
 | 2026-05-05 | `mpc-wallet` 已落地 real 2-of-3 + AWS KMS / local-secret / legacy 兼容路径 | `mpc-wallet.service.spec.ts` 通过；生产仅剩环境配置与部署验证 |
 | 2026-05-05 | `plan-runner` 落库（`plans` 表 + `1782400000000-CreatePlansTable` 迁移） | spec `plan-runner.service.spec.ts` 2/2 通过；用作剩余 in-memory 模块持久化模板 |
 | 2026-05-05 | 生产 `mpc-wallet.service.spec.ts` 在 prod node v22.22 上 3/3 通过 | 真实生产闭环（local-secret 路径）；KMS Key 创建是 AWS 控制台操作，不属于代码工作 |
+| 2026-05-05 | public-build 镜像链在推送前强制执行 `validate_mobile_mirror.cjs` | 堵住 stale Expo plugin path 泄漏到 `Agentrix-Claw` 导致 build255 持续失败 |
+| 2026-05-05 | Desktop `Worktree` 先做 git 元数据面板与命令预览，`Skill Canvas` 先做原生 SVG 编排画布 | 先把 desktop shell 能力接入并通过 build，后续再补执行链路；Live2D 仍受 license 阻塞 |
 
 ---
 
-**v3.0 后端骨架交付声明**：截至 2026-05-04，14 个核心后端模块均已部署到 `47.130.176.148:3000` 并通过 P0/P1/P2/P3 四套 smoke 验证。客户端（Desktop/Mobile/Watch/Web）骨架已落，剩余 native UI 工程与外部审核进入下一 sprint。
+**v3.0 后端骨架交付声明**：截至 2026-05-05，14 个核心后端模块均已部署到 `47.130.176.148:3000` 并完成本轮持久化收口；P0/P1/P2/P3 四套 smoke 已跑通。客户端侧 `Desktop Multi-Agent Worktree` 与 `Desktop Skill Canvas` 已接入现有 shell 并通过桌面 build；剩余重客户端阻塞主要是 Live2D license、Live Activity、Watch 独立 target 与外部审核。
 
 **文档维护人**: ceo + dev
-**最后更新**: 2026-05-04
+**最后更新**: 2026-05-05
