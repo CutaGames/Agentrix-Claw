@@ -1,7 +1,7 @@
 import { CSSProperties, useState, useCallback, useRef, useEffect } from "react";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import agentrixLogo from "../assets/agentrix-logo.png";
+import PetCanvas from "./PetCanvas";
 import { type ClipboardCapture, type ClipboardAction, buildClipboardPrompt } from "../services/clipboard";
 import VoiceResultCard from "./VoiceResultCard";
 import { useAuthStore, streamChat, streamDirectChat, type ChatMessage } from "../services/store";
@@ -765,13 +765,16 @@ export default function FloatingBall({
       onContextMenu={handleContextMenu}
       title="Agentrix — Click for voice, double-click for Pro Mode, hold for PTT"
     >
-      {/* Logo */}
-      <img
-        src={agentrixLogo}
-        alt="Agentrix"
-        width={compact ? 32 : 36}
-        height={compact ? 32 : 36}
-        style={{ borderRadius: "50%", pointerEvents: "none", flexShrink: 0 }}
+      {/* Living Pet (replaces the static Agentrix logo). The colored
+          gradient behind it acts as the mood aura/halo. PetCanvas listens
+          on `agentrix:pet-state` for emotion + intimacy and animates.
+          Pointer events stay enabled so double-click → triggerPetInteraction
+          ('double_click') still fires; the parent ball's onClick is OK
+          because PetCanvas only handles dblclick / mouseenter / mouseleave. */}
+      <PetCanvas
+        size={compact ? 36 : 52}
+        showLevelBadge={!compact}
+        style={{ flexShrink: 0 }}
       />
 
       {/* ── Capsule waveform bars ───────────────────── */}

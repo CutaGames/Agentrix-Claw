@@ -502,7 +502,7 @@ export default function App() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#FF0000",
+          background: "transparent",
         }}
       >
         <div style={{ position: "relative" }}>

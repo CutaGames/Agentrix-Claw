@@ -197,6 +197,15 @@ export function bootPetSdk(): void {
     const renderer = getActivePetRenderer();
     renderer?.applyEmotion(detail);
   });
+
+  // Emit a default "calm" state so the renderer has something to display
+  // immediately (before the backend `presence:pet.state` arrives, or when
+  // the user is signed-out / offline). Server pet.state still wins on
+  // first push. Using setLocalEmotion keeps the synthetic state synced to
+  // _lastState and dispatches `agentrix:pet-state` so all listeners hydrate.
+  if (!_lastState) {
+    setLocalEmotion("calm", 1);
+  }
 }
 
 /**
