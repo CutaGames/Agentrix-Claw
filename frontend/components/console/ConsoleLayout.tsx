@@ -29,17 +29,17 @@ export function ConsoleLayout({ title, children }: ConsoleLayoutProps) {
         <title>{`${title} · Agentrix Console`}</title>
         <meta name="robots" content="noindex" />
       </Head>
-      <div style={{ display: 'flex', minHeight: '100vh', background: '#0b0d12', color: '#e7e9ee' }}>
+      <div style={{ display: 'flex', minHeight: '100vh', background: '#07080B', color: '#E2E8F0' }}>
         <aside style={{
           width: 240,
-          background: '#11141a',
-          borderRight: '1px solid #1f242d',
+          background: '#0E1118',
+          borderRight: '1px solid #1C2230',
           padding: '24px 16px',
           display: 'flex',
           flexDirection: 'column',
           gap: 4,
         }}>
-          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 24, padding: '0 8px' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 24, padding: '0 8px', background: 'linear-gradient(90deg,#7C3AED,#22D3FF)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             Agentrix Console
           </div>
           {NAV_ITEMS.map((item) => {
@@ -54,8 +54,8 @@ export function ConsoleLayout({ title, children }: ConsoleLayoutProps) {
                   gap: 10,
                   padding: '10px 12px',
                   borderRadius: 8,
-                  background: active ? '#1d2330' : 'transparent',
-                  color: active ? '#fff' : '#9aa3b2',
+                  background: active ? 'rgba(34,211,255,0.10)' : 'transparent',
+                  color: active ? '#22D3FF' : '#9AA3B2',
                   textDecoration: 'none',
                   fontSize: 14,
                   fontWeight: 500,

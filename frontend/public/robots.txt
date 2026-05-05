@@ -2,6 +2,8 @@ User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /admin/
+Disallow: /console/
 Disallow: /_next/
+Disallow: /legacy/
 
 Sitemap: https://agentrix.top/sitemap.xml

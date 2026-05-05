@@ -11,6 +11,20 @@ module.exports = {
         padding: '1rem',
       },
       colors: {
+        // Agentrix v3 marketing tokens (黑 + 深紫 + 电光蓝 + 橘黄强调)
+        agentrix: {
+          ink: '#07080B',          // marketing 背景
+          inkSoft: '#0E1118',
+          inkLine: '#1C2230',
+          purple: '#5B21B6',       // soul / 主宠
+          purpleSoft: '#7C3AED',
+          electric: '#22D3FF',     // 跨端 / 数据
+          electricSoft: '#7EE9FF',
+          solar: '#F59E0B',        // CTA / Auto-Earn 数字
+          solarSoft: '#FBBF24',
+          mist: '#9AA3B2',
+          fog: '#CBD5E1',
+        },
         // Agentrix V3.0 标准配色
         primary: {
           blue: '#3B82F6',

@@ -1,36 +1,38 @@
-import Head from 'next/head'
-import { Navigation } from '../components/ui/Navigation'
-import { Footer } from '../components/layout/Footer'
+import { MarketingLayout } from '../components/marketing/MarketingLayout'
+import {
+  HeroLiving,
+  ThreeLayerVision,
+  FiveSurfaceStrip,
+  CompetitiveTable,
+  DownloadCallout,
+  FAQ,
+} from '../components/marketing/sections'
+import { buildSeo } from '../lib/seo'
 import { useLocalization } from '../contexts/LocalizationContext'
-import { HeroSection } from '../components/home/HeroSection'
-import { FeaturesSection } from '../components/home/FeaturesSection'
-import { AgentRolesSection } from '../components/home/AgentRolesSection'
-import { AllianceSection } from '../components/home/AllianceSection'
-import { CTASection } from '../components/home/CTASection'
 
 export default function Home() {
   const { t } = useLocalization()
+  const seo = buildSeo({
+    title: t({
+      zh: 'Agentrix · 一只 Agent，陪你 · 帮你 · 替你赚钱',
+      en: 'Agentrix · One agent — with you, for you, earning for you',
+    }),
+    description: t({
+      zh: 'Living Agent / Doer / Economy 三层愿景，跨 Mobile / Desktop / Web / Watch / Server 5 端无缝陪伴、执行任务、自动结算收益。',
+      en: 'Three-layer vision: Living Agent, Doer, Economy. The same Agent across Mobile, Desktop, Web, Watch and Server — companion, executor, earner.',
+    }),
+    path: '/',
+  })
 
   return (
-    <>
-      <Head>
-        <title>{t({ zh: '从对话到交易，从智能体到商业体｜Agentrix', en: 'From Conversation to Transaction, from Agent to Business | Agentrix' })}</title>
-        <meta name="description" content={t({ zh: 'Agentrix 让任何 Agent 拥有支付、订单、结算、资产与推广能力，统一支付引擎 × Agent × Marketplace × Auto-Earn × 联盟生态。', en: 'Agentrix enables any Agent with payment, order, settlement, asset and promotion capabilities, unified payment engine × Agent × Marketplace × Auto-Earn × Alliance ecosystem.' })} />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
-      
-      <Navigation />
-
-      <main className="min-h-screen bg-slate-950 text-white">
-        <HeroSection />
-        <FeaturesSection />
-        <AgentRolesSection />
-        <AllianceSection />
-        <CTASection />
-      </main>
-
-      <Footer />
-    </>
+    <MarketingLayout seo={seo}>
+      <HeroLiving />
+      <ThreeLayerVision />
+      <FiveSurfaceStrip />
+      <CompetitiveTable />
+      <DownloadCallout />
+      <FAQ />
+    </MarketingLayout>
   )
 }
+

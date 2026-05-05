@@ -23,6 +23,16 @@ const nextConfig = {
       },
     ];
   },
+  // v3 marketing 重构：旧 marketing 入口下线，301 到 /legacy/<slug> 占位说明
+  async redirects() {
+    return [
+      { source: '/claw', destination: '/legacy/claw', permanent: true },
+      { source: '/predict', destination: '/legacy/predict', permanent: true },
+      { source: '/ax-payment', destination: '/legacy/ax-payment', permanent: true },
+      { source: '/payment-demo', destination: '/legacy/payment-demo', permanent: true },
+      { source: '/alliance', destination: '/legacy/alliance', permanent: true },
+    ];
+  },
   // 允许加载 Transak SDK 的外部脚本
   async headers() {
     return [
