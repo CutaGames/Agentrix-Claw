@@ -1,195 +1,125 @@
 import React from 'react';
 import { ConsoleLayout } from '../../components/console/ConsoleLayout';
-import { v1Api, type ApprovalRequest, type HandoffRecord, type PetState } from '../../lib/api/v1.api';
+import { v1Api, type PetState, type HandoffRecord, type ApprovalRequest } from '../../lib/api/v1.api';
+import { useLocalization } from '../../contexts/LocalizationContext';
+import { L } from '../../lib/console.i18n';
+import { T, cardStyle, btnPrimaryStyle, btnDangerStyle, pillStyle } from '../../lib/console.theme';
 
 export default function ConsolePresence(): React.ReactElement {
+  const { t } = useLocalization();
   const [pet, setPet] = React.useState<PetState | null>(null);
-  const [handoffs, setHandoffs] = React.useState<HandoffRecord[] | null>(null);
-  const [approvals, setApprovals] = React.useState<ApprovalRequest[] | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
+  const [handoffs, setHandoffs] = React.useState<HandoffRecord[]>([]);
+  const [approvals, setApprovals] = React.useState<ApprovalRequest[]>([]);
   const [busy, setBusy] = React.useState<string | null>(null);
 
   const load = React.useCallback(async (): Promise<void> => {
-    try {
-      const [p, h, a] = await Promise.all([
-        v1Api.pet.getState().catch((): null => null),
-        v1Api.handoff.list().catch((): null => null),
-        v1Api.approval.list('pending').catch((): null => null),
-      ]);
-      setPet(p);
-      setHandoffs(h);
-      setApprovals(a);
-      setError(null);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'load failed');
-    }
+    const [p, h, a] = await Promise.all([
+      v1Api.pet.getState().catch((): null => null),
+      v1Api.handoff.list().catch((): null => null),
+      v1Api.approval.list('pending').catch((): null => null),
+    ]);
+    setPet(p);
+    setHandoffs(h ?? []);
+    setApprovals(a ?? []);
   }, []);
 
   React.useEffect(() => {
     void load();
-    const handle = window.setInterval(load, 8_000);
-    return () => window.clearInterval(handle);
+    const id = window.setInterval(load, 8_000);
+    return () => window.clearInterval(id);
   }, [load]);
 
-  const onApprove = async (id: string): Promise<void> => {
+  const acceptHandoff = async (id: string): Promise<void> => {
     setBusy(id);
-    try {
-      await v1Api.approval.approve(id, 'web');
-      await load();
-    } finally {
-      setBusy(null);
-    }
+    try { await v1Api.handoff.accept(id, 'web'); await load(); } finally { setBusy(null); }
   };
-  const onReject = async (id: string): Promise<void> => {
+  const cancelHandoff = async (id: string): Promise<void> => {
     setBusy(id);
-    try {
-      await v1Api.approval.reject(id);
-      await load();
-    } finally {
-      setBusy(null);
-    }
+    try { await v1Api.handoff.cancel(id); await load(); } finally { setBusy(null); }
   };
-  const onAcceptHandoff = async (id: string, mode: 'handoff' | 'mirror' = 'handoff'): Promise<void> => {
+  const approve = async (id: string): Promise<void> => {
     setBusy(id);
-    try {
-      await v1Api.handoff.accept(id, 'web', mode);
-      await load();
-    } finally {
-      setBusy(null);
-    }
+    try { await v1Api.approval.approve(id, 'web', 'password'); await load(); } finally { setBusy(null); }
+  };
+  const reject = async (id: string): Promise<void> => {
+    setBusy(id);
+    try { await v1Api.approval.reject(id, 'user-rejected'); await load(); } finally { setBusy(null); }
   };
 
   return (
-    <ConsoleLayout title="Presence">
-      {error && (
-        <div style={{ marginBottom: 16, padding: 12, background: '#3a1414', border: '1px solid #7f1d1d', borderRadius: 8, fontSize: 13, color: '#fca5a5' }}>
-          {error}
+    <ConsoleLayout title={t(L.presence.title)}>
+      <p style={{ color: T.text.secondary, marginBottom: 24 }}>{t(L.presence.desc)}</p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 24 }}>
+        <div style={cardStyle}>
+          <h3 style={H3}>{t(L.presence.petCard)}</h3>
+          {pet ? (
+            <>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>🐾</div>
+              <div style={{ fontSize: T.font.sizeBody, color: T.text.primary }}>
+                {t({ zh: '情绪', en: 'Emotion' })}: <strong style={{ color: T.text.accent }}>{pet.emotion}</strong> ({pet.emotion_intensity})
+              </div>
+              <div style={{ fontSize: T.font.sizeSmall, color: T.text.secondary, marginTop: 4 }}>
+                {t({ zh: '亲密度', en: 'Intimacy' })}: L{pet.intimacy_level} · XP {pet.intimacy_xp}
+              </div>
+            </>
+          ) : (
+            <div style={{ color: T.text.muted, fontSize: T.font.sizeSmall }}>{t(L.common.loading)}</div>
+          )}
+        </div>
+      </div>
+
+      <h2 style={{ ...H3, fontSize: T.font.sizeH2, marginBottom: 14 }}>{t(L.presence.handoffs)} ({handoffs.length})</h2>
+      {handoffs.length === 0 ? (
+        <Empty msg={t(L.presence.noHandoffs)} />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+          {handoffs.map((h) => (
+            <div key={h.id} style={{ ...cardStyle, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: T.font.sizeSmall, color: T.text.primary }}>
+                  {h.from_device_id} → {h.to_device_id ?? '—'} <span style={pillStyle('subtle')}>{h.mode}</span>
+                </div>
+                <div style={{ fontSize: T.font.sizeTiny, color: T.text.muted, marginTop: 4 }}>{new Date(h.created_at).toLocaleString()}</div>
+              </div>
+              {h.status === 'pending' && (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => acceptHandoff(h.id)} disabled={busy === h.id} style={btnPrimaryStyle}>{t(L.presence.accept)}</button>
+                  <button onClick={() => cancelHandoff(h.id)} disabled={busy === h.id} style={btnDangerStyle}>{t(L.presence.cancel)}</button>
+                </div>
+              )}
+              {h.status !== 'pending' && <span style={pillStyle(h.status === 'accepted' ? 'success' : 'subtle')}>{h.status}</span>}
+            </div>
+          ))}
         </div>
       )}
 
-      <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-        <Panel title="Living Pet">
-          {pet ? (
-            <div>
-              <div style={{ fontSize: 32, fontWeight: 700 }}>{petEmoji(pet.emotion)} {pet.emotion}</div>
-              <div style={{ color: '#9aa3b2', marginTop: 8, fontSize: 13 }}>
-                Intensity {pet.emotion_intensity} · Intimacy L{pet.intimacy_level} ({pet.intimacy_xp} xp)
-              </div>
-              {pet.primary_agent_id && (
-                <div style={{ color: '#6c7689', marginTop: 4, fontSize: 11 }}>Engine: {pet.primary_agent_id}</div>
-              )}
-            </div>
-          ) : (
-            <div style={{ color: '#6c7689', fontSize: 13 }}>Pet state unavailable.</div>
-          )}
-        </Panel>
-
-        <Panel title="Recent Handoffs">
-          {(handoffs ?? []).length === 0 ? (
-            <div style={{ color: '#6c7689', fontSize: 13 }}>No handoffs in flight.</div>
-          ) : (
-            (handoffs ?? []).slice(0, 6).map((h) => (
-              <div key={h.id} style={{ padding: '10px 0', borderBottom: '1px solid #1f242d', fontSize: 13 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{h.from_device_id} → {h.to_device_id ?? '?'} <span style={{ color: '#6c7689' }}>· {h.mode}</span></span>
-                  <span style={{ color: statusColor(h.status) }}>{h.status}</span>
+      <h2 style={{ ...H3, fontSize: T.font.sizeH2, marginBottom: 14 }}>{t(L.presence.approvals)} ({approvals.length})</h2>
+      {approvals.length === 0 ? (
+        <Empty msg={t(L.presence.noApprovals)} />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {approvals.map((a) => (
+            <div key={a.id} style={{ ...cardStyle, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: T.font.sizeSmall, color: T.text.primary }}>
+                  {a.action?.kind ?? '—'} <span style={pillStyle(a.risk_level === 'L3' ? 'danger' : a.risk_level === 'L2' ? 'warning' : 'subtle')}>{a.risk_level}</span>
                 </div>
-                {h.status === 'pending' && (
-                  <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
-                    <button disabled={busy === h.id} onClick={() => onAcceptHandoff(h.id, 'handoff')} style={btn('#22D3FF')}>Accept</button>
-                    <button disabled={busy === h.id} onClick={() => onAcceptHandoff(h.id, 'mirror')} style={btn('#7C3AED')}>Mirror</button>
-                  </div>
-                )}
+                <div style={{ fontSize: T.font.sizeTiny, color: T.text.muted, marginTop: 4 }}>{new Date(a.created_at).toLocaleString()}</div>
               </div>
-            ))
-          )}
-        </Panel>
-      </section>
-
-      <Panel title={`Pending Approvals (${approvals?.length ?? 0})`}>
-        {(approvals ?? []).length === 0 ? (
-          <div style={{ color: '#6c7689', fontSize: 13 }}>No items waiting for you.</div>
-        ) : (
-          (approvals ?? []).map((a) => (
-            <div key={a.id} style={{ padding: '12px 0', borderBottom: '1px solid #1f242d' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <div>
-                  <div style={{ fontSize: 14 }}>{a.action?.kind ?? 'action'}</div>
-                  <div style={{ color: '#6c7689', fontSize: 11, marginTop: 2 }}>{new Date(a.created_at).toLocaleString()}</div>
-                </div>
-                <span style={{ color: '#22D3FF', fontSize: 12, fontWeight: 700 }}>{a.risk_level}</span>
-              </div>
-              <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                <button disabled={busy === a.id} onClick={() => onApprove(a.id)} style={btn('#22D3FF')}>Approve</button>
-                <button disabled={busy === a.id} onClick={() => onReject(a.id)} style={btn('#fca5a5')}>Reject</button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => approve(a.id)} disabled={busy === a.id} style={btnPrimaryStyle}>{t(L.common.approve)}</button>
+                <button onClick={() => reject(a.id)} disabled={busy === a.id} style={btnDangerStyle}>{t(L.common.reject)}</button>
               </div>
             </div>
-          ))
-        )}
-      </Panel>
+          ))}
+        </div>
+      )}
     </ConsoleLayout>
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }): React.ReactElement {
-  return (
-    <div style={{ padding: 20, background: '#11141a', border: '1px solid #1f242d', borderRadius: 12 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{title}</div>
-      {children}
-    </div>
-  );
-}
-
-function btn(color: string): React.CSSProperties {
-  return {
-    padding: '6px 12px',
-    background: 'transparent',
-    border: `1px solid ${color}`,
-    borderRadius: 6,
-    color,
-    fontSize: 12,
-    cursor: 'pointer',
-  };
-}
-
-function statusColor(s: string): string {
-  switch (s) {
-    case 'pending':
-      return '#f59e0b';
-    case 'accepted':
-    case 'approved':
-      return '#22D3FF';
-    case 'rejected':
-    case 'cancelled':
-    case 'expired':
-      return '#fca5a5';
-    default:
-      return '#9aa3b2';
-  }
-}
-
-function petEmoji(e: PetState['emotion']): string {
-  switch (e) {
-    case 'happy':
-      return '😊';
-    case 'love':
-      return '😍';
-    case 'excited':
-      return '🤩';
-    case 'focused':
-      return '🤓';
-    case 'concerned':
-      return '😟';
-    case 'tired':
-      return '😪';
-    case 'sad':
-      return '😢';
-    case 'angry':
-      return '😠';
-    case 'sleepy':
-      return '😴';
-    case 'calm':
-    default:
-      return '😌';
-  }
+const H3: React.CSSProperties = { fontSize: T.font.sizeH2, fontWeight: T.font.weightSemibold, marginBottom: 12, color: T.text.primary };
+function Empty({ msg }: { msg: string }): React.ReactElement {
+  return <div style={{ padding: 28, textAlign: 'center', background: T.bg.panel, border: `1px dashed ${T.border.subtle}`, borderRadius: T.radius.lg, color: T.text.muted, fontSize: T.font.sizeSmall, marginBottom: 24 }}>{msg}</div>;
 }

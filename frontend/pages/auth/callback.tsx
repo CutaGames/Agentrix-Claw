@@ -78,7 +78,7 @@ export default function AuthCallback() {
       createdAt: new Date().toISOString(),
     })
     toast.success('登录成功！')
-    router.push('/workbench')
+    router.push('/console/dashboard')
   }, [login, router, toast])
 
   useEffect(() => {
@@ -197,7 +197,7 @@ export default function AuthCallback() {
         createdAt: new Date().toISOString(),
       })
       toast.success('登录成功！')
-      router.push('/workbench?tab=assets')
+      router.push('/console/dashboard')
     }
   }
 

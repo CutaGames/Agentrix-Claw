@@ -1,11 +1,23 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import type { Request } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../../../entities/user.entity';
 import { AdminUser } from '../../../entities/admin-user.entity';
+
+/** R0-1: also accept JWT from HttpOnly cookie `agentrix_token` (browser flows). */
+function cookieExtractor(req: Request): string | null {
+  // express-style req.cookies is populated by cookie-parser if mounted; fall back to header parse
+  const fromParser = (req as Request & { cookies?: Record<string, string> }).cookies?.agentrix_token;
+  if (fromParser) return fromParser;
+  const header = req.headers?.cookie;
+  if (!header) return null;
+  const m = header.match(/(?:^|;\s*)agentrix_token=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -17,7 +29,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private adminUserRepository: Repository<AdminUser>,
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        cookieExtractor,
+      ]),
       ignoreExpiration: false,
       secretOrKey: configService.get<string>('JWT_SECRET', 'default-secret'),
     });

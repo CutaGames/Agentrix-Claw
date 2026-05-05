@@ -45,7 +45,7 @@ export default function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      router.replace('/workbench');
+      router.replace('/console/dashboard');
     }
   }, [isAuthenticated, router]);
 
@@ -144,7 +144,7 @@ export default function LoginPage() {
           createdAt: new Date().toISOString()
         });
         toast.success('Login Successful');
-        router.push('/workbench');
+        router.push('/console/dashboard');
       }
     } catch (error: any) {
       console.error(error);
@@ -176,7 +176,7 @@ export default function LoginPage() {
           createdAt: new Date().toISOString()
         });
         toast.success(isRegister ? 'Registration Successful' : 'Login Successful');
-        router.push('/workbench');
+        router.push('/console/dashboard');
       }
     } catch (error: any) {
       toast.error(error.message || 'Authentication Failed');
@@ -198,7 +198,7 @@ export default function LoginPage() {
         createdAt: new Date().toISOString()
       });
       toast.success('Wallet created successfully!');
-      router.push('/workbench');
+      router.push('/console/dashboard');
     }
     setShowMPCSetup(false);
   };
@@ -215,7 +215,7 @@ export default function LoginPage() {
         createdAt: new Date().toISOString()
       });
       toast.success('Login Successful');
-      router.push('/app/user');
+      router.push('/console/dashboard');
     }
     setShowMPCSetup(false);
   };

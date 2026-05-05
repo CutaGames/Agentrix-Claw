@@ -50,8 +50,53 @@ export class AuthController {
   @ApiOperation({ summary: '用户登录' })
   @ApiResponse({ status: 200, description: '登录成功' })
   @ApiResponse({ status: 401, description: '用户名或密码错误' })
-  async login(@Request() req) {
-    return this.authService.login(req.user);
+  async login(@Request() req, @Res({ passthrough: true }) res: Response) {
+    const result = await this.authService.login(req.user);
+    // R0-1: set HttpOnly cookie for browser clients (mobile/desktop ignore it).
+    const token = (result as { access_token?: string })?.access_token;
+    if (token && typeof token === 'string' && token.length >= 16) {
+      const isProd = (this.configService.get<string>('NODE_ENV') || 'development') === 'production';
+      res.cookie('agentrix_token', token, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+    }
+    return result;
+  }
+
+  /**
+   * R0-1 (HttpOnly Cookie): browser-only convenience to mirror the JWT into
+   * an HttpOnly + Secure + SameSite=Lax cookie. Mobile / desktop clients keep
+   * using the Bearer token in the response body.
+   *
+   * Body: { token: string }
+   * Sets: Set-Cookie: agentrix_token=<jwt>; HttpOnly; Secure; SameSite=Lax;
+   *       Path=/; Max-Age=604800
+   */
+  @Post('cookie-set')
+  cookieSet(@Body() body: { token?: string }, @Res({ passthrough: true }) res: Response) {
+    const token = body?.token;
+    if (!token || typeof token !== 'string' || token.length < 16) {
+      throw new BadRequestException('token required');
+    }
+    const isProd = (this.configService.get<string>('NODE_ENV') || 'development') === 'production';
+    res.cookie('agentrix_token', token, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+    return { ok: true };
+  }
+
+  @Post('cookie-clear')
+  cookieClear(@Res({ passthrough: true }) res: Response) {
+    res.clearCookie('agentrix_token', { path: '/' });
+    return { ok: true };
   }
 
   @Get('google')

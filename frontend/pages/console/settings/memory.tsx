@@ -1,10 +1,14 @@
 import React from 'react';
 import { ConsoleLayout } from '../../../components/console/ConsoleLayout';
 import { v1Api, type MemoryItem, type MemoryStats, type MemoryTier } from '../../../lib/api/v1.api';
+import { useLocalization } from '../../../contexts/LocalizationContext';
+import { L } from '../../../lib/console.i18n';
+import { T, cardStyle, inputStyle, emptyStateStyle } from '../../../lib/console.theme';
 
 const TIERS: MemoryTier[] = ['working', 'episodic', 'semantic', 'procedural'];
 
 export default function ConsoleSettingsMemory(): React.ReactElement {
+  const { t } = useLocalization();
   const [stats, setStats] = React.useState<MemoryStats | null>(null);
   const [tier, setTier] = React.useState<MemoryTier>('episodic');
   const [items, setItems] = React.useState<MemoryItem[]>([]);
@@ -22,78 +26,71 @@ export default function ConsoleSettingsMemory(): React.ReactElement {
       ]);
       setStats(s);
       setItems(list ?? []);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, [tier, search]);
 
   React.useEffect(() => {
-    const t = setTimeout(() => { void load(); }, search ? 300 : 0);
-    return () => clearTimeout(t);
+    const tm = setTimeout(() => { void load(); }, search ? 300 : 0);
+    return () => clearTimeout(tm);
   }, [load, search]);
 
+  const tierLabels: Record<MemoryTier, string> = {
+    working: t({ zh: '工作记忆', en: 'Working' }),
+    episodic: t({ zh: '情景记忆', en: 'Episodic' }),
+    semantic: t({ zh: '语义记忆', en: 'Semantic' }),
+    procedural: t({ zh: '程序记忆', en: 'Procedural' }),
+  };
+
   return (
-    <ConsoleLayout title="Memory Tiers">
-      <p style={{ color: '#9aa3b2', fontSize: 14, marginBottom: 16 }}>
-        4-tier memory store — working (30min TTL) / episodic / semantic / procedural.
-        Backed by <code>/api/v1/memory/*</code>.
-      </p>
+    <ConsoleLayout title={t(L.settings.memoryTitle)}>
+      <p style={{ color: T.text.secondary, fontSize: T.font.sizeBody, marginBottom: 16 }}>{t(L.settings.memoryDesc)}</p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
-        {TIERS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTier(t)}
+        {TIERS.map((tt) => (
+          <button key={tt} onClick={() => setTier(tt)}
             style={{
               padding: 14,
-              background: tier === t ? '#11141a' : '#0a0c11',
-              border: tier === t ? '1px solid #22D3FF' : '1px solid #1f242d',
-              borderRadius: 10,
+              background: T.bg.panel,
+              border: tier === tt ? `1px solid ${T.text.accent}` : `1px solid ${T.border.subtle}`,
+              borderRadius: T.radius.md,
               cursor: 'pointer',
               textAlign: 'left',
-            }}
-          >
-            <div style={{ fontSize: 11, color: '#6c7689', textTransform: 'uppercase' }}>{t}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: tier === t ? '#22D3FF' : '#E2E8F0' }}>
-              {stats ? (stats[t] ?? 0) : '—'}
+              fontFamily: T.font.family,
+            }}>
+            <div style={{ fontSize: T.font.sizeTiny, color: T.text.muted, textTransform: 'uppercase', letterSpacing: 0.6 }}>{tierLabels[tt]}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: tier === tt ? T.text.accent : T.text.primary }}>
+              {stats ? (stats[tt] ?? 0) : '—'}
             </div>
           </button>
         ))}
       </div>
 
-      <input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder={`Search ${tier} memories…`}
-        style={{ width: '100%', background: '#0a0c11', border: '1px solid #1f242d', color: '#E2E8F0', padding: '10px 14px', borderRadius: 6, fontSize: 13, marginBottom: 16 }}
-      />
+      <input value={search} onChange={(e) => setSearch(e.target.value)}
+        placeholder={t({ zh: '搜索此层记忆…', en: `Search ${tier} memories…` })}
+        style={{ ...inputStyle, width: '100%', padding: '12px 14px', marginBottom: 16 }} />
 
       {loading && items.length === 0 ? (
-        <Empty msg="Loading…" />
+        <div style={emptyStateStyle}>{t(L.common.loading)}</div>
       ) : items.length === 0 ? (
-        <Empty msg={search ? 'No matches.' : `No ${tier} memories yet.`} />
+        <div style={emptyStateStyle}>{search ? t({ zh: '无匹配结果。', en: 'No matches.' }) : t({ zh: '该层暂无记忆。', en: `No ${tier} memories yet.` })}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {items.map((it) => (
-            <div key={it.id} style={{ padding: 12, background: '#11141a', border: '1px solid #1f242d', borderRadius: 8 }}>
+            <div key={it.id} style={{ ...cardStyle, padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                  {it.key && <span style={{ fontSize: 11, color: '#22D3FF', fontFamily: 'monospace' }}>{it.key}</span>}
-                  {it.tags?.slice(0, 3).map((t) => (
-                    <span key={t} style={{ fontSize: 9, padding: '1px 6px', background: '#1f242d', color: '#9aa3b2', borderRadius: 999 }}>{t}</span>
+                  {it.key && <span style={{ fontSize: T.font.sizeTiny, color: T.text.accent, fontFamily: 'monospace' }}>{it.key}</span>}
+                  {it.tags?.slice(0, 3).map((tag) => (
+                    <span key={tag} style={{ fontSize: 10, padding: '2px 8px', background: T.border.subtle, color: T.text.secondary, borderRadius: 999 }}>{tag}</span>
                   ))}
                 </div>
-                <span style={{ fontSize: 10, color: '#6c7689' }}>{new Date(it.created_at).toLocaleDateString()}</span>
+                <span style={{ fontSize: T.font.sizeTiny, color: T.text.muted }}>{new Date(it.created_at).toLocaleDateString()}</span>
               </div>
-              <div style={{ fontSize: 13, color: '#E2E8F0', lineHeight: 1.5 }}>{it.text}</div>
+              <div style={{ fontSize: T.font.sizeSmall, color: T.text.primary, lineHeight: 1.55 }}>{it.text}</div>
             </div>
           ))}
         </div>
       )}
     </ConsoleLayout>
   );
-}
-
-function Empty({ msg }: { msg: string }): React.ReactElement {
-  return <div style={{ padding: 24, textAlign: 'center', background: '#11141a', border: '1px solid #1f242d', borderRadius: 10, color: '#9aa3b2', fontSize: 13 }}>{msg}</div>;
 }

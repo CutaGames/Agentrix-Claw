@@ -37,7 +37,21 @@ export function UserProvider({ children }: { children: ReactNode }) {
         const parsedUser = JSON.parse(savedUser)
         setUser(parsedUser)
         setCurrentRole(savedRole || parsedUser.role || 'user')
-        
+
+        // R0-1 backwards-compat: existing users only have a localStorage token
+        // and no HttpOnly cookie. Mirror the token into a cookie so the new
+        // middleware doesn't lock them out. Best-effort, fire-and-forget.
+        try {
+          const token = localStorage.getItem('access_token')
+          const hasCookie = typeof document !== 'undefined' && document.cookie.includes('agentrix_token=')
+          if (token && !hasCookie) {
+            const { apiClient } = await import('../lib/api/client')
+            apiClient.post('/auth/cookie-set', { token }).catch(() => {})
+          }
+        } catch {
+          // non-fatal
+        }
+
         // 🔄 从后端重新获取用户信息以同步roles
         try {
           const { apiClient } = await import('../lib/api/client')
@@ -104,6 +118,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setCurrentRole(primaryRole)
     localStorage.setItem('agentrix_user', JSON.stringify(newUser))
     localStorage.setItem('agentrix_current_role', primaryRole)
+
+    // R0-1: mirror the JWT into HttpOnly cookie for SSR / middleware checks.
+    // Best-effort: never block login on cookie-set failure.
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('access_token')
+      if (token) {
+        void import('../lib/api/client').then(({ apiClient }) => {
+          apiClient.post('/auth/cookie-set', { token }).catch(() => {})
+        })
+      }
+    }
   }
 
   const logout = async () => {
@@ -113,6 +138,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
       authApi.logout()
     } catch (error) {
       console.error('Logout API call failed:', error)
+    }
+
+    // R0-1: also clear the HttpOnly cookie on the server.
+    try {
+      const { apiClient } = await import('../lib/api/client')
+      await apiClient.post('/auth/cookie-clear', {})
+    } catch (error) {
+      // non-fatal
     }
     
     // 清除用户状态

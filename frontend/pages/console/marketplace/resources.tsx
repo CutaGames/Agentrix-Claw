@@ -1,6 +1,9 @@
 import React from 'react';
 import { ConsoleLayout } from '../../../components/console/ConsoleLayout';
 import { apiClient } from '../../../lib/api/client';
+import { useLocalization } from '../../../contexts/LocalizationContext';
+import { L } from '../../../lib/console.i18n';
+import { T, cardStyle, inputStyle, selectStyle, emptyStateStyle } from '../../../lib/console.theme';
 
 interface MarketplaceAsset {
   id: string;
@@ -16,6 +19,7 @@ interface MarketplaceAsset {
 const TYPE_OPTIONS = ['', 'dataset', 'model', 'compute', 'mcp_server', 'agent'] as const;
 
 export default function ConsoleMarketplaceResources(): React.ReactElement {
+  const { t } = useLocalization();
   const [assets, setAssets] = React.useState<MarketplaceAsset[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [q, setQ] = React.useState('');
@@ -37,42 +41,32 @@ export default function ConsoleMarketplaceResources(): React.ReactElement {
     }
   }, [q, type]);
 
-  React.useEffect(() => {
-    void reload();
-  }, [reload]);
+  React.useEffect(() => { void reload(); }, [reload]);
 
   return (
-    <ConsoleLayout title="Resource Marketplace">
-      <p style={{ color: '#9aa3b2', fontSize: 14, marginBottom: 16 }}>
-        Datasets, models, compute and MCP servers contributed by the ecosystem.
-        Backed by <code>/marketplace/assets</code>.
-      </p>
+    <ConsoleLayout title={t(L.market.resourcesTitle)}>
+      <p style={{ color: T.text.secondary, fontSize: T.font.sizeBody, marginBottom: 16 }}>{t(L.market.resourcesDesc)}</p>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search assets…"
-          style={{ flex: 1, minWidth: 200, background: '#0a0c11', border: '1px solid #1f242d', color: '#E2E8F0', padding: '8px 12px', borderRadius: 6, fontSize: 13 }}
-        />
-        <select value={type} onChange={(e) => setType(e.target.value)} style={{ background: '#0a0c11', border: '1px solid #1f242d', color: '#E2E8F0', padding: '8px 12px', borderRadius: 6, fontSize: 13 }}>
-          {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t || 'All types'}</option>)}
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t(L.common.search)} style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
+        <select value={type} onChange={(e) => setType(e.target.value)} style={selectStyle}>
+          {TYPE_OPTIONS.map((tp) => <option key={tp} value={tp}>{tp || t(L.market.allTypes)}</option>)}
         </select>
       </div>
 
       {loading && assets.length === 0 ? (
-        <div style={emptyStyle}>Loading…</div>
+        <div style={emptyStateStyle}>{t(L.common.loading)}</div>
       ) : assets.length === 0 ? (
-        <div style={emptyStyle}>No assets match. Try a different filter.</div>
+        <div style={emptyStateStyle}>{t(L.market.noAssets)}</div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
           {assets.map((a) => (
-            <article key={a.id} style={{ padding: 16, background: '#11141a', border: '1px solid #1f242d', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>{a.name}</h3>
-              <div style={{ fontSize: 11, color: '#6c7689' }}>{a.type ?? '—'}{a.chain ? ` · ${a.chain}` : ''}</div>
-              {a.description && <div style={{ fontSize: 12, color: '#9aa3b2', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{a.description}</div>}
-              <div style={{ marginTop: 'auto', paddingTop: 8, fontSize: 12, color: '#22D3FF', fontWeight: 600 }}>
-                {a.price != null ? `${a.currency ?? '$'}${a.price}` : 'Free'}
+            <article key={a.id} style={{ ...cardStyle, padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <h3 style={{ fontSize: T.font.sizeBody, fontWeight: T.font.weightBold, margin: 0, color: T.text.primary }}>{a.name}</h3>
+              <div style={{ fontSize: T.font.sizeTiny, color: T.text.muted }}>{a.type ?? '—'}{a.chain ? ` · ${a.chain}` : ''}</div>
+              {a.description && <div style={{ fontSize: T.font.sizeCaption, color: T.text.secondary, lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{a.description}</div>}
+              <div style={{ marginTop: 'auto', paddingTop: 8, fontSize: T.font.sizeCaption, color: T.text.accent, fontWeight: T.font.weightSemibold }}>
+                {a.price != null ? `${a.currency ?? '$'}${a.price}` : t(L.market.free)}
               </div>
             </article>
           ))}
@@ -81,5 +75,3 @@ export default function ConsoleMarketplaceResources(): React.ReactElement {
     </ConsoleLayout>
   );
 }
-
-const emptyStyle: React.CSSProperties = { padding: 40, textAlign: 'center', background: '#11141a', border: '1px solid #1f242d', borderRadius: 12, color: '#9aa3b2' };

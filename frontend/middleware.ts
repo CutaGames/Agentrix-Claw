@@ -1,22 +1,31 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
+/**
+ * R0-1 Auth middleware: gate /console/** and /app/** behind presence of the
+ * HttpOnly `agentrix_token` cookie set by `/api/auth/cookie-set` after login.
+ *
+ * The cookie content is NOT cryptographically verified here (that's the
+ * backend's job on every protected API call). This middleware only blocks the
+ * "obviously unauthenticated" case to avoid loading the SPA shell + console
+ * code for visitors with no session at all.
+ */
 export function middleware(request: NextRequest) {
-  // 允许访问的公开路径
-  const publicPaths = ['/', '/auth/login', '/features', '/use-cases', '/developers']
+  const { pathname } = request.nextUrl
 
-  // P0-W2-7 Web Console route partition: /console/** is the authenticated workspace
-  // (separate from marketing pages at /, /pricing, etc.)
-  if (request.nextUrl.pathname.startsWith('/console')) {
-    // Auth check happens client-side (token in localStorage); middleware only
-    // ensures the route is reachable. Future: server-side cookie check.
+  // Public marketing routes pass through.
+  const publicRoutes = ['/', '/auth/login', '/auth/callback', '/features', '/use-cases', '/developers', '/pricing', '/about']
+  if (publicRoutes.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
     return NextResponse.next()
   }
 
-  // 检查是否是app路由
-  if (request.nextUrl.pathname.startsWith('/app/')) {
-    // 在客户端检查认证状态
-    // 这里只做路径检查，实际认证在客户端进行
+  if (pathname.startsWith('/console') || pathname.startsWith('/app/')) {
+    const token = request.cookies.get('agentrix_token')?.value
+    if (!token || token.length < 16) {
+      const loginUrl = new URL('/auth/login', request.url)
+      loginUrl.searchParams.set('redirect', pathname)
+      return NextResponse.redirect(loginUrl)
+    }
     return NextResponse.next()
   }
 

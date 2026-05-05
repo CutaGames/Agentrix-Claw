@@ -1,10 +1,14 @@
 import React from 'react';
 import { ConsoleLayout } from '../../../components/console/ConsoleLayout';
 import { v1Api, type PrivacyItem, type PrivacyAuditEntry, type PrivacyCategory } from '../../../lib/api/v1.api';
+import { useLocalization } from '../../../contexts/LocalizationContext';
+import { L } from '../../../lib/console.i18n';
+import { T, cardStyle, emptyStateStyle, pillStyle } from '../../../lib/console.theme';
 
 const CATEGORIES: PrivacyCategory[] = ['financial', 'health', 'relationship', 'location'];
 
 export default function ConsoleSettingsPrivacy(): React.ReactElement {
+  const { t } = useLocalization();
   const [items, setItems] = React.useState<PrivacyItem[]>([]);
   const [audit, setAudit] = React.useState<PrivacyAuditEntry[]>([]);
   const [category, setCategory] = React.useState<PrivacyCategory | ''>('');
@@ -22,58 +26,60 @@ export default function ConsoleSettingsPrivacy(): React.ReactElement {
         if (!alive) return;
         setItems(it ?? []);
         setAudit(au ?? []);
-      } finally {
-        if (alive) setLoading(false);
-      }
+      } finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; };
   }, [category]);
 
+  const catLabels: Record<string, string> = {
+    financial: t({ zh: '财务', en: 'Financial' }),
+    health: t({ zh: '健康', en: 'Health' }),
+    relationship: t({ zh: '关系', en: 'Relationship' }),
+    location: t({ zh: '位置', en: 'Location' }),
+  };
+
   return (
-    <ConsoleLayout title="Privacy Fence">
-      <p style={{ color: '#9aa3b2', fontSize: 14, marginBottom: 16 }}>
-        Sensitive memories — financial / health / relationship / location — with TTL grants and revocation.
-        Backed by <code>/api/v1/privacy/*</code>.
-      </p>
+    <ConsoleLayout title={t(L.settings.privacyTitle)}>
+      <p style={{ color: T.text.secondary, fontSize: T.font.sizeBody, marginBottom: 16 }}>{t(L.settings.privacyDesc)}</p>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-        <Tab active={category === ''} onClick={() => setCategory('')} label="All" />
+        <Tab active={category === ''} onClick={() => setCategory('')} label={t(L.common.all)} />
         {CATEGORIES.map((c) => (
-          <Tab key={c} active={category === c} onClick={() => setCategory(c)} label={c} />
+          <Tab key={c} active={category === c} onClick={() => setCategory(c)} label={catLabels[c]} />
         ))}
       </div>
 
-      <h2 style={sectionH}>Items ({items.length})</h2>
+      <h2 style={H2}>{t(L.settings.items)} ({items.length})</h2>
       {loading && items.length === 0 ? (
-        <Empty msg="Loading…" />
+        <div style={emptyStateStyle}>{t(L.common.loading)}</div>
       ) : items.length === 0 ? (
-        <Empty msg="No sensitive items in this category." />
+        <div style={emptyStateStyle}>{t({ zh: '该分类下没有敏感条目。', en: 'No sensitive items in this category.' })}</div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 24 }}>
           {items.map((it) => (
-            <div key={it.id} style={{ padding: 14, background: '#11141a', border: '1px solid #1f242d', borderRadius: 10 }}>
-              <Pill text={it.category} />
-              <div style={{ fontSize: 13, fontWeight: 600, marginTop: 8 }}>{it.key}</div>
-              {it.preview && <div style={{ fontSize: 11, color: '#9aa3b2', marginTop: 4 }}>{it.preview}</div>}
-              <div style={{ fontSize: 10, color: '#6c7689', marginTop: 6 }}>{new Date(it.created_at).toLocaleString()}</div>
+            <div key={it.id} style={{ ...cardStyle, padding: 14 }}>
+              <span style={pillStyle('accent')}>{catLabels[it.category] ?? it.category}</span>
+              <div style={{ fontSize: T.font.sizeSmall, fontWeight: 600, marginTop: 8, color: T.text.primary }}>{it.key}</div>
+              {it.preview && <div style={{ fontSize: T.font.sizeTiny, color: T.text.secondary, marginTop: 4 }}>{it.preview}</div>}
+              <div style={{ fontSize: T.font.sizeTiny, color: T.text.muted, marginTop: 6 }}>{new Date(it.created_at).toLocaleString()}</div>
             </div>
           ))}
         </div>
       )}
 
-      <h2 style={sectionH}>Recent Access ({audit.length})</h2>
+      <h2 style={H2}>{t(L.settings.recentAccess)} ({audit.length})</h2>
       {audit.length === 0 ? (
-        <Empty msg="No access events." />
+        <div style={emptyStateStyle}>{t({ zh: '暂无访问记录。', en: 'No access events.' })}</div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead><tr><Th>Action</Th><Th>Actor</Th><Th>Item</Th><Th>Time</Th></tr></thead>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: T.font.sizeCaption }}>
+          <thead><tr><Th>{t({ zh: '动作', en: 'Action' })}</Th><Th>{t({ zh: '操作者', en: 'Actor' })}</Th><Th>{t({ zh: '条目', en: 'Item' })}</Th><Th>{t(L.common.createdAt)}</Th></tr></thead>
           <tbody>
             {audit.map((a) => (
-              <tr key={a.id} style={{ borderTop: '1px solid #1f242d' }}>
-                <Td><Pill text={a.action} /></Td>
-                <Td style={{ fontFamily: 'monospace', fontSize: 11, color: '#6c7689' }}>{a.actor_id.slice(0, 12)}…</Td>
-                <Td style={{ fontFamily: 'monospace', fontSize: 11, color: '#6c7689' }}>{(a.item_id ?? a.grant_id ?? '').slice(0, 12)}…</Td>
-                <Td style={{ fontSize: 11, color: '#6c7689' }}>{new Date(a.created_at).toLocaleString()}</Td>
+              <tr key={a.id} style={{ borderTop: `1px solid ${T.border.subtle}` }}>
+                <Td><span style={pillStyle('subtle')}>{a.action}</span></Td>
+                <Td style={{ fontFamily: 'monospace', fontSize: T.font.sizeTiny, color: T.text.muted }}>{a.actor_id.slice(0, 12)}…</Td>
+                <Td style={{ fontFamily: 'monospace', fontSize: T.font.sizeTiny, color: T.text.muted }}>{(a.item_id ?? a.grant_id ?? '').slice(0, 12)}…</Td>
+                <Td style={{ fontSize: T.font.sizeTiny, color: T.text.muted }}>{new Date(a.created_at).toLocaleString()}</Td>
               </tr>
             ))}
           </tbody>
@@ -83,21 +89,25 @@ export default function ConsoleSettingsPrivacy(): React.ReactElement {
   );
 }
 
-const sectionH: React.CSSProperties = { fontSize: 13, color: '#9aa3b2', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 };
+const H2: React.CSSProperties = { fontSize: T.font.sizeCaption, color: T.text.secondary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, fontWeight: 600 };
 function Tab({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }): React.ReactElement {
   return (
-    <button onClick={onClick} style={{ padding: '6px 14px', background: active ? '#22D3FF' : '#11141a', color: active ? '#07080B' : '#9aa3b2', border: '1px solid #1f242d', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{label}</button>
+    <button onClick={onClick} style={{
+      padding: '7px 14px',
+      background: active ? T.text.accent : T.bg.panel,
+      color: active ? T.text.inverted : T.text.secondary,
+      border: `1px solid ${active ? T.text.accent : T.border.subtle}`,
+      borderRadius: T.radius.sm,
+      fontSize: T.font.sizeCaption,
+      fontWeight: 600,
+      cursor: 'pointer',
+      fontFamily: T.font.family,
+    }}>{label}</button>
   );
 }
-function Pill({ text }: { text: string }): React.ReactElement {
-  return <span style={{ fontSize: 10, padding: '2px 8px', background: '#1f242d', color: '#22D3FF', borderRadius: 999 }}>{text}</span>;
-}
-function Empty({ msg }: { msg: string }): React.ReactElement {
-  return <div style={{ padding: 24, textAlign: 'center', background: '#11141a', border: '1px solid #1f242d', borderRadius: 10, color: '#9aa3b2', fontSize: 13, marginBottom: 24 }}>{msg}</div>;
-}
 function Th({ children }: { children: React.ReactNode }): React.ReactElement {
-  return <th style={{ textAlign: 'left', padding: '8px', fontSize: 10, color: '#6c7689', textTransform: 'uppercase', fontWeight: 600 }}>{children}</th>;
+  return <th style={{ textAlign: 'left', padding: 8, fontSize: T.font.sizeTiny, color: T.text.muted, textTransform: 'uppercase', fontWeight: 600 }}>{children}</th>;
 }
 function Td({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }): React.ReactElement {
-  return <td style={{ padding: '8px', ...style }}>{children}</td>;
+  return <td style={{ padding: 8, color: T.text.primary, ...style }}>{children}</td>;
 }

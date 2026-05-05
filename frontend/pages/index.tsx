@@ -3,6 +3,7 @@ import {
   HeroLiving,
   ThreeLayerVision,
   FiveSurfaceStrip,
+  V3FeaturesSection,
   CompetitiveTable,
   DownloadCallout,
   FAQ,
@@ -27,6 +28,7 @@ export default function Home() {
   return (
     <MarketingLayout seo={seo}>
       <HeroLiving />
+      <V3FeaturesSection />
       <ThreeLayerVision />
       <FiveSurfaceStrip />
       <CompetitiveTable />
