@@ -28,6 +28,7 @@ import {
 import { initLlamaBridge } from './src/services/llamaRnBridge';
 import { OtaModelDownloadService } from './src/services/otaModelDownload.service';
 import { WatchDataLayerService } from './src/services/wearables/watchDataLayerBridge.service';
+import { VoiceQuickFab } from './src/components/VoiceQuickFab';
 
 // Register llama.rn bridge for on-device LLM inference
 initLlamaBridge();
@@ -475,6 +476,9 @@ export default function App() {
         <NavigationContainer linking={linking as any}>
           <StatusBar style="light" />
           <AppNavigator />
+          {/* Global Voice Quick FAB — PRD mobile-prd-v3 §3.2. Auth/onboarding screens
+              can opt-out by emitting `agentrix:voice-fab-hide` (handled inside the FAB). */}
+          <VoiceQuickFab />
         </NavigationContainer>
       </QueryClientProvider>
     </AppErrorBoundary>
