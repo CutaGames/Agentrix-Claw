@@ -1,10 +1,16 @@
 import React from 'react';
-import { GetServerSideProps } from 'next';
+import { ConsoleLayout } from '../../../components/console/ConsoleLayout';
+import { ConsoleStub } from '../../../components/console/ConsoleStub';
 
-export const getServerSideProps: GetServerSideProps = async () => ({
-  redirect: { destination: '/merchants/dashboard', permanent: false },
-});
-
-export default function ConsoleMerchantOrdersRedirect(): null {
-  return null;
+export default function ConsoleMerchantOrders(): React.ReactElement {
+  return (
+    <ConsoleLayout title="Orders">
+      <ConsoleStub
+        description="Order fulfillment & shipping. Backed by backend `merchant` module orders endpoints."
+        eta="W24 (R4-1)"
+        legacyHref="/merchants/dashboard"
+        legacyLabel="Open legacy merchant dashboard"
+      />
+    </ConsoleLayout>
+  );
 }

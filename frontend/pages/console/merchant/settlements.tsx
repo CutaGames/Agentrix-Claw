@@ -1,10 +1,16 @@
 import React from 'react';
-import { GetServerSideProps } from 'next';
+import { ConsoleLayout } from '../../../components/console/ConsoleLayout';
+import { ConsoleStub } from '../../../components/console/ConsoleStub';
 
-export const getServerSideProps: GetServerSideProps = async () => ({
-  redirect: { destination: '/merchants/audit', permanent: false },
-});
-
-export default function ConsoleMerchantSettlementsRedirect(): null {
-  return null;
+export default function ConsoleMerchantSettlements(): React.ReactElement {
+  return (
+    <ConsoleLayout title="Settlements">
+      <ConsoleStub
+        description="Payouts, fees, account periods. Backed by backend `merchant` module settlements endpoints."
+        eta="W24 (R4-1)"
+        legacyHref="/merchants/audit"
+        legacyLabel="Open legacy merchant audit"
+      />
+    </ConsoleLayout>
+  );
 }
