@@ -6,9 +6,9 @@
 
 ## 1. 审计结论摘要
 
-- Phase 4：核心后端、Web Passkey、桌面审批/同步面都已落地。本轮发现的主要断点不在业务逻辑，而在 E2E 认证引导脆弱；该断点已在测试层补修。
+- Phase 4：核心后端、Web Passkey、桌面审批/同步面都已落地。本轮发现的主要断点不在业务逻辑，而在 E2E 测试夹具和认证引导与当前 DTO/返回体的漂移；这些断点已在测试层补修，并完成认证态 API/E2E 回归。
 - Phase 5：设备注册/OTA、手表 Tile、眼镜 HUD 均存在真实实现，不是空壳；但移动端当前扫描页是二维码/设备配对入口，不是 PRD 所要求的“6 视角宠物扫描生成向导”，因此 Phase 5 只能判定为部分完成。
-- Phase 6：M1、M2、M3、M5、M6 都能找到明确代码落点，其中 M2/M3/M5/M6 本轮还有 API 契约复核；M4 按要求未纳入。本轮最大剩余缺口仍是认证态 E2E 无法闭环，不是模块缺失。
+- Phase 6：M1、M2、M3、M5、M6 都能找到明确代码落点，其中 M2/M3/M5/M6 本轮已完成认证态 API 契约复核；M4 按要求未纳入。本轮最大剩余缺口已转为产品形态偏差和硬件/浏览器级真实链路覆盖，而不是模块缺失或认证态 E2E 无法闭环。
 
 ## 2. 判定口径
 
@@ -21,7 +21,7 @@
 
 ### 3.1 Phase 4
 
-结论：`已实现，但认证态真实 E2E 仍未闭环`
+结论：`已实现，认证态 API/E2E 已闭环；浏览器级 WebAuthn ceremony 本轮未重跑`
 
 代码证据：
 
@@ -32,13 +32,13 @@
 
 本轮复核结论：
 
-- 现有 Phase 4 Playwright 用例真正的断点是认证引导。原测试对 dev OTP/bootstrap 过度依赖，导致认证态路径容易整体跳过。
-- 本轮已在 `tests/e2e/desktop-sync-approval-agent.spec.ts` 中加入 `PLAYWRIGHT_AUTH_TOKEN` / `E2E_BEARER_TOKEN` 注入路径，并补充更明确的 skip 提示，测试可靠性提升。
-- 因缺少可用认证 token，本轮只能确认匿名 guard、HTTP 路由注册、以及认证态用例的执行入口已经补齐，无法确认完整的浏览器 WebAuthn ceremony 或 L3 实人授权链路。
+- 现有 Phase 4 Playwright 用例真正的断点不是后端坏掉，而是认证引导和测试夹具对旧契约的假设失效。原测试对 dev OTP/bootstrap 过度依赖，且部分请求体/断言已经落后于当前后端 DTO。
+- 本轮已在 `tests/e2e/desktop-sync-approval-agent.spec.ts` 中加入 `PLAYWRIGHT_AUTH_TOKEN` / `E2E_BEARER_TOKEN` 注入路径，并通过生产环境生成真实 bearer token，实际跑通认证态分支。
+- 桌面同步/审批/operations/agent-presence 相关认证态用例已完成回归；仍未确认完整的浏览器 WebAuthn ceremony 或 L3 实人授权链路。
 
 审计判断：
 
-- Phase 4 的代码面不是空缺，主要问题是“验证链路脆弱”而不是“功能没写”。
+- Phase 4 的代码面不是空缺，主要问题是“测试契约漂移与验证链路脆弱”而不是“功能没写”。
 - Passkey 仍应视为 v1 形态，本轮未重新执行真实浏览器 Passkey 注册/登录闭环。
 
 ### 3.2 Phase 5
@@ -65,7 +65,7 @@
 
 ### 3.3 Phase 6（M4 排除）
 
-结论：`M1 历史已实现，本轮未重跑；M2/M3/M5/M6 已实现但认证态 E2E 未闭环`
+结论：`M1 历史已实现，本轮未重跑；M2/M3/M5/M6 已实现，且关键认证态 API 契约已复核`
 
 #### M1：6 族群 / 种子扩充
 
@@ -89,7 +89,7 @@
 审计判断：
 
 - M2 属于真实后端模块，不是占位接口。
-- 本轮已新增针对 `/v1/pet/team/roles` 的 API 契约测试，但认证态完整路径仍依赖注入 token 才能执行。
+- 本轮已新增并跑通针对 `/v1/pet/team/roles` 的认证态 API 契约测试；当前不足主要在更高层的业务闭环，而不是接口缺失。
 
 #### M3：宠物 NFT Intent Scaffold
 
@@ -101,7 +101,7 @@
 审计判断：
 
 - M3 可判定为“后端 scaffold 已实现”。
-- 本轮新增了 config/intents 相关 API 契约测试，但未执行真实签名 worker / 链上提交闭环。
+- 本轮已跑通 config 认证态契约测试，但未执行真实签名 worker / 链上提交闭环。
 
 #### M5：Partner App / Runtime
 
@@ -113,7 +113,8 @@
 审计判断：
 
 - M5 后端控制面存在，且不是假路由。
-- 本轮只完成了匿名 guard 与认证态入口用例的补齐，尚未完成 owner 注册与 runtime app key 的全链路 E2E。
+- 本轮已实际跑通 owner 注册、runtime whoami、runtime ping、usage 查询链路，并修正了测试中落后的 scope 白名单与 ping 状态码假设。
+- 尚未覆盖真实第三方接入、长期计费行为或更复杂的 partner side effects。
 
 #### M6：Sovereign Pet
 
@@ -125,7 +126,7 @@
 审计判断：
 
 - M6 后端接口与状态控制面明确存在。
-- 本轮只新补了 config 等 API 契约层覆盖，未对真实主权切换、副作用、链路写入做认证态 E2E。
+- 本轮已跑通 config 契约层认证态覆盖，未对真实主权切换、副作用、链路写入做更深的认证态 E2E。
 
 #### M4
 
@@ -134,16 +135,22 @@
 ## 4. 本轮补足的断点
 
 - 修复了 `tests/e2e/desktop-sync-approval-agent.spec.ts` 的认证引导脆弱问题，使其可通过环境变量注入真实 token，而不是绑定脆弱的本地 OTP/dev bootstrap。
+- 修复了桌面同步 E2E 中与当前 `DesktopTimelineEntryDto` 不一致的 task timeline 请求体，并把审批前置 task 状态对齐到当前允许值 `need-approve`。
+- 修复了桌面命令创建用例里过期的 command kind 假设，对齐到当前允许值 `list-windows`。
+- 修复了 Partner App E2E 中过期的 scope 假设，把 `pet.write` 调整为当前白名单中的 `pet.chat`，同时放宽 runtime ping 对 `201 Created` 的接受。
+- 修复了 Agent Presence E2E 中 dashboard、create-agent、channel-health 的返回体/DTO 假设，对齐当前接口契约。
 - 新增 `tests/e2e/pet-phase4-phase6-api.spec.ts`，补齐了 Phase 4-6 关键后端面的匿名拒绝与认证态契约入口。
+- 最终认证态 Playwright 回归结果为 `41 passed, 1 skipped, 0 failed`，说明本轮断点已从“不可跑”转为“可稳定执行”。
 
 ## 5. 当前最大风险
 
-- 最大剩余风险不在“有没有模块”，而在“认证态端到端闭环是否真的跑通”。
+- 最大剩余风险不在“有没有模块”，而在“更高层真实体验是否与 PRD 对齐”。
 - Phase 5 的扫描能力存在明显 PRD 偏差，当前移动端实现不能替代六视角宠物扫描生成向导。
 - Watch/Glass/OTA 目前主要靠代码面和单测/静态复核，本轮没有真实硬件执行证据。
+- Passkey 浏览器级 WebAuthn ceremony、M6 主权切换副作用、Partner 真实第三方集成仍未做更深层闭环回归。
 
 ## 6. 建议的下一步
 
-1. 提供一个可用的 `PLAYWRIGHT_AUTH_TOKEN` 或 `E2E_BEARER_TOKEN`，把本轮已补齐的认证态 Playwright 分支全部跑通。
+1. 把生产 token 生成或测试账号登录收敛成稳定的 CI 前置步骤，避免认证态回归再次依赖临时人工注入。
 2. 单独补一个 Phase 5 扫描生成链路审计/实现任务，避免继续把二维码配对页误当成宠物扫描生成页。
-3. 为 M5/M6 再补一轮“真实 app key / 真实 pet ownership”级别的 API E2E，降低仅停留在 guard/contract 层的风险。
+3. 为 M5/M6 再补一轮“真实 app key / 真实 pet ownership”级别的 API E2E，并为 Passkey 补浏览器级 WebAuthn 闭环回归。

@@ -94,7 +94,7 @@ test.describe.serial('Pet Phase 4-6 API contracts', () => {
       data: {
         name: `Playwright ${slug}`,
         slug,
-        scopes: ['pet.read', 'pet.write'],
+        scopes: ['pet.read', 'pet.chat'],
         billingMode: 'per_call',
         perCallUsd: 0.01,
         monthlyCapUsd: 1,
@@ -127,7 +127,7 @@ test.describe.serial('Pet Phase 4-6 API contracts', () => {
       },
       data: { scope: 'pet.read', cost_usd: 0.01 },
     });
-    expect(ping.status()).toBe(200);
+    expect([200, 201]).toContain(ping.status());
     const body = await ping.json();
     expect(body.ok).toBe(true);
     expect(body.calls_today).toBeGreaterThanOrEqual(1);

@@ -17,6 +17,28 @@ const OTP_CODE = process.env.PLAYWRIGHT_TEST_OTP || '000000';
 const AUTH_SKIP_HINT =
   'No bearer token injected and dev OTP bootstrap is unavailable. Set PLAYWRIGHT_AUTH_TOKEN or E2E_BEARER_TOKEN to run authenticated checks.';
 
+function makeTimelineEntry(overrides?: Partial<{
+  id: string;
+  title: string;
+  detail: string;
+  kind: string;
+  riskLevel: 'L0' | 'L1' | 'L2' | 'L3';
+  status: 'running' | 'waiting-approval' | 'completed' | 'failed' | 'rejected';
+  startedAt: number;
+  finishedAt: number;
+  output: string;
+}>) {
+  return {
+    id: `timeline-${Date.now()}`,
+    title: 'Playwright step',
+    kind: 'playwright-step',
+    riskLevel: 'L1' as const,
+    status: 'running' as const,
+    startedAt: Date.now(),
+    ...overrides,
+  };
+}
+
 // ── Helper: create a throwaway auth token via email OTP (dev mode) ──────────
 
 let authToken = INJECTED_AUTH_TOKEN;
@@ -205,7 +227,8 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
         title: 'Playwright Test Task',
         summary: 'Created by E2E test',
         status: 'executing',
-        timeline: [{ ts: new Date().toISOString(), event: 'started' }],
+        startedAt: Date.now(),
+        timeline: [makeTimelineEntry()],
       },
     });
     expect(res.status()).toBeLessThan(400);
@@ -225,8 +248,17 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
         deviceId: testDeviceId,
         title: 'Approval Task',
         summary: 'Needs approval',
-        status: 'waiting_approval',
-        timeline: [],
+        status: 'need-approve',
+        startedAt: Date.now(),
+        timeline: [
+          makeTimelineEntry({
+            id: `timeline-approval-${Date.now()}`,
+            title: 'Await approval',
+            kind: 'approval-request',
+            riskLevel: 'L2',
+            status: 'waiting-approval',
+          }),
+        ],
       },
     });
 
@@ -318,7 +350,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
       headers: { Authorization: `Bearer ${authToken}` },
       data: {
         title: 'List open windows',
-        kind: 'list_windows',
+        kind: 'list-windows',
         targetDeviceId: testDeviceId,
         requesterDeviceId: 'mobile-test',
       },
@@ -376,7 +408,9 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
     expect(res.status()).toBe(200);
     const body = await res.json();
     expect(body.totalAgents).toBeDefined();
-    expect(body.totalEvents).toBeDefined();
+    expect(body.totalMessages24h).toBeDefined();
+    expect(body.totalMessagesWeek).toBeDefined();
+    expect(body.totalDevices).toBeDefined();
   });
 
   test('5.5 agent-presence create agent', async ({ request }) => {
@@ -385,9 +419,8 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
       headers: { Authorization: `Bearer ${authToken}` },
       data: {
         name: `pw-agent-${Date.now()}`,
-        type: 'personal',
-        channels: [],
-        config: { model: 'gpt-4o-mini' },
+        description: 'Created by Playwright E2E',
+        defaultModel: 'gpt-4o-mini',
       },
     });
     expect(res.status()).toBeLessThan(400);
@@ -413,6 +446,8 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
     });
     expect(res.status()).toBe(200);
     const body = await res.json();
-    expect(Array.isArray(body)).toBe(true);
+    expect(body).toBeDefined();
+    expect(typeof body).toBe('object');
+    expect(Object.keys(body).length).toBeGreaterThan(0);
   });
 });

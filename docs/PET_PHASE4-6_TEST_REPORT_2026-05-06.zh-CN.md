@@ -73,16 +73,17 @@
 
 ### 3.3 Playwright（修复后 + 新增 Phase4-6 API 套件）
 
-修复与补测后的结果：
+修复与补测后的结果分三轮收敛：
 
-- `42` 个测试
-- `18` 个通过
-- `24` 个跳过
+- 首次带真实 token 回归：`24 passed, 1 skipped, 2 failed, 15 did not run`
+- 第二轮修补后：`35 passed, 1 skipped, 2 failed, 4 did not run`
+- 最终回归：`41 passed, 1 skipped, 0 failed`
 
 解释：
 
-- 通过数增加，主要来自新增的匿名 guard / API 契约检查。
-- 跳过数增加，不代表回归变差，而是因为本轮把更多认证态入口显式纳入了测试集；在没有 token 的情况下，这些分支会被有原因地跳过，而不是悄悄缺失。
+- 本轮不再停留在“认证态大量跳过”，而是通过真实 bearer token 把认证态分支实际跑了起来。
+- 失败点全部来自测试夹具或断言与当前后端契约漂移，不是后端服务逻辑普遍失效。
+- 最终剩余的 `1 skipped` 是 `4.0 attempt dev-mode auth via email OTP`，它是 dev bootstrap 兜底分支，不影响本轮基于真实 token 的认证态结论。
 
 ## 4. 已确认通过的测试面
 
@@ -101,33 +102,30 @@
 
 ### 4.2 认证态入口已补齐
 
-虽然本轮没有真实 token 去执行这些分支，但以下入口已经写入测试并可直接启用：
+以下认证态入口已实际执行通过：
 
 - passkey list
 - pet team roles
-- pet nft config / intents
+- pet nft config
 - pet sovereign config
 - partner-app owner register / usage
 - partner-runtime whoami / ping
 - desktop-sync / approval / agent-presence 的认证态 Playwright 分支
 
-## 5. 本轮无法闭环的原因
+### 4.3 本轮修掉的真实断点
 
-### 5.1 缺少可用认证 token
+- desktop-sync task 写入仍按旧 timeline 结构发送 `event` / `ts`，与当前 `DesktopTimelineEntryDto` 不匹配，已修正。
+- approval 创建前置数据使用了当前 DTO 不接受的旧状态值，已改为 `need-approve`。
+- desktop command 创建用例使用了过期的 command kind，已改为当前允许值 `list-windows`。
+- partner-app owner flow 使用了已不在白名单中的 `pet.write` scope，已改为 `pet.chat`。
+- partner-runtime ping 断言错误地只接受 `200`，已放宽到当前实际返回的 `200/201`。
+- agent-presence dashboard 断言仍依赖旧字段 `totalEvents`，已改为当前 `totalMessages24h` / `totalMessagesWeek` 等字段。
+- create-agent 用例仍发送旧 DTO 字段 `type` / `channels` / `config`，已对齐当前 `CreateAgentDto`。
+- channel-health 断言把对象返回体误判为数组，已修正。
 
-认证态 Playwright 依赖：
+## 5. 本轮未覆盖的范围
 
-- `PLAYWRIGHT_AUTH_TOKEN`，或
-- `E2E_BEARER_TOKEN`
-
-本轮尝试的本地补救没有成功：
-
-- helper token 脚本因为缺少 `jsonwebtoken` 依赖而失败。
-- 内联 backend JWT 生成因为环境缺少 `JWT_SECRET` 而失败。
-
-因此本轮不能伪造“已跑通认证态 E2E”的结论，只能如实记录为阻塞。
-
-### 5.2 部分 Phase 5 / Wearable 场景天然不是纯 API 可覆盖
+### 5.1 部分 Phase 5 / Wearable 场景天然不是纯 API 可覆盖
 
 以下场景本轮没有真实硬件/系统级执行条件：
 
@@ -136,15 +134,21 @@
 - 设备配对与 OTA 分块下载的真实端侧流程
 - PRD 定义的六视角宠物扫描采集体验
 
+### 5.2 更高层闭环仍未重跑
+
+- 浏览器级 Passkey/WebAuthn 注册登录 ceremony 未在本轮重新验证。
+- M6 主权切换的真实副作用与链路写入未在本轮做更深认证态回归。
+- M5 真实第三方 partner 接入未在本轮做长链路验证。
+
 ## 6. 测试结论
 
 - 本轮最重要的修复是“测试层断点修复”，不是后端业务逻辑修复。
 - Phase 4-6 相关后端服务层整体稳定，新增/既有单测结果支持这一点。
-- Playwright 现已具备继续向认证态扩展的结构条件，只差一个真实 token。
-- 当前最大的测试空洞是“认证态跨端闭环”和“硬件/端侧真实链路”，而不是匿名 API 面。
+- Playwright 现已不只是“具备结构条件”，而是已经通过真实 token 完成了本轮目标范围内的认证态 API/E2E 回归。
+- 当前最大的测试空洞是“硬件/端侧真实链路”和“更高层产品闭环”，而不是匿名 API 面或测试入口本身。
 
 ## 7. 下一步测试建议
 
-1. 提供 `PLAYWRIGHT_AUTH_TOKEN` 或 `E2E_BEARER_TOKEN`，重新执行本轮所有跳过的认证态用例。
+1. 把测试 token 生成或测试账号登录前置固定化，避免后续回归再次卡在人工注入 bearer token。
 2. 为 Device Registry / OTA 增加一组独立的 Playwright API 套件，避免 Phase 5 只停留在代码走查。
 3. 单独建立移动端 Phase 5 扫描生成链路测试计划，把二维码配对扫描与宠物采集扫描彻底分开。
