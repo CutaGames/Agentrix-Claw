@@ -89,6 +89,13 @@ export class LivingPet {
   @Column({ type: 'jsonb', default: () => "'[]'" })
   recentMemorySnippets: string[];
 
+  /**
+   * 已解锁的灵魂模板集合。
+   * Free 默认只有 claw；Pro 最多 3 只；Pro+ / Enterprise 不限。
+   */
+  @Column({ type: 'jsonb', default: () => "'[\"claw\"]'" })
+  unlockedSoulTemplateIds: string[];
+
   /** §3.8 当前驱动主宠的 working agent；可切换不影响灵魂 */
   @Column({ type: 'uuid', nullable: true })
   primaryAgentId?: string;

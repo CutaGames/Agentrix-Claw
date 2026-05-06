@@ -10,6 +10,7 @@
  */
 
 import { apiClient } from './client';
+import type { PetClan, PetSoulTemplate } from '../../../shared/types/pet';
 
 // ---------- shared types (mirrors shared/types/agentrix-presence.ts) ----------
 
@@ -30,11 +31,42 @@ export interface PetState {
   user_id: string;
   emotion: PetEmotion;
   emotion_intensity: number; // 0-3
+  emotion_since?: number;
+  emotion_decay_at?: number;
   intimacy_level: number;
   intimacy_xp: number;
+  recent_memory_snippets?: string[];
+  unlocked_soul_template_ids?: string[];
   primary_agent_id?: string;
   engine_switching?: boolean;
-  updated_at: string;
+  soul_template_id?: string | null;
+  active_skin_id?: string | null;
+  personality_overrides?: Record<string, unknown>;
+  updated_at: string | number;
+}
+
+export type PetPlanLevel = 'free' | 'pro' | 'pro_plus' | 'enterprise';
+
+export interface PetSoulSummary {
+  id: string;
+  clan: PetClan;
+  display_name: string;
+  display_name_en: string;
+  tagline: string;
+  archetype: string;
+  marketing_hook: string;
+  recommended_skin_tags: string[];
+  default_idle_emotion: string;
+  tier: string;
+  age_rating: string;
+  required_plan?: PetPlanLevel;
+}
+
+export interface PetSoulListResponse {
+  items: PetSoulSummary[];
+  access?: {
+    plan_level: PetPlanLevel;
+  };
 }
 
 export interface WalletProjection {
@@ -125,6 +157,11 @@ export interface FamilyAccount {
 export const v1Api = {
   pet: {
     getState: () => apiClient.get<PetState>('/v1/pet/state'),
+    listSouls: (params?: { clan?: PetClan }) =>
+      apiClient.get<PetSoulListResponse>('/v1/pet/souls', { params }),
+    getSoul: (id: string) => apiClient.get<(PetSoulTemplate & { id: string }) | null>(`/v1/pet/souls/${encodeURIComponent(id)}`),
+    switchSoul: (templateId: string) =>
+      apiClient.post<PetState>('/v1/pet/soul/switch', { templateId }),
     setEmotion: (emotion: PetEmotion, intensity = 2) =>
       apiClient.post<PetState>('/v1/pet/emotion', { emotion, intensity }),
     addIntimacyXp: (xp: number, source?: string) =>

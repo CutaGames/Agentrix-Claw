@@ -9,6 +9,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const backendDir = path.resolve(__dirname, '..');
 const distMain = path.join(backendDir, 'dist', 'main.js');
+const requiredDistFiles = [
+  'main.js',
+  'app.module.js',
+  'app.controller.js',
+  'app.service.js',
+].map((file) => path.join(backendDir, 'dist', file));
 const buildTsconfig = existsSync(path.join(backendDir, 'tsconfig.build.json'))
   ? 'tsconfig.build.json'
   : 'tsconfig.json';
@@ -78,11 +84,16 @@ function runTscBuild(noEmit = false) {
 }
 
 function hasValidBuildOutput() {
-  if (!existsSync(distMain)) {
-    return false;
+  for (const filePath of requiredDistFiles) {
+    if (!existsSync(filePath)) {
+      return false;
+    }
+    if (statSync(filePath).size <= 0) {
+      return false;
+    }
   }
 
-  return statSync(distMain).size > 0;
+  return true;
 }
 
 function verifyBuildOutput() {
@@ -90,7 +101,10 @@ function verifyBuildOutput() {
   log('🔍 Verifying build output...');
 
   if (!hasValidBuildOutput()) {
-    log('❌ dist/main.js not found');
+    const missingFiles = requiredDistFiles
+      .filter((filePath) => !existsSync(filePath) || statSync(filePath).size <= 0)
+      .map((filePath) => path.relative(backendDir, filePath));
+    log(`❌ Missing or empty build outputs: ${missingFiles.join(', ')}`);
     const distDir = path.join(backendDir, 'dist');
     if (existsSync(distDir)) {
       const entries = readdirSync(distDir).slice(0, 20);
@@ -103,10 +117,6 @@ function verifyBuildOutput() {
   }
 
   const fileSize = statSync(distMain).size;
-  if (fileSize <= 0) {
-    fail('❌ Backend build verification failed: dist/main.js is empty');
-  }
-
   log(`✅ Build succeeded: dist/main.js (${fileSize} bytes)`);
 }
 

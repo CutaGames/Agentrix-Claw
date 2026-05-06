@@ -85,6 +85,26 @@ describe('PetSoulTemplateService', () => {
       await service.list({ clan: 'A_office' });
       expect(qb.andWhere).toHaveBeenCalledWith('s.clan = :clan', { clan: 'A_office' });
     });
+
+    it('filters free plan down to claw only', async () => {
+      const qb = makeQb([
+        sample,
+        { ...sample, id: 'tinker', displayName: '叮当', displayNameEn: 'Tinker' },
+      ]);
+      mockRepo.createQueryBuilder.mockReturnValue(qb);
+      const out = await service.list({ planLevel: 'free' });
+      expect(out.map((item) => item.id)).toEqual(['claw']);
+    });
+
+    it('keeps paid plans unfiltered', async () => {
+      const qb = makeQb([
+        sample,
+        { ...sample, id: 'tinker', displayName: '叮当', displayNameEn: 'Tinker' },
+      ]);
+      mockRepo.createQueryBuilder.mockReturnValue(qb);
+      const out = await service.list({ planLevel: 'pro' });
+      expect(out.map((item) => item.id)).toEqual(['claw', 'tinker']);
+    });
   });
 
   describe('get', () => {
@@ -116,6 +136,7 @@ describe('PetSoulTemplateService', () => {
         tagline: expect.any(String),
         archetype: expect.any(String),
         tier: 'free',
+        required_plan: 'free',
         age_rating: 'all',
         marketing_hook: expect.any(String),
         recommended_skin_tags: expect.any(Array),

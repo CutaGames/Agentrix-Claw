@@ -93,6 +93,8 @@ export interface PetState {
   intimacy_xp: number;
   /** 最近 5 条记忆片段（长期记忆走 Memory Store §5.5） */
   recent_memory_snippets: string[];
+  /** 当前账号已解锁的灵魂模板集合（Phase 1 monetization gate） */
+  unlocked_soul_template_ids?: string[];
   /** §3.8 当前驱动主宠的 working agent；与 pet_id 永远独立 */
   primary_agent_id: string;
   /** 引擎切换中（1-2s 换装动画） */

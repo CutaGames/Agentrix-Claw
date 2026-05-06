@@ -1,13 +1,18 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LivingPet } from '../../entities/living-pet.entity';
 import { desktopSyncEventBus, DESKTOP_SYNC_EVENT } from '../desktop-sync/desktop-sync.events';
 import { PetSoulTemplateService } from '../pet-soul-template/pet-soul-template.service';
 import { PetSkinService } from '../pet-skin/pet-skin.service';
-
-/** Phase 1 默认灵魂模板 id（A 族群旗舰） */
-const DEFAULT_SOUL_TEMPLATE_ID = 'claw';
+import { UserPlanResolverService } from '../pet-gen-quota/user-plan-resolver.service';
+import {
+  DEFAULT_SOUL_TEMPLATE_ID,
+  getSoulUnlockLimit,
+  getSoulUpgradeMessage,
+  isSoulAllowedByPlan,
+  normalizeUnlockedSoulIds,
+} from '../pet-soul-template/pet-soul-access';
 
 /**
  * 顿领 §3.4 主宠 6 表情状态机契约
@@ -61,6 +66,7 @@ export class LivingPetService {
     private readonly petRepo: Repository<LivingPet>,
     private readonly soulService: PetSoulTemplateService,
     private readonly skinService: PetSkinService,
+    private readonly planResolver: UserPlanResolverService,
   ) {}
 
   /** 获取或自动创建（1 user = 1 主宠）。Phase 1: 懒补默认 soul = 'claw'。 */
@@ -79,6 +85,7 @@ export class LivingPetService {
         intimacyLevel: 0,
         intimacyXp: 0,
         recentMemorySnippets: [],
+        unlockedSoulTemplateIds: [DEFAULT_SOUL_TEMPLATE_ID],
         primaryAgentId,
         engineSwitching: false,
         soulTemplateId: DEFAULT_SOUL_TEMPLATE_ID,
@@ -90,6 +97,17 @@ export class LivingPetService {
     } else if (!pet.soulTemplateId) {
       // Backward-compat: 老用户补默认灵魂
       pet.soulTemplateId = DEFAULT_SOUL_TEMPLATE_ID;
+      pet.unlockedSoulTemplateIds = normalizeUnlockedSoulIds(
+        pet.unlockedSoulTemplateIds,
+        pet.soulTemplateId,
+      );
+      pet = await this.petRepo.save(pet);
+      this.broadcast(pet);
+    } else if (!Array.isArray(pet.unlockedSoulTemplateIds) || pet.unlockedSoulTemplateIds.length === 0) {
+      pet.unlockedSoulTemplateIds = normalizeUnlockedSoulIds(
+        pet.unlockedSoulTemplateIds,
+        pet.soulTemplateId,
+      );
       pet = await this.petRepo.save(pet);
       this.broadcast(pet);
     }
@@ -214,7 +232,25 @@ export class LivingPetService {
     if (pet.soulTemplateId === newSoulTemplateId) {
       return pet;
     }
+    const plan = await this.planResolver.getPlan(userId);
+    const unlockedSoulTemplateIds = normalizeUnlockedSoulIds(
+      pet.unlockedSoulTemplateIds,
+      pet.soulTemplateId,
+    );
+    if (!isSoulAllowedByPlan(newSoulTemplateId, plan)) {
+      throw new ForbiddenException(getSoulUpgradeMessage(plan, newSoulTemplateId));
+    }
+    if (
+      !unlockedSoulTemplateIds.includes(newSoulTemplateId) &&
+      unlockedSoulTemplateIds.length >= getSoulUnlockLimit(plan)
+    ) {
+      throw new ForbiddenException(getSoulUpgradeMessage(plan, newSoulTemplateId));
+    }
     pet.soulTemplateId = newSoulTemplateId;
+    pet.unlockedSoulTemplateIds = normalizeUnlockedSoulIds(
+      unlockedSoulTemplateIds.concat(newSoulTemplateId),
+      newSoulTemplateId,
+    );
     pet.engineSwitching = true;
     pet.lastInteractionAt = String(Date.now());
     const saved = await this.petRepo.save(pet);
@@ -316,6 +352,10 @@ export class LivingPetService {
       intimacy_level: pet.intimacyLevel,
       intimacy_xp: pet.intimacyXp,
       recent_memory_snippets: pet.recentMemorySnippets || [],
+      unlocked_soul_template_ids: normalizeUnlockedSoulIds(
+        pet.unlockedSoulTemplateIds,
+        pet.soulTemplateId,
+      ),
       primary_agent_id: pet.primaryAgentId || null,
       engine_switching: pet.engineSwitching,
       soul_template_id: pet.soulTemplateId ?? null,

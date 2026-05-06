@@ -42,7 +42,7 @@
  *   - Manifest only declares URLs; actual asset bytes are downloaded by
  *     the renderer on first use (or never, if user stays offline).
  */
-import type { PetRendererId } from "./petSdk";
+import { refreshPetRenderers, type PetRendererId } from "./petSdk";
 
 const STORAGE_KEY = "agentrix_pet_assets_state";
 const MANIFEST_URL_KEY = "agentrix_pet_manifest_url";
@@ -169,6 +169,38 @@ function isValidManifest(m: unknown): m is PetAssetManifest {
   });
 }
 
+function emitRendererAssetChanged(
+  eventName: "agentrix:pet-rive-changed" | "agentrix:pet-vrm-changed",
+  url: string | null,
+): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(eventName, { detail: { url } }));
+}
+
+function setRendererHint(
+  storageKey: string,
+  nextUrl: string | null,
+  eventName: "agentrix:pet-rive-changed" | "agentrix:pet-vrm-changed",
+): void {
+  let previousUrl: string | null = null;
+  try {
+    previousUrl = localStorage.getItem(storageKey);
+    if (nextUrl) localStorage.setItem(storageKey, nextUrl);
+    else localStorage.removeItem(storageKey);
+  } catch {
+    // Storage is best-effort; event listeners still get the change signal.
+  }
+  if (previousUrl !== nextUrl) {
+    emitRendererAssetChanged(eventName, nextUrl);
+  }
+}
+
+function clearRendererUrlHints(): void {
+  setRendererHint(RIVE_ASSET_KEY, null, "agentrix:pet-rive-changed");
+  setRendererHint(VRM_ASSET_KEY, null, "agentrix:pet-vrm-changed");
+  void refreshPetRenderers();
+}
+
 export function setManifestUrl(url: string | null): void {
   try {
     if (url && isValidUrl(url)) localStorage.setItem(MANIFEST_URL_KEY, url);
@@ -198,16 +230,11 @@ export function getCachedManifest(): PetAssetManifest | null {
 }
 
 function writeRendererUrlHints(m: PetAssetManifest): void {
-  try {
-    const rive = m.assets.find((a) => a.renderer === "rive");
-    const vrm = m.assets.find((a) => a.renderer === "vrm");
-    if (rive) localStorage.setItem(RIVE_ASSET_KEY, rive.url);
-    else localStorage.removeItem(RIVE_ASSET_KEY);
-    if (vrm) localStorage.setItem(VRM_ASSET_KEY, vrm.url);
-    else localStorage.removeItem(VRM_ASSET_KEY);
-  } catch {
-    /* non-fatal */
-  }
+  const rive = m.assets.find((a) => a.renderer === "rive")?.url ?? null;
+  const vrm = m.assets.find((a) => a.renderer === "vrm")?.url ?? null;
+  setRendererHint(RIVE_ASSET_KEY, rive, "agentrix:pet-rive-changed");
+  setRendererHint(VRM_ASSET_KEY, vrm, "agentrix:pet-vrm-changed");
+  void refreshPetRenderers();
 }
 
 /**
@@ -220,12 +247,7 @@ export async function refreshPetAssetManifest(): Promise<PetAssetManifest | null
   if (!url) {
     // No manifest configured — clear renderer URL hints so SDK degrades
     // to the always-available fallback renderer.
-    try {
-      localStorage.removeItem(RIVE_ASSET_KEY);
-      localStorage.removeItem(VRM_ASSET_KEY);
-    } catch {
-      /* non-fatal */
-    }
+    clearRendererUrlHints();
     return null;
   }
   try {

@@ -1,11 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   PET_EMOTIONS,
   RIVE_EMOTION_TRIGGERS,
   TRIGGER_TO_EMOTION,
   emotionTrigger,
+  fireRiveEmotionTrigger,
+  measureRiveTransitionBudget,
   RIVE_STATE_MACHINE_NAME,
   RIVE_EMOTION_TRANSITION_BUDGET_MS,
+  resolveRiveEmotion,
 } from '../services/riveEmotionMap';
 
 describe('riveEmotionMap (RD-T2.1)', () => {
@@ -44,6 +47,14 @@ describe('riveEmotionMap (RD-T2.1)', () => {
     expect(emotionTrigger('loving')).toBe('toLoving');
   });
 
+  it('bridges shared PetState emotions onto the canonical Rive authoring set', () => {
+    expect(resolveRiveEmotion('calm')).toBe('neutral');
+    expect(resolveRiveEmotion('focused')).toBe('curious');
+    expect(resolveRiveEmotion('concerned')).toBe('sad');
+    expect(resolveRiveEmotion('love')).toBe('loving');
+    expect(resolveRiveEmotion('sleepy')).toBe('sleepy');
+  });
+
   it('emotionTrigger() falls back to neutral for unknown / nullish input (forward-compat)', () => {
     expect(emotionTrigger(null)).toBe('toNeutral');
     expect(emotionTrigger(undefined)).toBe('toNeutral');
@@ -51,7 +62,27 @@ describe('riveEmotionMap (RD-T2.1)', () => {
     expect(emotionTrigger('rage_v2_unknown')).toBe('toNeutral');
   });
 
+  it('fires the resolved Rive trigger input for shared desktop emotions', () => {
+    const toHappy = { name: 'toHappy', fire: vi.fn() };
+    const toNeutral = { name: 'toNeutral', fire: vi.fn() };
+
+    const result = fireRiveEmotionTrigger([toHappy, toNeutral], 'happy');
+
+    expect(result).toEqual({ resolvedEmotion: 'happy', triggerName: 'toHappy', fired: true });
+    expect(toHappy.fire).toHaveBeenCalledOnce();
+    expect(toNeutral.fire).not.toHaveBeenCalled();
+  });
+
   it('publishes a 200ms transition budget aligned with RD-T2.2/2.3/2.4', () => {
     expect(RIVE_EMOTION_TRANSITION_BUDGET_MS).toBe(200);
+  });
+
+  it('warns when a transition exceeds the 200ms budget', () => {
+    const warn = vi.fn();
+
+    const transitionMs = measureRiveTransitionBudget(100, 350, { warn });
+
+    expect(transitionMs).toBe(250);
+    expect(warn).toHaveBeenCalledOnce();
   });
 });

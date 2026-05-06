@@ -1,10 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { LivingPetService } from './living-pet.service';
 import { LivingPet } from '../../entities/living-pet.entity';
 import { PetSoulTemplateService } from '../pet-soul-template/pet-soul-template.service';
 import { PetSkinService } from '../pet-skin/pet-skin.service';
+import { UserPlanResolverService } from '../pet-gen-quota/user-plan-resolver.service';
 
 /**
  * BE-T1.4: switchSoul 不丢 intimacy / xp / wallet / tasks
@@ -29,6 +30,10 @@ describe('LivingPetService (Phase 1: switchSoul / activateSkin)', () => {
     activate: jest.fn(),
   };
 
+  const planResolver = {
+    getPlan: jest.fn().mockResolvedValue('pro_plus'),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
@@ -38,6 +43,7 @@ describe('LivingPetService (Phase 1: switchSoul / activateSkin)', () => {
         { provide: getRepositoryToken(LivingPet), useValue: petRepo },
         { provide: PetSoulTemplateService, useValue: soulService },
         { provide: PetSkinService, useValue: skinService },
+        { provide: UserPlanResolverService, useValue: planResolver },
       ],
     }).compile();
     service = mod.get<LivingPetService>(LivingPetService);
@@ -60,6 +66,7 @@ describe('LivingPetService (Phase 1: switchSoul / activateSkin)', () => {
       intimacyLevel: 5,
       intimacyXp: 1234,
       recentMemorySnippets: ['m1', 'm2'],
+      unlockedSoulTemplateIds: ['claw'],
       primaryAgentId: 'agent-x',
       engineSwitching: false,
       soulTemplateId: 'claw',
@@ -84,7 +91,42 @@ describe('LivingPetService (Phase 1: switchSoul / activateSkin)', () => {
       await expect(service.switchSoul('u1', 'tinker')).rejects.toBeInstanceOf(NotFoundException);
     });
 
+    it('rejects non-claw switch for free plan', async () => {
+      planResolver.getPlan.mockResolvedValue('free');
+      soulService.findById.mockResolvedValue({ id: 'tinker', enabled: true });
+      petRepo.findOne.mockResolvedValue(makePet({ soulTemplateId: 'claw', unlockedSoulTemplateIds: ['claw'] }));
+      await expect(service.switchSoul('u1', 'tinker')).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('allows pro user to unlock up to 3 souls, then blocks the 4th', async () => {
+      planResolver.getPlan.mockResolvedValue('pro');
+      soulService.findById.mockResolvedValue({ id: 'owl', enabled: true });
+      petRepo.findOne.mockResolvedValue(
+        makePet({
+          soulTemplateId: 'sentry',
+          unlockedSoulTemplateIds: ['claw', 'tinker', 'sentry'],
+        }),
+      );
+      await expect(service.switchSoul('u1', 'owl')).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('allows pro user to revisit an already unlocked soul after reaching the cap', async () => {
+      planResolver.getPlan.mockResolvedValue('pro');
+      soulService.findById.mockResolvedValue({ id: 'tinker', enabled: true });
+      const before = makePet({
+        soulTemplateId: 'sentry',
+        unlockedSoulTemplateIds: ['claw', 'tinker', 'sentry'],
+      });
+      petRepo.findOne.mockResolvedValue(before);
+
+      const after = await service.switchSoul('u1', 'tinker');
+
+      expect(after.soulTemplateId).toBe('tinker');
+      expect(after.unlockedSoulTemplateIds).toEqual(['claw', 'tinker', 'sentry']);
+    });
+
     it('preserves intimacy / xp / memory / wallet / personalityOverrides', async () => {
+      planResolver.getPlan.mockResolvedValue('pro_plus');
       soulService.findById.mockResolvedValue({ id: 'sentry', enabled: true });
       const before = makePet({ soulTemplateId: 'claw' });
       petRepo.findOne.mockResolvedValue(before);
@@ -98,9 +140,11 @@ describe('LivingPetService (Phase 1: switchSoul / activateSkin)', () => {
       expect(after.primaryAgentId).toBe(before.primaryAgentId);
       expect(after.personalityOverrides).toEqual(before.personalityOverrides);
       expect(after.engineSwitching).toBe(true);
+      expect(after.unlockedSoulTemplateIds).toEqual(['claw', 'sentry']);
     });
 
     it('is idempotent when same template', async () => {
+      planResolver.getPlan.mockResolvedValue('pro_plus');
       soulService.findById.mockResolvedValue({ id: 'claw', enabled: true });
       const before = makePet({ soulTemplateId: 'claw' });
       petRepo.findOne.mockResolvedValue(before);
@@ -111,6 +155,7 @@ describe('LivingPetService (Phase 1: switchSoul / activateSkin)', () => {
     });
 
     it('resets engineSwitching=false after 2s', async () => {
+      planResolver.getPlan.mockResolvedValue('pro_plus');
       soulService.findById.mockResolvedValue({ id: 'sentry', enabled: true });
       const before = makePet({ soulTemplateId: 'claw' });
       petRepo.findOne.mockResolvedValueOnce(before);
@@ -132,6 +177,7 @@ describe('LivingPetService (Phase 1: switchSoul / activateSkin)', () => {
       petRepo.findOne.mockResolvedValue(null);
       const created = await service.getOrCreate('u1');
       expect(created.soulTemplateId).toBe('claw');
+      expect(created.unlockedSoulTemplateIds).toEqual(['claw']);
       expect(created.personalityOverrides).toEqual({});
     });
 
@@ -140,7 +186,15 @@ describe('LivingPetService (Phase 1: switchSoul / activateSkin)', () => {
       petRepo.findOne.mockResolvedValue(legacy);
       const out = await service.getOrCreate('u1');
       expect(out.soulTemplateId).toBe('claw');
+      expect(out.unlockedSoulTemplateIds).toEqual(['claw']);
       expect(petRepo.save).toHaveBeenCalled();
+    });
+
+    it('backfills unlocked soul set for legacy pet with existing soul', async () => {
+      const legacy = makePet({ unlockedSoulTemplateIds: [] as any, soulTemplateId: 'tinker' });
+      petRepo.findOne.mockResolvedValue(legacy);
+      const out = await service.getOrCreate('u1');
+      expect(out.unlockedSoulTemplateIds).toEqual(['claw', 'tinker']);
     });
   });
 
@@ -165,6 +219,7 @@ describe('LivingPetService (Phase 1: switchSoul / activateSkin)', () => {
       const dto = service.toDto(makePet({ soulTemplateId: 'tinker' }));
       expect(dto.soul_template_id).toBe('tinker');
       expect(dto.personality_overrides).toEqual({ name: 'Coco' });
+      expect(dto.unlocked_soul_template_ids).toEqual(['claw', 'tinker']);
     });
 
     it('soul_template_id null when missing', () => {

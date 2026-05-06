@@ -188,11 +188,6 @@ class ApiClient {
         throw error;
       }
 
-      // 处理403禁止访问错误
-      if (response.status === 403) {
-        throw new Error('没有权限访问此资源');
-      }
-
       if (!response.ok) {
         const errorText = await response.text();
         let error;

@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PetSoulTemplate } from '../../entities/pet-soul-template.entity';
+import { getSoulRequiredPlan } from './pet-soul-access';
 
 export interface ListSoulsQuery {
   clan?: string;
@@ -38,12 +39,10 @@ export class PetSoulTemplateService {
     }
     qb.orderBy('s.tier', 'ASC').addOrderBy('s.id', 'ASC');
     const items = await qb.getMany();
-    if (!query.planLevel || query.planLevel === 'pro_plus' || query.planLevel === 'enterprise') {
+    if (!query.planLevel || query.planLevel === 'pro' || query.planLevel === 'pro_plus' || query.planLevel === 'enterprise') {
       return items;
     }
-    // free / pro 过滤逻辑（Phase 1 简化：tier=high_arpu 仅 pro+ 可见？这里先全部返回）
-    // 真正的计划锁定在 V4 W3 配额模块接入后细化。
-    return items;
+    return items.filter((tpl) => getSoulRequiredPlan(tpl.id) === 'free');
   }
 
   async get(id: string): Promise<PetSoulTemplate> {
@@ -78,6 +77,7 @@ export class PetSoulTemplateService {
       recommended_skin_tags: tpl.recommendedSkinTags,
       marketing_hook: tpl.marketingHook,
       tier: tpl.tier,
+      required_plan: getSoulRequiredPlan(tpl.id),
       age_rating: tpl.ageRating,
       compliance_flags: tpl.complianceFlags,
       version: tpl.version,

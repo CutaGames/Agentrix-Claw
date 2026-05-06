@@ -110,7 +110,7 @@ export default function SoulPicker({ onClose }: Props) {
   const tabs = useMemo(() => CLAN_TABS, []);
 
   return (
-    <div className="flex h-full w-full flex-col bg-[#0b0b13] text-white">
+    <div data-testid="pet-soul-picker" className="flex h-full w-full flex-col bg-[#0b0b13] text-white">
       <header className="flex items-center justify-between border-b border-white/10 px-5 py-3">
         <div>
           <h2 className="text-lg font-semibold">选择灵魂</h2>
@@ -134,6 +134,7 @@ export default function SoulPicker({ onClose }: Props) {
           return (
             <button
               key={t.id}
+              data-testid={`pet-soul-tab-${t.id}`}
               onClick={() => !t.locked && setClan(t.id)}
               disabled={t.locked}
               className={[
@@ -155,7 +156,7 @@ export default function SoulPicker({ onClose }: Props) {
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
         {error && (
-          <div className="mb-3 rounded-md bg-red-500/15 px-3 py-2 text-sm text-red-300">
+          <div data-testid="pet-soul-error" className="mb-3 rounded-md bg-red-500/15 px-3 py-2 text-sm text-red-300">
             {error}
           </div>
         )}
@@ -171,6 +172,7 @@ export default function SoulPicker({ onClose }: Props) {
               return (
                 <article
                   key={s.id}
+                  data-testid={`pet-soul-card-${s.id}`}
                   className={[
                     "group flex flex-col gap-2 rounded-xl border p-3 transition",
                     isActive
@@ -194,6 +196,7 @@ export default function SoulPicker({ onClose }: Props) {
                   </div>
                   <p className="line-clamp-2 text-xs text-white/70">{s.tagline}</p>
                   <button
+                    data-testid={`pet-soul-switch-${s.id}`}
                     onClick={() => handleSwitch(s.id)}
                     disabled={isActive || isBusy}
                     className={[

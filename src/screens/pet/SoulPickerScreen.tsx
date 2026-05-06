@@ -50,14 +50,18 @@ export function SoulPickerScreen() {
   const [loading, setLoading] = useState(false);
   const [switching, setSwitching] = useState<string | null>(null);
   const [activeSoul, setActiveSoul] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (target: PetClan) => {
     setLoading(true);
+    setError(null);
     try {
       const list = await listSouls({ clan: target });
       setSouls(list);
     } catch (err: any) {
-      Alert.alert('加载失败', err?.message || String(err));
+      const message = err?.message || String(err);
+      setError(message);
+      Alert.alert('加载失败', message);
       setSouls([]);
     } finally {
       setLoading(false);
@@ -78,11 +82,14 @@ export function SoulPickerScreen() {
     async (id: string) => {
       if (switching || activeSoul === id) return;
       setSwitching(id);
+      setError(null);
       try {
         const next = await switchSoul(id);
         setActiveSoul(next.soul_template_id ?? id);
       } catch (err: any) {
-        Alert.alert('切换失败', err?.message || String(err));
+        const message = err?.message || String(err);
+        setError(message);
+        Alert.alert('切换失败', message);
       } finally {
         setSwitching(null);
       }
@@ -91,11 +98,17 @@ export function SoulPickerScreen() {
   );
 
   return (
-    <View style={styles.root}>
+    <View testID="pet-soul-screen" style={styles.root}>
       <View style={styles.header}>
         <Text style={styles.title}>选择灵魂</Text>
         <Text style={styles.subtitle}>灵魂决定性格；皮肤可随时换装。切换不丢亲密度与记忆。</Text>
       </View>
+
+      {error ? (
+        <View testID="pet-soul-error" style={styles.errorBanner}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : null}
 
       <ScrollView
         horizontal
@@ -107,6 +120,7 @@ export function SoulPickerScreen() {
           return (
             <Pressable
               key={c.id}
+              testID={`pet-soul-tab-${c.id}`}
               onPress={() => !c.locked && setClan(c.id)}
               style={[styles.tab, active && styles.tabActive, c.locked && styles.tabLocked]}
             >
@@ -129,7 +143,7 @@ export function SoulPickerScreen() {
             const isActive = activeSoul === s.id;
             const isBusy = switching === s.id;
             return (
-              <View key={s.id} style={[styles.card, isActive && styles.cardActive]}>
+              <View key={s.id} testID={`pet-soul-card-${s.id}`} style={[styles.card, isActive && styles.cardActive]}>
                 <View style={styles.cardHead}>
                   <Text style={styles.avatar}>{SOUL_EMOJI[s.id] ?? '🐾'}</Text>
                   <View style={{ flex: 1 }}>
@@ -144,6 +158,7 @@ export function SoulPickerScreen() {
                   {s.tagline}
                 </Text>
                 <Pressable
+                  testID={`pet-soul-switch-${s.id}`}
                   disabled={isActive || isBusy}
                   onPress={() => onPick(s.id)}
                   style={[styles.btn, isActive && styles.btnActive]}
@@ -166,6 +181,17 @@ const styles = StyleSheet.create({
   header: { padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
   title: { fontSize: 18, fontWeight: '600', color: colors.text ?? '#fff' },
   subtitle: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 4 },
+  errorBanner: {
+    marginHorizontal: 12,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(127,29,29,0.32)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.35)',
+  },
+  errorText: { color: '#fecaca', fontSize: 12, lineHeight: 18 },
   tabsRow: { paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
   tab: {
     paddingHorizontal: 12,

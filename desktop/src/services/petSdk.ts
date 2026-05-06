@@ -139,27 +139,34 @@ export interface PetRenderer {
 const _renderers = new Map<PetRendererId, PetRenderer>();
 let _activeRendererId: PetRendererId = "fallback";
 
+function setActiveRendererId(next: PetRendererId): PetRendererId {
+  if (_activeRendererId !== next) {
+    _activeRendererId = next;
+    window.dispatchEvent(
+      new CustomEvent("agentrix:pet-renderer-changed", { detail: { id: next } }),
+    );
+  }
+  return _activeRendererId;
+}
+
 export function registerPetRenderer(renderer: PetRenderer): void {
   _renderers.set(renderer.id, renderer);
-  void Promise.resolve(renderer.isAvailable()).then((ok) => {
-    if (!ok) return;
-    // Promote to the highest-priority renderer that is currently available.
-    for (const candidate of RENDERER_PRIORITY) {
-      const r = _renderers.get(candidate);
-      if (!r) continue;
-      // Fast path: fallback is always available; for the others we must
-      // have either just registered (this branch) or previously verified.
-      if (r === renderer || candidate === "fallback") {
-        if (_activeRendererId !== candidate) {
-          _activeRendererId = candidate;
-          window.dispatchEvent(
-            new CustomEvent("agentrix:pet-renderer-changed", { detail: { id: candidate } }),
-          );
-        }
-        break;
+  void refreshPetRenderers();
+}
+
+export async function refreshPetRenderers(): Promise<PetRendererId> {
+  for (const candidate of RENDERER_PRIORITY) {
+    const renderer = _renderers.get(candidate);
+    if (!renderer) continue;
+    try {
+      if (await Promise.resolve(renderer.isAvailable())) {
+        return setActiveRendererId(candidate);
       }
+    } catch {
+      // Runtime probe failures should never tear down the desktop shell.
     }
-  });
+  }
+  return setActiveRendererId("fallback");
 }
 
 export function getActivePetRenderer(): PetRenderer | null {
