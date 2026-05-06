@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { LivingPet } from '../../entities/living-pet.entity';
 import { LivingPetService } from './living-pet.service';
 import { LivingPetController } from './living-pet.controller';
+import { PetPublicController } from './pet-public.controller';
 import { PetSoulTemplateModule } from '../pet-soul-template/pet-soul-template.module';
 import { PetSkinModule } from '../pet-skin/pet-skin.module';
 
@@ -17,7 +18,7 @@ import { PetSkinModule } from '../pet-skin/pet-skin.module';
  */
 @Module({
   imports: [TypeOrmModule.forFeature([LivingPet]), PetSoulTemplateModule, PetSkinModule],
-  controllers: [LivingPetController],
+  controllers: [LivingPetController, PetPublicController],
   providers: [LivingPetService],
   exports: [LivingPetService],
 })

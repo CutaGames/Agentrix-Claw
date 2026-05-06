@@ -162,6 +162,29 @@ export class LivingPetService {
     return saved;
   }
 
+  /** Phase 1 公共名片查询：仅返回安全字段（不暴露 wallet / memory）。 */
+  async findPublicCard(petId: string): Promise<{
+    pet_id: string;
+    name: string;
+    soul_template_id: string | null;
+    intimacy_level: number;
+    intimacy_xp: number;
+    primary_agent_id: string | null;
+    updated_at: number;
+  } | null> {
+    const pet = await this.petRepo.findOne({ where: { id: petId } });
+    if (!pet) return null;
+    return {
+      pet_id: pet.id,
+      name: pet.name,
+      soul_template_id: pet.soulTemplateId ?? null,
+      intimacy_level: pet.intimacyLevel,
+      intimacy_xp: pet.intimacyXp,
+      primary_agent_id: pet.primaryAgentId || null,
+      updated_at: pet.updatedAt ? pet.updatedAt.getTime() : Date.now(),
+    };
+  }
+
   /** 主动追加最近记忆片段（最多保留 5 条） */
   async pushMemorySnippet(userId: string, snippet: string): Promise<LivingPet> {
     const pet = await this.getOrCreate(userId);
