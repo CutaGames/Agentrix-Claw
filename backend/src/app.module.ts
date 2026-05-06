@@ -149,6 +149,8 @@ import { MarketplacePetModule } from './modules/marketplace-pet/marketplace-pet.
 import { PetEnergyModule } from './modules/pet-energy/pet-energy.module';
 // Phase 4 W7: A2A pet-as-issuer dispatch
 import { PetA2AModule } from './modules/pet-a2a/pet-a2a.module';
+// Phase 4 W8: WebAuthn / Passkey for L3 web co-sign
+import { PasskeyModule } from './modules/passkey/passkey.module';
 import { ApprovalModule } from './modules/approval/approval.module';
 import { HandoffV1Module } from './modules/handoff/handoff-v1.module';
 import { WalletProjectionModule } from './modules/wallet-projection/wallet-projection.module';
@@ -329,6 +331,8 @@ import { PetGenerationModule } from './modules/pet-generation/pet-generation.mod
     PetEnergyModule,
     // Phase 4 W7: A2A pet-as-issuer dispatch
     PetA2AModule,
+    // Phase 4 W8: WebAuthn / Passkey for L3 web co-sign
+    PasskeyModule,
     // v3.0 Approval Routing (顿领 §5.2) — 4 级风险 + Trust 校验
     ApprovalModule,
     // v3.0 Handoff v1 (顿领 §5.1) — /api/v1/handoff/* 包装层

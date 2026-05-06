@@ -7,12 +7,14 @@ import { PetEnergyService } from './pet-energy.service';
 import { PetRiskControlService } from './pet-risk-control.service';
 import { AutoEarnEvaluatorService } from './auto-earn-evaluator.service';
 import { PetReportService } from './pet-report.service';
+import { PetEnergyController } from './pet-energy.controller';
 
 /**
  * PetEnergyModule — Phase 4 BE-T4.4 / BE-T4.5 / BE-T4.6 / BE-T4.8 / BE-T4.9
  */
 @Module({
   imports: [TypeOrmModule.forFeature([PetEnergyState, PetLlmUsageEvent, PetA2ADispatch])],
+  controllers: [PetEnergyController],
   providers: [PetEnergyService, PetRiskControlService, AutoEarnEvaluatorService, PetReportService],
   exports: [PetEnergyService, PetRiskControlService, AutoEarnEvaluatorService, PetReportService],
 })
