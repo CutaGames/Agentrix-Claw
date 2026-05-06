@@ -9,10 +9,17 @@
 import { test, expect } from '@playwright/test';
 
 const API = process.env.API_URL || 'https://api.agentrix.top/api';
+const INJECTED_AUTH_TOKEN = String(
+  process.env.PLAYWRIGHT_AUTH_TOKEN || process.env.E2E_BEARER_TOKEN || '',
+).trim();
+const OTP_EMAIL = process.env.PLAYWRIGHT_TEST_EMAIL || 'pw-e2e@test.local';
+const OTP_CODE = process.env.PLAYWRIGHT_TEST_OTP || '000000';
+const AUTH_SKIP_HINT =
+  'No bearer token injected and dev OTP bootstrap is unavailable. Set PLAYWRIGHT_AUTH_TOKEN or E2E_BEARER_TOKEN to run authenticated checks.';
 
 // ── Helper: create a throwaway auth token via email OTP (dev mode) ──────────
 
-let authToken = '';
+let authToken = INJECTED_AUTH_TOKEN;
 const testDeviceId = `test-device-${Date.now()}`;
 const testTaskId = `task-pw-${Date.now()}`;
 const testSessionId = `sess-pw-${Date.now()}`;
@@ -131,12 +138,17 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   // ── 4. Authenticated Flow (if dev OTP available) ────────────────────────
 
   test('4.0 attempt dev-mode auth via email OTP', async ({ request }) => {
+    if (authToken) {
+      test.skip(true, 'Using injected bearer token for authenticated checks');
+      return;
+    }
+
     // Send code
     const sendRes = await request.post(`${API}/auth/email/send-code`, {
-      data: { email: 'pw-e2e@test.local' },
+      data: { email: OTP_EMAIL },
     });
     if (sendRes.status() !== 200 && sendRes.status() !== 201) {
-      test.skip(true, 'Email OTP not available — skipping authenticated tests');
+      test.skip(true, AUTH_SKIP_HINT);
       return;
     }
 
@@ -144,7 +156,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
     // or the backend may accept any code in test mode.
     // This test is best-effort — authenticated tests below will skip if login fails.
     const verifyRes = await request.post(`${API}/auth/email/verify`, {
-      data: { email: 'pw-e2e@test.local', code: '000000' },
+      data: { email: OTP_EMAIL, code: OTP_CODE },
     });
     if (verifyRes.status() === 200 || verifyRes.status() === 201) {
       const body = await verifyRes.json();
@@ -153,7 +165,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('4.1 desktop-sync heartbeat with auth', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.post(`${API}/desktop-sync/heartbeat`, {
       headers: { Authorization: `Bearer ${authToken}` },
       data: {
@@ -170,7 +182,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('4.2 desktop-sync state returns aggregated data', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.get(`${API}/desktop-sync/state`, {
       headers: { Authorization: `Bearer ${authToken}` },
     });
@@ -184,7 +196,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('4.3 desktop-sync upsert task', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.post(`${API}/desktop-sync/tasks`, {
       headers: { Authorization: `Bearer ${authToken}` },
       data: {
@@ -202,7 +214,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('4.4 desktop-sync create approval', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const taskId = `task-approval-${Date.now()}`;
 
     // Create a task first
@@ -236,7 +248,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('4.5 desktop-sync upsert session', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.post(`${API}/desktop-sync/sessions`, {
       headers: { Authorization: `Bearer ${authToken}` },
       data: {
@@ -256,7 +268,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('4.6 operations overview reports runtime state', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.get(`${API}/operations/overview`, {
       headers: { Authorization: `Bearer ${authToken}` },
     });
@@ -269,7 +281,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('4.7 operations continuity exposes wearable payload', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.get(`${API}/operations/continuity`, {
       headers: { Authorization: `Bearer ${authToken}` },
     });
@@ -282,7 +294,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('4.8 operations follow-up queues desktop command', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.post(`${API}/operations/follow-up`, {
       headers: { Authorization: `Bearer ${authToken}` },
       data: {
@@ -301,7 +313,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('4.9 desktop-sync create command', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.post(`${API}/desktop-sync/commands`, {
       headers: { Authorization: `Bearer ${authToken}` },
       data: {
@@ -320,7 +332,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   // ── 5. Agent Presence authenticated ─────────────────────────────────────
 
   test('5.1 agent-presence list devices (authenticated)', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.get(`${API}/agent-presence/devices`, {
       headers: { Authorization: `Bearer ${authToken}` },
     });
@@ -330,7 +342,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('5.2 agent-presence unified devices (authenticated)', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.get(`${API}/agent-presence/devices/unified`, {
       headers: { Authorization: `Bearer ${authToken}` },
     });
@@ -345,7 +357,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('5.3 agent-presence unified stats (authenticated)', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.get(`${API}/agent-presence/devices/unified/stats`, {
       headers: { Authorization: `Bearer ${authToken}` },
     });
@@ -357,7 +369,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('5.4 agent-presence dashboard (authenticated)', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.get(`${API}/agent-presence/dashboard`, {
       headers: { Authorization: `Bearer ${authToken}` },
     });
@@ -368,7 +380,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('5.5 agent-presence create agent', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.post(`${API}/agent-presence/agents`, {
       headers: { Authorization: `Bearer ${authToken}` },
       data: {
@@ -385,7 +397,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('5.6 agent-presence list agents', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.get(`${API}/agent-presence/agents`, {
       headers: { Authorization: `Bearer ${authToken}` },
     });
@@ -395,7 +407,7 @@ test.describe.serial('Desktop Sync + Approval + Agent Presence', () => {
   });
 
   test('5.7 agent-presence channel health', async ({ request }) => {
-    test.skip(!authToken, 'No auth token — skip');
+    test.skip(!authToken, AUTH_SKIP_HINT);
     const res = await request.get(`${API}/agent-presence/channels/health`, {
       headers: { Authorization: `Bearer ${authToken}` },
     });
