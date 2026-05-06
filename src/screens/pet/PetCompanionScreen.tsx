@@ -9,6 +9,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated, Easing, Pressable } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { apiFetch } from '../../services/api';
 import { colors } from '../../theme/colors';
 
@@ -39,6 +40,7 @@ const EMOTION_PALETTE: Record<PetEmotion, { body: string; cheek: string; mood: s
 };
 
 export function PetCompanionScreen() {
+  const navigation = useNavigation<any>();
   const [pet, setPet] = useState<PetState | null>(null);
   const scale = useRef(new Animated.Value(1)).current;
 
@@ -123,6 +125,37 @@ export function PetCompanionScreen() {
       <Pressable style={styles.voiceBtn} onPress={() => triggerInteraction('voice_greet')}>
         <Text style={styles.voiceBtnText}>🎙 打招呼 (+1 xp)</Text>
       </Pressable>
+
+      <View style={styles.v4Row} testID="pet-v4-cta-row">
+        <Pressable
+          style={styles.v4Btn}
+          onPress={() => navigation.navigate('Wardrobe')}
+          testID="pet-cta-wardrobe"
+        >
+          <Text style={styles.v4BtnText}>👗 衣柜</Text>
+        </Pressable>
+        <Pressable
+          style={styles.v4Btn}
+          onPress={() => navigation.navigate('SoulPicker')}
+          testID="pet-cta-soul"
+        >
+          <Text style={styles.v4BtnText}>👻 灵魂</Text>
+        </Pressable>
+        <Pressable
+          style={styles.v4Btn}
+          onPress={() => navigation.navigate('SkinMarketplace')}
+          testID="pet-cta-market"
+        >
+          <Text style={styles.v4BtnText}>🛒 市场</Text>
+        </Pressable>
+        <Pressable
+          style={styles.v4Btn}
+          onPress={() => navigation.navigate('Breed')}
+          testID="pet-cta-breed"
+        >
+          <Text style={styles.v4BtnText}>🧬 繁殖</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -151,4 +184,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24,
   },
   voiceBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  v4Row: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 24,
+  },
+  v4Btn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(0,212,255,0.35)',
+    backgroundColor: 'rgba(0,212,255,0.10)',
+  },
+  v4BtnText: { color: colors.accent, fontSize: 13, fontWeight: '600' },
 });

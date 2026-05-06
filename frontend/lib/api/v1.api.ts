@@ -69,6 +69,41 @@ export interface PetSoulListResponse {
   };
 }
 
+// ---------- V4 §3.2: skins / wardrobe / marketplace ----------
+
+export type PetSkinFormat = 'svg' | 'rive' | 'vrm' | 'live2d';
+export type PetSkinSource = 'platform' | 'generated' | 'purchased' | 'remixed' | 'gifted';
+
+export interface PetSkinDto {
+  id: string;
+  owner_user_id: string | null;
+  source: PetSkinSource;
+  display_name: string;
+  url: string;
+  thumbnail_url: string | null;
+  format: PetSkinFormat;
+  manifest: Record<string, unknown>;
+  source_ref_id: string | null;
+  version: number;
+  retired: boolean;
+  created_at: number;
+}
+
+export interface PetGenerationTaskEnvelope {
+  accepted?: boolean;
+  async?: boolean;
+  taskId?: string;
+  status?: string;
+  provider?: string;
+  model?: string;
+  message?: string;
+  error?: string;
+  outputUrl?: string;
+  vrmUrl?: string;
+  thumbnailUrl?: string;
+  [k: string]: unknown;
+}
+
 export interface WalletProjection {
   user_id: string;
   total_balance_cents?: number;
@@ -166,6 +201,32 @@ export const v1Api = {
       apiClient.post<PetState>('/v1/pet/emotion', { emotion, intensity }),
     addIntimacyXp: (xp: number, source?: string) =>
       apiClient.post<PetState>('/v1/pet/intimacy', { xp, source }),
+
+    // V4 §3.2 — Skins / Wardrobe
+    listSkins: () => apiClient.get<{ items: PetSkinDto[] }>('/v1/pet/skins'),
+    getActiveSkin: () => apiClient.get<{ active_skin_id: string | null }>('/v1/pet/skins/active'),
+    activateSkin: (skinId: string) =>
+      apiClient.post<{ ok: boolean; active_skin_id?: string }>('/v1/pet/skin/activate', { skinId }),
+    uploadSkin: (body: {
+      displayName: string;
+      url: string;
+      format?: PetSkinFormat;
+      thumbnailUrl?: string;
+      manifest?: Record<string, unknown>;
+    }) => apiClient.post<{ skin: PetSkinDto }>('/v1/pet/skins/upload', body),
+
+    // V4 §3.2 — Marketplace
+    listMarketplace: (params?: { limit?: number; offset?: number; source?: 'platform' | 'generated' | 'remixed' }) =>
+      apiClient.get<{ items: PetSkinDto[]; total: number }>('/v1/pet/skins/marketplace', { params }),
+    installFromMarketplace: (skinId: string) =>
+      apiClient.post<{ skin: PetSkinDto }>(
+        `/v1/pet/skins/marketplace/${encodeURIComponent(skinId)}/install`,
+        {},
+      ),
+
+    // V4 §3.4 — Breed
+    breed: (body: { parentSkinIdA: string; parentSkinIdB: string; prompt?: string; style?: string }) =>
+      apiClient.post<PetGenerationTaskEnvelope>('/v1/pet/breed', body),
   },
 
   wallet: {

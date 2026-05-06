@@ -48,6 +48,90 @@ export class PetSkinService {
       .getMany();
   }
 
+  /**
+   * V4 §3.2 — Skin Marketplace listing.
+   * Returns publicly browsable skins:
+   *  - source='platform' (官方默认皮肤, owner_user_id IS NULL)
+   *  - source IN ('generated','remixed') AND owner_user_id IS NOT NULL
+   *    (community-uploaded; for now all generated skins are publicly browsable —
+   *     a future privacy flag on PetSkin can refine this)
+   * Excludes retired and the requester's own skins (those already appear in /skins).
+   */
+  async listMarketplace(
+    opts: { limit?: number; offset?: number; source?: PetSkin['source']; excludeUserId?: string } = {},
+  ): Promise<{ items: PetSkin[]; total: number }> {
+    const limit = Math.min(100, Math.max(1, opts.limit ?? 30));
+    const offset = Math.max(0, opts.offset ?? 0);
+    const qb = this.skinRepo.createQueryBuilder('s').where('s.retired = false');
+    if (opts.source) {
+      qb.andWhere('s.source = :source', { source: opts.source });
+    } else {
+      qb.andWhere("(s.source = 'platform' OR s.source IN ('generated','remixed'))");
+    }
+    if (opts.excludeUserId) {
+      qb.andWhere('(s.owner_user_id IS NULL OR s.owner_user_id <> :uid)', { uid: opts.excludeUserId });
+    }
+    const total = await qb.getCount();
+    const items = await qb.orderBy('s.created_at', 'DESC').skip(offset).take(limit).getMany();
+    return { items, total };
+  }
+
+  /**
+   * V4 §3.2 — Install a marketplace skin into the requester's library.
+   * For platform skins (owner=NULL) we just return the row — they're already visible.
+   * For other-user skins we clone the row with source='purchased' (free for now;
+   *  payments + royalties handled by RoyaltySplitter in a separate flow).
+   */
+  async installFromMarketplace(userId: string, skinId: string): Promise<PetSkin> {
+    const src = await this.skinRepo.findOne({ where: { id: skinId } });
+    if (!src) throw new NotFoundException(`pet skin not found: ${skinId}`);
+    if (src.retired) throw new ForbiddenException(`pet skin retired`);
+    if (src.ownerUserId === null || src.ownerUserId === userId) {
+      return src;
+    }
+    const clone = this.skinRepo.create({
+      ownerUserId: userId,
+      source: 'purchased',
+      displayName: src.displayName,
+      url: src.url,
+      thumbnailUrl: src.thumbnailUrl,
+      format: src.format,
+      manifest: { ...(src.manifest || {}), installedFrom: src.id },
+      sourceRefId: src.id,
+      parentSkinId: src.id,
+      originalCreatorUserId: src.originalCreatorUserId ?? src.ownerUserId,
+      royaltyRateBps: src.royaltyRateBps ?? 0,
+      version: 1,
+      retired: false,
+    });
+    const saved = await this.skinRepo.save(clone);
+    this.logger.log(`PetSkin installed from marketplace: ${saved.id} from=${src.id} user=${userId}`);
+    return saved;
+  }
+
+  /**
+   * V4 §3.2 — User-uploaded skin registration.
+   * The frontend uploads the asset to S3/CDN first, then POSTs the URL here.
+   * We trust the URL but enforce ownership and a sane format.
+   */
+  async registerUpload(
+    userId: string,
+    input: { displayName: string; url: string; format?: PetSkin['format']; thumbnailUrl?: string; manifest?: Record<string, unknown> },
+  ): Promise<PetSkin> {
+    if (!input.displayName?.trim()) throw new ForbiddenException('displayName required');
+    if (!input.url?.trim()) throw new ForbiddenException('url required');
+    return this.create({
+      ownerUserId: userId,
+      source: 'generated',
+      displayName: input.displayName.trim(),
+      url: input.url.trim(),
+      thumbnailUrl: input.thumbnailUrl ?? null,
+      format: input.format ?? 'vrm',
+      manifest: { ...(input.manifest || {}), uploadedAt: Date.now() },
+      sourceRefId: null,
+    });
+  }
+
   async findById(skinId: string): Promise<PetSkin | null> {
     return this.skinRepo.findOne({ where: { id: skinId } });
   }

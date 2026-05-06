@@ -91,3 +91,70 @@ export async function activateSkin(skinId: string): Promise<PetState> {
     body: JSON.stringify({ skinId }),
   });
 }
+
+// ───────── V4 §3.2 / §3.4 — Marketplace, Upload, Breed ─────────
+
+export interface PetSkinMarketplaceResponse {
+  items: PetSkinSummary[];
+  total: number;
+}
+
+/** V4 §3.2 — 列出可安装的市场皮肤 */
+export async function listMarketplaceSkins(opts: {
+  limit?: number;
+  offset?: number;
+  source?: 'platform' | 'generated' | 'remixed';
+} = {}): Promise<PetSkinMarketplaceResponse> {
+  const params = new URLSearchParams();
+  if (opts.limit != null) params.set('limit', String(opts.limit));
+  if (opts.offset != null) params.set('offset', String(opts.offset));
+  if (opts.source) params.set('source', opts.source);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<PetSkinMarketplaceResponse>(`/v1/pet/skins/marketplace${qs}`);
+}
+
+/** V4 §3.2 — 从市场安装皮肤到当前用户衣柜 */
+export async function installMarketplaceSkin(skinId: string): Promise<PetSkinSummary> {
+  const res = await apiFetch<{ skin: PetSkinSummary }>(
+    `/v1/pet/skins/marketplace/${encodeURIComponent(skinId)}/install`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+  return res.skin;
+}
+
+/** V4 §3.2 — 用户上传自定义皮肤（前端先上传到 CDN 后调用） */
+export async function uploadSkin(input: {
+  displayName: string;
+  url: string;
+  format?: 'svg' | 'rive' | 'vrm' | 'live2d';
+  thumbnailUrl?: string;
+  manifest?: Record<string, unknown>;
+}): Promise<PetSkinSummary> {
+  const res = await apiFetch<{ skin: PetSkinSummary }>('/v1/pet/skins/upload', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return res.skin;
+}
+
+export interface PetBreedResult {
+  accepted?: boolean;
+  taskId?: string;
+  status?: string;
+  message?: string;
+  error?: string;
+  [k: string]: unknown;
+}
+
+/** V4 §3.4 — 双图繁殖 */
+export async function breedPet(input: {
+  parentSkinIdA: string;
+  parentSkinIdB: string;
+  prompt?: string;
+  style?: string;
+}): Promise<PetBreedResult> {
+  return apiFetch<PetBreedResult>('/v1/pet/breed', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
