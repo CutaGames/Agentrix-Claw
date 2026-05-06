@@ -143,6 +143,8 @@ import { ModerationModule } from './modules/moderation/moderation.module';
 import { PetRiveAssetModule } from './modules/pet-rive-asset/pet-rive-asset.module';
 // Phase 2 W2: DMCA takedown
 import { DmcaModule } from './modules/dmca/dmca.module';
+// Phase 3 W1: Marketplace MVP (listing/auction/rental + royalty splitter)
+import { MarketplacePetModule } from './modules/marketplace-pet/marketplace-pet.module';
 import { ApprovalModule } from './modules/approval/approval.module';
 import { HandoffV1Module } from './modules/handoff/handoff-v1.module';
 import { WalletProjectionModule } from './modules/wallet-projection/wallet-projection.module';
@@ -317,6 +319,8 @@ import { PetGenerationModule } from './modules/pet-generation/pet-generation.mod
     PetRiveAssetModule,
     // Phase 2 W2: DMCA takedown
     DmcaModule,
+    // Phase 3 W1: Marketplace MVP
+    MarketplacePetModule,
     // v3.0 Approval Routing (顿领 §5.2) — 4 级风险 + Trust 校验
     ApprovalModule,
     // v3.0 Handoff v1 (顿领 §5.1) — /api/v1/handoff/* 包装层

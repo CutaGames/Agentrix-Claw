@@ -66,6 +66,22 @@ export class PetSkin {
   @Column({ type: 'boolean', default: false })
   retired: boolean;
 
+  /** Phase 3 — Remix lineage: 直接父皮肤（用于 royalty 沿祖先链回溯） */
+  @Column({ type: 'uuid', nullable: true })
+  parentSkinId: string | null;
+
+  /** Phase 3 — Royalty: 创作者每次转售应分得 basis points（0-10000）。
+   *  ⚠️ 此字段仅作为皮肤本身的版税声明；实际计算时按 RoyaltySplitterService 的 3 层祖先规则执行。
+   */
+  @Column({ type: 'integer', default: 0 })
+  royaltyRateBps: number;
+
+  /** Phase 3 — Royalty: 原始创作者 user id（祖先链最顶端）。
+   *  随 remix/拍卖等流转保持不变；用作版税收款人。
+   */
+  @Column({ type: 'uuid', nullable: true })
+  originalCreatorUserId: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
