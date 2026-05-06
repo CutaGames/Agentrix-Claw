@@ -137,6 +137,10 @@ import { LivingPetModule } from './modules/living-pet/living-pet.module';
 // Phase 1（灵魂 × 皮肤解耦）：6 族群 28 只签名宠物 + 用户皮肤资产
 import { PetSoulTemplateModule } from './modules/pet-soul-template/pet-soul-template.module';
 import { PetSkinModule } from './modules/pet-skin/pet-skin.module';
+// Phase 2 W1 骨架：配额 / 审核 / Rive 资产清单
+import { PetGenQuotaModule } from './modules/pet-gen-quota/pet-gen-quota.module';
+import { ModerationModule } from './modules/moderation/moderation.module';
+import { PetRiveAssetModule } from './modules/pet-rive-asset/pet-rive-asset.module';
 import { ApprovalModule } from './modules/approval/approval.module';
 import { HandoffV1Module } from './modules/handoff/handoff-v1.module';
 import { WalletProjectionModule } from './modules/wallet-projection/wallet-projection.module';
@@ -305,6 +309,10 @@ import { PetGenerationModule } from './modules/pet-generation/pet-generation.mod
     // Phase 1：灵魂模板 + 皮肤资产
     PetSoulTemplateModule,
     PetSkinModule,
+    // Phase 2 W1 骨架：配额 / 审核 / Rive 资产清单
+    PetGenQuotaModule,
+    ModerationModule,
+    PetRiveAssetModule,
     // v3.0 Approval Routing (顿领 §5.2) — 4 级风险 + Trust 校验
     ApprovalModule,
     // v3.0 Handoff v1 (顿领 §5.1) — /api/v1/handoff/* 包装层
