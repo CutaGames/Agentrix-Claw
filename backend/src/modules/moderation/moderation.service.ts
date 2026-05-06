@@ -14,15 +14,37 @@ export interface ModerationResult {
 }
 
 /**
- * Phase 2 W1 关键词 stopword（最小集，覆盖通用 NSFW 与暴力）。
- * 100 词测试集（BE-T2.6）将在 Phase 2 W2 落地为 fixture，本骨架先列示意。
+ * Phase 2 W2 NSFW / 暴力 / 仇恨 / 武器 / 未成年关键词集合（substring 匹配，全部 lower-cased）。
+ * 配套 fixture：`fixtures/nsfw-100-prompts.ts`（BE-T2.6 100-prompt 集）。
+ *
+ * 维护规则：
+ *  1. 加新关键词前先检查 nsfw-100-prompts.ts 的 ALLOW 集不会误伤。
+ *  2. 单词 keyword 必须保证 substring 不会撞到正常名词（如 "breast" 撞 "chicken breast"
+ *     → 改用 phrase "breasts exposed"）。
+ *  3. 新增后跑 `npx jest backend/src/modules/moderation` 确认 100/100 通过。
  */
 const NSFW_KEYWORDS_LOWER = [
+  // sex / explicit
   'porn', 'pornographic', 'nude', 'naked', 'nsfw',
-  'sex', 'sexual', 'rape', 'incest', 'fetish',
-  'loli', 'shota', 'pedophil',
-  'gore', 'snuff', 'beheading', 'self_harm',
-  'kill yourself', 'suicide method',
+  'sex', 'sexual', 'fetish', 'hentai', 'erotica',
+  'lewd', 'explicit', 'softcore', 'boudoir',
+  'orgasm', 'masturbation', 'genitalia', 'penis', 'vagina',
+  'breasts exposed', 'nipple slip',
+  // minors (must-block)
+  'loli', 'shota', 'pedophil', 'underage', 'csam',
+  'cp art', 'sexualized minor',
+  // non-consent
+  'rape', 'incest', 'non-consensual',
+  // self-harm / suicide
+  'self_harm', 'self-harm', 'kill yourself', 'suicide method',
+  // violence / gore
+  'gore', 'snuff', 'beheading', 'mass shooting', 'torture',
+  'mutilation', 'execution chamber', 'dismembered', 'lynching',
+  'genocide', 'terrorism',
+  // hate / discrimination
+  'nazi', 'kkk', 'racial slur', 'ethnic cleansing',
+  // weapons / illegal manufacturing
+  'make a bomb', 'pipe bomb', 'meth synthesis', 'fentanyl', 'school shooting',
 ];
 
 /**
