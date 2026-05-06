@@ -6,7 +6,9 @@
     "dev": "next dev -p 3000 -H 0.0.0.0",
     "build": "next build",
     "start": "bash start-production.sh",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@solana/wallet-adapter-base": "^0.9.27",
@@ -34,15 +36,20 @@
     "wagmi": "^1.4.7"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/jszip": "^3.4.1",
     "@types/node": "20.0.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.0",
     "eslint": "^8.0.0",
     "eslint-config-next": "13.5.6",
+    "jsdom": "^25.0.1",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.3.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.0"
   }
 }
