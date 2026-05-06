@@ -29,7 +29,21 @@ vi.mock('next/link', () => ({
   default: ({ children, href }: any) => <a href={href}>{children}</a>,
 }));
 
-const SAMPLE = [
+type TestListing = {
+  id: string;
+  petSkinId: string;
+  sellerUserId: string;
+  mode: 'fixed_price' | 'auction' | 'rental';
+  status: string;
+  priceUsd: string | null;
+  startingBidUsd: string | null;
+  rentalPricePerDayUsd: string | null;
+  description: string | null;
+  auctionEndsAt: string | null;
+  createdAt: string;
+};
+
+const SAMPLE: TestListing[] = [
   {
     id: 'l1', petSkinId: 'skin-aaa-1', sellerUserId: 'u1', mode: 'fixed_price',
     status: 'active', priceUsd: '50.00', startingBidUsd: null, rentalPricePerDayUsd: null,
@@ -96,7 +110,7 @@ describe('MarketplaceIndex (WB-T3.1)', () => {
   });
 
   it('renders empty state when no matches', async () => {
-    global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ items: [] }) }) as any) as any;
+    global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ items: [] as TestListing[] }) }) as any) as any;
     render(<MarketplaceIndex />);
     await waitFor(() => expect(screen.queryByTestId('mp-empty')).not.toBeNull());
   });

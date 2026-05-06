@@ -37,7 +37,12 @@ describe('embed.js — SC-T3.1 XSS / sandbox hardening', () => {
     document.head.innerHTML = '';
     document.body.innerHTML = '';
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    Object.defineProperty(document, 'currentScript', { value: null, configurable: true });
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+    vi.restoreAllMocks();
+  });
 
   it('rejects pet-id containing HTML tags', () => {
     placeScript({ 'data-pet-id': '<img src=x onerror=alert(1)>' });

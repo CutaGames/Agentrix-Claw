@@ -27,6 +27,9 @@ describe('embed.js (WB-T3.4)', () => {
   });
 
   afterEach(() => {
+    Object.defineProperty(document, 'currentScript', { value: null, configurable: true });
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
     vi.restoreAllMocks();
   });
 

@@ -57,7 +57,7 @@ export default function ListingDetail() {
       .then((d) => setListing(d.listing))
       .catch((e) => setError(String(e?.message || e)));
     fetch(`/api/v1/marketplace/pets/${encodeURIComponent(id)}/bids`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((r) => (r.ok ? r.json() : Promise.resolve({ items: [] as Bid[] })))
       .then((d) => setBids(d.items || []))
       .catch(() => setBids([]));
   }, [id]);

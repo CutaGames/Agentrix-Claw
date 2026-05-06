@@ -16,7 +16,24 @@ vi.mock('next/link', () => ({
   default: ({ children, href }: any) => <a href={href}>{children}</a>,
 }));
 
-const LISTING = {
+type TestListing = {
+  id: string;
+  petSkinId: string;
+  sellerUserId: string;
+  mode: 'fixed_price' | 'auction' | 'rental';
+  status: string;
+  priceUsd: string | null;
+  startingBidUsd: string | null;
+  reservePriceUsd: string | null;
+  minBidIncrementUsd: string | null;
+  auctionEndsAt: string | null;
+  rentalPricePerDayUsd: string | null;
+  rentalDurationDays: number | null;
+  royaltyRateBps: number;
+  description: string | null;
+};
+
+const LISTING: TestListing = {
   id: 'L1', petSkinId: 'skin-1', sellerUserId: 'u1',
   mode: 'auction', status: 'active',
   priceUsd: null, startingBidUsd: '10.00',

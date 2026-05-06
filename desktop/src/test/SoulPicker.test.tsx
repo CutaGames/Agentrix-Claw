@@ -2,7 +2,7 @@
  * DT-T1.3 / DT-T1.4 / DT-T1.5 — SoulPicker component tests.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup, act } from "@testing-library/react";
 
 const listSoulsMock = vi.fn();
 const switchSoulMock = vi.fn();
@@ -84,9 +84,11 @@ describe("SoulPicker (DT-T1.3 / 1.4 / 1.5)", () => {
     expect(clawBtn.disabled).toBe(true);
 
     // Fire realtime event — switch to owl
-    window.dispatchEvent(
-      new CustomEvent("agentrix:pet-soul-changed", { detail: { soul_template_id: "owl" } }),
-    );
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent("agentrix:pet-soul-changed", { detail: { soul_template_id: "owl" } }),
+      );
+    });
 
     await waitFor(() => {
       const owlBtn = (screen.getByText("夜枭").closest("article")!.querySelector("button")) as HTMLButtonElement;
