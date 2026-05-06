@@ -1,0 +1,563 @@
+{
+  "generated_at": "2026-05-06T11:07:19.818Z",
+  "total": 100,
+  "passed": 22,
+  "failed": 0,
+  "todo": 78,
+  "groups": [
+    {
+      "name": "A. Wire format",
+      "total": 20,
+      "passed": 12,
+      "failed": 0,
+      "todo": 8,
+      "items": [
+        {
+          "id": "CERT-001",
+          "title": "pet_state minimum valid frame accepted",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-002",
+          "title": "pet_state rejects energy > 100",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-003",
+          "title": "pet_state rejects negative seq",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-004",
+          "title": "pet_state rejects unknown additional property",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-005",
+          "title": "pet_state pet_skin_id length boundary 64 ok",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-006",
+          "title": "pet_event minimum valid",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-007",
+          "title": "pet_event rejects unknown kind",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-008",
+          "title": "approval_request minimum valid",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-009",
+          "title": "approval_request rejects bad risk_level",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-010",
+          "title": "approval_response requires device_attestation",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-011",
+          "title": "approval_response rejects unknown decision",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-012",
+          "title": "approval_response with cosign_token shape ok",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-013",
+          "title": "approval_request deadline_ts in future enforced server-side",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-014",
+          "title": "pet_event amount_cents handles large int (>2^31)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-015",
+          "title": "pet_state ts UTC monotonic check",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-016",
+          "title": "approval_request summary unicode preserved",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-017",
+          "title": "approval_response cosign_token max length 1024 enforced",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-018",
+          "title": "pet_event message strips control chars",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-019",
+          "title": "pet_state paused_reason null vs missing equivalent",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-020",
+          "title": "protocol version negotiation downgrade rejected",
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "name": "B. Replay + attestation",
+      "total": 20,
+      "passed": 5,
+      "failed": 0,
+      "todo": 15,
+      "items": [
+        {
+          "id": "CERT-021",
+          "title": "HMAC matches expected",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-022",
+          "title": "HMAC differs across payloads",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-023",
+          "title": "HMAC differs across DSTs",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-024",
+          "title": "timing-safe comparison passes for equal HMACs",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-025",
+          "title": "nonce monotonic guard rejects equal/lower (logic check)",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-026",
+          "title": "nonce wrap-around at u64 max handled",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-027",
+          "title": "stale frame older than 60s window rejected",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-028",
+          "title": "clock skew tolerance ±5 minutes",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-029",
+          "title": "DST rotation invalidates old HMACs",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-030",
+          "title": "revoked DST rejected within 30s",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-031",
+          "title": "server-pushed dst_revoked frame ack",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-032",
+          "title": "replay across reboot uses persisted nonce",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-033",
+          "title": "parallel sessions per device rejected",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-034",
+          "title": "HMAC over canonical payload bytes (CBOR vs JSON)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-035",
+          "title": "device clock backwards by 1h does not break monotonic",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-036",
+          "title": "device serial spoof with another device DST rejected",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-037",
+          "title": "TLS pinning to api.agentrix.top",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-038",
+          "title": "certificate transparency audit",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-039",
+          "title": "secure boot chain verified",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-040",
+          "title": "secure element key non-extractability attested",
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "name": "C. Pairing",
+      "total": 15,
+      "passed": 2,
+      "failed": 0,
+      "todo": 13,
+      "items": [
+        {
+          "id": "CERT-041",
+          "title": "ticket is opaque base64url",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-042",
+          "title": "ticket length >= 24 chars (prevents brute force)",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-043",
+          "title": "ticket TTL 5 minutes enforced",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-044",
+          "title": "ticket one-shot consumption",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-045",
+          "title": "BLE pair success rate ≥ 99% over 100 attempts (HW-T5.4)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-046",
+          "title": "BLE pair iOS success rate ≥ 99% (HW-T5.5)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-047",
+          "title": "BLE pair desktop adapter (HW-T5.6)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-048",
+          "title": "pair rejects when device already bound to another user",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-049",
+          "title": "re-pair rotates DST",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-050",
+          "title": "pair persists deviceClass/vendor/firmwareVersion",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-051",
+          "title": "QR pair fallback when BLE unavailable",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-052",
+          "title": "pair under poor RF (-90 dBm) succeeds within 10s",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-053",
+          "title": "simultaneous pair attempts on same ticket safe (race)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-054",
+          "title": "pair telemetry recorded in wearable_telemetry",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-055",
+          "title": "pair triggers MQTT presence retained=true",
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "name": "D. OTA",
+      "total": 15,
+      "passed": 3,
+      "failed": 0,
+      "todo": 12,
+      "items": [
+        {
+          "id": "CERT-056",
+          "title": "SHA-256 of full firmware matches manifest field",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-057",
+          "title": "per-chunk SHA-256 differs across chunks",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-058",
+          "title": "chunk_count = ceil(size / chunk_size)",
+          "status": "passed"
+        },
+        {
+          "id": "CERT-059",
+          "title": "OTA upgrade success ≥ 99% over 100 reboots (HW-T5.15)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-060",
+          "title": "OTA recovers from mid-flight power loss via resume",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-061",
+          "title": "OTA rejects mismatched sha256",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-062",
+          "title": "mandatory flag forces device offline-mode until upgraded",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-063",
+          "title": "rollback on first-boot crash",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-064",
+          "title": "A/B partition swap atomic",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-065",
+          "title": "OTA over BLE adapter via phone bridge",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-066",
+          "title": "OTA chunk caching does not leak between processes",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-067",
+          "title": "OTA bandwidth throttle 64 KiB/s on cellular",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-068",
+          "title": "OTA channel switch (stable→staging) requires reauth",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-069",
+          "title": "signed firmware verification (Ed25519)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-070",
+          "title": "certificate revocation handled",
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "name": "E. Timing + latency",
+      "total": 10,
+      "passed": 0,
+      "failed": 0,
+      "todo": 10,
+      "items": [
+        {
+          "id": "CERT-071",
+          "title": "pet_state propagation desktop → device < 250 ms p95",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-072",
+          "title": "physical button → server ack < 100 ms (HW-T5.13)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-073",
+          "title": "approval_request → device render < 200 ms",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-074",
+          "title": "BLE reconnection within 5 s after backgrounding",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-075",
+          "title": "MQTT keepalive 30 s; missed → presence offline",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-076",
+          "title": "device clock NTP drift < 1 s over 24 h",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-077",
+          "title": "gateway failover < 10 s",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-078",
+          "title": "Wi-Fi roaming sustained",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-079",
+          "title": "4G handover sustained",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-080",
+          "title": "airplane-mode → buffered uplink replays in order",
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "name": "F. Physical + energy",
+      "total": 20,
+      "passed": 0,
+      "failed": 0,
+      "todo": 20,
+      "items": [
+        {
+          "id": "CERT-081",
+          "title": "OLED 10 emotion frames render correct bitmap (HW-T5.11)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-082",
+          "title": "vibration 4 patterns within ±10 ms (HW-T5.12)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-083",
+          "title": "drop test 1 m no damage (HW-T5.18)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-084",
+          "title": "temp -10°C → 50°C operational (HW-T5.19)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-085",
+          "title": "humidity 95% RH non-condensing",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-086",
+          "title": "ESD ±8 kV contact pass",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-087",
+          "title": "button bounce filter 5 ms",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-088",
+          "title": "battery: 6 months on CR2032 simulated (HW-T5.17)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-089",
+          "title": "charging cycle 500x capacity ≥ 80%",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-090",
+          "title": "idle current < 10 µA",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-091",
+          "title": "BLE TX power calibrated",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-092",
+          "title": "FCC / CE / SRRC declarations submitted",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-093",
+          "title": "enclosure IP54",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-094",
+          "title": "child-safety compliance (small parts, sharp edges)",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-095",
+          "title": "packaging compostable / recyclable mark",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-096",
+          "title": "serial barcode unique across batch",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-097",
+          "title": "QC sample yield ≥ 98%",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-098",
+          "title": "warranty registration via QR",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-099",
+          "title": "end-of-life unpair flow erases secure element",
+          "status": "todo"
+        },
+        {
+          "id": "CERT-100",
+          "title": "post-launch telemetry opt-in default off",
+          "status": "todo"
+        }
+      ]
+    }
+  ]
+}

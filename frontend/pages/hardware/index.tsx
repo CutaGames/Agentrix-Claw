@@ -56,7 +56,7 @@ export default function CoBrandedStorePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, company, expected_volume: vol }),
-      }).catch(() => undefined);
+      }).catch((): undefined => undefined);
       setSubmitted(true);
     } catch (e: any) {
       setError(e?.message || 'submit failed');

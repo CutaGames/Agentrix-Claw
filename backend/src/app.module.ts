@@ -153,6 +153,8 @@ import { PetA2AModule } from './modules/pet-a2a/pet-a2a.module';
 import { PasskeyModule } from './modules/passkey/passkey.module';
 // Phase 5 BE-10.2 / BE-10.3: ClawCore device registry + chunked OTA
 import { DeviceRegistryModule } from './modules/device-registry/device-registry.module';
+// Phase 5 WB-12.1: Partner inquiry capture for /hardware
+import { PartnerInquiryModule } from './modules/partner-inquiry/partner-inquiry.module';
 import { ApprovalModule } from './modules/approval/approval.module';
 import { HandoffV1Module } from './modules/handoff/handoff-v1.module';
 import { WalletProjectionModule } from './modules/wallet-projection/wallet-projection.module';
@@ -337,6 +339,8 @@ import { PetGenerationModule } from './modules/pet-generation/pet-generation.mod
     PasskeyModule,
     // Phase 5 BE-10.2 / BE-10.3: ClawCore device registry + OTA
     DeviceRegistryModule,
+    // Phase 5 WB-12.1: partner inquiry capture
+    PartnerInquiryModule,
     // v3.0 Approval Routing (顿领 §5.2) — 4 级风险 + Trust 校验
     ApprovalModule,
     // v3.0 Handoff v1 (顿领 §5.1) — /api/v1/handoff/* 包装层
