@@ -93,10 +93,18 @@ export interface PetState {
   intimacy_xp: number;
   /** 最近 5 条记忆片段（长期记忆走 Memory Store §5.5） */
   recent_memory_snippets: string[];
+  /** 当前账号已解锁的灵魂模板集合（Phase 1 monetization gate） */
+  unlocked_soul_template_ids?: string[];
   /** §3.8 当前驱动主宠的 working agent；与 pet_id 永远独立 */
   primary_agent_id: string;
   /** 引擎切换中（1-2s 换装动画） */
   engine_switching: boolean;
+  /** Phase 1+：当前灵魂模板 id（类似 'claw' / 'fox'） */
+  soul_template_id?: string | null;
+  /** Phase 1+：当前激活皮肤 id（uuid） */
+  active_skin_id?: string | null;
+  /** Phase 1+：个性化覆写片段（叠加在模板 systemPrompt 上） */
+  personality_overrides?: Record<string, unknown>;
   /** 最近一次更新时间 */
   updated_at: number;
 }
@@ -375,6 +383,8 @@ export interface PresenceHeartbeat {
 export const PresenceTopics = {
   presence: (userId: string) => `user.${userId}.presence`,
   petState: (userId: string) => `user.${userId}.pet.state`,
+  petSoulChanged: (userId: string) => `user.${userId}.pet.soul.changed`,
+  petSkinChanged: (userId: string) => `user.${userId}.pet.skin.changed`,
   handoff: (userId: string) => `user.${userId}.handoff`,
   approval: (userId: string) => `user.${userId}.approval`,
   wallet: (userId: string) => `user.${userId}.wallet`,

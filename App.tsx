@@ -17,6 +17,7 @@ import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { checkAndPromptUpdate, silentBackgroundUpdate } from './src/services/appUpdate.service';
 import { migrateFromAsyncStorage } from './src/stores/mmkvStorage';
 import { applyVoiceUiE2EBootstrap, isVoiceUiE2EEnabled } from './src/testing/e2e';
+import { applyPetSoulE2EBootstrap, isPetSoulE2EEnabled } from './src/testing/petSoulE2E';
 import { resolveMobileWakeWordConfig } from './src/config/wakeWord';
 import { hasLocalWakeWordModel, thresholdFromSensitivity } from './src/services/localWakeWord.service';
 import {
@@ -82,7 +83,8 @@ function AppNavigator() {
   const { setAuth, setInitialized, clearAuth } = useAuthStore.getState();
   const notifSubRef = useRef<Notifications.Subscription | null>(null);
   const isVoiceUiE2E = isVoiceUiE2EEnabled();
-  const skipStartupIntegrations = isVoiceUiE2E || isMaestroE2E;
+  const isPetSoulE2E = isPetSoulE2EEnabled();
+  const skipStartupIntegrations = isVoiceUiE2E || isPetSoulE2E || isMaestroE2E;
   const wakeWordConfig = useMemo(() => resolveMobileWakeWordConfig(wakeWordSettings), [wakeWordSettings]);
   const hasLocalModel = hasLocalWakeWordModel(wakeWordConfig.localModel);
   const backgroundWakeWordEnabled = Platform.OS === 'android'
@@ -195,6 +197,11 @@ function AppNavigator() {
   }, []);
 
   useEffect(() => {
+    if (isPetSoulE2E && applyPetSoulE2EBootstrap()) {
+      setInitialized(true);
+      return;
+    }
+
     if (isVoiceUiE2E && applyVoiceUiE2EBootstrap()) {
       setInitialized(true);
       return;
@@ -411,6 +418,11 @@ function AppNavigator() {
   }, [isAuthenticated, isInitialized, skipStartupIntegrations, notificationsEnabled, token]);
 
   if (!isInitialized) return <SplashScreen />;
+
+  if (isPetSoulE2E) {
+    const { PetSoulE2EApp } = require('./src/testing/PetSoulE2EApp');
+    return <PetSoulE2EApp />;
+  }
 
   if (isVoiceUiE2E) {
     const { VoiceUiE2EApp } = require('./src/testing/VoiceUiE2EApp');
