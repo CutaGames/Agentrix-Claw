@@ -157,7 +157,7 @@ export default function ConsolePetSoulPage(): React.ReactElement {
                 >
                   <div style={{ fontSize: 34 }}>{soul.id === 'claw' ? '🦾' : '🐾'}</div>
                   <div>
-                    <div style={{ fontSize: T.font.sizeH3, color: T.text.primary, fontWeight: T.font.weightSemibold }}>
+                    <div style={{ fontSize: T.font.sizeH2, color: T.text.primary, fontWeight: T.font.weightSemibold }}>
                       {soul.display_name}
                     </div>
                     <PetSoulBadge clan={soul.clan} displayName={soul.display_name} tier={soul.tier} />

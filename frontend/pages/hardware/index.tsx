@@ -95,7 +95,7 @@ export default function CoBrandedStorePage() {
           </p>
           {submitted ? (
             <div className="bg-green-50 border border-green-200 p-4 rounded" data-testid="hw-submitted">
-              Thanks — we'll be in touch within 2 business days.
+              Thanks — we&apos;ll be in touch within 2 business days.
             </div>
           ) : (
             <form onSubmit={submit} className="grid gap-3 max-w-lg" data-testid="hw-form">

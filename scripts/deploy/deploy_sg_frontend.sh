@@ -1,18 +1,23 @@
 #!/bin/bash
-# Deploy frontend to Singapore (18.139.157.116)
+# Deploy frontend to the current production host.
 # Backend: port 3000, Frontend: port 3001, Nginx: port 80
 
 set -e
 chmod 600 /tmp/hq.pem 2>/dev/null || true
 
-ssh -o StrictHostKeyChecking=no -i /tmp/hq.pem ubuntu@18.139.157.116 bash <<'REMOTE'
+DEPLOY_HOST="${DEPLOY_HOST:-47.130.176.148}"
+TARGET_REF="${TARGET_REF:-main}"
+
+ssh -o StrictHostKeyChecking=no -i /tmp/hq.pem "ubuntu@${DEPLOY_HOST}" \
+    "DEPLOY_HOST=${DEPLOY_HOST} TARGET_REF=${TARGET_REF} bash -s" <<'REMOTE'
 set -e
-SG_IP="18.139.157.116"
+DEPLOY_HOST="${DEPLOY_HOST:?missing DEPLOY_HOST}"
+TARGET_REF="${TARGET_REF:-main}"
 PAT="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"
 
 echo "=== [1/6] Pull latest code ==="
 cd /home/ubuntu/Agentrix
-git -c http.proxy= -c https.proxy= fetch "https://${PAT}@github.com/CutaGames/Agentrix.git" main 2>&1 | tail -3
+git -c http.proxy= -c https.proxy= fetch "https://${PAT}@github.com/CutaGames/Agentrix.git" "${TARGET_REF}" 2>&1 | tail -3
 git reset --hard FETCH_HEAD
 git log --oneline -1
 
@@ -65,7 +70,7 @@ sudo tee /etc/nginx/sites-available/agentrix > /dev/null <<'NGINX'
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-    server_name _ agentrix.top www.agentrix.top api.agentrix.top 18.139.157.116;
+    server_name _ agentrix.top www.agentrix.top api.agentrix.top 47.130.176.148;
 
     gzip on;
     gzip_types application/json text/plain application/javascript text/css text/html;
@@ -81,18 +86,6 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-
-    location /socket.io/ {
-        proxy_pass http://127.0.0.1:3000/socket.io/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 86400s;
-    }
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_connect_timeout 30s;
         proxy_send_timeout 60s;
@@ -110,6 +103,18 @@ server {
             add_header Content-Length 0;
             return 204;
         }
+    }
+
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:3000/socket.io/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400s;
     }
 
     # Health shortcut
@@ -164,5 +169,5 @@ curl -s -o /dev/null -w "Port 80  Nginx→FE: HTTP %{http_code}\n" http://localh
 curl -s -o /dev/null -w "Port 80  /api:     HTTP %{http_code}\n" http://localhost:80/api/health
 echo ""
 echo "=== 🎉 SINGAPORE FRONTEND DEPLOYED ==="
-echo "Open in browser: http://18.139.157.116"
+echo "Open in browser: http://${DEPLOY_HOST}"
 REMOTE
