@@ -12,6 +12,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MarketplaceListingService } from './marketplace-listing.service';
 import { AuctionService } from './auction.service';
 import { RentalService } from './rental.service';
+import { ReverseImageSearchService } from './reverse-image-search.service';
+import { RemixBreedingService } from './remix-breeding.service';
 import { PetListingMode } from '../../entities/marketplace-pet-listing.entity';
 
 /**
@@ -38,6 +40,8 @@ export class MarketplacePetController {
     private readonly listingService: MarketplaceListingService,
     private readonly auctionService: AuctionService,
     private readonly rentalService: RentalService,
+    private readonly reverseSearchService: ReverseImageSearchService,
+    private readonly remixService: RemixBreedingService,
   ) {}
 
   @Get('pets')
@@ -115,5 +119,33 @@ export class MarketplacePetController {
   async returnLease(@Param('id') id: string) {
     const lease = await this.rentalService.returnLease(id);
     return { lease };
+  }
+
+  /** BE-T3.6: reverse image search by pre-computed pHash. */
+  @Post('reverse-search')
+  async reverseSearch(@Body() body: any) {
+    if (!body?.phash || typeof body.phash !== 'string') {
+      return { matches: [] };
+    }
+    const matches = await this.reverseSearchService.searchByHash(body.phash, {
+      threshold: typeof body.threshold === 'number' ? body.threshold : undefined,
+      limit: typeof body.limit === 'number' ? body.limit : undefined,
+      excludeSkinId: body.exclude_skin_id,
+    });
+    return { matches };
+  }
+
+  /** BE-T3.7: remix two parent skins into a child PetSkin. */
+  @Post('remix')
+  async remix(@Req() req: any, @Body() body: any) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    const child = await this.remixService.breed({
+      parentASkinId: body.parent_a_skin_id,
+      parentBSkinId: body.parent_b_skin_id,
+      requesterUserId: userId,
+      displayName: body.display_name,
+      desiredRoyaltyRateBps: body.desired_royalty_rate_bps,
+    });
+    return { skin: child };
   }
 }

@@ -10,6 +10,8 @@ import { RentalService } from './rental.service';
 import { AncestorChainService } from './ancestor-chain.service';
 import { MarketplaceScheduler } from './marketplace.scheduler';
 import { MarketplacePetController } from './marketplace-pet.controller';
+import { ReverseImageSearchService } from './reverse-image-search.service';
+import { RemixBreedingService } from './remix-breeding.service';
 
 /**
  * MarketplacePetModule — Phase 3 W1 Marketplace MVP.
@@ -36,12 +38,16 @@ import { MarketplacePetController } from './marketplace-pet.controller';
     RentalService,
     AncestorChainService,
     MarketplaceScheduler,
+    ReverseImageSearchService,
+    RemixBreedingService,
   ],
   exports: [
     MarketplaceListingService,
     AuctionService,
     RentalService,
     AncestorChainService,
+    ReverseImageSearchService,
+    RemixBreedingService,
   ],
 })
 export class MarketplacePetModule {}
