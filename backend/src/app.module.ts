@@ -145,6 +145,10 @@ import { PetRiveAssetModule } from './modules/pet-rive-asset/pet-rive-asset.modu
 import { DmcaModule } from './modules/dmca/dmca.module';
 // Phase 3 W1: Marketplace MVP (listing/auction/rental + royalty splitter)
 import { MarketplacePetModule } from './modules/marketplace-pet/marketplace-pet.module';
+// Phase 4 W7: Pet Energy + Risk Control + Auto-Earn evaluator + Daily report
+import { PetEnergyModule } from './modules/pet-energy/pet-energy.module';
+// Phase 4 W7: A2A pet-as-issuer dispatch
+import { PetA2AModule } from './modules/pet-a2a/pet-a2a.module';
 import { ApprovalModule } from './modules/approval/approval.module';
 import { HandoffV1Module } from './modules/handoff/handoff-v1.module';
 import { WalletProjectionModule } from './modules/wallet-projection/wallet-projection.module';
@@ -321,6 +325,10 @@ import { PetGenerationModule } from './modules/pet-generation/pet-generation.mod
     DmcaModule,
     // Phase 3 W1: Marketplace MVP
     MarketplacePetModule,
+    // Phase 4 W7: Pet Energy + Risk Control + Auto-Earn evaluator + Daily report
+    PetEnergyModule,
+    // Phase 4 W7: A2A pet-as-issuer dispatch
+    PetA2AModule,
     // v3.0 Approval Routing (顿领 §5.2) — 4 级风险 + Trust 校验
     ApprovalModule,
     // v3.0 Handoff v1 (顿领 §5.1) — /api/v1/handoff/* 包装层
