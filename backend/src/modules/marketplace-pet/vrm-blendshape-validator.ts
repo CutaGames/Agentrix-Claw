@@ -36,6 +36,49 @@ export interface VrmBlendShapeValidationResult {
   found: Record<RequiredBlendShape, string | null>;
   /** Total expressions enumerated (for telemetry). */
   expressionCount: number;
+  /** Phase 3 W3 SC-T3.2: any embedded script-like payload found in the manifest. */
+  scriptPayloadDetected?: boolean;
+  scriptPayloadEvidence?: string;
+}
+
+/**
+ * Patterns we refuse to ingest in any string field of a VRM manifest. Catches
+ * trivial XSS payloads embedded in expression names, custom property values,
+ * or extras blocks. Defense-in-depth only — the renderer also escapes.
+ */
+const SCRIPT_PATTERNS: RegExp[] = [
+  /<script\b/i,
+  /javascript:/i,
+  /on\w+\s*=/i, // onclick=, onerror=...
+  /\beval\s*\(/i,
+  /\bnew\s+Function\s*\(/i,
+  /<iframe\b/i,
+];
+
+export function scanForScriptPayload(manifest: unknown): { detected: boolean; evidence?: string } {
+  const queue: any[] = [manifest];
+  const seen = new WeakSet<object>();
+  while (queue.length > 0) {
+    const node = queue.pop();
+    if (node == null) continue;
+    if (typeof node === 'string') {
+      for (const re of SCRIPT_PATTERNS) {
+        if (re.test(node)) {
+          return { detected: true, evidence: node.slice(0, 200) };
+        }
+      }
+      continue;
+    }
+    if (typeof node !== 'object') continue;
+    if (seen.has(node)) continue;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (const v of node) queue.push(v);
+    } else {
+      for (const k of Object.keys(node)) queue.push(node[k]);
+    }
+  }
+  return { detected: false };
 }
 
 /**
@@ -59,11 +102,14 @@ export function validateVrmBlendShapes(manifest: unknown): VrmBlendShapeValidati
     found[required] = hit ?? null;
   }
   const missing = REQUIRED_BLEND_SHAPES.filter((r) => !found[r]);
+  const scriptScan = scanForScriptPayload(manifest);
   return {
-    valid: missing.length === 0,
+    valid: missing.length === 0 && !scriptScan.detected,
     missing,
     found,
     expressionCount: names.length,
+    scriptPayloadDetected: scriptScan.detected,
+    scriptPayloadEvidence: scriptScan.evidence,
   };
 }
 

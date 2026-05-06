@@ -12,6 +12,7 @@ import { MarketplaceScheduler } from './marketplace.scheduler';
 import { MarketplacePetController } from './marketplace-pet.controller';
 import { ReverseImageSearchService } from './reverse-image-search.service';
 import { RemixBreedingService } from './remix-breeding.service';
+import { MarketplaceSettlementBridge } from './marketplace-settlement.bridge';
 
 /**
  * MarketplacePetModule — Phase 3 W1 Marketplace MVP.
@@ -40,6 +41,7 @@ import { RemixBreedingService } from './remix-breeding.service';
     MarketplaceScheduler,
     ReverseImageSearchService,
     RemixBreedingService,
+    MarketplaceSettlementBridge,
   ],
   exports: [
     MarketplaceListingService,
@@ -48,6 +50,7 @@ import { RemixBreedingService } from './remix-breeding.service';
     AncestorChainService,
     ReverseImageSearchService,
     RemixBreedingService,
+    MarketplaceSettlementBridge,
   ],
 })
 export class MarketplacePetModule {}

@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   BadRequestException,
   ConflictException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -12,6 +13,7 @@ import { MarketplacePetListing } from '../../entities/marketplace-pet-listing.en
 import { PetAuctionBid } from '../../entities/pet-auction-bid.entity';
 import { PetSkin } from '../../entities/pet-skin.entity';
 import { applyAntiSnipe } from './anti-snipe';
+import { MarketplaceSettlementBridge } from './marketplace-settlement.bridge';
 
 @Injectable()
 export class AuctionService {
@@ -25,6 +27,7 @@ export class AuctionService {
     @InjectRepository(PetSkin)
     private readonly skinRepo: Repository<PetSkin>,
     private readonly dataSource: DataSource,
+    @Optional() private readonly settlementBridge?: MarketplaceSettlementBridge,
   ) {}
 
   async placeBid(
@@ -133,12 +136,12 @@ export class AuctionService {
       return this.listingRepo.save(listing);
     }
 
-    return this.dataSource.transaction(async (mgr) => {
+    const saved = await this.dataSource.transaction(async (mgr) => {
       listing.status = 'sold';
       listing.buyerUserId = top.bidderUserId;
       listing.finalPriceUsd = top.amountUsd;
       listing.soldAt = new Date();
-      const saved = await mgr.save(MarketplacePetListing, listing);
+      const out = await mgr.save(MarketplacePetListing, listing);
       await mgr.update(
         PetSkin,
         { id: listing.petSkinId },
@@ -147,8 +150,21 @@ export class AuctionService {
       this.logger.log(
         `Auction ${listingId} settled buyer=${top.bidderUserId} price=${top.amountUsd}`,
       );
-      return saved;
+      return out;
     });
+
+    // BE-T3.8: Stripe Connect settlement (royalty splits). Fire-and-forget.
+    if (this.settlementBridge) {
+      this.settlementBridge
+        .settleSoldListing(saved.id, async (_userId: string) => null)
+        .catch((err) => {
+          this.logger.error(
+            `settleSoldListing failed listing=${saved.id}: ${err?.message || err}`,
+          );
+        });
+    }
+
+    return saved;
   }
 
   async listBids(listingId: string): Promise<PetAuctionBid[]> {

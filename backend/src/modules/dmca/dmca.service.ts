@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DmcaReport, DmcaStatus, DmcaTargetKind } from '../../entities/dmca-report.entity';
 import { PetSkinService } from '../pet-skin/pet-skin.service';
+import { DmcaAbuseLimiterService } from './dmca-abuse-limiter.service';
 
 export interface CreateDmcaReportInput {
   claimantUserId: string;
@@ -35,9 +36,13 @@ export class DmcaService {
     @InjectRepository(DmcaReport)
     private readonly repo: Repository<DmcaReport>,
     @Optional() private readonly petSkinService?: PetSkinService,
+    @Optional() private readonly abuseLimiter?: DmcaAbuseLimiterService,
   ) {}
 
   async createReport(input: CreateDmcaReportInput): Promise<DmcaReport> {
+    if (this.abuseLimiter) {
+      await this.abuseLimiter.assertCanSubmit(input.claimantUserId);
+    }
     if (!input.swornStatement) {
       throw new BadRequestException('DMCA filing requires a sworn statement of truthfulness');
     }

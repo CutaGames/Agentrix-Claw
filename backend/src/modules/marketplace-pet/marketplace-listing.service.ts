@@ -5,11 +5,13 @@ import {
   ForbiddenException,
   BadRequestException,
   ConflictException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MarketplacePetListing, PetListingMode } from '../../entities/marketplace-pet-listing.entity';
 import { PetSkin } from '../../entities/pet-skin.entity';
+import { MarketplaceSettlementBridge } from './marketplace-settlement.bridge';
 
 const DEFAULT_ACTIVE_DAYS = 30;
 const MAX_ROYALTY_BPS = 10000;
@@ -41,6 +43,7 @@ export class MarketplaceListingService {
     private readonly listingRepo: Repository<MarketplacePetListing>,
     @InjectRepository(PetSkin)
     private readonly skinRepo: Repository<PetSkin>,
+    @Optional() private readonly settlementBridge?: MarketplaceSettlementBridge,
   ) {}
 
   async createListing(input: CreateListingInput): Promise<MarketplacePetListing> {
@@ -147,6 +150,20 @@ export class MarketplaceListingService {
     this.logger.log(
       `Listing sold: ${listing.id} skin=${listing.petSkinId} buyer=${buyerUserId} price=${paidPriceUsd}`,
     );
+
+    // BE-T3.8: trigger Stripe Connect settlement (royalty splits to creator chain + seller).
+    // Fire-and-forget: settlement failures must not block the buyer's purchase response.
+    // Default resolver returns null (manual payout pending) — wire to UserService.findStripeAccount once available.
+    if (this.settlementBridge) {
+      this.settlementBridge
+        .settleSoldListing(saved.id, async (_userId: string) => null)
+        .catch((err) => {
+          this.logger.error(
+            `settleSoldListing failed listing=${saved.id}: ${err?.message || err}`,
+          );
+        });
+    }
+
     return saved;
   }
 

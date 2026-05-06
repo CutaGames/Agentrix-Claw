@@ -102,4 +102,45 @@ describe('validateVrmBlendShapes (BE-T3.2)', () => {
     expect(r.found.surprised).toBe('shock');
     expect(r.found.neutral).toBe('rest');
   });
+
+  describe('SC-T3.2 — script payload detection', () => {
+    const baseValid = {
+      extensions: {
+        VRMC_vrm: {
+          expressions: {
+            preset: { happy: {}, sad: {}, angry: {}, surprised: {}, neutral: {} },
+          },
+        },
+      },
+    };
+
+    it('rejects manifest containing <script> in extras', () => {
+      const m = { ...baseValid, extras: { author: '<script>alert(1)</script>' } };
+      const r = validateVrmBlendShapes(m);
+      expect(r.valid).toBe(false);
+      expect(r.scriptPayloadDetected).toBe(true);
+      expect(r.scriptPayloadEvidence).toMatch(/script/);
+    });
+
+    it('rejects manifest with javascript: url in custom property', () => {
+      const m = { ...baseValid, custom: { homepage: 'javascript:void(0)' } };
+      expect(validateVrmBlendShapes(m).valid).toBe(false);
+    });
+
+    it('rejects manifest with onerror= handler in deeply nested string', () => {
+      const m = { ...baseValid, meta: { thumb: { src: '" onerror="alert(1)' } } };
+      expect(validateVrmBlendShapes(m).valid).toBe(false);
+    });
+
+    it('rejects manifest with eval(...) call string', () => {
+      const m = { ...baseValid, license: 'eval(atob("..."))' };
+      expect(validateVrmBlendShapes(m).valid).toBe(false);
+    });
+
+    it('clean manifest stays valid', () => {
+      const r = validateVrmBlendShapes(baseValid);
+      expect(r.valid).toBe(true);
+      expect(r.scriptPayloadDetected).toBe(false);
+    });
+  });
 });
