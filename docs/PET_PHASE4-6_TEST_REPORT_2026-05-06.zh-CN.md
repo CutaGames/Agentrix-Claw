@@ -85,6 +85,15 @@
 - 失败点全部来自测试夹具或断言与当前后端契约漂移，不是后端服务逻辑普遍失效。
 - 最终剩余的 `1 skipped` 是 `4.0 attempt dev-mode auth via email OTP`，它是 dev bootstrap 兜底分支，不影响本轮基于真实 token 的认证态结论。
 
+### 3.4 深链回归（新增）
+
+本轮继续补了两组更深的真实链路回归：
+
+- `tests/e2e/pet-phase4-phase6-api.spec.ts`：扩展到 `15 passed`，新增覆盖 Partner scopes 列表、rotate-key 后旧 key 失效 / 新 key 生效、monthly cap 超额返回 `429`、suspended 状态阻断 runtime，以及真实 `living_pet_id` 上的 Sovereign custody/memory/chains/status 切换与恢复。
+- `tests/e2e/frontend/passkey-web-authn.spec.ts`：`1 passed`，通过本地 Next `/auth/passkey` 页面、真实后端 `/api/v1/passkey/*` 与 mocked `navigator.credentials`，跑通注册、验证、删除完整浏览器链路。
+
+额外发现：线上 `https://agentrix.top/auth/passkey` 当前返回 `404`。因此浏览器级 Passkey 回归是通过“本地页面 + 真实后端”完成的，不是通过线上公开路由完成。
+
 ## 4. 已确认通过的测试面
 
 ### 4.1 匿名路由与 Guard
@@ -112,7 +121,13 @@
 - partner-runtime whoami / ping
 - desktop-sync / approval / agent-presence 的认证态 Playwright 分支
 
-### 4.3 本轮修掉的真实断点
+### 4.3 更深真实副作用已通过
+
+- Partner App：scopes 白名单读取通过；rotate-key 旧 key 失效 / 新 key 生效通过；monthly cap 真实超额返回 `429` 通过；suspended 状态阻断 runtime whoami 通过。
+- Sovereign Pet：真实主宠状态读取通过；`enable-self -> memory -> chains -> status -> revert -> restore` 整链路通过；为跨过门槛，本轮向测试账号主宠补充了足够 XP，把其从 `level 1` 提升到 `level 7+`。
+- Passkey：本地 Next 页面 + 真实后端 的浏览器级注册/验证/删除通过。
+
+### 4.4 本轮修掉的真实断点
 
 - desktop-sync task 写入仍按旧 timeline 结构发送 `event` / `ts`，与当前 `DesktopTimelineEntryDto` 不匹配，已修正。
 - approval 创建前置数据使用了当前 DTO 不接受的旧状态值，已改为 `need-approve`。
@@ -132,23 +147,23 @@
 - Glass HUD 实机显示
 - Watch Tile / complication 交互
 - 设备配对与 OTA 分块下载的真实端侧流程
-- PRD 定义的六视角宠物扫描采集体验
+- 新补的六视角宠物扫描采集体验的实机/模拟器操作链路
 
 ### 5.2 更高层闭环仍未重跑
 
-- 浏览器级 Passkey/WebAuthn 注册登录 ceremony 未在本轮重新验证。
-- M6 主权切换的真实副作用与链路写入未在本轮做更深认证态回归。
+- 线上公开 Web 路由 `/auth/passkey` 仍未打通，所以生产部署态浏览器入口没有完成回归。
 - M5 真实第三方 partner 接入未在本轮做长链路验证。
+- M6 的 MPC 模式虽然可恢复，但未在本轮做真实密钥分片/钱包服务联动。
 
 ## 6. 测试结论
 
 - 本轮最重要的修复是“测试层断点修复”，不是后端业务逻辑修复。
 - Phase 4-6 相关后端服务层整体稳定，新增/既有单测结果支持这一点。
 - Playwright 现已不只是“具备结构条件”，而是已经通过真实 token 完成了本轮目标范围内的认证态 API/E2E 回归。
-- 当前最大的测试空洞是“硬件/端侧真实链路”和“更高层产品闭环”，而不是匿名 API 面或测试入口本身。
+- 当前最大的测试空洞是“硬件/端侧真实链路”和“生产 Web 发布入口”，而不是匿名 API 面或测试入口本身。
 
 ## 7. 下一步测试建议
 
 1. 把测试 token 生成或测试账号登录前置固定化，避免后续回归再次卡在人工注入 bearer token。
-2. 为 Device Registry / OTA 增加一组独立的 Playwright API 套件，避免 Phase 5 只停留在代码走查。
-3. 单独建立移动端 Phase 5 扫描生成链路测试计划，把二维码配对扫描与宠物采集扫描彻底分开。
+2. 修复生产 Web 的 `/auth/passkey` 路由暴露，然后把本地通过的浏览器级 Passkey spec 升级成线上回归。
+3. 为移动端 `ScanScreen` 补一轮实机/模拟器 E2E，确认六视角上传与生成结果链路。

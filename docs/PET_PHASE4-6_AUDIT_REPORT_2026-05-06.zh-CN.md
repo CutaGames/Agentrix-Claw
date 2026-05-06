@@ -6,9 +6,9 @@
 
 ## 1. 审计结论摘要
 
-- Phase 4：核心后端、Web Passkey、桌面审批/同步面都已落地。本轮发现的主要断点不在业务逻辑，而在 E2E 测试夹具和认证引导与当前 DTO/返回体的漂移；这些断点已在测试层补修，并完成认证态 API/E2E 回归。
-- Phase 5：设备注册/OTA、手表 Tile、眼镜 HUD 均存在真实实现，不是空壳；但移动端当前扫描页是二维码/设备配对入口，不是 PRD 所要求的“6 视角宠物扫描生成向导”，因此 Phase 5 只能判定为部分完成。
-- Phase 6：M1、M2、M3、M5、M6 都能找到明确代码落点，其中 M2/M3/M5/M6 本轮已完成认证态 API 契约复核；M4 按要求未纳入。本轮最大剩余缺口已转为产品形态偏差和硬件/浏览器级真实链路覆盖，而不是模块缺失或认证态 E2E 无法闭环。
+- Phase 4：核心后端、Web Passkey、桌面审批/同步面都已落地。本轮不仅完成了认证态 API/E2E 回归，还补做了浏览器级 Passkey/WebAuthn 本地页面回归，真实跑通了注册、验证、删除链路；但线上 `https://agentrix.top/auth/passkey` 当前返回 `404`，说明生产 Web 路由暴露仍有交付缺口。
+- Phase 5：设备注册/OTA、手表 Tile、眼镜 HUD、移动端六视角扫描生成入口现在都存在真实实现，不再只是二维码配对页。移动端 `ScanScreen` 已补成“双模式”：既保留 QR 配对，也可完成 6 视角采集、图片上传和 `pet-generation scan` 任务提交。当前剩余缺口转为“实机 UI/E2E 与生成结果质量回归”，而不是功能面空缺。
+- Phase 6：M1、M2、M3、M5、M6 都能找到明确代码落点，其中 M5/M6 本轮已经补做了更深的真实副作用回归：Partner 密钥轮换、计费上限、运行时冻结，以及 Sovereign 的 custody/memory/chains/status 切换都已通过；M4 按要求未纳入。
 
 ## 2. 判定口径
 
@@ -21,7 +21,7 @@
 
 ### 3.1 Phase 4
 
-结论：`已实现，认证态 API/E2E 已闭环；浏览器级 WebAuthn ceremony 本轮未重跑`
+结论：`已实现，认证态 API/E2E 已闭环；本地浏览器级 WebAuthn 回归已通过，但生产 Web 路由仍有交付缺口`
 
 代码证据：
 
@@ -35,33 +35,36 @@
 - 现有 Phase 4 Playwright 用例真正的断点不是后端坏掉，而是认证引导和测试夹具对旧契约的假设失效。原测试对 dev OTP/bootstrap 过度依赖，且部分请求体/断言已经落后于当前后端 DTO。
 - 本轮已在 `tests/e2e/desktop-sync-approval-agent.spec.ts` 中加入 `PLAYWRIGHT_AUTH_TOKEN` / `E2E_BEARER_TOKEN` 注入路径，并通过生产环境生成真实 bearer token，实际跑通认证态分支。
 - 桌面同步/审批/operations/agent-presence 相关认证态用例已完成回归；仍未确认完整的浏览器 WebAuthn ceremony 或 L3 实人授权链路。
+- 本轮新增 `tests/e2e/frontend/passkey-web-authn.spec.ts`，使用本地 Next Passkey 页面 + 真实后端 + mocked `navigator.credentials` 跑通了 `register/start -> navigator.credentials.create() -> register/finish -> auth/start -> navigator.credentials.get() -> auth/finish -> delete` 的完整浏览器链路。
+- 同时发现一个真实交付缺口：线上 `https://agentrix.top/auth/passkey` 目前直接返回 `404`，说明代码存在但生产 Web 入口没有对外暴露。
 
 审计判断：
 
 - Phase 4 的代码面不是空缺，主要问题是“测试契约漂移与验证链路脆弱”而不是“功能没写”。
-- Passkey 仍应视为 v1 形态，本轮未重新执行真实浏览器 Passkey 注册/登录闭环。
+- Passkey 仍应视为 v1 形态；虽然本地浏览器级回归已过，但生产 Web 发布链路仍需补齐。
 
 ### 3.2 Phase 5
 
-结论：`部分实现`
+结论：`已实现，但仍缺实机 E2E/质量回归`
 
 代码证据：
 
 - `backend/src/modules/device-registry/device-registry.controller.ts` 已暴露 `/v1/devices/pair/ticket`、`/v1/devices/pair`、`/v1/devices`、`/v1/ota/manifest`、`/v1/ota/:packageId/chunk/:index`，说明设备注册与 OTA 控制面为真实实现。
 - `src/services/wearables/glassHUDController.service.ts` 已实现 HUD 能力建模、消息优先级队列、分页/写入逻辑，不是占位文件。
 - `src/screens/watch/WatchLivingTileScreen.tsx` 已实现宠物状态 Tile、情绪展示、L1 审批响应与 complication 渲染函数。
-- `src/screens/me/ScanScreen.tsx` 当前实现的是通用二维码扫描器，覆盖桌面/网页配对、OpenClaw/Relay JSON、深链、URL 直连等场景。
+- `src/screens/me/ScanScreen.tsx` 现已实现双模式入口：保留 `QR Pairing`，并新增 `6-View Pet Scan`，可完成正面、左侧、右侧、背面、俯视、仰视 6 个视角的采集/导入、上传到 `/api/upload/image`，再以 `mode='scan'` 调用 `/api/pet-generation/submit`。
 
 本轮复核结论：
 
 - Device Registry + OTA：可判定为真实后端能力，且与 Phase 5 硬件接入目标一致。
 - Watch Tile / Glass HUD：代码量与行为完整度都足以判定为真实实现，但本轮没有实体硬件 E2E 或仿真器回归。
-- 扫描链路：当前移动端 `ScanScreen` 明确是“二维码/设备配对扫描”，并非 PRD 所述的“6 视角宠物采集/扫描生成向导”。这不是命名差异，而是产品形态不一致。
+- 扫描链路：此前的 QR-only 偏差已经补上。移动端现在具备真实的 6 视角采集、上传和任务提交入口，不再只是名称相似但产品形态错误。
+- 当前仍未做的是设备侧实机操作回归，以及“最终生成出的 3D 资产质量/时延/失败重试”级别验证。
 
 审计判断：
 
 - Phase 5 后端与穿戴端软件切片已有实装。
-- Phase 5 的“宠物扫描生成体验”仍不可判定为完成，应明确记为缺口/偏差，不应把现有二维码扫描页误算进 PRD 交付。
+- Phase 5 的“宠物扫描生成体验”现在已有真实交付面，可以从“缺口/偏差”升级为“已实现但待实机回归”。
 
 ### 3.3 Phase 6（M4 排除）
 
@@ -114,6 +117,7 @@
 
 - M5 后端控制面存在，且不是假路由。
 - 本轮已实际跑通 owner 注册、runtime whoami、runtime ping、usage 查询链路，并修正了测试中落后的 scope 白名单与 ping 状态码假设。
+- 本轮进一步补做了更深副作用回归：scopes 列表白名单读取通过，rotate-key 后旧 key 失效 / 新 key 生效通过，monthly cap 超额返回 `429` 通过，suspended 状态会立即阻断 runtime whoami。
 - 尚未覆盖真实第三方接入、长期计费行为或更复杂的 partner side effects。
 
 #### M6：Sovereign Pet
@@ -126,7 +130,8 @@
 审计判断：
 
 - M6 后端接口与状态控制面明确存在。
-- 本轮已跑通 config 契约层认证态覆盖，未对真实主权切换、副作用、链路写入做更深的认证态 E2E。
+- 本轮已对真实主权切换副作用做更深认证态回归：在真实 `living_pet_id` 上完成了 `enable-self -> memory -> chains -> status -> revert -> restore` 整条链路。
+- 为了跨过 `MIN_SOVEREIGN_INTIMACY=7` 门槛，本轮对测试账号主宠补充了亲密度 XP，使其从 `level 1` 升至可进入主权模式的阈值。这是一次有意的真实状态变更，不是测试夹具模拟。
 
 #### M4
 
@@ -141,16 +146,20 @@
 - 修复了 Agent Presence E2E 中 dashboard、create-agent、channel-health 的返回体/DTO 假设，对齐当前接口契约。
 - 新增 `tests/e2e/pet-phase4-phase6-api.spec.ts`，补齐了 Phase 4-6 关键后端面的匿名拒绝与认证态契约入口。
 - 最终认证态 Playwright 回归结果为 `41 passed, 1 skipped, 0 failed`，说明本轮断点已从“不可跑”转为“可稳定执行”。
+- 新增 `src/services/petCreator.ts` 并重构 `src/screens/me/ScanScreen.tsx`，补齐移动端 6 视角扫描生成真实入口：采集/导入图片、上传到 `/upload/image`、提交 `/pet-generation/submit`、查看最近 scan 任务。
+- 新增 `tests/e2e/frontend/passkey-web-authn.spec.ts`，完成本地 Next Passkey 页的浏览器级真实回归。
+- 扩展 `tests/e2e/pet-phase4-phase6-api.spec.ts`，把 M5/M6 从“浅契约覆盖”提升到“真实副作用覆盖”。
 
 ## 5. 当前最大风险
 
 - 最大剩余风险不在“有没有模块”，而在“更高层真实体验是否与 PRD 对齐”。
-- Phase 5 的扫描能力存在明显 PRD 偏差，当前移动端实现不能替代六视角宠物扫描生成向导。
+- Phase 5 的扫描能力已补成真实实现，但尚未做移动端实机 UI/E2E 与生成结果质量回归。
 - Watch/Glass/OTA 目前主要靠代码面和单测/静态复核，本轮没有真实硬件执行证据。
-- Passkey 浏览器级 WebAuthn ceremony、M6 主权切换副作用、Partner 真实第三方集成仍未做更深层闭环回归。
+- Passkey 本地浏览器链路已验证，但线上 `/auth/passkey` 404，说明 Web 发布链路仍有断点。
+- Partner 真实第三方集成、长期计费行为、Sovereign 更复杂 MPC 模式仍未做更深层闭环回归。
 
 ## 6. 建议的下一步
 
 1. 把生产 token 生成或测试账号登录收敛成稳定的 CI 前置步骤，避免认证态回归再次依赖临时人工注入。
-2. 单独补一个 Phase 5 扫描生成链路审计/实现任务，避免继续把二维码配对页误当成宠物扫描生成页。
-3. 为 M5/M6 再补一轮“真实 app key / 真实 pet ownership”级别的 API E2E，并为 Passkey 补浏览器级 WebAuthn 闭环回归。
+2. 为 `ScanScreen` 补一轮移动端实机/模拟器 E2E，确认 6 视角上传与 `pet-generation` 最终资产产出链路。
+3. 修复生产 Web 的 `/auth/passkey` 发布缺口，再把这条浏览器级回归接入 CI。
