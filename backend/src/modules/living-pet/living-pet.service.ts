@@ -1,8 +1,13 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LivingPet } from '../../entities/living-pet.entity';
 import { desktopSyncEventBus, DESKTOP_SYNC_EVENT } from '../desktop-sync/desktop-sync.events';
+import { PetSoulTemplateService } from '../pet-soul-template/pet-soul-template.service';
+import { PetSkinService } from '../pet-skin/pet-skin.service';
+
+/** Phase 1 默认灵魂模板 id（A 族群旗舰） */
+const DEFAULT_SOUL_TEMPLATE_ID = 'claw';
 
 /**
  * 顿领 §3.4 主宠 6 表情状态机契约
@@ -54,9 +59,11 @@ export class LivingPetService {
   constructor(
     @InjectRepository(LivingPet)
     private readonly petRepo: Repository<LivingPet>,
+    private readonly soulService: PetSoulTemplateService,
+    private readonly skinService: PetSkinService,
   ) {}
 
-  /** 获取或自动创建（1 user = 1 主宠） */
+  /** 获取或自动创建（1 user = 1 主宠）。Phase 1: 懒补默认 soul = 'claw'。 */
   async getOrCreate(userId: string, primaryAgentId?: string): Promise<LivingPet> {
     let pet = await this.petRepo.findOne({ where: { userId } });
     if (!pet) {
@@ -74,9 +81,16 @@ export class LivingPetService {
         recentMemorySnippets: [],
         primaryAgentId,
         engineSwitching: false,
+        soulTemplateId: DEFAULT_SOUL_TEMPLATE_ID,
+        personalityOverrides: {},
       });
       pet = await this.petRepo.save(pet);
-      this.logger.log(`LivingPet created for user ${userId} (pet=${pet.id})`);
+      this.logger.log(`LivingPet created for user ${userId} (pet=${pet.id}, soul=${pet.soulTemplateId})`);
+      this.broadcast(pet);
+    } else if (!pet.soulTemplateId) {
+      // Backward-compat: 老用户补默认灵魂
+      pet.soulTemplateId = DEFAULT_SOUL_TEMPLATE_ID;
+      pet = await this.petRepo.save(pet);
       this.broadcast(pet);
     }
     return pet;
@@ -157,6 +171,67 @@ export class LivingPetService {
     return this.petRepo.save(pet);
   }
 
+  /**
+   * Phase 1：切换灵魂模板。
+   * 契约：
+   *  - intimacy / xp / 记忆 / 钱包 / 任务历史 不丢
+   *  - 不重置 emotion / decay
+   *  - personalityOverrides 不变（是用户表达）
+   *  - 广播 presence:pet.soul.changed + presence:pet.state
+   */
+  async switchSoul(userId: string, newSoulTemplateId: string): Promise<LivingPet> {
+    if (!newSoulTemplateId || typeof newSoulTemplateId !== 'string') {
+      throw new BadRequestException('templateId required');
+    }
+    const tpl = await this.soulService.findById(newSoulTemplateId);
+    if (!tpl || !tpl.enabled) {
+      throw new NotFoundException(`pet soul template not available: ${newSoulTemplateId}`);
+    }
+    const pet = await this.getOrCreate(userId);
+    if (pet.soulTemplateId === newSoulTemplateId) {
+      return pet;
+    }
+    pet.soulTemplateId = newSoulTemplateId;
+    pet.engineSwitching = true;
+    pet.lastInteractionAt = String(Date.now());
+    const saved = await this.petRepo.save(pet);
+    this.logger.log(`LivingPet ${saved.id} soul switched -> ${newSoulTemplateId}`);
+    this.broadcastSoulChanged(saved);
+    this.broadcast(saved);
+    // 2s 后关闭换装窗口
+    setTimeout(async () => {
+      try {
+        const fresh = await this.petRepo.findOne({ where: { userId } });
+        if (fresh && fresh.engineSwitching) {
+          fresh.engineSwitching = false;
+          const reset = await this.petRepo.save(fresh);
+          this.broadcast(reset);
+        }
+      } catch (err) {
+        this.logger.warn(`switchSoul reset failed: ${(err as Error).message}`);
+      }
+    }, 2000);
+    return saved;
+  }
+
+  /**
+   * Phase 1：激活某只皮肤。
+   * 契约：
+   *  - 皮肤必须属于用户或 platform 全局
+   *  - 写 pet_active_skins + 广播 presence:pet.skin.changed
+   *  - intimacy / soul 不变
+   */
+  async activateSkin(userId: string, skinId: string): Promise<LivingPet> {
+    if (!skinId) throw new BadRequestException('skinId required');
+    await this.skinService.activate(userId, skinId);
+    const pet = await this.getOrCreate(userId);
+    pet.lastInteractionAt = String(Date.now());
+    const saved = await this.petRepo.save(pet);
+    this.broadcastSkinChanged(saved.userId, skinId);
+    this.broadcast(saved);
+    return saved;
+  }
+
   // -------------------- internals --------------------
 
   private async maybeDecay(pet: LivingPet): Promise<LivingPet> {
@@ -182,6 +257,31 @@ export class LivingPetService {
     });
   }
 
+  private broadcastSoulChanged(pet: LivingPet) {
+    desktopSyncEventBus.emit(DESKTOP_SYNC_EVENT, {
+      userId: pet.userId,
+      event: 'presence:pet.soul.changed',
+      payload: {
+        pet_id: pet.id,
+        user_id: pet.userId,
+        soul_template_id: pet.soulTemplateId ?? null,
+        updated_at: Date.now(),
+      },
+    });
+  }
+
+  private broadcastSkinChanged(userId: string, skinId: string) {
+    desktopSyncEventBus.emit(DESKTOP_SYNC_EVENT, {
+      userId,
+      event: 'presence:pet.skin.changed',
+      payload: {
+        user_id: userId,
+        active_skin_id: skinId,
+        updated_at: Date.now(),
+      },
+    });
+  }
+
   toDto(pet: LivingPet) {
     return {
       pet_id: pet.id,
@@ -195,6 +295,8 @@ export class LivingPetService {
       recent_memory_snippets: pet.recentMemorySnippets || [],
       primary_agent_id: pet.primaryAgentId || null,
       engine_switching: pet.engineSwitching,
+      soul_template_id: pet.soulTemplateId ?? null,
+      personality_overrides: pet.personalityOverrides ?? {},
       updated_at: pet.updatedAt ? pet.updatedAt.getTime() : Date.now(),
     };
   }

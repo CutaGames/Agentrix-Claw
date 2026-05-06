@@ -3,3 +3,4 @@
  * 跨端唯一类型源入口
  */
 export * from './agentrix-presence';
+export * from './pet';

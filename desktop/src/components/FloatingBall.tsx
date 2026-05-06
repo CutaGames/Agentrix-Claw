@@ -124,6 +124,7 @@ async function showNativeBallMenu(
     const dispatchSafe = async (action:
       | "open-video-studio"
       | "open-pet-creator"
+      | "open-soul-picker"
       | "open-settings"
       | "new-chat"
       | "voice-start") => {
@@ -144,6 +145,7 @@ async function showNativeBallMenu(
         { item: "Separator" } as any,
         { id: "ball-video", text: "🎬 视频工作室", action: () => { void dispatchSafe("open-video-studio"); } },
         { id: "ball-pet", text: "🐾 创建萌宠", action: () => { void dispatchSafe("open-pet-creator"); } },
+        { id: "ball-soul", text: "✨ 选择灵魂", action: () => { void dispatchSafe("open-soul-picker"); } },
         { item: "Separator" } as any,
         { id: "ball-settings", text: "⚙️ Settings", action: () => { void dispatchSafe("open-settings"); } },
       ],
@@ -1100,6 +1102,7 @@ export default function FloatingBall({
           { label: "🎤 Voice Input", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("voice-start")); } },
           { label: "🎬 视频工作室", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-video-studio")); } },
           { label: "🐾 创建萌宠", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-pet-creator")); } },
+          { label: "✨ 选择灵魂", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-soul-picker")); } },
           { label: "⚙️ Settings", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-settings")); } },
         ].map((item) => (
           <div

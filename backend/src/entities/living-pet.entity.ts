@@ -93,6 +93,20 @@ export class LivingPet {
   @Column({ type: 'uuid', nullable: true })
   primaryAgentId?: string;
 
+  /**
+   * Phase 1 新增：当前灵魂模板 id（slug，如 'claw'）。
+   * 默认为 'claw'（A 族群旗舰），nullable 仅为兼容老数据迁移期。
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  soulTemplateId?: string | null;
+
+  /**
+   * Phase 1 新增：用户对默认 SystemPrompt 的覆写片段。
+   * 可包含自定义口吻 / 称呼 / 边界等键值。
+   */
+  @Column({ type: 'jsonb', default: () => "'{}'" })
+  personalityOverrides: Record<string, unknown>;
+
   /** 引擎切换中（1-2s 换装动画窗口） */
   @Column({ default: false })
   engineSwitching: boolean;

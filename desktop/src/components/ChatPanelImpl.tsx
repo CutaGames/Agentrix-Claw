@@ -24,6 +24,7 @@ import VoiceButton from "./VoiceButton";
 import SettingsPanel from "./SettingsPanel";
 import VideoStudioPanel from "./VideoStudioPanel";
 import PetCreatorPanel from "./PetCreatorPanel";
+import SoulPicker from "./SoulPicker";
 import FileTreePanel from "./FileTreePanel";
 import { type TaskRunState, type TaskTimelineEntry, type TaskTimelineStatus } from "./TaskTimeline";
 import { gitStatus, gitDiff, gitLog, gitCommit, gitBranchList, type GitFileChange } from "../services/git";
@@ -413,6 +414,7 @@ export default function ChatPanel({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [videoStudioOpen, setVideoStudioOpen] = useState(false);
   const [petCreatorOpen, setPetCreatorOpen] = useState(false);
+  const [soulPickerOpen, setSoulPickerOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
@@ -2542,10 +2544,12 @@ export default function ChatPanel({
     const onOpenSettings = () => setSettingsOpen(true);
     const onOpenVideoStudio = () => setVideoStudioOpen(true);
     const onOpenPetCreator = () => setPetCreatorOpen(true);
+    const onOpenSoulPicker = () => setSoulPickerOpen(true);
     window.addEventListener("agentrix:new-chat", onNewChat);
     window.addEventListener("agentrix:open-settings", onOpenSettings);
     window.addEventListener("agentrix:open-video-studio", onOpenVideoStudio);
     window.addEventListener("agentrix:open-pet-creator", onOpenPetCreator);
+    window.addEventListener("agentrix:open-soul-picker", onOpenSoulPicker);
 
     // Cross-window: when the floating-ball window emits via Tauri, also bridge
     // it back into a window event so the same handlers above pick it up here.
@@ -2558,6 +2562,7 @@ export default function ChatPanel({
           "agentrix:open-settings",
           "agentrix:open-video-studio",
           "agentrix:open-pet-creator",
+          "agentrix:open-soul-picker",
           "agentrix:voice-start",
         ];
         for (const eventName of events) {
@@ -2575,6 +2580,7 @@ export default function ChatPanel({
       window.removeEventListener("agentrix:open-settings", onOpenSettings);
       window.removeEventListener("agentrix:open-video-studio", onOpenVideoStudio);
       window.removeEventListener("agentrix:open-pet-creator", onOpenPetCreator);
+      window.removeEventListener("agentrix:open-soul-picker", onOpenSoulPicker);
       for (const fn of tauriUnlisteners) fn();
     };
   }, []);
@@ -2996,6 +3002,15 @@ export default function ChatPanel({
       {/* Pet Creator overlay */}
       {petCreatorOpen && (
         <PetCreatorPanel onClose={() => setPetCreatorOpen(false)} />
+      )}
+
+      {/* Phase 1：灵魂选择器 overlay */}
+      {soulPickerOpen && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60">
+          <div className="h-[80vh] w-[min(880px,92vw)] overflow-hidden rounded-2xl border border-white/10 shadow-2xl">
+            <SoulPicker onClose={() => setSoulPickerOpen(false)} />
+          </div>
+        </div>
       )}
 
       {/* File tree sidebar */}

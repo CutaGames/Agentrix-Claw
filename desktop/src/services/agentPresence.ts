@@ -188,6 +188,14 @@ function connectPresence(token: string) {
     window.dispatchEvent(new CustomEvent("agentrix:pet-state", { detail: data }));
   });
 
+  // Phase 1（灵魂×皮肤解耦）：广播灵魂切换 / 皮肤切换
+  _presenceSocket.on("presence:pet.soul.changed", (data) => {
+    window.dispatchEvent(new CustomEvent("agentrix:pet-soul-changed", { detail: data }));
+  });
+  _presenceSocket.on("presence:pet.skin.changed", (data) => {
+    window.dispatchEvent(new CustomEvent("agentrix:pet-skin-changed", { detail: data }));
+  });
+
   // Forward all events to window for other components
   _presenceSocket.onAny((event, data) => {
     window.dispatchEvent(new CustomEvent("agentrix:presence-event", { detail: { event, data } }));

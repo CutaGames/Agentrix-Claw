@@ -49,4 +49,26 @@ export class LivingPetController {
     const pet = await this.service.switchPrimaryAgent(userId, body.agentId);
     return this.service.toDto(pet);
   }
+
+  /**
+   * Phase 1：切换灵魂模板（族群人格）。
+   * 不丢 intimacy / xp / 记忆 / 钱包 / 任务历史。
+   */
+  @Post('soul/switch')
+  async switchSoul(@Req() req: any, @Body() body: { templateId: string }) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    const pet = await this.service.switchSoul(userId, body?.templateId);
+    return this.service.toDto(pet);
+  }
+
+  /**
+   * Phase 1：激活某只皮肤（VRM / Rive / SVG）。
+   * 必须属于当前用户或 platform 全局皮肤。
+   */
+  @Post('skin/activate')
+  async activateSkin(@Req() req: any, @Body() body: { skinId: string }) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    const pet = await this.service.activateSkin(userId, body?.skinId);
+    return this.service.toDto(pet);
+  }
 }

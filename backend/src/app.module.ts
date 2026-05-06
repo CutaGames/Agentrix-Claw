@@ -134,6 +134,9 @@ import { ToolControlPlaneModule } from './modules/tool-control-plane/tool-contro
 import { OperationsControlPlaneModule } from './modules/operations-control-plane/operations-control-plane.module';
 // v3.0 Living Pet (顿领 §3.4): 1 user = 1 主宠状态机 + 亲密度 + 引擎切换契约
 import { LivingPetModule } from './modules/living-pet/living-pet.module';
+// Phase 1（灵魂 × 皮肤解耦）：6 族群 28 只签名宠物 + 用户皮肤资产
+import { PetSoulTemplateModule } from './modules/pet-soul-template/pet-soul-template.module';
+import { PetSkinModule } from './modules/pet-skin/pet-skin.module';
 import { ApprovalModule } from './modules/approval/approval.module';
 import { HandoffV1Module } from './modules/handoff/handoff-v1.module';
 import { WalletProjectionModule } from './modules/wallet-projection/wallet-projection.module';
@@ -299,6 +302,9 @@ import { PetGenerationModule } from './modules/pet-generation/pet-generation.mod
     OperationsControlPlaneModule,
     // v3.0 Living Pet (顿领 §3.4)
     LivingPetModule,
+    // Phase 1：灵魂模板 + 皮肤资产
+    PetSoulTemplateModule,
+    PetSkinModule,
     // v3.0 Approval Routing (顿领 §5.2) — 4 级风险 + Trust 校验
     ApprovalModule,
     // v3.0 Handoff v1 (顿领 §5.1) — /api/v1/handoff/* 包装层
