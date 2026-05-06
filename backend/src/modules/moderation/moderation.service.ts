@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import { ModerationLog } from '../../entities/moderation-log.entity';
+import { ReplicateClipProvider } from './replicate-clip.provider';
 
 export type ModerationKind = 'prompt' | 'image' | 'glb' | 'vrm' | 'rive';
 export type ModerationDecision = 'allow' | 'deny' | 'review';
@@ -67,6 +68,7 @@ export class ModerationService {
   constructor(
     @InjectRepository(ModerationLog)
     private readonly logRepo: Repository<ModerationLog>,
+    @Optional() private readonly clip?: ReplicateClipProvider,
   ) {}
 
   static sha256(input: string | Buffer): string {
@@ -103,17 +105,29 @@ export class ModerationService {
   }
 
   /**
-   * Phase 2 W1：image 审核占位。返回 'allow' + reason 'not_implemented'。
-   * Phase 2 W2：替换为 CLIP NSFW 分类器（Replicate / 自托管）。
+   * Phase 2 W3 BE-T2.7 — image NSFW 审核。
+   * 优先接 ReplicateClipProvider（如已注入 + REPLICATE_API_TOKEN 已配）；
+   * 未配时 fail-open 返回 allow + reason='not_implemented'。使用者依靠
+   * decision 进行拦截，未配环境不会堆积拒绝。
    */
   async checkImage(opts: {
     userId: string | null;
+    imageUrl?: string;
     imageBuffer?: Buffer;
     imageHash?: string;
     refId?: string | null;
   }): Promise<ModerationResult> {
-    const hash = opts.imageHash || (opts.imageBuffer ? ModerationService.sha256(opts.imageBuffer) : null);
-    const result: ModerationResult = { decision: 'allow', score: 0, reason: 'not_implemented' };
+    const hash =
+      opts.imageHash ||
+      (opts.imageBuffer ? ModerationService.sha256(opts.imageBuffer) : null);
+
+    let result: ModerationResult;
+    if (this.clip?.isConfigured() && opts.imageUrl) {
+      result = await this.clip.classify(opts.imageUrl);
+    } else {
+      result = { decision: 'allow', score: 0, reason: 'not_implemented' };
+    }
+
     await this.log({
       userId: opts.userId,
       kind: 'image',
@@ -122,6 +136,7 @@ export class ModerationService {
       reason: result.reason,
       inputHash: hash,
       refId: opts.refId ?? null,
+      detail: opts.imageUrl ? { imageUrl: opts.imageUrl } : undefined,
     });
     return result;
   }

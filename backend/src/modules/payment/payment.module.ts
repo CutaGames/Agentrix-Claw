@@ -80,6 +80,8 @@ import { OffRampCommissionService } from './off-ramp-commission.service';
 import { OnRampCommissionService } from './on-ramp-commission.service';
 import { BuyerFeeService } from './buyer-fee.service';
 import { Commission } from '../../entities/commission.entity';
+// Phase 2 W3 BE-T2.5—pet overage billing bridge
+import { PetGenQuotaModule } from '../pet-gen-quota/pet-gen-quota.module';
 
 @Module({
   imports: [
@@ -112,6 +114,8 @@ import { Commission } from '../../entities/commission.entity';
     WebhookModule,
     AuthModule,
     ApiKeyModule,
+    // Phase 2 W3 BE-T2.5—pet overage billing bridge
+    PetGenQuotaModule,
   ],
   controllers: [
     PaymentController,

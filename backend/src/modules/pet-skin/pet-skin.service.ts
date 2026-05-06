@@ -100,6 +100,34 @@ export class PetSkinService {
     }
   }
 
+  /**
+   * Phase 2 W3 — mark skin as retired (DMCA upheld / admin pull).
+   * Side-effects:
+   *  - sets `retired = true`
+   *  - clears any active pointer that references it
+   * Returns the updated PetSkin or null if not found.
+   */
+  async delist(skinId: string, opts: { reason?: string } = {}): Promise<PetSkin | null> {
+    const skin = await this.skinRepo.findOne({ where: { id: skinId } });
+    if (!skin) return null;
+    if (skin.retired) {
+      this.logger.log(`PetSkin ${skinId} already retired (no-op) reason=${opts.reason ?? 'n/a'}`);
+      return skin;
+    }
+    skin.retired = true;
+    const saved = await this.skinRepo.save(skin);
+    // Clear any active pointers using this skin
+    const affectedActives = await this.activeRepo.find({ where: { activeSkinId: skinId } });
+    for (const a of affectedActives) {
+      a.activeSkinId = null;
+      await this.activeRepo.save(a);
+    }
+    this.logger.warn(
+      `PetSkin delisted: ${skinId} reason=${opts.reason ?? 'unspecified'} clearedActives=${affectedActives.length}`,
+    );
+    return saved;
+  }
+
   toDto(skin: PetSkin) {
     return {
       id: skin.id,

@@ -72,10 +72,12 @@ const baseInput = (over: Partial<any> = {}) => ({
 describe('DmcaService (BE-T2.9)', () => {
   let repo: FakeRepo;
   let svc: DmcaService;
+  let petSkin: { delist: jest.Mock };
 
   beforeEach(() => {
     repo = new FakeRepo();
-    svc = new DmcaService(repo as any);
+    petSkin = { delist: jest.fn().mockResolvedValue({ id: 'skin', retired: true }) };
+    svc = new DmcaService(repo as any, petSkin as any);
   });
 
   describe('createReport validation', () => {
@@ -148,6 +150,28 @@ describe('DmcaService (BE-T2.9)', () => {
       const r = await svc.createReport(baseInput());
       await svc.resolve(r.id, 'admin-1', 'upheld');
       await expect(svc.resolve(r.id, 'admin-2', 'rejected')).rejects.toThrow(/cannot resolve/);
+    });
+
+    it('Phase 2 W3 — upheld on pet_skin auto-calls PetSkinService.delist', async () => {
+      const r = await svc.createReport(baseInput({ targetKind: 'pet_skin' }));
+      await svc.resolve(r.id, 'admin-1', 'upheld', 'verified');
+      expect(petSkin.delist).toHaveBeenCalledTimes(1);
+      expect(petSkin.delist).toHaveBeenCalledWith(
+        r.targetId,
+        expect.objectContaining({ reason: expect.stringContaining('dmca:') }),
+      );
+    });
+
+    it('Phase 2 W3 — rejected does NOT trigger delist', async () => {
+      const r = await svc.createReport(baseInput());
+      await svc.resolve(r.id, 'admin-1', 'rejected');
+      expect(petSkin.delist).not.toHaveBeenCalled();
+    });
+
+    it('Phase 2 W3 — upheld on non-pet_skin target does NOT call delist', async () => {
+      const r = await svc.createReport(baseInput({ targetKind: 'marketplace_listing' }));
+      await svc.resolve(r.id, 'admin-1', 'upheld');
+      expect(petSkin.delist).not.toHaveBeenCalled();
     });
   });
 

@@ -1,7 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Optional, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository } from 'typeorm';
 import { DmcaReport, DmcaStatus, DmcaTargetKind } from '../../entities/dmca-report.entity';
+import { PetSkinService } from '../pet-skin/pet-skin.service';
 
 export interface CreateDmcaReportInput {
   claimantUserId: string;
@@ -28,9 +29,12 @@ const DUPLICATE_WINDOW_DAYS = 7;
  */
 @Injectable()
 export class DmcaService {
+  private readonly logger = new Logger(DmcaService.name);
+
   constructor(
     @InjectRepository(DmcaReport)
     private readonly repo: Repository<DmcaReport>,
+    @Optional() private readonly petSkinService?: PetSkinService,
   ) {}
 
   async createReport(input: CreateDmcaReportInput): Promise<DmcaReport> {
@@ -92,7 +96,20 @@ export class DmcaService {
     row.reviewerUserId = reviewerUserId;
     row.reviewNotes = notes ?? null;
     row.resolvedAt = new Date();
-    return this.repo.save(row);
+    const saved = await this.repo.save(row);
+
+    // Phase 2 W3 — upheld DMCA on a pet_skin auto-delists the asset.
+    if (decision === 'upheld' && row.targetKind === 'pet_skin' && this.petSkinService) {
+      try {
+        await this.petSkinService.delist(row.targetId, { reason: `dmca:${row.id}` });
+      } catch (err: any) {
+        this.logger.error(
+          `DMCA upheld but pet-skin delist failed report=${row.id} skin=${row.targetId}: ${err?.message || err}`,
+        );
+        // do not fail the resolve; admin can retry delist manually
+      }
+    }
+    return saved;
   }
 
   async withdraw(reportId: string, claimantUserId: string): Promise<DmcaReport> {

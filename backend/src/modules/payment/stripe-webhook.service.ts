@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -8,6 +8,7 @@ import { Payment, PaymentStatus, PaymentMethod } from '../../entities/payment.en
 import { StripeSettlement, StripeSettlementStatus } from '../../entities/stripe-settlement.entity';
 import { CommissionService } from '../commission/commission.service';
 import { AuditProofService } from '../commission/audit-proof.service';
+import { PetOverageBillingService } from '../pet-gen-quota/pet-overage-billing.service';
 
 /**
  * Stripe 支付分佣记录接口
@@ -49,6 +50,7 @@ export class StripeWebhookService {
     private commissionService: CommissionService,
     @Inject(forwardRef(() => AuditProofService))
     private auditProofService: AuditProofService,
+    @Optional() private petOverageBilling?: PetOverageBillingService,
   ) {
     const secretKey = this.configService.get<string>('STRIPE_SECRET_KEY');
     if (!secretKey) {
@@ -158,6 +160,22 @@ export class StripeWebhookService {
 
       // 5. 创建审计存证
       await this.createAuditProof(paymentIntent, settlement);
+
+      // 6. Phase 2 W3 BE-T2.5—如果是 pet_overage 购买，同步发起 quota.confirm
+      if (this.petOverageBilling) {
+        try {
+          await this.petOverageBilling.handlePaymentIntentSucceeded({
+            paymentIntentId: paymentIntent.id,
+            amount: paymentIntent.amount / 100,
+            metadata: paymentIntent.metadata as any,
+          });
+        } catch (overageErr: any) {
+          this.logger.error(
+            `pet_overage bridge failed paymentIntent=${paymentIntent.id}: ${overageErr?.message || overageErr}`,
+          );
+          // intentional: do not throw, otherwise Stripe will retry the entire webhook
+        }
+      }
 
       this.logger.log(`Payment ${paymentId} completed, settlement ${settlement.id} recorded with audit proof`);
     } catch (error) {
