@@ -9,7 +9,7 @@
  */
 import { API_BASE, apiFetch, useAuthStore } from "./store";
 
-export type PetMode = "text" | "image";
+export type PetMode = "text" | "image" | "scan" | "breed";
 export type PetProvider = "meshy" | "hunyuan3d";
 export type PetStyle =
   | "anime"
@@ -43,6 +43,10 @@ export interface PetSubmitInput {
   model?: string;
   style?: PetStyle;
   referenceImageUrl?: string;
+  /** Phase 5: 3-6 view URLs used by mode='scan'. */
+  scanImageUrls?: string[];
+  /** V4 P3: two parent skin URLs used by mode='breed' (front-end synthesises a prompt). */
+  parentSkinUrls?: [string, string];
   negativePrompt?: string;
   enableAnimation?: boolean;
   targetPolycount?: number;
@@ -57,10 +61,28 @@ function authHeaders(): Record<string, string> {
 
 /** Submit a new pet generation task. Returns the tool result (with taskId). */
 export async function submitPetTask(input: PetSubmitInput): Promise<any> {
+  // V4 breed mode: backend has no native 'breed' yet — synthesise an image-mode
+  // request using parentA as referenceImageUrl and embedding parentB into the
+  // prompt so the provider receives both parents textually. This keeps the UI
+  // contract stable so we can swap to a real /pet-generation/breed endpoint later.
+  let body: PetSubmitInput = input;
+  if (input.mode === "breed" && input.parentSkinUrls && input.parentSkinUrls.length === 2) {
+    const [a, b] = input.parentSkinUrls;
+    body = {
+      ...input,
+      mode: "image",
+      referenceImageUrl: a,
+      prompt: [
+        input.prompt?.trim() || "",
+        `Breed/fuse the visual traits of two parent pets. Parent A reference: ${a}. Parent B reference: ${b}. Inherit signature features from both into a single cohesive 3D pet.`,
+      ].filter(Boolean).join("\n\n"),
+    };
+    delete (body as any).parentSkinUrls;
+  }
   const res = await apiFetch(`${API_BASE}/pet-generation/submit`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify(input),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");

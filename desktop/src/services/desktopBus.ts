@@ -20,6 +20,7 @@ export type DesktopUiAction =
   | "open-video-studio"
   | "open-pet-creator"
   | "open-soul-picker"
+  | "open-wardrobe"
   | "open-settings"
   | "new-chat"
   | "voice-start";

@@ -39,6 +39,8 @@ export default function PetCreatorPanel({ onClose }: Props) {
   const [style, setStyle] = useState<PetStyle>("chibi");
   const [prompt, setPrompt] = useState("");
   const [referenceImageUrl, setReferenceImageUrl] = useState("");
+  const [parentAUrl, setParentAUrl] = useState("");
+  const [parentBUrl, setParentBUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<PetTaskSummary[]>([]);
@@ -72,6 +74,10 @@ export default function PetCreatorPanel({ onClose }: Props) {
       setError("图生 3D 需要一张参考图片 URL");
       return;
     }
+    if (mode === "breed" && (!parentAUrl.trim() || !parentBUrl.trim())) {
+      setError("双图融合 (繁殖) 需要两只父母皆肤的参考图 URL");
+      return;
+    }
     setSubmitting(true);
     try {
       const result = await submitPetTask({
@@ -80,6 +86,10 @@ export default function PetCreatorPanel({ onClose }: Props) {
         style,
         prompt: prompt.trim() || undefined,
         referenceImageUrl: referenceImageUrl.trim() || undefined,
+        parentSkinUrls:
+          mode === "breed" && parentAUrl.trim() && parentBUrl.trim()
+            ? [parentAUrl.trim(), parentBUrl.trim()]
+            : undefined,
         enableAnimation: true,
       });
       const tid: string | undefined = result?.taskId || result?.task?.taskId;
@@ -143,6 +153,7 @@ export default function PetCreatorPanel({ onClose }: Props) {
               options={[
                 { value: "text", label: "文字 → 3D" },
                 { value: "image", label: "图片 → 3D" },
+                { value: "breed", label: "双图繁殖 🧬" },
               ]}
             />
           </Section>
@@ -183,7 +194,7 @@ export default function PetCreatorPanel({ onClose }: Props) {
                 style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
               />
             </Section>
-          ) : (
+          ) : mode === "image" ? (
             <Section title="参考图片 URL">
               <input
                 type="url"
@@ -199,6 +210,33 @@ export default function PetCreatorPanel({ onClose }: Props) {
                 rows={3}
                 style={{ ...inputStyle, marginTop: 8, resize: "vertical", fontFamily: "inherit" }}
               />
+            </Section>
+          ) : (
+            <Section title="双图繁殖 (Breed)">
+              <input
+                type="url"
+                value={parentAUrl}
+                onChange={(e) => setParentAUrl(e.target.value)}
+                placeholder="父母 A 参考图 URL"
+                style={inputStyle}
+              />
+              <input
+                type="url"
+                value={parentBUrl}
+                onChange={(e) => setParentBUrl(e.target.value)}
+                placeholder="父母 B 参考图 URL"
+                style={{ ...inputStyle, marginTop: 8 }}
+              />
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="可选：融合偏好（例如 “多保留 A 的颜色 + B 的耳朵”）"
+                rows={3}
+                style={{ ...inputStyle, marginTop: 8, resize: "vertical", fontFamily: "inherit" }}
+              />
+              <p style={hintStyle}>
+                V4 实验：后端还未上线原生 /breed，当前由前端合成 prompt 与参考 URL 提交。
+              </p>
             </Section>
           )}
 
