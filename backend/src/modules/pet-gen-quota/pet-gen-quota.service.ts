@@ -15,6 +15,13 @@ export const PLAN_INCLUDED: Record<PlanTier, number> = {
 export const OVERAGE_UNIT_PRICE_USD = 0.5;
 
 /**
+ * Phase 5 BE-9.3: scan jobs (Hunyuan3D multi-view) cost ~$1 each, vs. text/image
+ * at $0.5. We model scan as 2 quota units so the existing accounting (included +
+ * overage) continues to work without a parallel ledger.
+ */
+export const SCAN_UNITS = 2;
+
+/**
  * PetGenQuotaService — Phase 2 W1 配额账本（骨架）
  *
  * 关键方法：
@@ -72,53 +79,70 @@ export class PetGenQuotaService {
    *   'overage'  — 触发 $0.5 超额（调用方应在确认前向 Stripe 收单）
    *   'denied'   — 被风控/计划禁止
    */
-  async tryReserve(userId: string, plan: PlanTier = 'free'): Promise<{
+  async tryReserve(
+    userId: string,
+    plan: PlanTier = 'free',
+    units = 1,
+  ): Promise<{
     mode: 'included' | 'overage' | 'denied';
     quotaId: string;
     period: string;
+    units: number;
     remainingIncluded: number;
     overageUnitPriceUsd: number;
   }> {
+    if (!Number.isInteger(units) || units < 1) {
+      throw new BadRequestException('units must be a positive integer');
+    }
     const row = await this.getOrCreate(userId, plan);
     const limit = row.included < 0 ? Number.POSITIVE_INFINITY : row.included;
     const inFlightUsed = row.used + row.reserved;
     let mode: 'included' | 'overage' | 'denied' = 'included';
-    if (inFlightUsed >= limit) {
-      // Free 不允许 overage（需要订阅升级或显式 buyOverage）→ 这里默认允许 overage
+    if (inFlightUsed + units > limit) {
+      // If the request straddles the boundary, charge the whole batch as overage
+      // for simplicity. Callers that want a partial-include split should reserve
+      // unit-by-unit.
       mode = 'overage';
     }
     if (plan === 'enterprise') {
       // enterprise 走另一种结算，不应到这里
       throw new ForbiddenException('enterprise tenants must use enterprise quota module');
     }
-    row.reserved += 1;
+    row.reserved += units;
     await this.repo.save(row);
     return {
       mode,
       quotaId: row.id,
       period: row.period,
+      units,
       remainingIncluded: row.included < 0 ? -1 : Math.max(0, row.included - row.used - row.reserved),
       overageUnitPriceUsd: Number(row.overageUnitPriceUsd),
     };
   }
 
   /** 任务成功 — reserved → used 或 overageUsed */
-  async confirm(quotaId: string, mode: 'included' | 'overage'): Promise<PetGenQuota> {
+  async confirm(quotaId: string, mode: 'included' | 'overage', units = 1): Promise<PetGenQuota> {
+    if (!Number.isInteger(units) || units < 1) {
+      throw new BadRequestException('units must be a positive integer');
+    }
     const row = await this.repo.findOne({ where: { id: quotaId } });
     if (!row) throw new BadRequestException('quota row not found');
-    if (row.reserved <= 0) throw new BadRequestException('no reserved capacity to confirm');
-    row.reserved -= 1;
-    if (mode === 'overage') row.overageUsed += 1;
-    else row.used += 1;
+    if (row.reserved < units) throw new BadRequestException('not enough reserved capacity to confirm');
+    row.reserved -= units;
+    if (mode === 'overage') row.overageUsed += units;
+    else row.used += units;
     return this.repo.save(row);
   }
 
   /** 任务失败 — 释放 reserved（不扣余额） */
-  async refund(quotaId: string): Promise<PetGenQuota> {
+  async refund(quotaId: string, units = 1): Promise<PetGenQuota> {
+    if (!Number.isInteger(units) || units < 1) {
+      throw new BadRequestException('units must be a positive integer');
+    }
     const row = await this.repo.findOne({ where: { id: quotaId } });
     if (!row) throw new BadRequestException('quota row not found');
     if (row.reserved <= 0) return row;
-    row.reserved -= 1;
+    row.reserved = Math.max(0, row.reserved - units);
     return this.repo.save(row);
   }
 

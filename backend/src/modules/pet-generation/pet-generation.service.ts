@@ -22,10 +22,13 @@ import type { ExecutionContext } from '../skill/skill-executor.service';
 const POLL_INTERVAL_MS = 20_000;
 const DEFAULT_PROVIDER = 'meshy';
 const SUPPORTED_PROVIDERS = new Set(['meshy', 'hunyuan3d']);
-const SUPPORTED_MODES = new Set(['text', 'image']);
+// Phase 5 BE-9.1/9.2: 'scan' = multi-view photo scan (mobile camera, 3-6 views).
+const SUPPORTED_MODES = new Set(['text', 'image', 'scan']);
 const SUPPORTED_STYLES = new Set(['anime', 'realistic', 'chibi', 'sculpture', 'pbr', 'cartoon']);
+const SCAN_MIN_VIEWS = 3;
+const SCAN_MAX_VIEWS = 6;
 
-type PetGenerateMode = 'text' | 'image';
+type PetGenerateMode = 'text' | 'image' | 'scan';
 type PetGenerateProvider = 'meshy' | 'hunyuan3d';
 
 export interface PetGenerateParams {
@@ -38,6 +41,8 @@ export interface PetGenerateParams {
   negativePrompt?: string;
   referenceImageUrl?: string;
   imageUrl?: string;
+  /** Phase 5 BE-9.1/9.2: 3-6 view URLs for multi-view scan (mode='scan'). */
+  scanImageUrls?: string[];
   enableAnimation?: boolean;
   targetPolycount?: number;
 }
@@ -77,20 +82,38 @@ export class PetGenerationService {
       return this.formatTaskResult(task);
     }
 
-    const mode: PetGenerateMode = params.mode === 'image' ? 'image' : 'text';
-    const referenceImageUrl = params.referenceImageUrl?.trim() || params.imageUrl?.trim() || undefined;
+    const requestedMode = params.mode;
+    const mode: PetGenerateMode =
+      requestedMode === 'scan' ? 'scan' : requestedMode === 'image' ? 'image' : 'text';
+    if (!SUPPORTED_MODES.has(mode)) {
+      throw new Error(`Unsupported pet_generate mode: ${mode}`);
+    }
+    const scanImageUrls = (params.scanImageUrls || [])
+      .map((u) => (typeof u === 'string' ? u.trim() : ''))
+      .filter((u) => u.length > 0);
+    const referenceImageUrl =
+      params.referenceImageUrl?.trim() ||
+      params.imageUrl?.trim() ||
+      (mode === 'scan' && scanImageUrls.length > 0 ? scanImageUrls[0] : undefined);
     if (mode === 'image' && !referenceImageUrl) {
       throw new Error('pet_generate mode=image requires referenceImageUrl');
+    }
+    if (mode === 'scan') {
+      if (scanImageUrls.length < SCAN_MIN_VIEWS || scanImageUrls.length > SCAN_MAX_VIEWS) {
+        throw new Error(
+          `pet_generate mode=scan requires ${SCAN_MIN_VIEWS}-${SCAN_MAX_VIEWS} scanImageUrls (front/back/left/right/top/bottom).`,
+        );
+      }
     }
     const prompt = (params.prompt || '').trim();
     if (mode === 'text' && !prompt) {
       throw new Error('pet_generate mode=text requires a prompt');
     }
-    if (!SUPPORTED_MODES.has(mode)) {
-      throw new Error(`Unsupported pet_generate mode: ${mode}`);
-    }
 
-    const provider = ((params.provider || DEFAULT_PROVIDER) as string).toLowerCase() as PetGenerateProvider;
+    // Scan mode is currently only supported by Hunyuan3D (Meshy lacks a multi-view
+    // intake endpoint as of 2026-05). Force-route scan jobs to hunyuan3d.
+    const requestedProvider = ((params.provider || DEFAULT_PROVIDER) as string).toLowerCase();
+    const provider = (mode === 'scan' ? 'hunyuan3d' : requestedProvider) as PetGenerateProvider;
     if (!SUPPORTED_PROVIDERS.has(provider)) {
       throw new Error(`Unsupported pet_generate provider: ${provider}. Supported: meshy (default, paid), hunyuan3d (Tencent Cloud AI3D).`);
     }
@@ -101,6 +124,7 @@ export class PetGenerationService {
       prompt,
       style,
       referenceImageUrl,
+      scanImageUrls: mode === 'scan' ? scanImageUrls : undefined,
       negativePrompt: params.negativePrompt?.trim() || undefined,
       enableAnimation: params.enableAnimation ?? true,
       targetPolycount: params.targetPolycount,
@@ -115,8 +139,12 @@ export class PetGenerationService {
       model: params.model,
       mode,
       style,
-      title: this.buildTitle(prompt || 'Image-based pet', mode),
-      prompt: prompt || `[image-to-3d] ${referenceImageUrl}`,
+      title: this.buildTitle(prompt || (mode === 'scan' ? 'Multi-view scanned pet' : 'Image-based pet'), mode),
+      prompt:
+        prompt ||
+        (mode === 'scan'
+          ? `[scan-${scanImageUrls.length}views] ${scanImageUrls[0] || ''}`
+          : `[image-to-3d] ${referenceImageUrl}`),
       negativePrompt: params.negativePrompt?.trim() || undefined,
       referenceImageUrl,
       status: PetGenerationStatusEnum.QUEUED,
@@ -530,7 +558,7 @@ export class PetGenerationService {
 
   private buildTitle(prompt: string, mode: PetGenerateMode): string {
     const normalized = prompt.replace(/\s+/g, ' ').trim();
-    const prefix = mode === 'image' ? '[Img→3D] ' : '[Pet] ';
+    const prefix = mode === 'scan' ? '[Scan→3D] ' : mode === 'image' ? '[Img→3D] ' : '[Pet] ';
     const titled = `${prefix}${normalized}`;
     return titled.length > 72 ? `${titled.slice(0, 69)}...` : titled;
   }

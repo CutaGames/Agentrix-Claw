@@ -61,20 +61,64 @@ export default function DeveloperPortalPage() {
 
         <section className="mb-10" data-testid="dp-sdk">
           <h2 className="text-2xl font-semibold mb-2">2. SDKs</h2>
+          <p className="text-sm text-gray-600 mb-2">
+            Reference interface contracts (Phase 5 W10 follow-on). Concrete native
+            implementations are tracked in the Bridge SDK roadmap.
+          </p>
           <table className="w-full text-sm border">
             <thead className="bg-gray-50">
               <tr>
                 <th className="text-left p-2 border">Surface</th>
                 <th className="text-left p-2 border">Language</th>
+                <th className="text-left p-2 border">Contract</th>
                 <th className="text-left p-2 border">Status</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td className="p-2 border">esp32</td><td className="p-2 border">Rust (esp-rs)</td><td className="p-2 border">P5 W10</td></tr>
-              <tr><td className="p-2 border">nRF52</td><td className="p-2 border">C (Zephyr)</td><td className="p-2 border">P5 W10</td></tr>
-              <tr><td className="p-2 border">Android</td><td className="p-2 border">Kotlin (.aar)</td><td className="p-2 border">P5 W10</td></tr>
-              <tr><td className="p-2 border">iOS</td><td className="p-2 border">Swift (.xcframework)</td><td className="p-2 border">P5 W10</td></tr>
-              <tr><td className="p-2 border">Desktop</td><td className="p-2 border">Rust (Tauri Bridge)</td><td className="p-2 border">P5 W10</td></tr>
+              <tr>
+                <td className="p-2 border">Reference (TypeScript)</td>
+                <td className="p-2 border">TS</td>
+                <td className="p-2 border">
+                  <a className="text-blue-600 underline" href="https://github.com/CutaGames/Agentrix/blob/main/shared/clawcore/v1/bridge.ts">bridge.ts</a>
+                </td>
+                <td className="p-2 border">v1 — stable</td>
+              </tr>
+              <tr>
+                <td className="p-2 border">Android</td>
+                <td className="p-2 border">Kotlin</td>
+                <td className="p-2 border">
+                  <a className="text-blue-600 underline" href="https://github.com/CutaGames/Agentrix/blob/main/shared/clawcore/v1/bridge.android.kt">bridge.android.kt</a>
+                </td>
+                <td className="p-2 border">contract — impl P5b</td>
+              </tr>
+              <tr>
+                <td className="p-2 border">iOS</td>
+                <td className="p-2 border">Swift</td>
+                <td className="p-2 border">
+                  <a className="text-blue-600 underline" href="https://github.com/CutaGames/Agentrix/blob/main/shared/clawcore/v1/bridge.ios.swift">bridge.ios.swift</a>
+                </td>
+                <td className="p-2 border">contract — impl P5b</td>
+              </tr>
+              <tr>
+                <td className="p-2 border">Desktop</td>
+                <td className="p-2 border">Rust (Tauri)</td>
+                <td className="p-2 border">
+                  <a className="text-blue-600 underline" href="https://github.com/CutaGames/Agentrix/blob/main/shared/clawcore/v1/bridge.desktop.rs">bridge.desktop.rs</a>
+                </td>
+                <td className="p-2 border">contract — impl P5b</td>
+              </tr>
+              <tr>
+                <td className="p-2 border">esp32</td>
+                <td className="p-2 border">Rust (esp-rs)</td>
+                <td className="p-2 border">—</td>
+                <td className="p-2 border">P5 W10 (firmware)</td>
+              </tr>
+              <tr>
+                <td className="p-2 border">nRF52</td>
+                <td className="p-2 border">C (Zephyr)</td>
+                <td className="p-2 border">—</td>
+                <td className="p-2 border">P5 W10 (firmware)</td>
+              </tr>
             </tbody>
           </table>
         </section>
@@ -88,6 +132,11 @@ export default function DeveloperPortalPage() {
           </p>
           <p className="text-sm text-gray-500 mt-2">
             Run locally: <code className="bg-gray-100 px-1">agentrix cert run --device-id &lt;id&gt;</code>
+          </p>
+          <p className="mt-3">
+            <Link href="/developers/cert" className="text-blue-600 underline">
+              → Live certification dashboard
+            </Link>
           </p>
         </section>
 
