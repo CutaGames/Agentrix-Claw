@@ -159,6 +159,10 @@ import { PartnerInquiryModule } from './modules/partner-inquiry/partner-inquiry.
 import { PetTeamModule } from './modules/pet-team/pet-team.module';
 // Phase 6 M3: pet NFT mint intent (链上身份)
 import { PetNftModule } from './modules/pet-nft/pet-nft.module';
+// Phase 6 M5: partner-app SDK (跨 App 宠物)
+import { PartnerAppModule } from './modules/partner-app/partner-app.module';
+// Phase 6 M6: sovereign pet (MPC 托管 + 链上记忆)
+import { PetSovereignModule } from './modules/pet-sovereign/pet-sovereign.module';
 import { ApprovalModule } from './modules/approval/approval.module';
 import { HandoffV1Module } from './modules/handoff/handoff-v1.module';
 import { WalletProjectionModule } from './modules/wallet-projection/wallet-projection.module';
@@ -349,6 +353,10 @@ import { PetGenerationModule } from './modules/pet-generation/pet-generation.mod
     PetTeamModule,
     // Phase 6 M3: 宠物 NFT mint intent
     PetNftModule,
+    // Phase 6 M5: 跨 App 合作伙伴 SDK
+    PartnerAppModule,
+    // Phase 6 M6: 主权宠物（MPC + 链上记忆）
+    PetSovereignModule,
     // v3.0 Approval Routing (顿领 §5.2) — 4 级风险 + Trust 校验
     ApprovalModule,
     // v3.0 Handoff v1 (顿领 §5.1) — /api/v1/handoff/* 包装层
