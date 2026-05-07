@@ -8,6 +8,7 @@ import { TeamStackNavigator } from './TeamStackNavigator';
 import { MeStackNavigator } from './MeStackNavigator';
 import { TodayStackNavigator } from './TodayStackNavigator';
 import { WalletStackNavigator } from './WalletStackNavigator';
+import { PetStackNavigator } from './PetStackNavigator';
 import { colors } from '../theme/colors';
 import { useNotificationStore } from '../stores/notificationStore';
 import { useI18n } from '../stores/i18nStore';
@@ -89,6 +90,14 @@ export function MainTabNavigator() {
         options={{
           title: t({ en: 'Team', zh: '团队' }),
           tabBarIcon: ({ focused }) => <TabIcon emoji="👥" focused={focused} badge={approvalCount} />,
+        }}
+      />
+      <Tab.Screen
+        name="Pet"
+        component={PetStackNavigator}
+        options={{
+          title: t({ en: 'Pet', zh: '萃宠' }),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🐾" focused={focused} />,
         }}
       />
       <Tab.Screen
