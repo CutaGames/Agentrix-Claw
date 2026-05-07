@@ -215,3 +215,88 @@ export async function breedPet(input: {
     body: JSON.stringify(input),
   });
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 6 M2 — Pet Team (Lv5+) — multi-pet delegation under a parent pet
+// ────────────────────────────────────────────────────────────────────────────
+
+export type PetTeamRole =
+  | 'finance'
+  | 'concierge'
+  | 'researcher'
+  | 'creative'
+  | 'guardian'
+  | 'tutor';
+
+export type PetTeamMemberStatus = 'active' | 'paused' | 'revoked';
+
+export interface PetTeamMemberDto {
+  id: string;
+  parent_living_pet_id: string;
+  member_user_id: string;
+  display_name: string;
+  role: PetTeamRole;
+  scope: Record<string, unknown>;
+  daily_budget_usd: number;
+  status: PetTeamMemberStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listTeamRoles(): Promise<PetTeamRole[]> {
+  const r = await apiFetch<{ roles: PetTeamRole[] }>('/v1/pet/team/roles');
+  return r.roles ?? [];
+}
+
+export async function listTeamMembers(parentLivingPetId: string): Promise<PetTeamMemberDto[]> {
+  const r = await apiFetch<{ items: PetTeamMemberDto[] }>(
+    `/v1/pet/team/${encodeURIComponent(parentLivingPetId)}`,
+  );
+  return r.items ?? [];
+}
+
+export async function grantTeamMember(
+  parentLivingPetId: string,
+  body: {
+    member_user_id: string;
+    display_name: string;
+    role: PetTeamRole;
+    scope?: Record<string, unknown>;
+    daily_budget_usd?: number;
+  },
+): Promise<PetTeamMemberDto> {
+  return apiFetch<PetTeamMemberDto>(
+    `/v1/pet/team/${encodeURIComponent(parentLivingPetId)}/members`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+}
+
+export async function pauseTeamMember(
+  parentLivingPetId: string,
+  memberId: string,
+): Promise<PetTeamMemberDto> {
+  return apiFetch<PetTeamMemberDto>(
+    `/v1/pet/team/${encodeURIComponent(parentLivingPetId)}/members/${encodeURIComponent(memberId)}/pause`,
+    { method: 'PUT' },
+  );
+}
+
+export async function resumeTeamMember(
+  parentLivingPetId: string,
+  memberId: string,
+): Promise<PetTeamMemberDto> {
+  return apiFetch<PetTeamMemberDto>(
+    `/v1/pet/team/${encodeURIComponent(parentLivingPetId)}/members/${encodeURIComponent(memberId)}/resume`,
+    { method: 'PUT' },
+  );
+}
+
+export async function revokeTeamMember(
+  parentLivingPetId: string,
+  memberId: string,
+): Promise<PetTeamMemberDto> {
+  return apiFetch<PetTeamMemberDto>(
+    `/v1/pet/team/${encodeURIComponent(parentLivingPetId)}/members/${encodeURIComponent(memberId)}`,
+    { method: 'DELETE' },
+  );
+}

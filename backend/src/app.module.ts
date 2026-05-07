@@ -148,6 +148,7 @@ import { DmcaModule } from './modules/dmca/dmca.module';
 import { MarketplacePetModule } from './modules/marketplace-pet/marketplace-pet.module';
 // Phase 4 W7: Pet Energy + Risk Control + Auto-Earn evaluator + Daily report
 import { PetEnergyModule } from './modules/pet-energy/pet-energy.module';
+import { BillingPlanModule } from './modules/billing-plan/billing-plan.module';
 // Phase 4 W7: A2A pet-as-issuer dispatch
 import { PetA2AModule } from './modules/pet-a2a/pet-a2a.module';
 // Phase 4 W8: WebAuthn / Passkey for L3 web co-sign
@@ -343,6 +344,8 @@ import { PetGenerationModule } from './modules/pet-generation/pet-generation.mod
     MarketplacePetModule,
     // Phase 4 W7: Pet Energy + Risk Control + Auto-Earn evaluator + Daily report
     PetEnergyModule,
+    // V4 §5.2: Pro / Pro+ subscription SKUs + Stripe Checkout wiring
+    BillingPlanModule,
     // Phase 4 W7: A2A pet-as-issuer dispatch
     PetA2AModule,
     // Phase 4 W8: WebAuthn / Passkey for L3 web co-sign
