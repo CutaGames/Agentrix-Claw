@@ -26,13 +26,44 @@ export type PlanStatus =
   | 'done'
   | 'failed';
 
+export interface PlanArtifact {
+  /** Stable id for client de-dup */
+  id: string;
+  /** kind hint for UI rendering */
+  kind: 'text' | 'json' | 'url' | 'image' | 'file' | 'table' | 'code';
+  title: string;
+  /** Inline content for text/json/code, omitted for url/image/file */
+  content?: string;
+  /** External URL for url/image/file */
+  url?: string;
+  /** Optional MIME type */
+  mime?: string;
+  /** Size hint in bytes */
+  bytes?: number;
+  createdAtMs: number;
+}
+
 export interface PlanStepSnapshot {
   id: string;
+  /**
+   * Step kind. Conventions:
+   *  - `tool:<toolName>` → invoke registered AgentrixTool
+   *  - `mock`            → legacy mock executor (for tests)
+   *  - any other string  → treated as mock for backward compat
+   */
   kind: string;
   description: string;
   args?: Record<string, unknown>;
-  status: 'pending' | 'running' | 'done' | 'failed';
+  status: 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+  /** Short human-readable result summary */
   result?: string;
+  /** Structured artifacts produced by this step (rendered as cards in UI) */
+  artifacts?: PlanArtifact[];
+  /** Error message when status=failed */
+  error?: string;
+  startedAtMs?: number;
+  finishedAtMs?: number;
+  durationMs?: number;
 }
 
 @Entity('plans')

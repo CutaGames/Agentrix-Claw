@@ -105,12 +105,23 @@ const createApprovalsStub = (initialStatus: 'pending' | 'approved' = 'pending') 
 
 const flush = (ms = 250) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const createToolsStub = (
+  registered: Record<string, (input: any) => Promise<{ success: boolean; data?: any; error?: string }>> = {},
+) => ({
+  get: jest.fn((name: string) => (registered[name] ? { name } : undefined)),
+  execute: jest.fn(async (name: string, input: any) => {
+    const fn = registered[name];
+    if (!fn) return { success: false, error: `tool not found: ${name}` };
+    return fn(input);
+  }),
+});
+
 describe('PlanRunnerService', () => {
   it('persists plans across service instances and runs them after approval', async () => {
     const planRepo = createMockPlanRepository();
     const approvals = createApprovalsStub('pending');
 
-    const submitter = new PlanRunnerService(planRepo as any, approvals as any);
+    const submitter = new PlanRunnerService(planRepo as any, approvals as any, createToolsStub() as any);
     const submitted = await submitter.submit('user-1', {
       title: 'Send weekly digest',
       intent: 'Email summary to subscribers',
@@ -127,7 +138,7 @@ describe('PlanRunnerService', () => {
     // Simulate approval being granted out-of-band, then a fresh service instance
     // reacts to it (proves state survives the service-instance boundary).
     approvals.setStatus(submitted.approvalId!, 'approved');
-    const runner = new PlanRunnerService(planRepo as any, approvals as any);
+    const runner = new PlanRunnerService(planRepo as any, approvals as any, createToolsStub() as any);
     await runner.onApprovalApproved(submitted.approvalId!);
     await flush();
 
@@ -143,7 +154,7 @@ describe('PlanRunnerService', () => {
   it('lists plans for the owning user only and filters by status', async () => {
     const planRepo = createMockPlanRepository();
     const approvals = createApprovalsStub('approved');
-    const service = new PlanRunnerService(planRepo as any, approvals as any);
+    const service = new PlanRunnerService(planRepo as any, approvals as any, createToolsStub() as any);
 
     const planA = await service.submit('user-1', {
       title: 'Touch up notes',
@@ -159,7 +170,7 @@ describe('PlanRunnerService', () => {
     });
     await flush();
 
-    const fresh = new PlanRunnerService(planRepo as any, approvals as any);
+    const fresh = new PlanRunnerService(planRepo as any, approvals as any, createToolsStub() as any);
     const ownerPlans = await fresh.list('user-1');
     expect(ownerPlans).toHaveLength(1);
     expect(ownerPlans[0].id).toBe(planA.id);
@@ -169,5 +180,80 @@ describe('PlanRunnerService', () => {
 
     const otherStatus = await fresh.list('user-1', 'awaiting_approval');
     expect(otherStatus).toHaveLength(0);
+  });
+
+  it('executes real tools via tool: prefix and emits artifact + done events', async () => {
+    const planRepo = createMockPlanRepository();
+    const approvals = createApprovalsStub('approved');
+    const tools = createToolsStub({
+      sandbox_shell_exec: async (input: any) => ({
+        success: true,
+        data: { stdout: `ran:${input.cmd}`, exitCode: 0 },
+      }),
+    });
+    const service = new PlanRunnerService(planRepo as any, approvals as any, tools as any);
+
+    const events: any[] = [];
+    const planPromise = service.submit('user-1', {
+      title: 'sandbox demo',
+      intent: 'use real tool',
+      steps: [
+        {
+          kind: 'tool:sandbox_shell_exec',
+          description: 'echo hello',
+          args: { instanceId: 'fake', cmd: 'echo hello' },
+        },
+      ],
+      initiator_surface: 'web',
+    });
+    const submitted = await planPromise;
+    const unsub = service.subscribe(submitted.id, (e) => events.push(e));
+    await flush();
+    unsub();
+
+    const final = await service.get(submitted.id, 'user-1');
+    expect(final.status).toBe('done');
+    expect(final.steps[0].status).toBe('done');
+    expect(final.steps[0].artifacts?.[0].kind).toBe('json');
+    expect(final.steps[0].artifacts?.[0].content).toContain('ran:echo hello');
+    expect(tools.execute).toHaveBeenCalledWith(
+      'sandbox_shell_exec',
+      expect.objectContaining({ cmd: 'echo hello' }),
+      expect.any(Object),
+    );
+    // We may or may not catch plan.started depending on subscribe timing,
+    // but artifact + step.done + plan.done must appear.
+    const types = events.map((e) => e.type);
+    expect(types).toEqual(
+      expect.arrayContaining(['plan.step.artifact', 'plan.step.done', 'plan.done']),
+    );
+  });
+
+  it('marks step failed and remaining as skipped when a tool errors out', async () => {
+    const planRepo = createMockPlanRepository();
+    const approvals = createApprovalsStub('approved');
+    const tools = createToolsStub({
+      bad_tool: async () => ({ success: false, error: 'boom' }),
+      good_tool: async () => ({ success: true, data: 'ok' }),
+    });
+    const service = new PlanRunnerService(planRepo as any, approvals as any, tools as any);
+
+    const submitted = await service.submit('user-1', {
+      title: 'failure path',
+      intent: 'one good one bad',
+      steps: [
+        { kind: 'tool:bad_tool', description: 'will fail' },
+        { kind: 'tool:good_tool', description: 'should be skipped' },
+      ],
+      initiator_surface: 'web',
+    });
+    await flush();
+
+    const final = await service.get(submitted.id, 'user-1');
+    expect(final.status).toBe('failed');
+    expect(final.steps[0].status).toBe('failed');
+    expect(final.steps[0].error).toContain('boom');
+    expect(final.steps[1].status).toBe('skipped');
+    expect(tools.execute).toHaveBeenCalledTimes(1); // good_tool never invoked
   });
 });
