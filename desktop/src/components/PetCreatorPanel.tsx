@@ -353,6 +353,41 @@ export default function PetCreatorPanel({ onClose }: Props) {
                   )}
                 </div>
               </div>
+              {(activeTask.vrmUrl || activeTask.outputUrl) && (
+                <div
+                  style={{
+                    marginTop: 14,
+                    padding: 12,
+                    background: "rgba(108,92,231,0.08)",
+                    border: "1px solid rgba(108,92,231,0.25)",
+                    borderRadius: 10,
+                    fontSize: 12,
+                    lineHeight: 1.7,
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 6, color: "#a78bfa", fontSize: 13 }}>
+                    🎓 我的萌宠生成好了，接下来怎么用？
+                  </div>
+                  <div style={{ color: "rgba(255,255,255,0.75)" }}>
+                    <b style={{ color: "#10b981" }}>① 设为我的萌宠</b>
+                    <span style={{ opacity: 0.7 }}> — 立即变成桌面悬浮球，跟着你工作</span>
+                    <br />
+                    <b style={{ color: "#22d3ee" }}>② 下载 .glb 文件</b>
+                    <span style={{ opacity: 0.7 }}>
+                      {" "}
+                      — 这是 3D 模型源文件，可在以下场景使用：
+                    </span>
+                    <div style={{ paddingLeft: 16, marginTop: 4, opacity: 0.7 }}>
+                      · 上传到 Blender / Unity / Unreal 制作动画或游戏
+                      <br />· 导入 VRChat / Cluster / 网页元宇宙作为虚拟形象
+                      <br />· 通过 <code style={{ background: "rgba(255,255,255,0.08)", padding: "1px 4px", borderRadius: 3 }}>https://gltf-viewer.donmccurdy.com</code> 在线预览
+                      <br />· Windows 用户双击会用系统"3D 查看器"打开（仅展示用）
+                    </div>
+                    <b style={{ color: "#e879f9" }}>③ 上架萌宠市场</b>
+                    <span style={{ opacity: 0.7 }}> — 让其他用户购买、繁殖你的设计（开发中）</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

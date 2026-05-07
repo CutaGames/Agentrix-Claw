@@ -412,8 +412,47 @@ export default function VideoStudioPanel({ onClose }: Props) {
                 </div>
               )}
               {activeTask.error && (
-                <div style={{ color: "#f87171", fontSize: 12, marginTop: 8 }}>
-                  错误: {activeTask.error}
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    background: "rgba(248,113,113,0.08)",
+                    border: "1px solid rgba(248,113,113,0.3)",
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                >
+                  <div style={{ color: "#f87171", fontWeight: 600, marginBottom: 4 }}>
+                    ❌ 生成失败
+                  </div>
+                  <div style={{ color: "#fca5a5", wordBreak: "break-word" }}>
+                    {activeTask.error}
+                  </div>
+                  {/ResourceInsufficient|资源不足|insufficient/i.test(activeTask.error) && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        padding: 8,
+                        background: "rgba(251,191,36,0.1)",
+                        borderRadius: 6,
+                        color: "#fbbf24",
+                        fontSize: 11,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      💡 <b>腾讯云账户额度不足。</b>
+                      <br />· 控制台充值后可立即恢复：
+                      <a
+                        href="https://console.cloud.tencent.com/expense/recharge"
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: "#fbbf24", marginLeft: 4, textDecoration: "underline" }}
+                      >
+                        前往充值
+                      </a>
+                      <br />· 或切换其他 Provider（部分仍在 Coming Soon，可关注更新）
+                    </div>
+                  )}
                 </div>
               )}
             </div>

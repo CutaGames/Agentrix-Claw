@@ -1,11 +1,11 @@
 /**
- * ProviderPicker — dropdown of available video / 3D generation providers.
+ * ProviderPicker — themed dropdown of generation providers.
  *
- * Live providers are clickable; coming_soon entries appear with a badge
- * and disabled. Pricing label, vendor, latency, China-availability and tier
- * are surfaced inline so users can pick by quality vs cost.
+ * Matches the dark/purple inline-style aesthetic used by VideoStudioPanel /
+ * PetCreatorPanel. Live providers are clickable; coming_soon entries render
+ * grouped at the bottom, dimmed and disabled.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   list3dProviders,
   listVideoProviders,
@@ -18,72 +18,118 @@ interface Props {
   onChange: (id: string) => void;
 }
 
-const TIER_BADGE: Record<string, { label: string; cls: string }> = {
-  free: { label: "🆓 Free", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
-  budget: { label: "💰 Budget", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
-  standard: { label: "🔥 Standard", cls: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" },
-  premium: { label: "💎 Premium", cls: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30" },
+const TIER_META: Record<string, { icon: string; color: string }> = {
+  free: { icon: "🆓", color: "#10b981" },
+  budget: { icon: "💰", color: "#f59e0b" },
+  standard: { icon: "🔥", color: "#22d3ee" },
+  premium: { icon: "💎", color: "#e879f9" },
 };
+
+const PANEL_BG = "#15151c";
+const BORDER = "rgba(255,255,255,0.08)";
+const ROW_HOVER = "rgba(108,92,231,0.18)";
+const ROW_ACTIVE = "rgba(108,92,231,0.35)";
 
 export default function ProviderPicker({ modality, value, onChange }: Props) {
   const [providers, setProviders] = useState<GenerationProviderSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     const fetcher = modality === "video" ? listVideoProviders : list3dProviders;
     fetcher()
-      .then((rows) => {
-        if (!cancelled) setProviders(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setProviders([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .then((rows) => !cancelled && setProviders(rows))
+      .catch(() => !cancelled && setProviders([]))
+      .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
   }, [modality]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
 
   const selected = providers.find((p) => p.id === value);
   const live = providers.filter((p) => p.status === "live");
   const coming = providers.filter((p) => p.status === "coming_soon");
 
   return (
-    <div className="relative">
+    <div ref={wrapRef} style={{ position: "relative", width: "100%" }}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2 text-left text-sm hover:bg-white/10"
+        style={{
+          width: "100%",
+          background: "rgba(255,255,255,0.06)",
+          border: `1px solid ${BORDER}`,
+          borderRadius: 8,
+          padding: "10px 12px",
+          color: "var(--text, #eee)",
+          fontSize: 13,
+          textAlign: "left",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}
       >
         {selected ? (
-          <span className="flex items-center gap-2 truncate">
-            <span className="font-medium">{selected.name}</span>
-            <span className="text-xs text-white/50">· {selected.vendor}</span>
-            <span className="text-xs text-white/60">· {selected.pricingLabel}</span>
-          </span>
+          <>
+            <span style={{ fontSize: 16 }}>{TIER_META[selected.tier]?.icon || "•"}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>
+                {selected.name}
+                {selected.chinaAvailable && (
+                  <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>🇨🇳</span>
+                )}
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.55, marginTop: 2 }}>
+                {selected.vendor} · {selected.pricingLabel}
+              </div>
+            </div>
+          </>
         ) : (
-          <span className="text-white/50">{loading ? "加载中…" : "选择 Provider"}</span>
+          <span style={{ opacity: 0.5 }}>{loading ? "加载 Provider..." : "选择 Provider"}</span>
         )}
-        <span className="text-white/40">▾</span>
+        <span style={{ opacity: 0.4, fontSize: 10 }}>▼</span>
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 max-h-[360px] w-full overflow-auto rounded-md border border-white/10 bg-[#1a1a1f] shadow-xl">
-          {live.length > 0 && (
-            <div className="px-3 py-1.5 text-[11px] uppercase tracking-wide text-white/40">
-              ✅ 立即可用
-            </div>
-          )}
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            left: 0,
+            right: 0,
+            zIndex: 10000,
+            background: PANEL_BG,
+            border: `1px solid ${BORDER}`,
+            borderRadius: 10,
+            boxShadow: "0 12px 32px rgba(0,0,0,0.5)",
+            maxHeight: 380,
+            overflowY: "auto",
+          }}
+        >
+          {live.length > 0 && <GroupLabel>✅ 立即可用 · Live</GroupLabel>}
           {live.map((p) => (
-            <ProviderRow
+            <Row
               key={p.id}
               p={p}
               selected={p.id === value}
+              hovered={hoverId === p.id}
+              onHover={setHoverId}
               onClick={() => {
                 onChange(p.id);
                 setOpen(false);
@@ -91,13 +137,9 @@ export default function ProviderPicker({ modality, value, onChange }: Props) {
             />
           ))}
 
-          {coming.length > 0 && (
-            <div className="border-t border-white/5 px-3 py-1.5 text-[11px] uppercase tracking-wide text-white/40">
-              🕐 Coming Soon
-            </div>
-          )}
+          {coming.length > 0 && <GroupLabel>🕐 Coming Soon</GroupLabel>}
           {coming.map((p) => (
-            <ProviderRow key={p.id} p={p} selected={false} disabled />
+            <Row key={p.id} p={p} selected={false} hovered={false} onHover={() => {}} disabled />
           ))}
         </div>
       )}
@@ -105,49 +147,93 @@ export default function ProviderPicker({ modality, value, onChange }: Props) {
   );
 }
 
-function ProviderRow({
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        padding: "8px 12px 4px",
+        fontSize: 10,
+        textTransform: "uppercase",
+        letterSpacing: 1,
+        color: "rgba(255,255,255,0.4)",
+        fontWeight: 600,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Row({
   p,
   selected,
-  disabled,
+  hovered,
+  onHover,
   onClick,
+  disabled,
 }: {
   p: GenerationProviderSummary;
   selected: boolean;
-  disabled?: boolean;
+  hovered: boolean;
+  onHover: (id: string | null) => void;
   onClick?: () => void;
+  disabled?: boolean;
 }) {
-  const badge = TIER_BADGE[p.tier] || TIER_BADGE.standard;
+  const meta = TIER_META[p.tier] || TIER_META.standard;
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`block w-full px-3 py-2 text-left text-xs transition ${
-        disabled ? "cursor-not-allowed opacity-60" : "hover:bg-white/10"
-      } ${selected ? "bg-white/10" : ""}`}
+    <div
+      onClick={disabled ? undefined : onClick}
+      onMouseEnter={() => !disabled && onHover(p.id)}
+      onMouseLeave={() => !disabled && onHover(null)}
+      style={{
+        padding: "10px 12px",
+        cursor: disabled ? "not-allowed" : "pointer",
+        background: selected ? ROW_ACTIVE : hovered ? ROW_HOVER : "transparent",
+        opacity: disabled ? 0.45 : 1,
+        borderTop: `1px solid rgba(255,255,255,0.04)`,
+        display: "flex",
+        gap: 10,
+        alignItems: "flex-start",
+      }}
     >
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-white">{p.name}</span>
-        <span className={`rounded border px-1.5 py-0.5 text-[10px] ${badge.cls}`}>
-          {badge.label}
-        </span>
-        {p.chinaAvailable && (
-          <span className="rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-300">
-            🇨🇳
+      <span style={{ fontSize: 18, lineHeight: 1, marginTop: 1 }}>{meta.icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600 }}>
+          <span>{p.name}</span>
+          <span
+            style={{
+              fontSize: 10,
+              color: meta.color,
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+            }}
+          >
+            {p.tier}
           </span>
-        )}
-        {disabled && (
-          <span className="ml-auto rounded border border-white/15 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/60">
-            Coming Soon
-          </span>
-        )}
+          {p.chinaAvailable && <span style={{ fontSize: 10, opacity: 0.7 }}>🇨🇳</span>}
+          {disabled && (
+            <span
+              style={{
+                marginLeft: "auto",
+                fontSize: 10,
+                background: "rgba(255,255,255,0.08)",
+                padding: "2px 6px",
+                borderRadius: 4,
+                opacity: 0.85,
+              }}
+            >
+              Coming Soon
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 2 }}>
+          {p.vendor} · {p.pricingLabel}
+          {p.latencyHint && ` · ⏱ ${p.latencyHint}`}
+        </div>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
+          {p.strength}
+        </div>
       </div>
-      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-white/55">
-        <span>{p.vendor}</span>
-        <span>· {p.pricingLabel}</span>
-        {p.latencyHint && <span>· ⏱ {p.latencyHint}</span>}
-      </div>
-      <div className="mt-0.5 text-[11px] text-white/45">{p.strength}</div>
-    </button>
+    </div>
   );
 }
