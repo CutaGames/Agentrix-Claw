@@ -35,7 +35,7 @@ export function MeStackNavigator() {
       }}
     >
       <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: t({ en: 'Me', zh: '我的' }) }} />
-      <Stack.Screen name="Scan" component={ScanScreen} options={{ title: t({ en: 'Scan QR', zh: '扫一扫' }) }} />
+      <Stack.Screen name="Scan" component={ScanScreen} options={{ title: t({ en: 'Scan & Create', zh: '扫描与生成' }) }} />
       <Stack.Screen name="ReferralDashboard" component={ReferralDashboardScreen} options={{ title: t({ en: 'Referrals & Earnings', zh: '推广与收益' }) }} />
       <Stack.Screen name="Settings" component={ClawSettingsScreen} options={{ title: t({ en: 'Settings', zh: '设置' }) }} />
       <Stack.Screen name="ApiKeys" component={ApiKeysScreen} options={{ title: t({ en: 'AI Providers', zh: 'AI 厂商与订阅' }) }} />

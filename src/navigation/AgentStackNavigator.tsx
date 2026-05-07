@@ -106,7 +106,7 @@ export function AgentStackNavigator() {
       <Stack.Screen name="WearableMonitor" component={WearableMonitorScreen} options={{ title: t({ en: 'Wearable Monitor', zh: '穿戴设备监控' }) }} />
       <Stack.Screen name="OpenClawBind" component={OpenClawBindScreen} options={{ title: t({ en: 'Connect OpenClaw', zh: '连接 OpenClaw' }) }} />
       <Stack.Screen name="LocalConnect" component={LocalConnectScreen} options={{ title: t({ en: 'Link Local Agent', zh: '关联本地智能体' }) }} />
-      <Stack.Screen name="Scan" component={ScanScreen} options={{ title: t({ en: 'Scan QR', zh: '扫一扫' }) }} />
+      <Stack.Screen name="Scan" component={ScanScreen} options={{ title: t({ en: 'Scan & Create', zh: '扫描与生成' }) }} />
       <Stack.Screen name="SkillInstall" component={SkillInstallScreen} options={{ title: t({ en: 'Install Skill', zh: '安装技能' }) }} />
       <Stack.Screen name="SkillPack" component={SkillPackScreen} options={{ title: t({ en: 'Skill Pack', zh: '技能快充' }), headerShown: false }} />
       <Stack.Screen name="StoragePlan" component={StoragePlanScreen} options={{ title: t({ en: 'Storage Plans', zh: '存储方案' }) }} />
