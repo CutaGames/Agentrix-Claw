@@ -1,0 +1,15 @@
+name: Build → Test → Release APK
+
+on:
+  push:
+    branches: [main, master, build*, v*]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  checks: write
+
+jobs:
+  build-apk:
+    uses: ./.github/workflows/build-apk.yml
+    secrets: inherit

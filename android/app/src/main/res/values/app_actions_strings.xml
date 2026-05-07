@@ -1,0 +1,8 @@
+<resources>
+    <string name="aa_ask_aira_label">Ask Aira</string>
+    <string name="aa_draft_label">Draft with Aira</string>
+    <string name="aa_approve_label">Approve in Agentrix</string>
+    <string name="aa_wallet_label">Wallet status</string>
+    <string name="aa_invoke_agent_label">Run agent</string>
+    <string name="aa_pet_mood_label">Aira\'s mood</string>
+</resources>

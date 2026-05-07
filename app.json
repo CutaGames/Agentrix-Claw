@@ -1,0 +1,177 @@
+{
+  "expo": {
+    "name": "Agentrix",
+    "slug": "agentrix-mobile",
+    "scheme": "agentrix",
+    "version": "1.1.0",
+    "orientation": "portrait",
+    "icon": "./Agentrix Logo/agentrix_app_icon_1024.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./Agentrix Logo/agentrix_logo_square_transparent.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.agentrix.claw",
+      "infoPlist": {
+        "CFBundleDisplayName": "Agentrix",
+        "UIBackgroundModes": [
+          "audio"
+        ],
+        "LSApplicationQueriesSchemes": [
+          "metamask",
+          "okx",
+          "okex",
+          "trust",
+          "rainbow",
+          "twitter",
+          "twitterauth",
+          "discord",
+          "tg",
+          "telegram",
+          "imtokenv2",
+          "tpoutside",
+          "bitkeep",
+          "ledgerlive",
+          "bnc"
+        ],
+        "NSCameraUsageDescription": "Agentrix Claw uses the camera to scan QR codes for binding your OpenClaw instance.",
+        "NSBluetoothAlwaysUsageDescription": "Agentrix uses Bluetooth to scan and connect to nearby wearable devices.",
+        "NSMicrophoneUsageDescription": "Agentrix Claw uses the microphone for voice commands to your AI agent.",
+        "NSPhotoLibraryAddUsageDescription": "Agentrix Claw saves share cards to your photo library.",
+        "NSPhotoLibraryUsageDescription": "Agentrix Claw reads the photo library to select images.",
+        "NSHealthShareUsageDescription": "Agentrix reads heart rate, blood oxygen and HRV to keep your AI pet's emotions accurate and to power L2 wrist-tap signing.",
+        "NSHealthUpdateUsageDescription": "Agentrix never writes back to Apple Health.",
+        "NSMotionUsageDescription": "Used to detect raise-wrist gestures for approving requests securely.",
+        "NSFaceIDUsageDescription": "Face ID is used to sign payments and approvals triggered from your watch."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./Agentrix Logo/agentrix_app_icon_1024.png",
+        "backgroundColor": "#000000"
+      },
+      "package": "app.agentrix.claw",
+      "permissions": [
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_SCAN",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED",
+        "RECORD_AUDIO",
+        "SYSTEM_ALERT_WINDOW",
+        "ACCESS_FINE_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MICROPHONE"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "agentrix"
+            },
+            {
+              "scheme": "https",
+              "host": "agentrix.top"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "web": {
+      "favicon": "./Agentrix Logo/favicon_64.png"
+    },
+    "newArchEnabled": true,
+    "runtimeVersion": "1.1.0",
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 5000,
+      "url": "https://u.expo.dev/96a641e0-ce03-45ff-9de7-2cd89c488236"
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "newArchEnabled": true,
+            "ndkVersion": "27.0.12077973"
+          }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./Agentrix Logo/agentrix_app_icon_1024.png",
+          "color": "#0B1220",
+          "sounds": []
+        }
+      ],
+      "expo-updates",
+      "expo-image-picker",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow Agentrix to use the microphone for realtime voice conversations.",
+          "speechRecognitionPermission": "Allow Agentrix to use speech recognition for realtime conversations.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.tts",
+            "com.google.android.as"
+          ]
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Agentrix to access your location for AI context."
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "neverForLocation": false
+        }
+      ],
+      [
+        "./plugins/withLlamaRN",
+        {
+          "enableEntitlements": true,
+          "entitlementsProfile": "production",
+          "forceCxx20": true,
+          "enableOpenCL": true
+        }
+      ],
+      "expo-localization"
+    ],
+    "extra": {
+      "wakeWord": {
+        "enabled": true,
+        "fallbackPhrases": [
+          "Hey Agentrix",
+          "Hi Agentrix",
+          "Agentrix",
+          "嘿 Agentrix",
+          "你好 Agentrix"
+        ],
+        "displayName": "Hey Agentrix",
+        "sensitivity": 0.65
+      },
+      "eas": {
+        "projectId": "96a641e0-ce03-45ff-9de7-2cd89c488236"
+      }
+    }
+  }
+}
