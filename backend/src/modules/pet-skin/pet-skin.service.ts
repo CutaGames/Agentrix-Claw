@@ -44,6 +44,44 @@ export class PetSkinService {
     private readonly ancestorChain: AncestorChainService,
   ) {}
 
+  /**
+   * Phase 6 — Breed lineage viz.
+   * Walks PetSkin.parentSkinId chain to assemble an ordered (oldest → newest)
+   * lineage descriptor suitable for social-profile display. Cycle-guarded and
+   * depth-bounded (8). Returns empty array for unknown skinId.
+   */
+  async getLineage(skinId: string): Promise<Array<{
+    id: string;
+    display_name: string;
+    source: string;
+    original_creator_user_id: string | null;
+    royalty_rate_bps: number;
+    parent_skin_id: string | null;
+    thumbnail_url: string | null;
+  }>> {
+    const visited = new Set<string>();
+    const reverse: PetSkin[] = [];
+    let cur = await this.skinRepo.findOne({ where: { id: skinId } });
+    let depth = 0;
+    while (cur && depth < 8) {
+      if (visited.has(cur.id)) break;
+      visited.add(cur.id);
+      reverse.push(cur);
+      if (!cur.parentSkinId) break;
+      cur = await this.skinRepo.findOne({ where: { id: cur.parentSkinId } });
+      depth++;
+    }
+    return reverse.reverse().map((s) => ({
+      id: s.id,
+      display_name: s.displayName,
+      source: s.source,
+      original_creator_user_id: s.originalCreatorUserId ?? null,
+      royalty_rate_bps: s.royaltyRateBps ?? 0,
+      parent_skin_id: s.parentSkinId ?? null,
+      thumbnail_url: s.thumbnailUrl ?? null,
+    }));
+  }
+
   /** 列出用户拥有 + 平台共享的可用皮肤 */
   async listOwned(userId: string): Promise<PetSkin[]> {
     return this.skinRepo

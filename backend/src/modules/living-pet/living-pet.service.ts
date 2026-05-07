@@ -189,6 +189,7 @@ export class LivingPetService {
     intimacy_xp: number;
     primary_agent_id: string | null;
     updated_at: number;
+    user_id: string;
   } | null> {
     const pet = await this.petRepo.findOne({ where: { id: petId } });
     if (!pet) return null;
@@ -200,6 +201,7 @@ export class LivingPetService {
       intimacy_xp: pet.intimacyXp,
       primary_agent_id: pet.primaryAgentId || null,
       updated_at: pet.updatedAt ? pet.updatedAt.getTime() : Date.now(),
+      user_id: pet.userId,
     };
   }
 

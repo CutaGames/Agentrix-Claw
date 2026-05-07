@@ -7,6 +7,7 @@ import { PetPublicController } from './pet-public.controller';
 import { PetSoulTemplateModule } from '../pet-soul-template/pet-soul-template.module';
 import { PetSkinModule } from '../pet-skin/pet-skin.module';
 import { PetGenQuotaModule } from '../pet-gen-quota/pet-gen-quota.module';
+import { MarketplacePetModule } from '../marketplace-pet/marketplace-pet.module';
 
 /**
  * LivingPetModule — 顿领 §3.4 主宠状态机 + Phase 1 灵魂×皮肤分层
@@ -18,7 +19,7 @@ import { PetGenQuotaModule } from '../pet-gen-quota/pet-gen-quota.module';
  * - 通过 desktopSyncEventBus 经 PresenceGateway 广播到 user 房间
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([LivingPet]), PetSoulTemplateModule, PetSkinModule, PetGenQuotaModule],
+  imports: [TypeOrmModule.forFeature([LivingPet]), PetSoulTemplateModule, PetSkinModule, PetGenQuotaModule, MarketplacePetModule],
   controllers: [LivingPetController, PetPublicController],
   providers: [LivingPetService],
   exports: [LivingPetService],

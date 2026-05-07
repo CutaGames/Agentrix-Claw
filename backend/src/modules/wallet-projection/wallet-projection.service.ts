@@ -31,21 +31,43 @@ export class WalletProjectionService {
       .find({ where: { ownerId: userId } as any, take: 100 })
       .catch(() => [] as AgentAccount[]);
 
+    const accountSummaries = agentAccounts.map((a) => ({
+      agent_id: (a as any).agentId || a.id,
+      balance_usd_cents: this.toCents((a as any).balance),
+      auto_earn_today_cents: 0,
+      pending_splits_cents: 0,
+    }));
+
+    const totalBalance = accountSummaries.reduce(
+      (sum, a) => sum + (a.balance_usd_cents || 0),
+      0,
+    );
+
     return {
       user_id: userId,
       as_of: now,
+      // Aggregate totals (mobile WalletDashboard hero card)
+      totals: {
+        fiat_cents: 0,
+        crypto_usd_cents: totalBalance,
+        pending_cents: 0,
+      },
+      // Auto-Earn aggregate (mobile dashboard stats row)
+      auto_earn: {
+        mrr_cents: 0,
+        last_24h_cents: accountSummaries.reduce(
+          (s, a) => s + (a.auto_earn_today_cents || 0),
+          0,
+        ),
+        active_executors: 0,
+      },
       balances: [] as Array<{
         chain: string;
         symbol: string;
         amount_raw: string;
         amount_usd_cents: number;
       }>,
-      agent_accounts: agentAccounts.map((a) => ({
-        agent_id: (a as any).agentId || a.id,
-        balance_usd_cents: this.toCents((a as any).balance),
-        auto_earn_today_cents: 0,
-        pending_splits_cents: 0,
-      })),
+      agent_accounts: accountSummaries,
       recent_txs: [] as Array<{
         tx_id: string;
         kind: 'earn' | 'spend' | 'transfer' | 'split';

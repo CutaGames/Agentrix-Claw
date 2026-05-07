@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { LivingPetService, PetEmotion } from './living-pet.service';
+import { PetSkinService } from '../pet-skin/pet-skin.service';
+import { RemixBreedingService } from '../marketplace-pet/remix-breeding.service';
 
 /**
  * 顿领 §3.4 主宠 API
@@ -14,7 +16,11 @@ import { LivingPetService, PetEmotion } from './living-pet.service';
 @UseGuards(JwtAuthGuard)
 @Controller('v1/pet')
 export class LivingPetController {
-  constructor(private readonly service: LivingPetService) {}
+  constructor(
+    private readonly service: LivingPetService,
+    private readonly skinService: PetSkinService,
+    private readonly breedingService: RemixBreedingService,
+  ) {}
 
   @Get('state')
   async getState(@Req() req: any) {
@@ -70,5 +76,42 @@ export class LivingPetController {
     const userId = req.user?.userId || req.user?.sub || req.user?.id;
     const pet = await this.service.activateSkin(userId, body?.skinId);
     return this.service.toDto(pet);
+  }
+
+  /**
+   * GET /v1/pet/skins — 列出当前用户拥有的全部皮肤
+   * （generated / purchased / remixed / platform）。
+   */
+  @Get('skins')
+  async listSkins(@Req() req: any) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    const skins = await this.skinService.listOwned(userId);
+    return { skins };
+  }
+
+  /**
+   * POST /v1/pet/skins/breed — 双图融合繁殖，产出一只新皮肤 row
+   * （生成任务由调用方后续提交到 pet-generation）。
+   */
+  @Post('skins/breed')
+  async breedSkin(
+    @Req() req: any,
+    @Body()
+    body: {
+      parentASkinId: string;
+      parentBSkinId: string;
+      displayName: string;
+      desiredRoyaltyRateBps?: number;
+    },
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    const skin = await this.breedingService.breed({
+      parentASkinId: body?.parentASkinId,
+      parentBSkinId: body?.parentBSkinId,
+      requesterUserId: userId,
+      displayName: body?.displayName,
+      desiredRoyaltyRateBps: body?.desiredRoyaltyRateBps,
+    });
+    return { skin };
   }
 }
