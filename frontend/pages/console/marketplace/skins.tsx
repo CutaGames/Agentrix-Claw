@@ -50,10 +50,21 @@ export default function ConsoleSkinMarketplacePage(): React.ReactElement {
 
   const onInstall = async (skinId: string): Promise<void> => {
     if (installingId || installedIds.has(skinId)) return;
+    const skin = items.find((s) => s.id === skinId);
+    const priceCents = skin?.price_cents ?? 0;
+    if (priceCents > 0) {
+      const ok = window.confirm(
+        t({
+          zh: `该皮肤售价 $${(priceCents / 100).toFixed(2)}，确认购买？`,
+          en: `This skin costs $${(priceCents / 100).toFixed(2)}. Confirm purchase?`,
+        }),
+      );
+      if (!ok) return;
+    }
     setInstallingId(skinId);
     setError(null);
     try {
-      await v1Api.pet.installFromMarketplace(skinId);
+      await v1Api.pet.installFromMarketplace(skinId, priceCents > 0 ? priceCents : undefined);
       setInstalledIds((prev) => {
         const next = new Set(prev);
         next.add(skinId);
@@ -169,6 +180,14 @@ export default function ConsoleSkinMarketplacePage(): React.ReactElement {
                     </div>
                     <div style={{ fontSize: T.font.sizeTiny, color: T.text.muted, marginTop: 4 }}>
                       {skin.format.toUpperCase()} · {skin.source}
+                    </div>
+                    <div
+                      data-testid={`market-price-${skin.id}`}
+                      style={{ fontSize: T.font.sizeTiny, color: (skin.price_cents ?? 0) > 0 ? T.text.accent : '#86efac', marginTop: 2, fontWeight: T.font.weightSemibold }}
+                    >
+                      {(skin.price_cents ?? 0) > 0
+                        ? `$${((skin.price_cents ?? 0) / 100).toFixed(2)}`
+                        : t({ zh: '免费', en: 'Free' })}
                     </div>
                   </div>
                   <button

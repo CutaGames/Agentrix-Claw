@@ -3,6 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PetSkin } from '../../entities/pet-skin.entity';
 import { PetActiveSkin } from '../../entities/pet-active-skin.entity';
+import { AncestorChainService } from '../marketplace-pet/ancestor-chain.service';
+import { splitRoyalty, RoyaltySplitResult } from '../marketplace-pet/royalty-splitter';
+
+/** V4 §3.2 — platform commission (basis points) for skin sales. */
+const SKIN_PLATFORM_BPS = 500;
 
 export interface CreateSkinInput {
   ownerUserId: string | null;
@@ -36,6 +41,7 @@ export class PetSkinService {
     private readonly skinRepo: Repository<PetSkin>,
     @InjectRepository(PetActiveSkin)
     private readonly activeRepo: Repository<PetActiveSkin>,
+    private readonly ancestorChain: AncestorChainService,
   ) {}
 
   /** 列出用户拥有 + 平台共享的可用皮肤 */
@@ -50,19 +56,22 @@ export class PetSkinService {
 
   /**
    * V4 §3.2 — Skin Marketplace listing.
-   * Returns publicly browsable skins:
-   *  - source='platform' (官方默认皮肤, owner_user_id IS NULL)
-   *  - source IN ('generated','remixed') AND owner_user_id IS NOT NULL
-   *    (community-uploaded; for now all generated skins are publicly browsable —
-   *     a future privacy flag on PetSkin can refine this)
-   * Excludes retired and the requester's own skins (those already appear in /skins).
+   * Only returns skins that are publicly browsable AND moderation-approved AND not retired.
+   *  - Platform-source rows (owner=NULL) are seeded as public + approved.
+   *  - User-uploaded rows are private + pending until the owner publishes
+   *    and a moderator approves.
+   * Excludes the requester's own skins (those already appear in /skins).
    */
   async listMarketplace(
     opts: { limit?: number; offset?: number; source?: PetSkin['source']; excludeUserId?: string } = {},
   ): Promise<{ items: PetSkin[]; total: number }> {
     const limit = Math.min(100, Math.max(1, opts.limit ?? 30));
     const offset = Math.max(0, opts.offset ?? 0);
-    const qb = this.skinRepo.createQueryBuilder('s').where('s.retired = false');
+    const qb = this.skinRepo
+      .createQueryBuilder('s')
+      .where('s.retired = false')
+      .andWhere("s.visibility = 'public'")
+      .andWhere("s.moderation_status = 'approved'");
     if (opts.source) {
       qb.andWhere('s.source = :source', { source: opts.source });
     } else {
@@ -79,16 +88,41 @@ export class PetSkinService {
   /**
    * V4 §3.2 — Install a marketplace skin into the requester's library.
    * For platform skins (owner=NULL) we just return the row — they're already visible.
-   * For other-user skins we clone the row with source='purchased' (free for now;
-   *  payments + royalties handled by RoyaltySplitter in a separate flow).
+   * For other-user skins we clone the row with source='purchased'.
+   *
+   * Pricing:
+   *  - priceCents=0 → free install (no payment required).
+   *  - priceCents>0 → caller MUST pass `acknowledgedPriceCents` matching the
+   *    current price. The split is computed via RoyaltySplitter and embedded
+   *    into the clone manifest (`purchaseSplit`) for downstream payout
+   *    settlement (Stripe Connect / wallet debit handled out-of-band by the
+   *    payment service).
    */
-  async installFromMarketplace(userId: string, skinId: string): Promise<PetSkin> {
+  async installFromMarketplace(
+    userId: string,
+    skinId: string,
+    opts: { acknowledgedPriceCents?: number } = {},
+  ): Promise<PetSkin> {
     const src = await this.skinRepo.findOne({ where: { id: skinId } });
     if (!src) throw new NotFoundException(`pet skin not found: ${skinId}`);
     if (src.retired) throw new ForbiddenException(`pet skin retired`);
     if (src.ownerUserId === null || src.ownerUserId === userId) {
       return src;
     }
+    if (src.visibility !== 'public' || src.moderationStatus !== 'approved') {
+      throw new ForbiddenException(`pet skin not available for install`);
+    }
+
+    let purchaseSplit: RoyaltySplitResult | null = null;
+    if (src.priceCents > 0) {
+      if (opts.acknowledgedPriceCents !== src.priceCents) {
+        throw new ForbiddenException(
+          `price acknowledgement required (priceCents=${src.priceCents})`,
+        );
+      }
+      purchaseSplit = await this.computeSplit(src, userId);
+    }
+
     const clone = this.skinRepo.create({
       ownerUserId: userId,
       source: 'purchased',
@@ -96,23 +130,78 @@ export class PetSkinService {
       url: src.url,
       thumbnailUrl: src.thumbnailUrl,
       format: src.format,
-      manifest: { ...(src.manifest || {}), installedFrom: src.id },
+      manifest: {
+        ...(src.manifest || {}),
+        installedFrom: src.id,
+        ...(purchaseSplit
+          ? {
+              purchaseSplit: {
+                grossPriceCents: src.priceCents,
+                ...purchaseSplit,
+                payoutStatus: 'pending',
+              },
+            }
+          : {}),
+      },
       sourceRefId: src.id,
       parentSkinId: src.id,
       originalCreatorUserId: src.originalCreatorUserId ?? src.ownerUserId,
       royaltyRateBps: src.royaltyRateBps ?? 0,
       version: 1,
       retired: false,
+      visibility: 'private',
+      moderationStatus: 'approved',
+      priceCents: 0,
     });
     const saved = await this.skinRepo.save(clone);
-    this.logger.log(`PetSkin installed from marketplace: ${saved.id} from=${src.id} user=${userId}`);
+    this.logger.log(
+      `PetSkin installed from marketplace: ${saved.id} from=${src.id} user=${userId} priceCents=${src.priceCents}`,
+    );
     return saved;
+  }
+
+  /**
+   * V4 §3.2 — Preview the royalty split a buyer would trigger if they bought
+   * `skinId` right now. Useful for the FE "you'll pay $X, creator gets $Y" UI.
+   */
+  async previewRoyaltySplit(
+    skinId: string,
+    requesterUserId: string,
+  ): Promise<{ priceCents: number; split: RoyaltySplitResult } | null> {
+    const skin = await this.skinRepo.findOne({ where: { id: skinId } });
+    if (!skin || skin.retired) return null;
+    if (skin.priceCents <= 0) {
+      return {
+        priceCents: 0,
+        split: {
+          payouts: [],
+          totalRoyaltyCents: 0,
+          platformCents: 0,
+          sellerCents: 0,
+          scaledDown: false,
+        },
+      };
+    }
+    const split = await this.computeSplit(skin, requesterUserId);
+    return { priceCents: skin.priceCents, split };
+  }
+
+  private async computeSplit(skin: PetSkin, _buyerUserId: string): Promise<RoyaltySplitResult> {
+    const sellerUserId = skin.ownerUserId ?? '__platform__';
+    const ancestorChain = await this.ancestorChain.resolveChain(skin.id);
+    return splitRoyalty({
+      grossPriceCents: skin.priceCents,
+      platformBps: SKIN_PLATFORM_BPS,
+      sellerUserId,
+      ancestorChain,
+    });
   }
 
   /**
    * V4 §3.2 — User-uploaded skin registration.
    * The frontend uploads the asset to S3/CDN first, then POSTs the URL here.
-   * We trust the URL but enforce ownership and a sane format.
+   * Defaults: visibility='private' + moderationStatus='pending'.
+   * The user must explicitly publish (setVisibility('public')) to enter the moderation queue.
    */
   async registerUpload(
     userId: string,
@@ -132,11 +221,60 @@ export class PetSkinService {
     });
   }
 
+  /**
+   * V4 §3.2 — Owner sets their skin visibility.
+   * 'public' transitions force moderation_status back to 'pending' if it was rejected;
+   * 'private'/'unlisted' do not change moderation_status.
+   */
+  async setVisibility(
+    userId: string,
+    skinId: string,
+    visibility: PetSkin['visibility'],
+  ): Promise<PetSkin> {
+    const skin = await this.skinRepo.findOne({ where: { id: skinId } });
+    if (!skin) throw new NotFoundException(`pet skin not found: ${skinId}`);
+    if (skin.ownerUserId !== userId) throw new ForbiddenException('not skin owner');
+    skin.visibility = visibility;
+    if (visibility === 'public' && skin.moderationStatus === 'rejected') {
+      skin.moderationStatus = 'pending';
+    }
+    return this.skinRepo.save(skin);
+  }
+
+  /** V4 §3.2 — Owner sets a sale price (USD cents, 0 = free). */
+  async setPrice(userId: string, skinId: string, priceCents: number): Promise<PetSkin> {
+    const skin = await this.skinRepo.findOne({ where: { id: skinId } });
+    if (!skin) throw new NotFoundException(`pet skin not found: ${skinId}`);
+    if (skin.ownerUserId !== userId) throw new ForbiddenException('not skin owner');
+    if (!Number.isFinite(priceCents) || priceCents < 0) {
+      throw new ForbiddenException('priceCents must be a non-negative integer');
+    }
+    skin.priceCents = Math.floor(priceCents);
+    return this.skinRepo.save(skin);
+  }
+
+  /** V4 §3.2 — Admin moderation. */
+  async moderate(
+    skinId: string,
+    status: 'approved' | 'rejected',
+    reason?: string,
+  ): Promise<PetSkin | null> {
+    const skin = await this.skinRepo.findOne({ where: { id: skinId } });
+    if (!skin) return null;
+    skin.moderationStatus = status;
+    const saved = await this.skinRepo.save(skin);
+    this.logger.log(`PetSkin moderation ${status}: ${skinId} reason=${reason ?? 'n/a'}`);
+    return saved;
+  }
+
   async findById(skinId: string): Promise<PetSkin | null> {
     return this.skinRepo.findOne({ where: { id: skinId } });
   }
 
   async create(input: CreateSkinInput): Promise<PetSkin> {
+    // V4 §3.2 — Platform skins are public + approved out of the box.
+    // Everything else starts private + pending; owner publishes explicitly via setVisibility.
+    const isPlatform = input.source === 'platform' && input.ownerUserId === null;
     const entity = this.skinRepo.create({
       ownerUserId: input.ownerUserId,
       source: input.source,
@@ -148,6 +286,9 @@ export class PetSkinService {
       sourceRefId: input.sourceRefId ?? null,
       version: 1,
       retired: false,
+      visibility: isPlatform ? 'public' : 'private',
+      moderationStatus: isPlatform ? 'approved' : 'pending',
+      priceCents: 0,
     });
     const saved = await this.skinRepo.save(entity);
     this.logger.log(`PetSkin created: ${saved.id} owner=${saved.ownerUserId} source=${saved.source}`);
@@ -225,6 +366,12 @@ export class PetSkinService {
       source_ref_id: skin.sourceRefId,
       version: skin.version,
       retired: skin.retired,
+      visibility: skin.visibility,
+      moderation_status: skin.moderationStatus,
+      price_cents: skin.priceCents,
+      parent_skin_id: skin.parentSkinId,
+      original_creator_user_id: skin.originalCreatorUserId,
+      royalty_rate_bps: skin.royaltyRateBps,
       created_at: skin.createdAt ? skin.createdAt.getTime() : Date.now(),
     };
   }

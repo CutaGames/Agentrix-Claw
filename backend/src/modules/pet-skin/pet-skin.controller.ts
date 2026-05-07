@@ -51,10 +51,64 @@ export class PetSkinController {
   }
 
   @Post('marketplace/:skinId/install')
-  async install(@Req() req: any, @Param('skinId') skinId: string) {
+  async install(
+    @Req() req: any,
+    @Param('skinId') skinId: string,
+    @Body() body: { acknowledgedPriceCents?: number } = {},
+  ) {
     const userId = req.user?.userId || req.user?.sub || req.user?.id;
-    const installed = await this.service.installFromMarketplace(userId, skinId);
+    const installed = await this.service.installFromMarketplace(userId, skinId, {
+      acknowledgedPriceCents: body?.acknowledgedPriceCents,
+    });
     return { skin: this.service.toDto(installed) };
+  }
+
+  @Get('marketplace/:skinId/royalty-preview')
+  async royaltyPreview(@Req() req: any, @Param('skinId') skinId: string) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    const preview = await this.service.previewRoyaltySplit(skinId, userId);
+    if (!preview) return { ok: false, error: 'skin_not_found' };
+    return { ok: true, ...preview };
+  }
+
+  @Post(':skinId/visibility')
+  async setVisibility(
+    @Req() req: any,
+    @Param('skinId') skinId: string,
+    @Body() body: { visibility: 'public' | 'private' | 'unlisted' },
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    const skin = await this.service.setVisibility(userId, skinId, body.visibility);
+    return { skin: this.service.toDto(skin) };
+  }
+
+  @Post(':skinId/price')
+  async setPrice(
+    @Req() req: any,
+    @Param('skinId') skinId: string,
+    @Body() body: { priceCents: number },
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    const skin = await this.service.setPrice(userId, skinId, body.priceCents);
+    return { skin: this.service.toDto(skin) };
+  }
+
+  @Post(':skinId/moderate')
+  async moderate(
+    @Req() req: any,
+    @Param('skinId') skinId: string,
+    @Body() body: { status: 'approved' | 'rejected'; reason?: string },
+  ) {
+    // V4 §3.2 — admin only. Reuses platform admin role check via JwtAuthGuard +
+    // user.role inspection (kept simple here; full RBAC handled by AdminGuard
+    // elsewhere in the codebase — wire it in once that lands for skins).
+    const role = req.user?.role || req.user?.roles?.[0];
+    if (role !== 'admin' && role !== 'platform_admin') {
+      return { ok: false, error: 'admin_required' };
+    }
+    const skin = await this.service.moderate(skinId, body.status, body.reason);
+    if (!skin) return { ok: false, error: 'skin_not_found' };
+    return { ok: true, skin: this.service.toDto(skin) };
   }
 
   @Post('upload')

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ConsoleLayout } from '../../../components/console/ConsoleLayout';
-import { v1Api, type PetSkinDto } from '../../../lib/api/v1.api';
+import { v1Api, type PetSkinDto, type PetSkinVisibility } from '../../../lib/api/v1.api';
 import { useLocalization } from '../../../contexts/LocalizationContext';
 import { T, cardStyle, btnPrimaryStyle } from '../../../lib/console.theme';
 import Link from 'next/link';
@@ -184,6 +184,13 @@ export default function ConsolePetWardrobePage(): React.ReactElement {
                         ? t({ zh: '切换中…', en: 'Switching…' })
                         : t({ zh: '装备这只', en: 'Equip This Skin' })}
                   </button>
+                  <SkinPublishControls
+                    skin={skin}
+                    onChange={(updated) =>
+                      setSkins((prev) => prev.map((s) => (s.id === updated.id ? updated : s)))
+                    }
+                    onError={setError}
+                  />
                 </article>
               );
             })}
@@ -191,5 +198,143 @@ export default function ConsolePetWardrobePage(): React.ReactElement {
         )}
       </div>
     </ConsoleLayout>
+  );
+}
+
+/**
+ * V4 §3.2 — Per-skin publish + price controls.
+ * Hidden for platform-owned skins (owner_user_id === null) and skins the
+ * current user doesn't own. The controller enforces ownership server-side
+ * so this is a UX gate only.
+ */
+function SkinPublishControls(props: {
+  skin: PetSkinDto;
+  onChange: (s: PetSkinDto) => void;
+  onError: (msg: string | null) => void;
+}): React.ReactElement | null {
+  const { skin, onChange, onError } = props;
+  const { t } = useLocalization();
+  const [busy, setBusy] = React.useState<'visibility' | 'price' | null>(null);
+  const [draftPrice, setDraftPrice] = React.useState<string>(
+    skin.price_cents != null ? String(skin.price_cents) : '0',
+  );
+
+  if (skin.owner_user_id === null) return null; // platform skin
+
+  const visibility: PetSkinVisibility = skin.visibility ?? 'private';
+  const moderation = skin.moderation_status ?? 'pending';
+
+  const onVisibility = async (next: PetSkinVisibility): Promise<void> => {
+    if (busy || next === visibility) return;
+    setBusy('visibility');
+    onError(null);
+    try {
+      const res = await v1Api.pet.setSkinVisibility(skin.id, next);
+      if (res?.skin) onChange(res.skin);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Failed to update visibility');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onSavePrice = async (): Promise<void> => {
+    if (busy) return;
+    const cents = Math.max(0, Math.floor(Number(draftPrice) || 0));
+    setBusy('price');
+    onError(null);
+    try {
+      const res = await v1Api.pet.setSkinPrice(skin.id, cents);
+      if (res?.skin) onChange(res.skin);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Failed to update price');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div
+      data-testid={`wardrobe-publish-${skin.id}`}
+      style={{
+        marginTop: 4,
+        paddingTop: 8,
+        borderTop: `1px dashed ${T.border.subtle}`,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: T.font.sizeTiny }}>
+        <span style={{ color: T.text.muted }}>
+          {t({ zh: '可见性', en: 'Visibility' })}:
+        </span>
+        {(['private', 'unlisted', 'public'] as const).map((v) => (
+          <button
+            key={v}
+            data-testid={`wardrobe-visibility-${skin.id}-${v}`}
+            onClick={() => void onVisibility(v)}
+            disabled={busy !== null}
+            style={{
+              padding: '2px 8px',
+              borderRadius: 6,
+              border: visibility === v ? '1px solid rgba(34,211,255,0.6)' : `1px solid ${T.border.subtle}`,
+              background: visibility === v ? 'rgba(34,211,255,0.12)' : 'transparent',
+              color: T.text.primary,
+              fontSize: T.font.sizeTiny,
+              cursor: busy ? 'wait' : 'pointer',
+            }}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
+      {visibility === 'public' && (
+        <div
+          data-testid={`wardrobe-moderation-${skin.id}`}
+          style={{ fontSize: T.font.sizeTiny, color: moderation === 'approved' ? '#86efac' : moderation === 'rejected' ? '#fca5a5' : T.text.muted }}
+        >
+          {t({ zh: '审核状态', en: 'Moderation' })}: {moderation}
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: T.font.sizeTiny, color: T.text.muted }}>
+          {t({ zh: '售价 (¢)', en: 'Price (¢)' })}:
+        </span>
+        <input
+          data-testid={`wardrobe-price-input-${skin.id}`}
+          type="number"
+          min={0}
+          value={draftPrice}
+          onChange={(e) => setDraftPrice(e.target.value)}
+          disabled={busy !== null}
+          style={{
+            width: 80,
+            padding: '2px 6px',
+            borderRadius: 6,
+            border: `1px solid ${T.border.subtle}`,
+            background: 'rgba(255,255,255,0.04)',
+            color: T.text.primary,
+            fontSize: T.font.sizeTiny,
+          }}
+        />
+        <button
+          data-testid={`wardrobe-price-save-${skin.id}`}
+          onClick={() => void onSavePrice()}
+          disabled={busy !== null}
+          style={{
+            padding: '2px 8px',
+            borderRadius: 6,
+            border: `1px solid ${T.border.subtle}`,
+            background: 'rgba(34,211,255,0.12)',
+            color: T.text.primary,
+            fontSize: T.font.sizeTiny,
+            cursor: busy ? 'wait' : 'pointer',
+          }}
+        >
+          {busy === 'price' ? t({ zh: '保存中…', en: 'Saving…' }) : t({ zh: '保存', en: 'Save' })}
+        </button>
+      </div>
+    </div>
   );
 }

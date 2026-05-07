@@ -73,6 +73,8 @@ export interface PetSoulListResponse {
 
 export type PetSkinFormat = 'svg' | 'rive' | 'vrm' | 'live2d';
 export type PetSkinSource = 'platform' | 'generated' | 'purchased' | 'remixed' | 'gifted';
+export type PetSkinVisibility = 'public' | 'private' | 'unlisted';
+export type PetSkinModerationStatus = 'pending' | 'approved' | 'rejected';
 
 export interface PetSkinDto {
   id: string;
@@ -86,7 +88,33 @@ export interface PetSkinDto {
   source_ref_id: string | null;
   version: number;
   retired: boolean;
+  visibility?: PetSkinVisibility;
+  moderation_status?: PetSkinModerationStatus;
+  price_cents?: number;
+  parent_skin_id?: string | null;
+  original_creator_user_id?: string | null;
+  royalty_rate_bps?: number;
   created_at: number;
+}
+
+export interface PetRoyaltyPayoutDto {
+  recipientUserId: string;
+  amountCents: number;
+  reason: 'platform' | 'royalty' | 'seller';
+  ancestorLayer?: number;
+}
+
+export interface PetRoyaltyPreviewDto {
+  ok: boolean;
+  priceCents?: number;
+  split?: {
+    payouts: PetRoyaltyPayoutDto[];
+    totalRoyaltyCents: number;
+    platformCents: number;
+    sellerCents: number;
+    scaledDown: boolean;
+  };
+  error?: string;
 }
 
 export interface PetGenerationTaskEnvelope {
@@ -218,10 +246,29 @@ export const v1Api = {
     // V4 §3.2 — Marketplace
     listMarketplace: (params?: { limit?: number; offset?: number; source?: 'platform' | 'generated' | 'remixed' }) =>
       apiClient.get<{ items: PetSkinDto[]; total: number }>('/v1/pet/skins/marketplace', { params }),
-    installFromMarketplace: (skinId: string) =>
+    installFromMarketplace: (skinId: string, acknowledgedPriceCents?: number) =>
       apiClient.post<{ skin: PetSkinDto }>(
         `/v1/pet/skins/marketplace/${encodeURIComponent(skinId)}/install`,
-        {},
+        acknowledgedPriceCents != null ? { acknowledgedPriceCents } : {},
+      ),
+    royaltyPreview: (skinId: string) =>
+      apiClient.get<PetRoyaltyPreviewDto>(
+        `/v1/pet/skins/marketplace/${encodeURIComponent(skinId)}/royalty-preview`,
+      ),
+    setSkinVisibility: (skinId: string, visibility: PetSkinVisibility) =>
+      apiClient.post<{ skin: PetSkinDto }>(
+        `/v1/pet/skins/${encodeURIComponent(skinId)}/visibility`,
+        { visibility },
+      ),
+    setSkinPrice: (skinId: string, priceCents: number) =>
+      apiClient.post<{ skin: PetSkinDto }>(
+        `/v1/pet/skins/${encodeURIComponent(skinId)}/price`,
+        { priceCents },
+      ),
+    moderateSkin: (skinId: string, status: 'approved' | 'rejected', reason?: string) =>
+      apiClient.post<{ ok: boolean; skin?: PetSkinDto; error?: string }>(
+        `/v1/pet/skins/${encodeURIComponent(skinId)}/moderate`,
+        { status, reason },
       ),
 
     // V4 §3.4 — Breed

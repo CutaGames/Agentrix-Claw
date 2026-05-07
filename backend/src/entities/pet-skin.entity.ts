@@ -82,6 +82,27 @@ export class PetSkin {
   @Column({ type: 'uuid', nullable: true })
   originalCreatorUserId: string | null;
 
+  /**
+   * V4 §3.2 — Marketplace visibility.
+   *  - 'public'   : visible in /v1/pet/skins/marketplace once moderation passes
+   *  - 'private'  : owner-only (default for new uploads / generated)
+   *  - 'unlisted' : reachable by id but excluded from feed
+   */
+  @Column({ type: 'varchar', length: 16, default: 'private' })
+  visibility: 'public' | 'private' | 'unlisted';
+
+  /**
+   * V4 §3.2 — Moderation gate. Skins are surfaced in the public marketplace
+   * only when `visibility='public'` AND `moderationStatus='approved'`.
+   * Platform-source skins are seeded as 'approved'; user uploads start as 'pending'.
+   */
+  @Column({ type: 'varchar', length: 16, default: 'pending' })
+  moderationStatus: 'pending' | 'approved' | 'rejected';
+
+  /** V4 §3.2 — Optional listing price in USD cents (0 = free). */
+  @Column({ type: 'integer', default: 0 })
+  priceCents: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

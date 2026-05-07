@@ -72,22 +72,38 @@ export function SkinMarketplaceScreen() {
   const onInstall = useCallback(
     async (skinId: string) => {
       if (installingId || installedIds.has(skinId)) return;
-      setInstallingId(skinId);
-      try {
-        await installMarketplaceSkin(skinId);
-        setInstalledIds((prev) => {
-          const next = new Set(prev);
-          next.add(skinId);
-          return next;
-        });
-      } catch (err: any) {
-        const msg = err?.message || String(err);
-        Alert.alert('安装失败', msg);
-      } finally {
-        setInstallingId(null);
+      const skin = items.find((s) => s.id === skinId);
+      const priceCents = skin?.price_cents ?? 0;
+      const proceed = async () => {
+        setInstallingId(skinId);
+        try {
+          await installMarketplaceSkin(skinId, priceCents > 0 ? priceCents : undefined);
+          setInstalledIds((prev) => {
+            const next = new Set(prev);
+            next.add(skinId);
+            return next;
+          });
+        } catch (err: any) {
+          const msg = err?.message || String(err);
+          Alert.alert('安装失败', msg);
+        } finally {
+          setInstallingId(null);
+        }
+      };
+      if (priceCents > 0) {
+        Alert.alert(
+          '确认购买',
+          `该皮肤售价 $${(priceCents / 100).toFixed(2)}，是否继续？`,
+          [
+            { text: '取消', style: 'cancel' },
+            { text: '购买', onPress: () => void proceed() },
+          ],
+        );
+        return;
       }
+      await proceed();
     },
-    [installingId, installedIds],
+    [installingId, installedIds, items],
   );
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
@@ -155,6 +171,17 @@ export function SkinMarketplaceScreen() {
                 </Text>
                 <Text style={styles.cardMeta}>
                   {skin.format.toUpperCase()} · {skin.source}
+                </Text>
+                <Text
+                  style={[
+                    styles.cardPrice,
+                    (skin.price_cents ?? 0) > 0 ? styles.cardPricePaid : styles.cardPriceFree,
+                  ]}
+                  testID={`market-price-${skin.id}`}
+                >
+                  {(skin.price_cents ?? 0) > 0
+                    ? `$${((skin.price_cents ?? 0) / 100).toFixed(2)}`
+                    : '免费'}
                 </Text>
                 <Pressable
                   disabled={installed || busy}
@@ -251,6 +278,9 @@ const styles = StyleSheet.create({
   thumbEmoji: { fontSize: 48 },
   cardTitle: { color: colors.text, fontSize: 13, fontWeight: '600' },
   cardMeta: { color: colors.textMuted, fontSize: 11, marginTop: 2, marginBottom: 8 },
+  cardPrice: { fontSize: 12, fontWeight: '600', marginBottom: 8 },
+  cardPricePaid: { color: colors.accent },
+  cardPriceFree: { color: '#86efac' },
   installBtn: { backgroundColor: colors.accent, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
   installBtnDone: { opacity: 0.55 },
   installBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },

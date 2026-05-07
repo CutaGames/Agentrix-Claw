@@ -41,6 +41,12 @@ export interface PetSkinSummary {
   thumbnail_url: string | null;
   format: 'svg' | 'rive' | 'vrm' | 'live2d';
   manifest: Record<string, unknown>;
+  visibility?: 'public' | 'private' | 'unlisted';
+  moderation_status?: 'pending' | 'approved' | 'rejected';
+  price_cents?: number;
+  parent_skin_id?: string | null;
+  original_creator_user_id?: string | null;
+  royalty_rate_bps?: number;
   created_at: number;
 }
 
@@ -113,11 +119,62 @@ export async function listMarketplaceSkins(opts: {
   return apiFetch<PetSkinMarketplaceResponse>(`/v1/pet/skins/marketplace${qs}`);
 }
 
-/** V4 §3.2 — 从市场安装皮肤到当前用户衣柜 */
-export async function installMarketplaceSkin(skinId: string): Promise<PetSkinSummary> {
+/** V4 §3.2 — 从市场安装皮肤到当前用户衣柜。
+ *  付费皮肤需传 acknowledgedPriceCents 与服务端价格匹配。 */
+export async function installMarketplaceSkin(
+  skinId: string,
+  acknowledgedPriceCents?: number,
+): Promise<PetSkinSummary> {
+  const body =
+    acknowledgedPriceCents != null ? JSON.stringify({ acknowledgedPriceCents }) : JSON.stringify({});
   const res = await apiFetch<{ skin: PetSkinSummary }>(
     `/v1/pet/skins/marketplace/${encodeURIComponent(skinId)}/install`,
-    { method: 'POST', body: JSON.stringify({}) },
+    { method: 'POST', body },
+  );
+  return res.skin;
+}
+
+/** V4 §3.2 — 查看购买某只皮肤时的版税拆分预览。 */
+export interface PetRoyaltyPreview {
+  ok: boolean;
+  priceCents?: number;
+  split?: {
+    payouts: Array<{
+      recipientUserId: string;
+      amountCents: number;
+      reason: 'platform' | 'royalty' | 'seller';
+      ancestorLayer?: number;
+    }>;
+    totalRoyaltyCents: number;
+    platformCents: number;
+    sellerCents: number;
+    scaledDown: boolean;
+  };
+  error?: string;
+}
+export async function previewSkinRoyalty(skinId: string): Promise<PetRoyaltyPreview> {
+  return apiFetch<PetRoyaltyPreview>(
+    `/v1/pet/skins/marketplace/${encodeURIComponent(skinId)}/royalty-preview`,
+  );
+}
+
+/** V4 §3.2 — 设置皮肤可见性（仅 owner） */
+export async function setSkinVisibility(
+  skinId: string,
+  visibility: 'public' | 'private' | 'unlisted',
+): Promise<PetSkinSummary> {
+  const res = await apiFetch<{ skin: PetSkinSummary }>(
+    `/v1/pet/skins/${encodeURIComponent(skinId)}/visibility`,
+    { method: 'POST', body: JSON.stringify({ visibility }) },
+  );
+  return res.skin;
+}
+
+/** V4 §3.2 — 设置皮肤售价（USD cents，仅 owner） */
+export async function setSkinPrice(skinId: string, priceCents: number): Promise<PetSkinSummary> {
+  const res = await apiFetch<{ skin: PetSkinSummary }>(
+    `/v1/pet/skins/${encodeURIComponent(skinId)}/price`,
+    { method: 'POST', body: JSON.stringify({ priceCents }) },
   );
   return res.skin;
 }
