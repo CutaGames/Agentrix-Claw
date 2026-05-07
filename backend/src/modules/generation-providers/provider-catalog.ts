@@ -318,7 +318,7 @@ export const THREE_D_PROVIDERS: GenerationProvider[] = [
     tags: ['china', 'official-api'],
   },
   {
-    id: 'meshy-v5',
+    id: 'meshy',
     name: 'Meshy 5',
     vendor: 'Meshy',
     modality: '3d',

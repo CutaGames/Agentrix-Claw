@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import PetVRM from "./PetVRM";
+import ProviderPicker from "./ProviderPicker";
 import {
   type PetMode,
   type PetProvider,
@@ -158,17 +159,14 @@ export default function PetCreatorPanel({ onClose }: Props) {
             />
           </Section>
 
-          <Section title="服务商">
-            <Tabs<PetProvider>
+          <Section title="服务商 Provider">
+            <ProviderPicker
+              modality="3d"
               value={provider}
-              onChange={setProvider}
-              options={[
-                { value: "meshy", label: "Meshy.ai" },
-                { value: "hunyuan3d", label: "Hunyuan3D" },
-              ]}
+              onChange={(id) => setProvider(id as PetProvider)}
             />
             <p style={hintStyle}>
-              Meshy = 付费稳定 · Hunyuan3D = 自建 HF Endpoint，需配置 HUNYUAN3D_ENDPOINT_URL
+              不同 Provider 质量 / 价格 / 延迟不同；Coming Soon 项会逐步接入。
             </p>
           </Section>
 
