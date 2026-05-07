@@ -6,6 +6,8 @@ export interface ModelPickerProps {
   value: string;
   onChange: (modelId: string) => void;
   className?: string;
+  /** Override the inner <select> classes. Defaults to a light theme. */
+  selectClassName?: string;
   /** Optional label shown above the select. */
   label?: string;
 }
@@ -17,7 +19,7 @@ export interface ModelPickerProps {
  * picks the cheapest adequate model per request. Users keep the option to
  * pin a specific model from the catalog.
  */
-export function ModelPicker({ value, onChange, className, label }: ModelPickerProps) {
+export function ModelPicker({ value, onChange, className, selectClassName, label }: ModelPickerProps) {
   const [models, setModels] = useState<RouterModel[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,7 +50,10 @@ export function ModelPicker({ value, onChange, className, label }: ModelPickerPr
         value={value || "auto"}
         onChange={(e) => onChange(e.target.value)}
         disabled={loading}
-        className="w-full rounded-lg border border-agentrix-inkLine bg-agentrix-mist px-3 py-2 text-sm text-agentrix-ink focus:border-agentrix-purple focus:outline-none"
+        className={
+          selectClassName ||
+          "w-full rounded-lg border border-agentrix-inkLine bg-agentrix-mist px-3 py-2 text-sm text-agentrix-ink focus:border-agentrix-purple focus:outline-none"
+        }
       >
         <option value="auto">⚡ Auto — pick the cheapest adequate model</option>
         {models.map((m) => (

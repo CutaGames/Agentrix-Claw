@@ -8,12 +8,14 @@ import { AgentGenerator } from '../components/agent/builder/AgentGenerator';
 import { AgentTemplate } from '../lib/api/agent-template.api';
 import { useUser } from '../contexts/UserContext';
 import { useLocalization } from '../contexts/LocalizationContext';
+import { ModelPicker } from '../components/ModelPicker';
 
 export default function AgentBuilderPage() {
   const { isAuthenticated } = useUser();
   const { t } = useLocalization();
   const router = useRouter();
   const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null);
+  const [defaultModel, setDefaultModel] = useState<string>('auto');
 
   return (
     <>
@@ -78,6 +80,29 @@ export default function AgentBuilderPage() {
                     <span className="text-gray-300">④ {t({ zh: '上线推广', en: 'Launch & Promote' })}</span>
                     <span className="font-semibold">{t({ zh: '联盟分润 · API/SDK 联动', en: 'Alliance Revenue · API/SDK Integration' })}</span>
                   </div>
+                </div>
+                <div className="mt-5 pt-4 border-t border-white/10">
+                  <p className="text-xs text-gray-400 uppercase tracking-widest mb-2">
+                    {t({ zh: '默认模型 (Agent 创建后可改)', en: 'Default Model (changeable after creation)' })}
+                  </p>
+                  <div className="agent-builder-model-picker">
+                    <ModelPicker
+                      value={defaultModel}
+                      onChange={(id) => {
+                        setDefaultModel(id);
+                        if (typeof window !== 'undefined') {
+                          window.localStorage.setItem('agentrix:agent-builder:defaultModel', id);
+                        }
+                      }}
+                      selectClassName="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-400 focus:outline-none"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-2">
+                    {t({
+                      zh: 'Auto = Agentrix 按任务复杂度自动分配；你也可以指定具体模型。',
+                      en: 'Auto = Agentrix routes by task complexity. You can also pin a specific model.',
+                    })}
+                  </p>
                 </div>
               </div>
             </div>
