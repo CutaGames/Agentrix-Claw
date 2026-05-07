@@ -2,41 +2,42 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 
 /**
- * HunyuanVideoProvider — Tencent Cloud "混元生视频" official API.
+ * HunyuanVideoProvider — Tencent Cloud "腾讯混元生视频" official API.
  *
- * Endpoint:    https://hunyuan.tencentcloudapi.com/
- * Service:     hunyuan
- * Region:      ap-guangzhou (default; overridable per call / via env)
- * API version: 2023-09-01 (default; overridable via env TENCENT_HUNYUAN_API_VERSION)
+ * Endpoint:    https://vclm.tencentcloudapi.com/
+ * Service:     vclm
+ * API version: 2024-05-23
+ * Region:      ap-guangzhou (overridable via env TENCENT_VCLM_REGION)
  *
- * Auth: TC3-HMAC-SHA256, computed from `TC_SecretId` / `TC_SecretKey` env vars.
+ * Auth: TC3-HMAC-SHA256, computed from `TC_SecretId` / `TC_SecretKey`.
  *
- * Asynchronous flow (mirrors Hunyuan3D):
- *   1. submit() → POST X-TC-Action: SubmitHunyuanToVideoJob → returns JobId
- *   2. query()  → POST X-TC-Action: QueryHunyuanToVideoJob  → returns Status
- *                 + ResultVideos[] when DONE.
+ * Reference (official Node.js SDK):
+ *   https://github.com/TencentCloud/tencentcloud-sdk-nodejs/blob/master/src/services/vclm/v20240523/
+ *
+ * Asynchronous flow:
+ *   1. submit() → X-TC-Action: SubmitHunyuanToVideoJob → returns { JobId }
+ *   2. query()  → X-TC-Action: DescribeHunyuanToVideoJob
+ *                 → returns { Status, ErrorCode, ErrorMessage, ResultVideoUrl }
  *
  * Tencent status values: WAIT, RUN, FAIL, DONE.
  *
- * Note: the exact JSON field names for the submit payload (Prompt, Resolution,
- * Duration, ImageUrl) follow the conventions used by sibling Tencent Cloud
- * AIGC services (混元生图 / Hunyuan3D). If Tencent reports
- * `InvalidParameterValue`, the field names below are the first place to check.
+ * Note: per the official SubmitHunyuanToVideoJob spec, only `Prompt`, `Image`,
+ * `Resolution` (currently only "720p"), `LogoAdd`, `LogoParam` are supported.
+ * Fields like Duration, AspectRatio, NegativePrompt, GenerateAudio, Seed are
+ * NOT accepted by this action — they belong to other vclm actions
+ * (SubmitTextToVideoJob / SubmitImageToVideoJob etc., which target Kling/Vidu
+ * models, not Hunyuan). Such fields are silently ignored here.
  */
 
 export interface HunyuanVideoSubmitInput {
   prompt: string;
-  /** Optional reference image for image-to-video. */
+  /** Optional reference image URL for image-to-video. */
   imageUrl?: string;
-  /** Optional negative prompt. */
+  /** Ignored by Hunyuan video API; kept for service-layer compat. */
   negativePrompt?: string;
-  /** Duration in seconds (5 or 10). Default 5. */
   duration?: 5 | 10;
-  /** Aspect ratio. Default '16:9'. */
   aspectRatio?: '16:9' | '9:16' | '1:1';
-  /** Whether to also synthesise audio. Default false. */
   generateAudio?: boolean;
-  /** Optional seed for reproducibility. */
   seed?: number;
 }
 
@@ -61,10 +62,10 @@ export interface HunyuanVideoQueryResult {
   raw?: Record<string, unknown>;
 }
 
-const DEFAULT_HOST = 'hunyuan.tencentcloudapi.com';
-const DEFAULT_SERVICE = 'hunyuan';
+const DEFAULT_HOST = 'vclm.tencentcloudapi.com';
+const DEFAULT_SERVICE = 'vclm';
 const DEFAULT_REGION = 'ap-guangzhou';
-const DEFAULT_VERSION = '2023-09-01';
+const DEFAULT_VERSION = '2024-05-23';
 
 @Injectable()
 export class HunyuanVideoProvider {
@@ -81,16 +82,15 @@ export class HunyuanVideoProvider {
       throw new Error('HunyuanVideo submit requires a non-empty prompt.');
     }
 
-    const resolution = this.aspectRatioToResolution(input.aspectRatio);
+    // 200-utf-8-char limit per spec; truncate defensively.
+    const prompt = input.prompt.trim().slice(0, 200);
     const payload: Record<string, unknown> = {
-      Prompt: input.prompt.trim(),
-      Resolution: resolution,
-      Duration: input.duration === 10 ? 10 : 5,
+      Prompt: prompt,
+      Resolution: '720p',
     };
-    if (input.imageUrl) payload.ImageUrl = input.imageUrl;
-    if (input.negativePrompt) payload.NegativePrompt = input.negativePrompt;
-    if (input.generateAudio) payload.GenerateAudio = true;
-    if (typeof input.seed === 'number') payload.Seed = input.seed;
+    if (input.imageUrl) {
+      payload.Image = { Url: input.imageUrl };
+    }
 
     const data = await this.callAction<{ JobId?: string; RequestId?: string }>(
       secretId,
@@ -116,30 +116,18 @@ export class HunyuanVideoProvider {
       Status?: string;
       ErrorCode?: string;
       ErrorMessage?: string;
-      ResultVideos?: Array<{
-        Url?: string;
-        CoverUrl?: string;
-        Resolution?: string;
-        Duration?: number;
-      }>;
-      VideoUrl?: string; // some Tencent APIs return a flat URL
+      ResultVideoUrl?: string;
     }>(
       secretId,
       secretKey,
-      'QueryHunyuanToVideoJob',
+      'DescribeHunyuanToVideoJob',
       { JobId: jobId },
       options,
     );
     const status = (data.Status || 'WAIT') as HunyuanVideoJobStatus;
-    const videos: HunyuanVideoResultFile[] = (data.ResultVideos || []).map((f) => ({
-      url: f.Url,
-      coverUrl: f.CoverUrl,
-      resolution: f.Resolution,
-      duration: f.Duration,
-    }));
-    if (videos.length === 0 && data.VideoUrl) {
-      videos.push({ url: data.VideoUrl });
-    }
+    const videos: HunyuanVideoResultFile[] = data.ResultVideoUrl
+      ? [{ url: data.ResultVideoUrl }]
+      : [];
     return {
       status,
       errorCode: data.ErrorCode,
@@ -147,18 +135,6 @@ export class HunyuanVideoProvider {
       resultVideos: videos,
       raw: data as unknown as Record<string, unknown>,
     };
-  }
-
-  private aspectRatioToResolution(ar?: '16:9' | '9:16' | '1:1'): string {
-    switch (ar) {
-      case '9:16':
-        return '720x1280';
-      case '1:1':
-        return '960x960';
-      case '16:9':
-      default:
-        return '1280x720';
-    }
   }
 
   private async callAction<T extends object>(
@@ -169,10 +145,11 @@ export class HunyuanVideoProvider {
     options?: { region?: string; version?: string },
   ): Promise<T> {
     const region = options?.region
+      || process.env.TENCENT_VCLM_REGION
       || process.env.TENCENT_HUNYUAN_REGION
       || DEFAULT_REGION;
     const version = options?.version
-      || process.env.TENCENT_HUNYUAN_API_VERSION
+      || process.env.TENCENT_VCLM_API_VERSION
       || DEFAULT_VERSION;
     const timestamp = Math.floor(Date.now() / 1000);
     const payloadStr = JSON.stringify(payload);
