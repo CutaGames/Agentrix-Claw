@@ -103,6 +103,47 @@ export async function listVideoTasks(limit = 30): Promise<VideoTaskSummary[]> {
   return Array.isArray(data?.tasks) ? data.tasks : [];
 }
 
+// ---------------------------------------------------------------------------
+// Provider catalog (live + coming_soon) — drives the Provider Picker UI.
+// ---------------------------------------------------------------------------
+
+export type ProviderTier = "free" | "budget" | "standard" | "premium";
+export type ProviderStatus = "live" | "coming_soon" | "beta";
+
+export interface GenerationProviderSummary {
+  id: string;
+  name: string;
+  vendor: string;
+  modality: "video" | "3d";
+  status: ProviderStatus;
+  tier: ProviderTier;
+  pricingLabel: string;
+  unitPriceUsd: number;
+  unit: string;
+  strength: string;
+  capability: string;
+  inputs: string[];
+  freeTier?: string | null;
+  chinaAvailable: boolean;
+  latencyHint?: string;
+  iconKey?: string;
+  tags?: string[];
+}
+
+export async function listVideoProviders(): Promise<GenerationProviderSummary[]> {
+  const res = await apiFetch(`${API_BASE}/generation-providers/video`);
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => null);
+  return Array.isArray(data?.providers) ? data.providers : [];
+}
+
+export async function list3dProviders(): Promise<GenerationProviderSummary[]> {
+  const res = await apiFetch(`${API_BASE}/generation-providers/3d`);
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => null);
+  return Array.isArray(data?.providers) ? data.providers : [];
+}
+
 /**
  * Submit a multi-scene compose job through the platform-tools tool surface.
  * Requires an active OpenClaw instance (the LLM tool path is per-instance).

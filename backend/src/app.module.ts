@@ -58,6 +58,7 @@ import { GeminiIntegrationModule } from './modules/ai-integration/gemini/gemini-
 import { ClaudeIntegrationModule } from './modules/ai-integration/claude/claude-integration.module';
 import { CartModule } from './modules/cart/cart.module';
 import { SkillModule } from './modules/skill/skill.module';
+import { GenerationProvidersModule } from './modules/generation-providers/generation-providers.module';
 import { ProtocolModule } from './modules/protocol/protocol.module';
 import { McpModule } from './modules/mcp/mcp.module';
 import { UCPModule } from './modules/ucp/ucp.module';
@@ -246,6 +247,7 @@ import { PetGenerationModule } from './modules/pet-generation/pet-generation.mod
     CartModule,
     SkillModule,
     PetGenerationModule,
+    GenerationProvidersModule,
     ProtocolModule,
     McpModule,
     UCPModule,

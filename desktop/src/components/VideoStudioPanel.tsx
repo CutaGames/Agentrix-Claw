@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuthStore } from "../services/store";
+import ProviderPicker from "./ProviderPicker";
 import {
   type VideoAspect,
   type VideoComposeScene,
@@ -38,6 +39,7 @@ export default function VideoStudioPanel({ onClose }: Props) {
 
   // Single-clip form state
   const [videoMode, setVideoMode] = useState<VideoMode>("text_to_video");
+  const [provider, setProvider] = useState<string>("hunyuan");
   const [prompt, setPrompt] = useState("");
   const [aspect, setAspect] = useState<VideoAspect>("9:16");
   const [duration, setDuration] = useState<"5" | "10">("5");
@@ -82,6 +84,7 @@ export default function VideoStudioPanel({ onClose }: Props) {
     try {
       const result = await submitVideoTask({
         mode: videoMode,
+        provider,
         prompt: prompt.trim() || undefined,
         aspectRatio: aspect,
         duration,
@@ -225,6 +228,13 @@ export default function VideoStudioPanel({ onClose }: Props) {
 
           {studioMode === "single" ? (
             <>
+              <Section title="Provider">
+                <ProviderPicker
+                  modality="video"
+                  value={provider}
+                  onChange={setProvider}
+                />
+              </Section>
               <Section title="生成模式">
                 <Tabs<VideoMode>
                   value={videoMode}
