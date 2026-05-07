@@ -333,6 +333,13 @@ export class LlmRouterService {
   }
 
   /**
+   * Public model catalog for client UIs (model picker).
+   */
+  listModels(): ModelConfig[] {
+    return [...this.models];
+  }
+
+  /**
    * Estimate monthly cost for a user given their token allocation.
    *
    * @param totalTokens Total tokens per month (e.g. 10_000_000 for 10M)

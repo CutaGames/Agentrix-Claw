@@ -12,6 +12,7 @@ import '../styles/globals.css'
 import { AgentModeProvider } from '../contexts/AgentModeContext'
 import { LocalizationProvider } from '../contexts/LocalizationContext'
 import { CurrencyProvider } from '../contexts/CurrencyContext'
+import { I18nProvider } from '../lib/i18n/I18nProvider'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -123,6 +124,7 @@ export default function App({ Component, pageProps, router }: AppProps) {
   const AdminLayout = ({ children }: { children: React.ReactNode }) => (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
+        <I18nProvider>
         <LocalizationProvider>
           <CurrencyProvider>
             <ToastProvider>
@@ -132,6 +134,7 @@ export default function App({ Component, pageProps, router }: AppProps) {
             </ToastProvider>
           </CurrencyProvider>
         </LocalizationProvider>
+        </I18nProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   )
@@ -139,6 +142,7 @@ export default function App({ Component, pageProps, router }: AppProps) {
   const FullLayout = ({ children }: { children: React.ReactNode }) => (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
+        <I18nProvider>
         <LocalizationProvider>
           <CurrencyProvider>
             <ToastProvider>
@@ -157,6 +161,7 @@ export default function App({ Component, pageProps, router }: AppProps) {
             </ToastProvider>
           </CurrencyProvider>
         </LocalizationProvider>
+        </I18nProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   )

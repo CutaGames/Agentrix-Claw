@@ -8,6 +8,7 @@ import { OpenClawProxyService, UnifiedChatRequestDto } from '../../openclaw-prox
 import { AgentContextService } from '../../agent-context/agent-context.service';
 import { AgentIntelligenceService } from '../../agent-intelligence/agent-intelligence.service';
 import { RuntimeSeamService } from '../../query-engine/runtime-seam.service';
+import { LlmRouterService } from '../../llm-router/llm-router.service';
 import { formatSSE, formatSSEDone, type StreamEvent } from '../../query-engine/interfaces/stream-event.interface';
 
 @Controller('claude')
@@ -25,7 +26,33 @@ export class ClaudeIntegrationController {
     private agentIntelligenceService: AgentIntelligenceService,
     @Inject(forwardRef(() => RuntimeSeamService))
     private runtimeSeamService: RuntimeSeamService,
+    private llmRouter: LlmRouterService,
   ) {}
+
+  /**
+   * If user picked `model: 'auto'` (the default UX recommendation), classify
+   * the prompt and pick the cheapest adequate model. Returns null when no
+   * rewrite happened so callers can keep their original choice.
+   */
+  private resolveAutoModel(
+    requestedModel: string | undefined,
+    prompt: string,
+  ): { model: string; tier: string; reason: string; provider: string; name: string } | null {
+    if (!requestedModel || requestedModel.toLowerCase() !== 'auto') return null;
+    try {
+      const decision = this.llmRouter.route(prompt || '');
+      return {
+        model: decision.model.id,
+        tier: decision.tier,
+        reason: decision.reason,
+        provider: decision.model.provider,
+        name: decision.model.name,
+      };
+    } catch (e) {
+      this.logger.warn(`auto-route failed: ${(e as Error).message}`);
+      return null;
+    }
+  }
 
   /** Best-effort userId extraction from Bearer token (no guard — stays public). */
   private extractUserIdFromToken(req: Request): string | undefined {
@@ -241,6 +268,17 @@ export class ClaudeIntegrationController {
     const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
     const lastUserText = this.extractMessageText(lastUserMessage?.content);
 
+    // P2-#9 — Auto routing. When client sets options.model='auto', classify the
+    // prompt and rewrite to the cheapest adequate model BEFORE forwarding.
+    const autoDecision = this.resolveAutoModel(options?.model, lastUserText);
+    if (autoDecision) {
+      body.options = { ...(body.options || {}), model: autoDecision.model };
+      if (options) options.model = autoDecision.model;
+      this.logger.log(
+        `[auto-route] tier=${autoDecision.tier} model=${autoDecision.name} (${autoDecision.model}) reason=${autoDecision.reason}`,
+      );
+    }
+
     if (context.userId) {
       const compatibilityPayload: UnifiedChatRequestDto = {
         ...body,
@@ -253,6 +291,17 @@ export class ClaudeIntegrationController {
       };
 
       if (wantsStream) {
+        if (autoDecision) {
+          this.initSse(res);
+          emitMeta({
+            autoRouted: true,
+            model: autoDecision.model,
+            modelName: autoDecision.name,
+            provider: autoDecision.provider,
+            tier: autoDecision.tier,
+            reason: autoDecision.reason,
+          });
+        }
         await this.openClawProxyService.streamDefaultChat(context.userId, compatibilityPayload, res);
         return;
       }
@@ -272,6 +321,15 @@ export class ClaudeIntegrationController {
           createdAt: new Date().toISOString(),
         },
         via: 'openclaw-proxy',
+        autoRouted: autoDecision
+          ? {
+              model: autoDecision.model,
+              modelName: autoDecision.name,
+              provider: autoDecision.provider,
+              tier: autoDecision.tier,
+              reason: autoDecision.reason,
+            }
+          : undefined,
       });
     }
 

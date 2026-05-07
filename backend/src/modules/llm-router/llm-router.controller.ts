@@ -89,4 +89,34 @@ export class LlmRouterController {
       },
     };
   }
+
+  /**
+   * GET /api/llm-router/models
+   * Returns the public model catalog plus an `auto` pseudo-entry that the
+   * frontend selector should render as the default option. Selecting `auto`
+   * delegates model choice to the backend classifier per request.
+   */
+  @Get('models')
+  models() {
+    const auto = {
+      id: 'auto',
+      name: 'Auto (recommended)',
+      nameCn: '自动 (推荐)',
+      provider: 'agentrix',
+      tier: 'auto',
+      isDefault: true,
+      description:
+        'Agentrix picks the cheapest adequate model per request. You can still pin a specific model below.',
+    };
+    const list = this.llmRouter.listModels().map((m) => ({
+      id: m.id,
+      name: m.name,
+      provider: m.provider,
+      tiers: m.tiers,
+      maxTokens: m.maxTokens,
+      supportsVision: !!m.supportsVision,
+      cost: { inputPer1M: m.inputCostPer1M, outputPer1M: m.outputCostPer1M },
+    }));
+    return { default: 'auto', auto, models: list };
+  }
 }

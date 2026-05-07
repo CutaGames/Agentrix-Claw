@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { AgentrixLogo } from '../common/AgentrixLogo';
 import { useLocalization } from '../../contexts/LocalizationContext';
+import { I18nLanguageSwitcher } from '../I18nLanguageSwitcher';
 
 // v3 marketing footer; aligned with new IA. Replaces legacy `components/layout/Footer.tsx`
 // for marketing-layout pages. Console pages keep their own shell.
@@ -104,12 +105,15 @@ export function MarketingFooter() {
         </div>
         <div className="mt-12 flex flex-col items-start justify-between gap-2 border-t border-agentrix-inkLine pt-6 text-xs text-agentrix-mist md:flex-row md:items-center">
           <span>© {new Date().getFullYear()} Agentrix Network. All rights reserved.</span>
-          <span>
-            {t({
-              zh: 'L2/L3 签名永远在 Mobile，Web 不持有 MPC share。',
-              en: 'L2/L3 signing always on Mobile. Web never holds an MPC share.',
-            })}
-          </span>
+          <div className="flex items-center gap-3">
+            <I18nLanguageSwitcher />
+            <span>
+              {t({
+                zh: 'L2/L3 签名永远在 Mobile，Web 不持有 MPC share。',
+                en: 'L2/L3 signing always on Mobile. Web never holds an MPC share.',
+              })}
+            </span>
+          </div>
         </div>
       </div>
     </footer>
