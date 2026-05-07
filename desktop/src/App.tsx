@@ -4,6 +4,7 @@ import FloatingBall from "./components/FloatingBall";
 import PetEmotionOverlay from "./components/PetEmotionOverlay";
 import ChatPanel from "./components/ChatPanel";
 import LoginPanel from "./components/LoginPanel";
+import PlanTimeline from "./components/PlanTimeline";
 import OnboardingPanel from "./components/OnboardingPanel";
 import SpotlightPanel from "./components/SpotlightPanel";
 import agentrixLogo from "./assets/agentrix-logo.png";
@@ -431,6 +432,32 @@ export default function App() {
   // Determine which view based on Tauri window label
   // DEBUG: set document.title to show which branch
   document.title = `view:${windowLabel}`;
+
+  // P0-#4 Desktop Claw 化 — `?plan=<id>` opens the live PlanTimeline view.
+  // Works in both browser dev mode and Tauri main window. Useful for sandbox /
+  // slides_generate task plans triggered from chat.
+  const planIdFromUrl = (() => {
+    try {
+      return new URLSearchParams(window.location.search).get("plan");
+    } catch {
+      return null;
+    }
+  })();
+  if (planIdFromUrl && loggedIn) {
+    return (
+      <ErrorBoundary>
+        <PlanTimeline
+          planId={planIdFromUrl}
+          onClose={() => {
+            try {
+              window.history.replaceState({}, "", window.location.pathname);
+            } catch {}
+            window.location.reload();
+          }}
+        />
+      </ErrorBoundary>
+    );
+  }
 
   // Floating ball window — minimal, just the ball
   if (windowLabel === "floating-ball") {
