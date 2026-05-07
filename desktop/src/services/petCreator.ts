@@ -147,3 +147,38 @@ export function getActivePetUrl(): string | null {
     return null;
   }
 }
+
+/**
+ * Wrap a third-party model URL with the backend asset proxy so the desktop
+ * shell (Tauri WebView2) can load it via three.js without CORS errors.
+ *
+ * Provider CDNs (Tencent Hunyuan3D, Meshy, HuggingFace, S3) do not serve
+ * `Access-Control-Allow-Origin: *`, so a direct GLTFLoader fetch fails
+ * with "VRM load failed". Routing through `${API_BASE}/pet-generation/asset?u=...`
+ * gives us a same-origin response with permissive CORS headers.
+ *
+ * No-op for:
+ *   - empty / falsy URLs (returns "")
+ *   - already-proxied URLs (idempotent)
+ *   - same-origin URLs (no need to proxy)
+ *   - blob: / data: / file: schemes (already loadable)
+ */
+const PROXY_PATH = "/pet-generation/asset?u=";
+
+export function proxyModelUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  // blob://, data:, file:// — leave as-is
+  if (/^(blob:|data:|file:)/i.test(url)) return url;
+  // already proxied
+  if (url.includes(PROXY_PATH)) return url;
+  // same origin? leave as-is
+  try {
+    const u = new URL(url, typeof window !== "undefined" ? window.location.href : "http://localhost");
+    if (typeof window !== "undefined" && u.origin === window.location.origin) {
+      return url;
+    }
+  } catch {
+    return url;
+  }
+  return `${API_BASE}${PROXY_PATH}${encodeURIComponent(url)}`;
+}

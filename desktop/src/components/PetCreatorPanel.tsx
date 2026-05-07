@@ -17,6 +17,7 @@ import {
   type PetTaskSummary,
   getPetTask,
   listPetTasks,
+  proxyModelUrl,
   setActivePet,
   submitPetTask,
 } from "../services/petCreator";
@@ -282,7 +283,7 @@ export default function PetCreatorPanel({ onClose }: Props) {
                 <div>
                   {activeTask.vrmUrl || activeTask.outputUrl ? (
                     <PetVRM
-                      url={activeTask.vrmUrl || activeTask.outputUrl || ""}
+                      url={proxyModelUrl(activeTask.vrmUrl || activeTask.outputUrl || "")}
                       size={200}
                       showLevelBadge={false}
                     />
@@ -328,7 +329,7 @@ export default function PetCreatorPanel({ onClose }: Props) {
                       <button
                         onClick={() =>
                           setActivePet(
-                            activeTask.vrmUrl || activeTask.outputUrl || "",
+                            proxyModelUrl(activeTask.vrmUrl || activeTask.outputUrl || ""),
                             activeTask.title || activeTask.prompt || undefined,
                           )
                         }
