@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Agentrix",
+  "version": "0.1.0",
+  "description": "Open Agentrix in a sidebar — chat with your AI agents, summarize the current page, run skills.",
+  "minimum_chrome_version": "114",
+  "permissions": ["sidePanel", "storage", "activeTab", "scripting", "contextMenus"],
+  "host_permissions": ["https://agentrix.top/*", "https://api.agentrix.top/*"],
+  "action": {
+    "default_title": "Open Agentrix",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "commands": {
+    "open-sidebar": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+A",
+        "mac": "Command+Shift+A"
+      },
+      "description": "Open Agentrix sidebar"
+    }
+  }
+}

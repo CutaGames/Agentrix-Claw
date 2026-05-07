@@ -27,6 +27,7 @@ import { MerchantTaskModule } from './modules/merchant-task/merchant-task.module
 import { OnChainIndexerModule } from './modules/onchain-indexer/onchain-indexer.module';
 import { SandboxModule } from './modules/sandbox/sandbox.module';
 import { SlidesModule } from './modules/slides/slides.module';
+import { PhoneCallModule } from './modules/phone-call/phone-call.module';
 import { CacheModule } from './modules/cache/cache.module';
 import { LogisticsModule } from './modules/logistics/logistics.module';
 import { TokenModule } from './modules/token/token.module';
@@ -217,6 +218,7 @@ import { PetGenerationModule } from './modules/pet-generation/pet-generation.mod
     OnChainIndexerModule,
     SandboxModule,
     SlidesModule,
+    PhoneCallModule,
     CacheModule,
     LogisticsModule,
     TokenModule,
