@@ -878,17 +878,40 @@ async function executeGitStash(args: Record<string, unknown>): Promise<string> {
 async function executeRunAutoRepairCommand(args: Record<string, unknown>): Promise<string> {
   const command = String(args.command || "").trim();
   if (!command) return JSON.stringify({ error: "command is required" });
+  const startedAt = Date.now();
+  const editsCount = Array.isArray(args.edits) ? (args.edits as unknown[]).length : 0;
   try {
+    const { trackEvent } = await import("./analytics");
+    trackEvent("auto_repair_start", {
+      commandPrefix: command.split(/\s+/, 1)[0] || "",
+      hasEdits: editsCount > 0 ? 1 : 0,
+      editsCount,
+    });
     const { runDesktopAutoRepairCommand } = await import("./autoRepair");
     const result = await runDesktopAutoRepairCommand({
       command,
       workingDirectory: typeof args.working_directory === "string" ? args.working_directory : undefined,
       timeoutMs: typeof args.timeout_ms === "number" ? args.timeout_ms : undefined,
-      edits: Array.isArray(args.edits) ? args.edits as any : undefined,
+      edits: Array.isArray(args.edits) ? (args.edits as any) : undefined,
+    });
+    trackEvent("auto_repair_done", {
+      status: result.status,
+      durationMs: Date.now() - startedAt,
+      diagnostics: result.diagnostics.length,
+      patchedFiles: result.appliedEdits?.length || 0,
+      exitCode: result.commandResult.exitCode ?? -1,
+      timedOut: result.commandResult.timedOut ? 1 : 0,
     });
     return JSON.stringify(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    try {
+      const { trackEvent } = await import("./analytics");
+      trackEvent("auto_repair_error", {
+        durationMs: Date.now() - startedAt,
+        message: message.slice(0, 200),
+      });
+    } catch {}
     return JSON.stringify({ error: `Auto repair command failed: ${message}` });
   }
 }

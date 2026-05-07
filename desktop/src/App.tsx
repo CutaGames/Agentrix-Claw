@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { SuspendProvider } from "./components/SuspendContext";
 import FloatingBall from "./components/FloatingBall";
 import PetEmotionOverlay from "./components/PetEmotionOverlay";
 import ChatPanel from "./components/ChatPanel";
@@ -144,6 +145,43 @@ export default function App() {
     }
     return () => clearInterval(refreshInterval);
   }, [loadToken]);
+
+  // Crash watchdog — surface and clear any crash reports written by the Rust
+  // panic_hook (services/lib.rs setup_panic_hook). Runs once on first mount
+  // of the service-host window.
+  useEffect(() => {
+    if (windowLabel !== "main" && windowLabel !== "dev") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const crashes = (await invoke("desktop_bridge_get_recent_crashes", { maxAgeSeconds: 24 * 3600 })) as
+          | Array<{ message?: string; location?: string; stampMs?: number; type?: string }>
+          | null;
+        if (cancelled || !crashes || crashes.length === 0) return;
+        for (const c of crashes.slice(0, 3)) {
+          trackEvent("desktop_crash_detected", {
+            type: String(c.type || "rust_panic").slice(0, 40),
+            message: String(c.message || "unknown").slice(0, 200),
+            location: String(c.location || "unknown").slice(0, 200),
+            stampMs: typeof c.stampMs === "number" ? c.stampMs : Date.now(),
+          });
+        }
+        const latest = crashes[0];
+        addNotification(
+          "warning",
+          "Agentrix recovered from a crash",
+          `${crashes.length} crash report${crashes.length > 1 ? "s" : ""} since last run. Latest: ${String(latest.message || "unknown").slice(0, 120)}`,
+        );
+        await invoke("desktop_bridge_clear_crash_logs");
+      } catch {
+        // Tauri not available (browser dev) — ignore.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [windowLabel]);
 
   useEffect(() => {
     const handleWakeWordConfigChange = () => setWakeWordRevision((prev) => prev + 1);
@@ -597,6 +635,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+      <SuspendProvider>
       <div
         style={{ width: "100%", height: "100%", background: panelOpen ? "var(--bg-dark)" : "transparent" }}
       >
@@ -626,6 +665,7 @@ export default function App() {
           </div>
         )}
       </div>
+      </SuspendProvider>
     </ErrorBoundary>
   );
 }

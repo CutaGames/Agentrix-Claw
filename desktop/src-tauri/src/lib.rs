@@ -669,6 +669,73 @@ fn chrono_iso_now() -> String {
     format!("{}s-since-epoch", secs)
 }
 
+/// Read all crash logs from the crash-logs directory and return them sorted
+/// newest-first. The TS side surfaces a notification on boot when one is
+/// present, then deletes the file via `desktop_bridge_clear_crash_logs`.
+#[tauri::command]
+fn desktop_bridge_get_recent_crashes(max_age_seconds: Option<u64>) -> Result<Vec<serde_json::Value>, String> {
+    let max_age = max_age_seconds.unwrap_or(60 * 60); // 1 hour default
+    let dir = match std::env::var_os("APPDATA").map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(std::path::PathBuf::from))
+    {
+        Some(d) => d.join("Agentrix Desktop").join("crash-logs"),
+        None => return Ok(vec![]),
+    };
+    if !dir.exists() {
+        return Ok(vec![]);
+    }
+    let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default().as_millis() as u64;
+    let mut entries: Vec<(u64, std::path::PathBuf)> = std::fs::read_dir(&dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let p = e.path();
+            let name = p.file_name()?.to_string_lossy().to_string();
+            if !name.starts_with("crash_") || !name.ends_with(".json") { return None; }
+            let stamp_str = &name["crash_".len()..name.len() - ".json".len()];
+            let stamp = stamp_str.parse::<u64>().ok()?;
+            if now_ms.saturating_sub(stamp) > max_age * 1000 { return None; }
+            Some((stamp, p))
+        })
+        .collect();
+    entries.sort_by(|a, b| b.0.cmp(&a.0));
+    let mut out = Vec::new();
+    for (stamp, path) in entries.into_iter().take(20) {
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                let mut obj = v.as_object().cloned().unwrap_or_default();
+                obj.insert("file".into(), serde_json::Value::String(path.to_string_lossy().into_owned()));
+                obj.insert("stampMs".into(), serde_json::Value::Number(serde_json::Number::from(stamp)));
+                out.push(serde_json::Value::Object(obj));
+            }
+        }
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn desktop_bridge_clear_crash_logs() -> Result<u32, String> {
+    let dir = match std::env::var_os("APPDATA").map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(std::path::PathBuf::from))
+    {
+        Some(d) => d.join("Agentrix Desktop").join("crash-logs"),
+        None => return Ok(0),
+    };
+    if !dir.exists() { return Ok(0); }
+    let mut count = 0u32;
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            let name = p.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            if name.starts_with("crash_") && name.ends_with(".json") {
+                if std::fs::remove_file(&p).is_ok() { count += 1; }
+            }
+        }
+    }
+    Ok(count)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     setup_panic_hook();
@@ -757,6 +824,9 @@ pub fn run() {
             desktop_bridge_lsp_status,
             desktop_bridge_start_lsp_sidecar,
             desktop_bridge_stop_lsp_sidecar,
+            // Crash watchdog
+            desktop_bridge_get_recent_crashes,
+            desktop_bridge_clear_crash_logs,
         ])
         .setup(|app| {
             // Grant WebView2 permissions (microphone, camera, etc.) on the main window
