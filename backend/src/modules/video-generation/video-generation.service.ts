@@ -14,6 +14,7 @@ import {
 } from '../desktop-sync/dto/desktop-sync.dto';
 import { FalVideoGenerationProvider, type FalVideoGenerationInput } from './fal-video-generation.provider';
 import { HfVideoGenerationProvider, resolveHfVideoModel } from './hf-video-generation.provider';
+import { HunyuanVideoProvider, type HunyuanVideoSubmitInput } from './hunyuan-video.provider';
 import * as path from 'path';
 import { AgentSession } from '../../entities/agent-session.entity';
 import { AgentMessage, MessageRole, MessageType } from '../../entities/agent-message.entity';
@@ -66,6 +67,7 @@ export class VideoGenerationService {
     private readonly desktopSyncService: DesktopSyncService,
     private readonly falProvider: FalVideoGenerationProvider,
     private readonly hfProvider: HfVideoGenerationProvider,
+    private readonly hunyuanProvider: HunyuanVideoProvider,
   ) {}
 
   async executeTool(params: VideoGenerateParams, context: ExecutionContext): Promise<Record<string, unknown>> {
@@ -85,15 +87,14 @@ export class VideoGenerationService {
       throw new Error('video_generate requires a prompt or an existing taskId. Reference-driven modes also require their source media URLs.');
     }
 
-    // Provider default is 'fal' because the HuggingFace serverless Inference
-    // API does NOT currently host the large open-source video models
-    // (Lightricks/LTX-Video, THUDM/CogVideoX-2b). Probes return HTTP 404:
-    // "Model ... is not available on Inference API." Keeping 'hf' available
-    // for users who self-deploy HF Inference Endpoints and override the
-    // model id to their own endpoint-serving repo.
-    const provider = String(params.provider || 'fal').trim().toLowerCase();
-    if (provider !== 'fal' && provider !== 'hf') {
-      throw new Error(`Unsupported video provider: ${provider}. Supported: fal (default, Kling/Veo), hf (advanced: requires a self-hosted HF Inference Endpoint).`);
+    // Provider default is now 'hunyuan' (Tencent Cloud 混元生视频) because the
+    // Tencent service is enabled on the platform account and accepts
+    // Chinese prompts natively. 'fal' (Kling/Veo) and 'hf' (self-hosted
+    // HuggingFace Inference Endpoint) remain selectable via params.provider.
+    const defaultProvider = this.configService.get<string>('VIDEO_DEFAULT_PROVIDER') || 'hunyuan';
+    const provider = String(params.provider || defaultProvider).trim().toLowerCase();
+    if (provider !== 'fal' && provider !== 'hf' && provider !== 'hunyuan') {
+      throw new Error(`Unsupported video provider: ${provider}. Supported: hunyuan (default, Tencent), fal (Kling/Veo), hf (self-hosted HF Inference Endpoint).`);
     }
 
     const inputPayload = (this.buildInput(mode, params, prompt) as unknown) as Record<string, unknown>;
@@ -201,6 +202,9 @@ export class VideoGenerationService {
     if (task.provider === 'hf') {
       return this.submitHfTask(task);
     }
+    if (task.provider === 'hunyuan') {
+      return this.submitHunyuanTask(task);
+    }
     const credentials = await this.resolveFalApiKey(task.userId);
     if (!credentials) {
       throw new Error('FAL video provider is not configured. Set FAL_KEY or VIDEO_FAL_API_KEY on the server.');
@@ -233,6 +237,10 @@ export class VideoGenerationService {
   private async refreshTask(task: VideoGenerationTask): Promise<void> {
     if (task.provider === 'hf') {
       await this.refreshHfTask(task);
+      return;
+    }
+    if (task.provider === 'hunyuan') {
+      await this.refreshHunyuanTask(task);
       return;
     }
     if (!task.providerRequestId) {
@@ -649,6 +657,112 @@ export class VideoGenerationService {
     } catch (err: any) {
       await this.markFailed(task.taskId, err.message || 'Failed to persist HF video result');
     }
+  }
+
+  // ─── Hunyuan video provider (Tencent Cloud 混元生视频) ────────────────
+  private resolveTencentSecrets(): { secretId: string; secretKey: string } | null {
+    const secretId = this.configService.get<string>('TC_SecretId')
+      || this.configService.get<string>('TC_SECRET_ID')
+      || process.env.TC_SecretId
+      || process.env.TC_SECRET_ID;
+    const secretKey = this.configService.get<string>('TC_SecretKey')
+      || this.configService.get<string>('TC_SECRET_KEY')
+      || process.env.TC_SecretKey
+      || process.env.TC_SECRET_KEY;
+    if (!secretId || !secretKey) return null;
+    return { secretId, secretKey };
+  }
+
+  private async submitHunyuanTask(task: VideoGenerationTask): Promise<VideoGenerationTask> {
+    const secrets = this.resolveTencentSecrets();
+    if (!secrets) {
+      throw new Error('Hunyuan video provider is not configured. Set TC_SecretId and TC_SecretKey on the server.');
+    }
+
+    task.status = VideoGenerationStatusEnum.SUBMITTING;
+    task.providerStatus = 'SUBMITTING';
+    task.error = null as any;
+    if (!task.model || task.model.startsWith('fal-ai/')) {
+      task.model = 'hunyuan-video';
+    }
+    await this.taskRepo.save(task);
+    await this.syncDesktopTask(task);
+
+    const inputPayload = (task.input || {}) as Record<string, unknown>;
+    const promptStr = typeof inputPayload.prompt === 'string' && inputPayload.prompt.trim()
+      ? (inputPayload.prompt as string)
+      : task.prompt;
+    const ar = inputPayload.aspect_ratio as '16:9' | '9:16' | '1:1' | undefined;
+    const durRaw = inputPayload.duration as string | number | undefined;
+    const duration: 5 | 10 = String(durRaw) === '10' ? 10 : 5;
+    const imageUrl = (inputPayload.image_url || inputPayload.start_image_url) as string | undefined;
+    const negativePrompt = (inputPayload.negative_prompt as string | undefined) || task.negativePrompt || undefined;
+
+    const submitInput: HunyuanVideoSubmitInput = {
+      prompt: promptStr,
+      imageUrl: imageUrl || undefined,
+      negativePrompt,
+      duration,
+      aspectRatio: ar === '9:16' || ar === '1:1' ? ar : '16:9',
+      generateAudio: Boolean(inputPayload.generate_audio),
+    };
+
+    const response = await this.hunyuanProvider.submit(secrets.secretId, secrets.secretKey, submitInput);
+    task.providerRequestId = response.jobId;
+    task.providerStatus = 'WAIT';
+    task.status = VideoGenerationStatusEnum.QUEUED;
+    task.metadata = { ...(task.metadata || {}), hunyuanJobId: response.jobId };
+
+    const saved = await this.taskRepo.save(task);
+    await this.syncDesktopTask(saved);
+    return saved;
+  }
+
+  private async refreshHunyuanTask(task: VideoGenerationTask): Promise<void> {
+    if (!task.providerRequestId) {
+      await this.submitHunyuanTask(task);
+      return;
+    }
+    const secrets = this.resolveTencentSecrets();
+    if (!secrets) {
+      await this.markFailed(task.taskId, 'Hunyuan provider credentials are no longer available');
+      return;
+    }
+    const result = await this.hunyuanProvider.query(secrets.secretId, secrets.secretKey, task.providerRequestId);
+    task.providerStatus = result.status;
+
+    if (result.status === 'WAIT' || result.status === 'RUN') {
+      task.status = result.status === 'WAIT'
+        ? VideoGenerationStatusEnum.QUEUED
+        : VideoGenerationStatusEnum.PROCESSING;
+      await this.taskRepo.save(task);
+      await this.syncDesktopTask(task);
+      return;
+    }
+
+    if (result.status === 'FAIL') {
+      await this.markFailed(
+        task.taskId,
+        `${result.errorCode || 'HunyuanVideo'} — ${result.errorMessage || 'job failed'}`,
+      );
+      return;
+    }
+
+    // DONE
+    const first = result.resultVideos[0];
+    if (!first?.url) {
+      await this.markFailed(task.taskId, 'Hunyuan completed but returned no video URL');
+      return;
+    }
+    task.status = VideoGenerationStatusEnum.COMPLETED;
+    task.outputUrl = first.url;
+    task.thumbnailUrl = first.coverUrl || null as any;
+    task.result = result.raw as any;
+    task.completedAt = new Date();
+    task.error = null as any;
+    const saved = await this.taskRepo.save(task);
+    await this.syncDesktopTask(saved);
+    await this.emitCompletion(saved);
   }
 
   private toDesktopTaskStatus(status: VideoGenerationStatusEnum): DesktopTaskStatus {
