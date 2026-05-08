@@ -24,7 +24,7 @@ import {
   PathPlayer,
   buildSegment,
   clampToBounds,
-  pickRandomTarget,
+  pickWanderTargetV2,
   speedForEmotion,
   type CompanionBounds,
   type CompanionPosition,
@@ -119,7 +119,7 @@ export default function PetCompanionWindow() {
         Math.random() * (IDLE_BETWEEN_WANDERS_MS_MAX - IDLE_BETWEEN_WANDERS_MS_MIN);
       scheduleTimer = window.setTimeout(() => {
         if (draggingRef.current || docked) return;
-        const target = pickRandomTarget(bounds, positionRef.current);
+        const target = pickWanderTargetV2(bounds, positionRef.current);
         const emotion = getLastPetState()?.emotion ?? null;
         const speed = 90 * speedForEmotion(emotion);
         playerRef.current.setSegment(buildSegment(positionRef.current, target, speed));

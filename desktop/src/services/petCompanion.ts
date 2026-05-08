@@ -190,3 +190,82 @@ export function speedForEmotion(emotion: string | undefined | null): number {
       return 1.0;
   }
 }
+
+// ---------------------------------------------------------------------------
+// P2-1: 漫游精修 — 停留点策略 / 多显示器选择 / 路径偏好
+// ---------------------------------------------------------------------------
+
+/**
+ * Natural rest spots: bottom-right corner (taskbar tray vicinity), bottom-left
+ * (dock-style), and top-right (notification area). Returned positions are
+ * already clamped to the safe area.
+ */
+export function pickRestPoint(bounds: CompanionBounds): CompanionPosition {
+  const choices: Array<CompanionPosition> = [
+    {
+      x: bounds.x + bounds.width - PET_FOOTPRINT_W - SAFE_MARGIN_X - 24,
+      y: bounds.y + bounds.height - PET_FOOTPRINT_H - bounds.bottomInset - 24,
+    },
+    {
+      x: bounds.x + SAFE_MARGIN_X + 24,
+      y: bounds.y + bounds.height - PET_FOOTPRINT_H - bounds.bottomInset - 24,
+    },
+    {
+      x: bounds.x + bounds.width - PET_FOOTPRINT_W - SAFE_MARGIN_X - 24,
+      y: bounds.y + SAFE_MARGIN_Y_TOP + 24,
+    },
+  ];
+  const pick = choices[Math.floor(Math.random() * choices.length)];
+  return clampToBounds(pick, bounds);
+}
+
+/**
+ * Wander target picker with a probability of returning a "rest point" so
+ * the pet looks like it pauses at natural spots instead of drifting forever.
+ * `restProbability` defaults to 0.25 — every ~4 hops the pet will dock.
+ */
+export function pickWanderTargetV2(
+  bounds: CompanionBounds,
+  near?: CompanionPosition,
+  opts?: { restProbability?: number; rng?: () => number },
+): CompanionPosition {
+  const rng = opts?.rng ?? Math.random;
+  const restProb = opts?.restProbability ?? 0.25;
+  if (rng() < restProb) return pickRestPoint(bounds);
+  return pickRandomTarget(bounds, near);
+}
+
+/**
+ * Multi-monitor: given a list of monitor rects and the current cursor
+ * position, return the monitor that contains the cursor, or the one closest
+ * to it. Used so the pet "follows" the user when they drag focus across
+ * displays.
+ */
+export function chooseBoundsForCursor(
+  monitors: ReadonlyArray<CompanionBounds>,
+  cursor: CompanionPosition,
+): CompanionBounds | null {
+  if (monitors.length === 0) return null;
+  for (const m of monitors) {
+    if (
+      cursor.x >= m.x &&
+      cursor.x <= m.x + m.width &&
+      cursor.y >= m.y &&
+      cursor.y <= m.y + m.height
+    ) {
+      return m;
+    }
+  }
+  let best = monitors[0];
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const m of monitors) {
+    const cx = m.x + m.width / 2;
+    const cy = m.y + m.height / 2;
+    const d = Math.hypot(cx - cursor.x, cy - cursor.y);
+    if (d < bestDist) {
+      bestDist = d;
+      best = m;
+    }
+  }
+  return best;
+}

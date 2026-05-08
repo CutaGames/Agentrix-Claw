@@ -40,6 +40,8 @@ export const PET_PRESENCE_TOPICS = {
   BREEDING_INVITED: 'presence:pet.breeding.invited',
   BREEDING_HATCHING: 'presence:pet.breeding.hatching',
   BREEDING_HATCHED: 'presence:pet.breeding.hatched',
+  /** P2-6 远程社交动作（visit / touch / feed / co_play） */
+  SOCIAL_VISIT: 'presence:pet.social.visit',
 } as const;
 
 export type PetPresenceTopic =
@@ -123,6 +125,26 @@ export interface PetBreedingHatchedPayload {
   owner_id?: string;
 }
 
+/**
+ * P2-6 远程社交动作 —— 来自其他用户对本宠物的访问、抚摸、投喂、共玩邀请。
+ */
+export type PetSocialAction = 'visit' | 'touch' | 'feed' | 'co_play';
+
+export interface PetSocialVisitPayload {
+  pet_id: string;
+  /** 接收方（被访问的宠物所有者） */
+  owner_user_id: string;
+  /** 发起方匿名/公开身份 */
+  visitor_user_id: string;
+  visitor_display_name?: string | null;
+  action: PetSocialAction;
+  /** 投喂/抚摸时的能量增益（已写入 energy ledger） */
+  energy_delta?: number;
+  /** 自由文本（最多 80 字符） */
+  message?: string | null;
+  created_at: number;
+}
+
 // ============================================================
 // §3 Topic → Payload 映射（用于 typed dispatcher / hook）
 // ============================================================
@@ -138,6 +160,7 @@ export interface PetPresenceEventMap {
   [PET_PRESENCE_TOPICS.BREEDING_INVITED]: PetBreedingInvitedPayload;
   [PET_PRESENCE_TOPICS.BREEDING_HATCHING]: PetBreedingHatchingPayload;
   [PET_PRESENCE_TOPICS.BREEDING_HATCHED]: PetBreedingHatchedPayload;
+  [PET_PRESENCE_TOPICS.SOCIAL_VISIT]: PetSocialVisitPayload;
 }
 
 export type PetPresenceEventName = keyof PetPresenceEventMap;
@@ -196,3 +219,4 @@ export const PRESENCE_PET_MEMORY_ADDED = PET_PRESENCE_TOPICS.MEMORY_ADDED;
 export const PRESENCE_PET_BREEDING_INVITED = PET_PRESENCE_TOPICS.BREEDING_INVITED;
 export const PRESENCE_PET_BREEDING_HATCHING = PET_PRESENCE_TOPICS.BREEDING_HATCHING;
 export const PRESENCE_PET_BREEDING_HATCHED = PET_PRESENCE_TOPICS.BREEDING_HATCHED;
+export const PRESENCE_PET_SOCIAL_VISIT = PET_PRESENCE_TOPICS.SOCIAL_VISIT;

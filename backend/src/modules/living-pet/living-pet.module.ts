@@ -4,6 +4,8 @@ import { LivingPet } from '../../entities/living-pet.entity';
 import { LivingPetService } from './living-pet.service';
 import { LivingPetController } from './living-pet.controller';
 import { PetPublicController } from './pet-public.controller';
+import { PetSocialController } from './pet-social.controller';
+import { PetSocialService } from './pet-social.service';
 import { PetSoulTemplateModule } from '../pet-soul-template/pet-soul-template.module';
 import { PetSkinModule } from '../pet-skin/pet-skin.module';
 import { PetGenQuotaModule } from '../pet-gen-quota/pet-gen-quota.module';
@@ -26,8 +28,8 @@ import { PetCompanionEngineModule } from '../pet-companion-engine/pet-companion-
     PetEnergyModule,
     forwardRef(() => PetCompanionEngineModule),
   ],
-  controllers: [LivingPetController, PetPublicController],
-  providers: [LivingPetService],
-  exports: [LivingPetService],
+  controllers: [LivingPetController, PetPublicController, PetSocialController],
+  providers: [LivingPetService, PetSocialService],
+  exports: [LivingPetService, PetSocialService],
 })
 export class LivingPetModule {}
