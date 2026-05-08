@@ -31,6 +31,7 @@ const TILES: Tile[] = [
   { key: 'breed',     emoji: '🧬', title: '双图繁殖', desc: '两只皮肤融合出新形态',     route: 'Breed',         accent: '#f472b6' },
   { key: 'market',    emoji: '🛒', title: '萌宠市场', desc: '浏览 / 购买 / 上架皮肤',   route: 'SkinMarketplace', accent: '#fbbf24' },
   { key: 'team',      emoji: '👥', title: '萌宠团队', desc: 'Lv.5+ 多宠协作分担任务',  route: 'PetTeam',       accent: '#60a5fa' },
+  { key: 'playground', emoji: '🎮', title: '成长 · 游戏 · 繁育', desc: '亲密度 / 成就 / 相册 / 迷你游戏 / 社交繁育', route: 'PetPlayground', accent: '#f97316' },
 ];
 
 export function PetHubScreen() {

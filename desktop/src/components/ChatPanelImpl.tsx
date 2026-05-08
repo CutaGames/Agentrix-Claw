@@ -26,6 +26,11 @@ import VideoStudioPanel from "./VideoStudioPanel";
 import PetCreatorPanel from "./PetCreatorPanel";
 import SoulPicker from "./SoulPicker";
 import WardrobePanel from "./WardrobePanel";
+import PetGrowthDashboard from "./PetGrowthDashboard";
+import PetAchievementWall from "./PetAchievementWall";
+import PetMemoryAlbumPanel from "./PetMemoryAlbumPanel";
+import PetMinigamePanel from "./PetMinigamePanel";
+import PetBreedingPanel from "./PetBreedingPanel";
 import FileTreePanel from "./FileTreePanel";
 import { type TaskRunState, type TaskTimelineEntry, type TaskTimelineStatus } from "./TaskTimeline";
 import { gitStatus, gitDiff, gitLog, gitCommit, gitBranchList, type GitFileChange } from "../services/git";
@@ -420,6 +425,11 @@ export default function ChatPanel({
   const [petCreatorOpen, setPetCreatorOpen] = useState(false);
   const [soulPickerOpen, setSoulPickerOpen] = useState(false);
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
+  const [petGrowthOpen, setPetGrowthOpen] = useState(false);
+  const [petAchievementsOpen, setPetAchievementsOpen] = useState(false);
+  const [petMemoryAlbumOpen, setPetMemoryAlbumOpen] = useState(false);
+  const [petMinigamesOpen, setPetMinigamesOpen] = useState(false);
+  const [petBreedingOpen, setPetBreedingOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
@@ -2558,12 +2568,22 @@ export default function ChatPanel({
     const onOpenPetCreator = () => setPetCreatorOpen(true);
     const onOpenSoulPicker = () => setSoulPickerOpen(true);
     const onOpenWardrobe = () => setWardrobeOpen(true);
+    const onOpenPetGrowth = () => setPetGrowthOpen(true);
+    const onOpenPetAchievements = () => setPetAchievementsOpen(true);
+    const onOpenPetMemoryAlbum = () => setPetMemoryAlbumOpen(true);
+    const onOpenPetMinigames = () => setPetMinigamesOpen(true);
+    const onOpenPetBreeding = () => setPetBreedingOpen(true);
     window.addEventListener("agentrix:new-chat", onNewChat);
     window.addEventListener("agentrix:open-settings", onOpenSettings);
     window.addEventListener("agentrix:open-video-studio", onOpenVideoStudio);
     window.addEventListener("agentrix:open-pet-creator", onOpenPetCreator);
     window.addEventListener("agentrix:open-soul-picker", onOpenSoulPicker);
     window.addEventListener("agentrix:open-wardrobe", onOpenWardrobe);
+    window.addEventListener("agentrix:open-pet-growth", onOpenPetGrowth);
+    window.addEventListener("agentrix:open-pet-achievements", onOpenPetAchievements);
+    window.addEventListener("agentrix:open-pet-memory-album", onOpenPetMemoryAlbum);
+    window.addEventListener("agentrix:open-pet-minigames", onOpenPetMinigames);
+    window.addEventListener("agentrix:open-pet-breeding", onOpenPetBreeding);
 
     // Cross-window: when the floating-ball window emits via Tauri, also bridge
     // it back into a window event so the same handlers above pick it up here.
@@ -2578,6 +2598,11 @@ export default function ChatPanel({
           "agentrix:open-pet-creator",
           "agentrix:open-soul-picker",
           "agentrix:open-wardrobe",
+          "agentrix:open-pet-growth",
+          "agentrix:open-pet-achievements",
+          "agentrix:open-pet-memory-album",
+          "agentrix:open-pet-minigames",
+          "agentrix:open-pet-breeding",
           "agentrix:voice-start",
         ];
         for (const eventName of events) {
@@ -2597,6 +2622,11 @@ export default function ChatPanel({
       window.removeEventListener("agentrix:open-pet-creator", onOpenPetCreator);
       window.removeEventListener("agentrix:open-soul-picker", onOpenSoulPicker);
       window.removeEventListener("agentrix:open-wardrobe", onOpenWardrobe);
+      window.removeEventListener("agentrix:open-pet-growth", onOpenPetGrowth);
+      window.removeEventListener("agentrix:open-pet-achievements", onOpenPetAchievements);
+      window.removeEventListener("agentrix:open-pet-memory-album", onOpenPetMemoryAlbum);
+      window.removeEventListener("agentrix:open-pet-minigames", onOpenPetMinigames);
+      window.removeEventListener("agentrix:open-pet-breeding", onOpenPetBreeding);
       for (const fn of tauriUnlisteners) fn();
     };
   }, []);
@@ -3035,6 +3065,31 @@ export default function ChatPanel({
       {/* V4：衣柜 Wardrobe overlay */}
       {wardrobeOpen && (
         <WardrobePanel onClose={() => setWardrobeOpen(false)} />
+      )}
+
+      {/* Phase 6 S3 成长面板 */}
+      {petGrowthOpen && (
+        <PetGrowthDashboard onClose={() => setPetGrowthOpen(false)} />
+      )}
+
+      {/* Phase 6 S4 成就墙 */}
+      {petAchievementsOpen && (
+        <PetAchievementWall onClose={() => setPetAchievementsOpen(false)} />
+      )}
+
+      {/* Phase 6 S4 时光相册 */}
+      {petMemoryAlbumOpen && (
+        <PetMemoryAlbumPanel onClose={() => setPetMemoryAlbumOpen(false)} />
+      )}
+
+      {/* Phase 6 S5 迷你游戏 */}
+      {petMinigamesOpen && (
+        <PetMinigamePanel onClose={() => setPetMinigamesOpen(false)} />
+      )}
+
+      {/* Phase 6 S5 社交繁育 */}
+      {petBreedingOpen && (
+        <PetBreedingPanel onClose={() => setPetBreedingOpen(false)} />
       )}
 
       {/* File tree sidebar */}

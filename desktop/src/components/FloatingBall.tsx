@@ -126,6 +126,11 @@ async function showNativeBallMenu(
       | "open-pet-creator"
       | "open-soul-picker"
       | "open-wardrobe"
+      | "open-pet-growth"
+      | "open-pet-achievements"
+      | "open-pet-memory-album"
+      | "open-pet-minigames"
+      | "open-pet-breeding"
       | "open-settings"
       | "new-chat"
       | "voice-start") => {
@@ -148,6 +153,12 @@ async function showNativeBallMenu(
         { id: "ball-pet", text: "🐾 创建萌宠", action: () => { void dispatchSafe("open-pet-creator"); } },
         { id: "ball-soul", text: "✨ 选择灵魂", action: () => { void dispatchSafe("open-soul-picker"); } },
         { id: "ball-wardrobe", text: "👗 衣柜", action: () => { void dispatchSafe("open-wardrobe"); } },
+        { item: "Separator" } as any,
+        { id: "ball-pet-growth", text: "📊 成长面板", action: () => { void dispatchSafe("open-pet-growth"); } },
+        { id: "ball-pet-achievements", text: "🏆 宠物成就", action: () => { void dispatchSafe("open-pet-achievements"); } },
+        { id: "ball-pet-album", text: "📔 时光相册", action: () => { void dispatchSafe("open-pet-memory-album"); } },
+        { id: "ball-pet-mini", text: "🎮 迷你游戏", action: () => { void dispatchSafe("open-pet-minigames"); } },
+        { id: "ball-pet-breeding", text: "💞 社交繁育", action: () => { void dispatchSafe("open-pet-breeding"); } },
         { item: "Separator" } as any,
         { id: "ball-settings", text: "⚙️ Settings", action: () => { void dispatchSafe("open-settings"); } },
       ],
@@ -1106,6 +1117,11 @@ export default function FloatingBall({
           { label: "🐾 创建萌宠", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-pet-creator")); } },
           { label: "✨ 选择灵魂", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-soul-picker")); } },
           { label: "👗 衣柜", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-wardrobe")); } },
+          { label: "📊 成长面板", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-pet-growth")); } },
+          { label: "🏆 宠物成就", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-pet-achievements")); } },
+          { label: "📔 时光相册", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-pet-memory-album")); } },
+          { label: "🎮 迷你游戏", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-pet-minigames")); } },
+          { label: "💞 社交繁育", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-pet-breeding")); } },
           { label: "⚙️ Settings", action: () => { void import("../services/desktopBus").then(({ dispatchUiAction }) => dispatchUiAction("open-settings")); } },
         ].map((item) => (
           <div

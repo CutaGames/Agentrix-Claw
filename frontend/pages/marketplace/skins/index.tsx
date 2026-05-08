@@ -7,6 +7,6 @@ export const getServerSideProps: GetServerSideProps = async () => ({
   redirect: { destination: '/marketplace/pets', permanent: true },
 });
 
-export default function SkinsRedirect() {
+export default function SkinsRedirect(): null {
   return null;
 }

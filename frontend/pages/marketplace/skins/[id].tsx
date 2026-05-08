@@ -11,6 +11,6 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   };
 };
 
-export default function SkinDetailRedirect() {
+export default function SkinDetailRedirect(): null {
   return null;
 }

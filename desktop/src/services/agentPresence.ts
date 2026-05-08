@@ -206,6 +206,22 @@ function connectPresence(token: string) {
     window.dispatchEvent(new CustomEvent("agentrix:pet-energy", { detail: data }));
   });
 
+  // Pet Phase 6 S4: 成就解锁
+  _presenceSocket.on("presence:pet.achievement.unlocked", (data) => {
+    window.dispatchEvent(new CustomEvent("agentrix:pet-achievement-unlocked", { detail: data }));
+  });
+
+  // Pet Phase 6 S5: 社交繁育生命周期
+  _presenceSocket.on("presence:pet.breeding.invited", (data) => {
+    window.dispatchEvent(new CustomEvent("agentrix:pet-breeding-invited", { detail: data }));
+  });
+  _presenceSocket.on("presence:pet.breeding.hatching", (data) => {
+    window.dispatchEvent(new CustomEvent("agentrix:pet-breeding-hatching", { detail: data }));
+  });
+  _presenceSocket.on("presence:pet.breeding.hatched", (data) => {
+    window.dispatchEvent(new CustomEvent("agentrix:pet-breeding-hatched", { detail: data }));
+  });
+
   // Forward all events to window for other components
   _presenceSocket.onAny((event, data) => {
     window.dispatchEvent(new CustomEvent("agentrix:presence-event", { detail: { event, data } }));

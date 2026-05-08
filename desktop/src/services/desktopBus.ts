@@ -21,6 +21,11 @@ export type DesktopUiAction =
   | "open-pet-creator"
   | "open-soul-picker"
   | "open-wardrobe"
+  | "open-pet-growth"
+  | "open-pet-achievements"
+  | "open-pet-memory-album"
+  | "open-pet-minigames"
+  | "open-pet-breeding"
   | "open-settings"
   | "new-chat"
   | "voice-start";
