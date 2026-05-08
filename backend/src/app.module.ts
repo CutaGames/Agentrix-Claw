@@ -179,6 +179,7 @@ import { WalletProjectionModule } from './modules/wallet-projection/wallet-proje
 import { VitalsBusModule } from './modules/vitals-bus/vitals-bus.module';
 import { MemoryTiersModule } from './modules/memory-tiers/memory-tiers.module';
 import { PlanRunnerModule } from './modules/plan-runner/plan-runner.module';
+import { AgentTaskModule } from './modules/agent-task/agent-task.module';
 import { SplitBudgetModule } from './modules/split-budget/split-budget.module';
 // v3.0 P2 Doer + Economy + 厂商接入
 import { A2AMatchingModule } from './modules/a2a-matching/a2a-matching.module';
@@ -389,6 +390,7 @@ import { PetGenerationModule } from './modules/pet-generation/pet-generation.mod
     MemoryTiersModule,
     // v3.0 P1-4 Plan-Approval 闭环 (顿领 §5.4)
     PlanRunnerModule,
+    AgentTaskModule,
     // v3.0 P1-8 SplitPlan + BudgetPool + Audit (顿领 §9.3 §9.5)
     SplitBudgetModule,
     // v3.0 P2-8 A2A 跨用户撮合 (顿领 §10)
