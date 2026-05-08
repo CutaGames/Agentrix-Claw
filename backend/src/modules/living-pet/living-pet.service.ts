@@ -199,6 +199,11 @@ export class LivingPetService {
     intimacy_level: number;
     intimacy_xp: number;
     primary_agent_id: string | null;
+    /** P2-8: pet 创建时间 — 用于公开页“已陷乔 N 天” */
+    created_at: number;
+    /** P2-8: 当前情绪（只读、安全、不暴露 emotion_since） */
+    emotion: string;
+    emotion_intensity: number;
     updated_at: number;
     user_id: string;
   } | null> {
@@ -211,6 +216,9 @@ export class LivingPetService {
       intimacy_level: pet.intimacyLevel,
       intimacy_xp: pet.intimacyXp,
       primary_agent_id: pet.primaryAgentId || null,
+      created_at: pet.createdAt ? pet.createdAt.getTime() : Date.now(),
+      emotion: pet.emotion,
+      emotion_intensity: pet.emotionIntensity,
       updated_at: pet.updatedAt ? pet.updatedAt.getTime() : Date.now(),
       user_id: pet.userId,
     };

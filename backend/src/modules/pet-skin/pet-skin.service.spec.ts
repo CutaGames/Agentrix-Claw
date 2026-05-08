@@ -148,6 +148,36 @@ describe('PetSkinService', () => {
       expect(flat).toContain("s.visibility = 'public'");
       expect(flat).toContain("s.moderation_status = 'approved'");
     });
+
+    // ── P2-4 (2026-05-08) marketplace search/filter/sort ────────────────
+    it('applies q (display_name ILIKE) + price range + sort', async () => {
+      const calls: Array<[string, any?]> = [];
+      const orderCalls: Array<[string, string?]> = [];
+      const qb: any = {
+        where: jest.fn((s, p) => { calls.push([s, p]); return qb; }),
+        andWhere: jest.fn((s, p) => { calls.push([s, p]); return qb; }),
+        orderBy: jest.fn((s, d) => { orderCalls.push([s, d]); return qb; }),
+        addOrderBy: jest.fn((s, d) => { orderCalls.push([s, d]); return qb; }),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(0),
+        getMany: jest.fn().mockResolvedValue([]),
+      };
+      skinRepo.createQueryBuilder.mockReturnValue(qb);
+      await service.listMarketplace({
+        q: 'sky',
+        minPriceCents: 100,
+        maxPriceCents: 5000,
+        sort: 'price_asc',
+      });
+      const flat = calls.map(([s, p]) => `${s}::${JSON.stringify(p ?? null)}`).join(' || ');
+      expect(flat).toContain('display_name ILIKE');
+      expect(flat).toContain('"q":"%sky%"');
+      expect(flat).toContain('price_cents >=');
+      expect(flat).toContain('price_cents <=');
+      expect(orderCalls[0][0]).toBe('s.price_cents');
+      expect(orderCalls[0][1]).toBe('ASC');
+    });
   });
 
   describe('installFromMarketplace (V4 §3.2)', () => {

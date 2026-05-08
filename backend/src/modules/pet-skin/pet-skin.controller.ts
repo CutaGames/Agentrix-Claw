@@ -39,6 +39,10 @@ export class PetSkinController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
     @Query('source') source?: 'platform' | 'generated' | 'remixed',
+    @Query('q') q?: string,
+    @Query('minPriceCents') minPriceCents?: string,
+    @Query('maxPriceCents') maxPriceCents?: string,
+    @Query('sort') sort?: 'newest' | 'oldest' | 'price_asc' | 'price_desc' | 'name_asc',
   ) {
     const userId = req.user?.userId || req.user?.sub || req.user?.id;
     const { items, total } = await this.service.listMarketplace({
@@ -46,6 +50,10 @@ export class PetSkinController {
       offset: offset ? parseInt(offset, 10) : undefined,
       source,
       excludeUserId: userId,
+      q,
+      minPriceCents: minPriceCents ? parseInt(minPriceCents, 10) : undefined,
+      maxPriceCents: maxPriceCents ? parseInt(maxPriceCents, 10) : undefined,
+      sort,
     });
     return { items: items.map((s) => this.service.toDto(s)), total };
   }

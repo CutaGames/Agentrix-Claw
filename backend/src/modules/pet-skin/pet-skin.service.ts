@@ -120,7 +120,19 @@ export class PetSkinService {
    * Excludes the requester's own skins (those already appear in /skins).
    */
   async listMarketplace(
-    opts: { limit?: number; offset?: number; source?: PetSkin['source']; excludeUserId?: string } = {},
+    opts: {
+      limit?: number;
+      offset?: number;
+      source?: PetSkin['source'];
+      excludeUserId?: string;
+      /** P2-4: free-text search across displayName / format. */
+      q?: string;
+      /** P2-4: price filter in cents. */
+      minPriceCents?: number;
+      maxPriceCents?: number;
+      /** P2-4: sort key. */
+      sort?: 'newest' | 'oldest' | 'price_asc' | 'price_desc' | 'name_asc';
+    } = {},
   ): Promise<{ items: PetSkin[]; total: number }> {
     const limit = Math.min(100, Math.max(1, opts.limit ?? 30));
     const offset = Math.max(0, opts.offset ?? 0);
@@ -137,8 +149,34 @@ export class PetSkinService {
     if (opts.excludeUserId) {
       qb.andWhere('(s.owner_user_id IS NULL OR s.owner_user_id <> :uid)', { uid: opts.excludeUserId });
     }
+    if (opts.q && opts.q.trim()) {
+      qb.andWhere('(s.display_name ILIKE :q OR s.format ILIKE :q)', { q: `%${opts.q.trim()}%` });
+    }
+    if (typeof opts.minPriceCents === 'number') {
+      qb.andWhere('s.price_cents >= :minP', { minP: Math.max(0, Math.floor(opts.minPriceCents)) });
+    }
+    if (typeof opts.maxPriceCents === 'number') {
+      qb.andWhere('s.price_cents <= :maxP', { maxP: Math.max(0, Math.floor(opts.maxPriceCents)) });
+    }
     const total = await qb.getCount();
-    const items = await qb.orderBy('s.created_at', 'DESC').skip(offset).take(limit).getMany();
+    switch (opts.sort) {
+      case 'oldest':
+        qb.orderBy('s.created_at', 'ASC');
+        break;
+      case 'price_asc':
+        qb.orderBy('s.price_cents', 'ASC').addOrderBy('s.created_at', 'DESC');
+        break;
+      case 'price_desc':
+        qb.orderBy('s.price_cents', 'DESC').addOrderBy('s.created_at', 'DESC');
+        break;
+      case 'name_asc':
+        qb.orderBy('s.display_name', 'ASC');
+        break;
+      case 'newest':
+      default:
+        qb.orderBy('s.created_at', 'DESC');
+    }
+    const items = await qb.skip(offset).take(limit).getMany();
     return { items, total };
   }
 

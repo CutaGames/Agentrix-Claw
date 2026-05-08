@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Query, Req, UseGuards, forwardRef } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { LivingPetService, PetEmotion } from './living-pet.service';
 import { PetSkinService } from '../pet-skin/pet-skin.service';
 import { RemixBreedingService } from '../marketplace-pet/remix-breeding.service';
 import { PetAchievementService } from '../pet-achievement/pet-achievement.service';
 import { PetEnergyService } from '../pet-energy/pet-energy.service';
+import { PetCompanionEngineService } from '../pet-companion-engine/pet-companion-engine.service';
 
 /**
  * 顿领 §3.4 主宠 API
@@ -24,6 +25,8 @@ export class LivingPetController {
     private readonly breedingService: RemixBreedingService,
     private readonly achievementService: PetAchievementService,
     private readonly energyService: PetEnergyService,
+    @Inject(forwardRef(() => PetCompanionEngineService))
+    private readonly companionService: PetCompanionEngineService,
   ) {}
 
   @Get('state')
@@ -88,6 +91,60 @@ export class LivingPetController {
       achievements,
       server_time: Date.now(),
     };
+  }
+
+  /**
+   * P2-3 统一事件时间线。
+   *
+   * 合并主动陪伴事件 + 成就解锁 + 宠物快照创建事件为一个 time-sorted 列表，
+   * 供 QA 排障、用户查看近期发生了什么。不依赖新表，避免迁移。
+   */
+  @Get('timeline')
+  async timeline(@Req() req: any, @Query('limit') limit?: string) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    const cap = Math.min(100, Math.max(1, Number(limit) || 30));
+    const out: Array<{
+      ts: number;
+      kind: string;
+      summary: string;
+      meta?: Record<string, unknown>;
+    }> = [];
+
+    // 主动陪伴
+    try {
+      const events = await this.companionService.listRecent(userId, cap);
+      for (const e of events) {
+        const payload = (e.payload as any) || {};
+        out.push({
+          ts: e.createdAt.getTime(),
+          kind: `proactive.${e.kind}`,
+          summary: payload.title || e.suppressedReason || e.kind,
+          meta: { status: e.status, suppressed_reason: e.suppressedReason ?? null },
+        });
+      }
+    } catch {
+      /* best-effort */
+    }
+
+    // 成就解锁
+    try {
+      const ach = await this.achievementService.listForUser(userId);
+      for (const a of ach) {
+        if (a.unlocked && a.unlocked_at) {
+          out.push({
+            ts: a.unlocked_at,
+            kind: 'achievement.unlocked',
+            summary: a.label_zh || a.key,
+            meta: { key: a.key, icon: a.icon },
+          });
+        }
+      }
+    } catch {
+      /* best-effort */
+    }
+
+    out.sort((a, b) => b.ts - a.ts);
+    return { items: out.slice(0, cap), server_time: Date.now() };
   }
 
   @Post('emotion')

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LivingPet } from '../../entities/living-pet.entity';
 import { PetProactiveEvent } from '../../entities/pet-proactive-event.entity';
@@ -16,7 +16,7 @@ import { LivingPetModule } from '../living-pet/living-pet.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([LivingPet, PetProactiveEvent, PetProactivePref]),
-    LivingPetModule,
+    forwardRef(() => LivingPetModule),
   ],
   controllers: [PetCompanionEngineController],
   providers: [PetCompanionEngineService],

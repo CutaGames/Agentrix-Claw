@@ -69,6 +69,8 @@ interface Candidate {
     body: string;
     cta?: { label: string; action: string } | null;
   };
+  /** P2-2 priority score (higher = served first when multiple candidates pass gates). */
+  priority?: number;
 }
 
 @Injectable()
@@ -149,6 +151,9 @@ export class PetCompanionEngineService {
     );
     if (eligible.length === 0) return null;
 
+    // P2-2: stable priority sort — higher priority first, falls back to insertion order.
+    eligible.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+
     // 5. 同 kind 软去重 — 取第一个未在去重窗口内的
     for (const candidate of eligible) {
       const window = DEDUPE_WINDOW_MS_BY_KIND[candidate.kind];
@@ -227,8 +232,12 @@ export class PetCompanionEngineService {
       Number(pet.emotionSince) > 0 &&
       nowMs - Number(pet.emotionSince) > 30 * 60 * 1000
     ) {
+      // P2-2: 情绪持续越久优先级越高（封顶 +0.5/h）
+      const stuckHours = (nowMs - Number(pet.emotionSince)) / (60 * 60 * 1000);
+      const moodPriority = 5 + Math.min(0.5 * stuckHours, 3);
       out.push({
         kind: 'mood_followup',
+        priority: moodPriority,
         payload: {
           title: '还好吗？',
           body: '我注意到你状态不太对，想聊聊吗？',
@@ -242,8 +251,10 @@ export class PetCompanionEngineService {
       (pet.emotion === 'angry' && pet.emotionIntensity >= 2) ||
       (pet.emotion === 'concerned' && pet.emotionIntensity >= 3)
     ) {
+      // P2-2: 高强度焦虑跳插队，优先于例行推送
       out.push({
         kind: 'anxiety_help',
+        priority: 9,
         payload: {
           title: '深呼吸 3 次',
           body: '我陪你做 60 秒呼吸练习，会好很多。',

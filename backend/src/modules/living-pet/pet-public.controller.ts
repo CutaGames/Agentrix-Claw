@@ -2,15 +2,16 @@ import { Controller, Get, NotFoundException, Param } from '@nestjs/common';
 import { LivingPetService } from './living-pet.service';
 import { PetSoulTemplateService } from '../pet-soul-template/pet-soul-template.service';
 import { PetSkinService } from '../pet-skin/pet-skin.service';
+import { PetAchievementService } from '../pet-achievement/pet-achievement.service';
 
 /**
  * Phase 1 公共名片 API（无需鉴权）
  *
- *   GET /api/v1/pet/public/:petId           →  { pet, soul, active_skin, lineage }
+ *   GET /api/v1/pet/public/:petId           →  { pet, soul, active_skin, lineage, achievements?, share }
  *   GET /api/v1/pet/public/skin/:skinId/lineage  →  { lineage }
  *
  * 用于 Web `/p/[petId]` 页面 SSR + Twitter / Facebook OG 抓取。
- * 仅返回安全字段：name / 灵魂模板 / 亲密度等级 / xp / 皮肤血统。
+ * 仅返回安全字段：name / 灵魂模板 / 亲密度等级 / xp / 皮肤血统 / 公开成就。
  * 不暴露 wallet / 记忆 / 任务历史。
  */
 @Controller('v1/pet/public')
@@ -19,6 +20,7 @@ export class PetPublicController {
     private readonly petService: LivingPetService,
     private readonly soulService: PetSoulTemplateService,
     private readonly skinService: PetSkinService,
+    private readonly achievementService: PetAchievementService,
   ) {}
 
   @Get(':petId')
@@ -44,9 +46,37 @@ export class PetPublicController {
     } catch {
       // best-effort; skin/lineage is non-critical for public card
     }
+
+    // P2-8 公开成就 + 分享素材
+    let achievements: Array<{ key: string; label: string; icon: string; unlocked_at: number }> = [];
+    try {
+      const all = await this.achievementService.listForUser(card.user_id);
+      achievements = all
+        .filter((a) => a.unlocked && a.unlocked_at)
+        .sort((a, b) => (b.unlocked_at ?? 0) - (a.unlocked_at ?? 0))
+        .slice(0, 12)
+        .map((a) => ({
+          key: a.key,
+          label: a.label_zh || a.label_en,
+          icon: a.icon,
+          unlocked_at: a.unlocked_at as number,
+        }));
+    } catch {
+      achievements = [];
+    }
+
+    const ageDays = Math.max(0, Math.floor((Date.now() - card.created_at) / (24 * 60 * 60 * 1000)));
+    const share = {
+      title: `${card.name} · lv ${card.intimacy_level}`,
+      description: `已陪伴 ${ageDays} 天·${achievements.length} 个成就`,
+      og_image: active_skin
+        ? `/api/v1/pet/public/${petId}/og.png`
+        : null,
+    };
+
     // strip user_id before returning (internal only)
     const { user_id: _u, ...publicPet } = card;
-    return { pet: publicPet, soul, active_skin, lineage };
+    return { pet: publicPet, soul, active_skin, lineage, achievements, share };
   }
 
   @Get('skin/:skinId/lineage')
