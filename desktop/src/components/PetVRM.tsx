@@ -64,6 +64,7 @@ interface Props {
 export default function PetVRM({ url, size = 96, style, showLevelBadge = true }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const vrmRef = useRef<VRM | null>(null);
+  const gltfRootRef = useRef<THREE.Object3D | null>(null);
   const rafRef = useRef<number | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pet, setPet] = useState<PetState | null>(null);
@@ -95,15 +96,28 @@ export default function PetVRM({ url, size = 96, style, showLevelBadge = true }:
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(size, size, false);
     renderer.setClearColor(0x000000, 0);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
     mount.appendChild(renderer.domElement);
     renderer.domElement.style.width = `${size}px`;
     renderer.domElement.style.height = `${size}px`;
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.9);
+    // P5 — three-point lighting + neutral environment so PBR materials on plain
+    // .glb exports (Hunyuan3D / Meshy / Sonic-the-hedgehog test asset) don't
+    // render as a grey blob. VRM models still benefit from the rim/fill mix.
+    const ambient = new THREE.AmbientLight(0xffffff, 1.1);
     scene.add(ambient);
-    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-    dir.position.set(1, 1.5, 1.2);
-    scene.add(dir);
+    const keyLight = new THREE.DirectionalLight(0xfff2e0, 1.4);
+    keyLight.position.set(2, 2.5, 2);
+    scene.add(keyLight);
+    const fillLight = new THREE.DirectionalLight(0xc0d8ff, 0.7);
+    fillLight.position.set(-2, 1.2, 1.5);
+    scene.add(fillLight);
+    const rimLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    rimLight.position.set(0, 1.5, -2);
+    scene.add(rimLight);
+    const hemi = new THREE.HemisphereLight(0xb1e1ff, 0x4a3a2a, 0.55);
+    scene.add(hemi);
 
     const clock = new THREE.Clock();
     let disposed = false;
@@ -116,16 +130,29 @@ export default function PetVRM({ url, size = 96, style, showLevelBadge = true }:
       (gltf) => {
         if (disposed) return;
         const vrm: VRM | undefined = gltf.userData.vrm;
-        if (!vrm) {
-          setLoadError("Loaded file is not a VRM 1.0 model.");
-          return;
+        if (vrm) {
+          // VRM 1.0 — full pipeline (expressions, humanoid, blinks).
+          VRMUtils.removeUnnecessaryVertices(gltf.scene);
+          VRMUtils.combineSkeletons(gltf.scene);
+          VRMUtils.combineMorphs(vrm);
+          vrm.scene.rotation.y = Math.PI; // face camera
+          scene.add(vrm.scene);
+          vrmRef.current = vrm;
+        } else {
+          // Plain .glb fallback (e.g. Hunyuan3D / Meshy raw mesh, no VRM rig).
+          // Auto-frame to fit, slow Y rotation in animate loop.
+          const root = gltf.scene;
+          const box = new THREE.Box3().setFromObject(root);
+          const center = box.getCenter(new THREE.Vector3());
+          const sizeBox = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(sizeBox.x, sizeBox.y, sizeBox.z) || 1;
+          const scale = 1.4 / maxDim;
+          root.scale.setScalar(scale);
+          root.position.sub(center.multiplyScalar(scale));
+          root.position.y += 0.65;
+          scene.add(root);
+          gltfRootRef.current = root;
         }
-        VRMUtils.removeUnnecessaryVertices(gltf.scene);
-        VRMUtils.combineSkeletons(gltf.scene);
-        VRMUtils.combineMorphs(vrm);
-        vrm.scene.rotation.y = Math.PI; // face camera
-        scene.add(vrm.scene);
-        vrmRef.current = vrm;
       },
       undefined,
       (err) => {
@@ -138,6 +165,12 @@ export default function PetVRM({ url, size = 96, style, showLevelBadge = true }:
       const delta = clock.getDelta();
       const t = clock.elapsedTime;
       const vrm = vrmRef.current;
+      const gltfRoot = gltfRootRef.current;
+      if (gltfRoot && !vrm) {
+        // Plain GLB: gentle Y spin + bob.
+        gltfRoot.rotation.y += delta * 0.4;
+        gltfRoot.position.y = 0.65 + Math.sin(t * 1.4) * 0.02;
+      }
       if (vrm) {
         // Idle breathing + gentle head sway.
         vrm.scene.position.y = Math.sin(t * 1.4) * 0.005;
@@ -175,6 +208,18 @@ export default function PetVRM({ url, size = 96, style, showLevelBadge = true }:
         scene.remove(vrm.scene);
         VRMUtils.deepDispose(vrm.scene);
         vrmRef.current = null;
+      }
+      const gltfRoot = gltfRootRef.current;
+      if (gltfRoot) {
+        scene.remove(gltfRoot);
+        gltfRoot.traverse((obj: any) => {
+          if (obj.geometry) obj.geometry.dispose?.();
+          if (obj.material) {
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            mats.forEach((m: any) => m?.dispose?.());
+          }
+        });
+        gltfRootRef.current = null;
       }
       renderer.dispose();
       if (renderer.domElement.parentElement === mount) {

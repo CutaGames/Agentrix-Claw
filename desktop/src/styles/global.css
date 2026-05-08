@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 :root, [data-theme="dark"] {
   --accent: #6C5CE7;
   --accent-light: #A29BFE;

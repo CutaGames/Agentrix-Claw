@@ -236,47 +236,11 @@ export default function InputZone({
         onRemoveAttachment={removePendingAttachment}
         onOpenWorkbench={onOpenWorkbench}
       />
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          marginBottom: 6,
-          fontSize: 11,
-          color: "var(--text-dim)",
-        }}
-      >
-        <span style={{ opacity: 0.7 }}>执行</span>
-        {(["local-only", "auto", "cloud-only"] as ExecutionMode[]).map((mode) => {
-          const active = executionMode === mode;
-          const label = mode === "local-only" ? "🔒 端侧" : mode === "cloud-only" ? "☁️ 云端" : "🤖 智能";
-          const hint =
-            mode === "local-only"
-              ? "强制本地 · 失败不切换云端"
-              : mode === "cloud-only"
-                ? "强制云端 · 忽略本地模型"
-                : "自动 · 简单问题本地，复杂用云端";
-          return (
-            <button
-              key={mode}
-              onClick={() => setExecutionMode(mode)}
-              title={hint}
-              style={{
-                padding: "3px 10px",
-                borderRadius: 999,
-                border: "1px solid var(--border)",
-                background: active ? "var(--accent)" : "var(--bg-input)",
-                color: active ? "white" : "var(--text-dim)",
-                fontSize: 11,
-                cursor: "pointer",
-                transition: "background 0.15s, color 0.15s",
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
+      {/* P5 — execution-mode picker (端侧 / 智能 / 云端) is now owned by
+          ChatTitleBar to avoid the duplicate "tier toggle" the user spotted.
+          The selector is still exposed via setExecutionMode through the same
+          store, so all keyboard shortcuts and per-message overrides keep
+          working. */}
       <ChatInputComposer
         textareaRef={textareaRef}
         fileInputRef={fileInputRef}
