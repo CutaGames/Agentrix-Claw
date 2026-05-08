@@ -953,18 +953,27 @@ pub fn run() {
             }
 
             // ── System Tray ──────────────────────────────────────
-            let show_hide  = MenuItemBuilder::with_id("show_hide", "Show / Hide").build(app)?;
-            let new_chat   = MenuItemBuilder::with_id("new_chat", "New Chat").build(app)?;
-            let voice_chat = MenuItemBuilder::with_id("voice_chat", "?? Voice Chat (Ctrl+Shift+V)").build(app)?;
-            let settings   = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
-            let quit       = MenuItemBuilder::with_id("quit", "Quit Agentrix").build(app)?;
+            let show_hide   = MenuItemBuilder::with_id("show_hide", "Show / Hide").build(app)?;
+            let new_chat    = MenuItemBuilder::with_id("new_chat", "New Chat").build(app)?;
+            let voice_chat  = MenuItemBuilder::with_id("voice_chat", "🎤 Voice Chat (Ctrl+Shift+V)").build(app)?;
+            let pet_creator = MenuItemBuilder::with_id("pet_creator", "🐾 Pet Creator").build(app)?;
+            let settings    = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
+            let check_update = MenuItemBuilder::with_id("check_update", "Check for Updates…").build(app)?;
+            let open_logs   = MenuItemBuilder::with_id("open_logs", "Open Logs Folder").build(app)?;
+            let about       = MenuItemBuilder::with_id("about", "About Agentrix").build(app)?;
+            let quit        = MenuItemBuilder::with_id("quit", "Quit Agentrix").build(app)?;
 
             let menu = MenuBuilder::new(app)
                 .item(&show_hide)
                 .separator()
                 .item(&new_chat)
                 .item(&voice_chat)
+                .item(&pet_creator)
                 .item(&settings)
+                .separator()
+                .item(&check_update)
+                .item(&open_logs)
+                .item(&about)
                 .separator()
                 .item(&quit)
                 .build()?;
@@ -1018,6 +1027,57 @@ pub fn run() {
                                 let _ = win.show();
                                 let _ = win.set_focus();
                                 let _ = win.eval("window.dispatchEvent(new CustomEvent('agentrix:open-settings'))");
+                            }
+                        }
+                        "pet_creator" => {
+                            let _ = commands::open_chat_panel(app_handle.clone(), None);
+                            if let Some(win) = app_handle.get_webview_window("chat-panel") {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                                let _ = win.eval("window.dispatchEvent(new CustomEvent('agentrix:open-pet-creator'))");
+                            }
+                        }
+                        "check_update" => {
+                            // Updater plugin is wired in tauri.conf.json (plugins.updater).
+                            // Defer to JS so we share the SettingsPanel UX (progress bar, restart prompt).
+                            let _ = commands::open_chat_panel(app_handle.clone(), None);
+                            if let Some(win) = app_handle.get_webview_window("chat-panel") {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                                let _ = win.eval("window.dispatchEvent(new CustomEvent('agentrix:check-updates'))");
+                            }
+                        }
+                        "open_logs" => {
+                            // Crash logs live under %APPDATA%/Agentrix Desktop/crash-logs/
+                            // (see desktop_bridge_get_recent_crashes). Open the parent folder.
+                            if let Some(dir) = app_handle.path().app_data_dir().ok() {
+                                let target = dir.join("crash-logs");
+                                let _ = std::fs::create_dir_all(&target);
+                                #[cfg(target_os = "windows")]
+                                {
+                                    let _ = std::process::Command::new("explorer").arg(&target).spawn();
+                                }
+                                #[cfg(target_os = "macos")]
+                                {
+                                    let _ = std::process::Command::new("open").arg(&target).spawn();
+                                }
+                                #[cfg(target_os = "linux")]
+                                {
+                                    let _ = std::process::Command::new("xdg-open").arg(&target).spawn();
+                                }
+                            }
+                        }
+                        "about" => {
+                            let _ = commands::open_chat_panel(app_handle.clone(), None);
+                            if let Some(win) = app_handle.get_webview_window("chat-panel") {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                                let version = app_handle.package_info().version.to_string();
+                                let js = format!(
+                                    "window.dispatchEvent(new CustomEvent('agentrix:show-about', {{ detail: {{ version: '{}' }} }}))",
+                                    version
+                                );
+                                let _ = win.eval(&js);
                             }
                         }
                         "quit" => {

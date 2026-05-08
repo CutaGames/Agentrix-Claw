@@ -5,6 +5,33 @@ import { useAuthStore } from "../services/store";
 import { pickWorkspaceFolder, getWorkspaceDir, setWorkspaceDir as saveWorkspaceDir } from "../services/workspace";
 import { readDesktopWakeWordConfig, resetDesktopWakeWordConfig, saveDesktopWakeWordConfig } from "../services/wakeWordConfig";
 import { LocalModelManager, LocalLLMSidecar, type LocalModelDownloadEvent } from "../services/localLLM";
+import { useI18n } from "../i18n/I18nProvider";
+import { LOCALES, LOCALE_LABELS, type Locale } from "../i18n/strings";
+
+function LanguageSwitcher() {
+  const { locale, setLocale } = useI18n();
+  return (
+    <select
+      value={locale}
+      onChange={(e) => setLocale(e.target.value as Locale)}
+      style={{
+        width: "100%",
+        padding: "8px 10px",
+        background: "var(--bg-elevated)",
+        color: "var(--text)",
+        border: "1px solid var(--border)",
+        borderRadius: 6,
+        fontSize: 13,
+      }}
+    >
+      {LOCALES.map((l) => (
+        <option key={l} value={l}>
+          {LOCALE_LABELS[l]}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 interface ModelOption {
   id: string;
@@ -260,6 +287,11 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
           />
         </div>
 
+        {/* Language (P4 — i18n 6 locales) */}
+        <div style={section}>
+          <div style={sectionTitle}>Language / 语言</div>
+          <LanguageSwitcher />
+        </div>
         {/* AI Model */}
         {models.length > 0 && (
           <div style={section}>

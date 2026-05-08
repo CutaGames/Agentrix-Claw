@@ -4,6 +4,7 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import agentrixLogo from "../assets/agentrix-logo.png";
+import PetAvatar from "./PetAvatar";
 import { API_BASE, useAuthStore } from "../services/store";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 const PAIR_POLL_INTERVAL = 2000;
@@ -312,7 +313,8 @@ export default function LoginPanel({ onSuccess, onGuest }: Props) {
         {/* Logo + Title */}
         <div style={{ textAlign: "center", marginBottom: 20 }}>
           <div style={logoWrap}>
-            <img src={agentrixLogo} alt="Agentrix" width={56} height={56} style={{ display: "block" }} />
+            {/* P4: default avatar = pet (falls back to 🐱 Neko if no pet picked yet). */}
+            <PetAvatar size={56} />
           </div>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", margin: 0 }}>
             Agentrix Desktop
