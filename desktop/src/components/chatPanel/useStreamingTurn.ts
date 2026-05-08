@@ -87,6 +87,8 @@ interface MetaHandlerParams {
   setPlanForSession: (sessionId: string, plan: AgentPlan | null) => void;
   setSelectedModel: Dispatch<SetStateAction<string>>;
   manualModelSelectionRef: { current: unknown };
+  /** Codex-borrow P1 — receives a one-line summary of the backend TierDecision. */
+  setLastTierMicroCopy?: Dispatch<SetStateAction<string | null>>;
 }
 
 interface StreamEventHandlerParams {
@@ -159,6 +161,8 @@ interface RunCloudStreamParams {
   targetSessionId: string;
   authToken: string;
   cloudModelForTurn?: string;
+  /** Codex-borrow P1 — mapped from desktop `executionMode` (local-only|auto|cloud-only). */
+  tier?: "local" | "smart" | "cloud";
   effectiveChatMode: "ask" | "agent" | "plan";
   chunkHandler: (chunk: string) => void;
   metaHandler: (meta: { resolvedModel?: string; resolvedModelLabel?: string; plan?: AgentPlan }) => void;
@@ -441,7 +445,8 @@ export function useStreamingTurn({
     setPlanForSession,
     setSelectedModel,
     manualModelSelectionRef,
-  }: MetaHandlerParams) => (meta: { resolvedModel?: string; resolvedModelLabel?: string; plan?: AgentPlan }) => {
+    setLastTierMicroCopy,
+  }: MetaHandlerParams) => (meta: { resolvedModel?: string; resolvedModelLabel?: string; plan?: AgentPlan; tierDecision?: { requestedTier: 'local' | 'smart' | 'cloud'; classifiedTier: string; chosenModel: string; reason: string; estimatedCostUsd?: number; estimatedLatencyMs?: number; privacyScope: 'device-only' | 'network' } }) => {
     updateSessionMessages(targetSessionId, (prev) =>
       prev.map((message) => message.id === assistantId ? { ...message, meta } : message),
     );
@@ -457,6 +462,15 @@ export function useStreamingTurn({
     }
     if (meta.plan) {
       setPlanForSession(targetSessionId, meta.plan);
+    }
+    if (meta.tierDecision && setLastTierMicroCopy) {
+      const td = meta.tierDecision;
+      const cost = typeof td.estimatedCostUsd === 'number' ? `~$${td.estimatedCostUsd.toFixed(4)}` : '';
+      const lat = typeof td.estimatedLatencyMs === 'number' ? `${td.estimatedLatencyMs}ms` : '';
+      const tierName = td.requestedTier === 'smart' ? '智能' : td.requestedTier === 'local' ? '端侧' : '云端';
+      const privacy = td.privacyScope === 'device-only' ? '不离开设备' : '上传云端';
+      const parts = [`${tierName}→${td.chosenModel}`, cost, lat, privacy].filter(Boolean);
+      setLastTierMicroCopy(parts.join(' · '));
     }
   }, [updateSessionMessages]);
 
@@ -808,6 +822,7 @@ export function useStreamingTurn({
     targetSessionId,
     authToken,
     cloudModelForTurn,
+    tier,
     effectiveChatMode,
     chunkHandler,
     metaHandler,
@@ -828,6 +843,7 @@ export function useStreamingTurn({
           sessionId: targetSessionId,
           token: authToken,
           model: cloudModelForTurn,
+          tier,
           mode: effectiveChatMode,
           maxTokens: 12288,
           onChunk: chunkHandler,

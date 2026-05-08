@@ -145,6 +145,18 @@ export function UnifiedAgentChat({
   const [continuePrompt, setContinuePrompt] = useState<string | null>(null);
   const [deepThinkTargetModel, setDeepThinkTargetModel] = useState<string | null>(null);
   const [deepThinkSummary, setDeepThinkSummary] = useState<string | null>(null);
+  // Codex-borrow P1 — web tier preference. Defaults to 'smart'.
+  const [tier, setTier] = useState<'local' | 'smart' | 'cloud'>(() => {
+    if (typeof window === 'undefined') return 'smart';
+    const saved = window.localStorage.getItem('agentrix_web_tier');
+    return (saved === 'local' || saved === 'cloud' || saved === 'smart') ? saved : 'smart';
+  });
+  const persistTier = (next: 'local' | 'smart' | 'cloud') => {
+    setTier(next);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('agentrix_web_tier', next);
+    }
+  };
   const [fabricDevices, setFabricDevices] = useState<FabricDevice[]>([]);
   const [requestedPrimaryDeviceId, setRequestedPrimaryDeviceId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -709,6 +721,7 @@ export function UnifiedAgentChat({
           sessionId,
           mode: 'agent',
           platform: 'web',
+          tier,
           context: {
             userId: user?.id,
             sessionId,
@@ -1521,6 +1534,38 @@ export function UnifiedAgentChat({
             >
               <Plus size={20} />
             </button>
+            {/* Codex-borrow P1 — three-tier execution preference selector. */}
+            <div
+              data-testid="web-tier-selector"
+              role="radiogroup"
+              aria-label="Execution tier"
+              className="flex items-center rounded-lg overflow-hidden border border-slate-700"
+            >
+              {([
+                { v: 'local', label: '端侧', tip: '仅本机模型，数据不离开浏览器/本地' },
+                { v: 'smart', label: '智能', tip: '后端按复杂度自动挑选最性价比模型' },
+                { v: 'cloud', label: '云端', tip: '始终使用云端高能力模型' },
+              ] as const).map((opt) => {
+                const active = tier === opt.v;
+                return (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    title={opt.tip}
+                    onClick={() => persistTier(opt.v)}
+                    className={`px-2.5 py-2 text-xs transition-colors ${
+                      active
+                        ? 'bg-indigo-500 text-white'
+                        : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
             <div className="flex items-center gap-2 flex-1">
               <textarea 
               value={input}

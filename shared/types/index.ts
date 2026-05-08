@@ -4,3 +4,5 @@
  */
 export * from './agentrix-presence';
 export * from './pet';
+export * from './tier-routing';
+export * from './computer-use';

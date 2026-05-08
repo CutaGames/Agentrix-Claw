@@ -25,6 +25,11 @@ export interface ClaudeChatRequest {
   mode?: 'ask' | 'agent' | 'plan';
   platform?: 'desktop' | 'mobile' | 'web';
   deviceId?: string;
+  /**
+   * Codex-borrow P1 — execution tier preference.
+   * 'local' = device-only, 'smart' = backend auto-routes, 'cloud' = cloud high-end.
+   */
+  tier?: 'local' | 'smart' | 'cloud';
   context?: {
     userId?: string;
     sessionId?: string;

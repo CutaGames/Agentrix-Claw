@@ -34,6 +34,7 @@ import { DesktopSyncService } from '../desktop-sync/desktop-sync.service';
 import { DesktopCommandStatus, DesktopCommandKind } from '../desktop-sync/dto/desktop-sync.dto';
 import { AgentOrchestrationService } from '../agent-orchestration/agent-orchestration.service';
 import { LlmRouterService } from '../llm-router/llm-router.service';
+import { TierResolverService, TierDecision } from '../llm-router/tier-resolver.service';
 import { CostTrackerService } from '../cost-tracker/cost-tracker.service';
 import { RuntimeSeamService } from '../query-engine/runtime-seam.service';
 import { CodeIntelligenceService } from '../code-intelligence/code-intelligence.service';
@@ -76,6 +77,14 @@ export interface ChatMessageDto {
    * clients that want to guarantee on-device execution should send this.
    */
   requireLocal?: boolean;
+  /**
+   * Codex-borrow P1 — explicit user-facing tier preference.
+   *  - 'local'  on-device only (Gemma Nano 2B etc.)
+   *  - 'smart'  backend LlmRouter picks cheapest adequate model (default)
+   *  - 'cloud'  always use cloud frontier model
+   * When omitted, downstream resolves to 'smart'.
+   */
+  tier?: 'local' | 'smart' | 'cloud';
 }
 
 export interface UnifiedChatRequestDto {
@@ -91,6 +100,8 @@ export interface UnifiedChatRequestDto {
   stream?: boolean;
   anthropicApiKey?: string;
   model?: string;
+  /** Codex-borrow P1 — see ChatMessageDto.tier. */
+  tier?: 'local' | 'smart' | 'cloud';
   options?: {
     model?: string;
     temperature?: number;
@@ -151,6 +162,7 @@ export class OpenClawProxyService {
     private readonly desktopSyncService: DesktopSyncService,
     private readonly agentOrchestrationService: AgentOrchestrationService,
     private readonly llmRouterService: LlmRouterService,
+    private readonly tierResolverService: TierResolverService,
     private readonly costTrackerService: CostTrackerService,
     @Inject(forwardRef(() => RuntimeSeamService))
     private readonly runtimeSeamService: RuntimeSeamService,
@@ -258,6 +270,7 @@ export class OpenClawProxyService {
       platform: body.platform,
       deviceId: body.deviceId,
       agentId: body.agentId,
+      tier: body.tier,
     };
   }
 
@@ -2368,6 +2381,58 @@ export class OpenClawProxyService {
         resolvedModel = twin;
       }
     }
+
+    // Codex-borrow P1 — explicit Tier resolution (`local | smart | cloud`).
+    // The user's tier preference (sent by desktop/web/mobile UI) overrides
+    // the model id picked above when it is `smart` (LlmRouter classifies)
+    // or `local` (force local id). For `cloud` we leave resolvedModel as-is
+    // because the existing chain already handles cloud picks.
+    let tierDecision: TierDecision | undefined;
+    const requestedTier: 'local' | 'smart' | 'cloud' | undefined = dto.tier;
+    if (requestedTier) {
+      try {
+        tierDecision = this.tierResolverService.resolve({
+          tier: requestedTier,
+          promptText: messageText,
+          requestedModel: rawDtoModel || rawPreferredModel || resolvedModel,
+          hints: {
+            hasImageFrame: Array.isArray(dto.message) && dto.message.some((block: any) => (
+              block?.type === 'image' || block?.type === 'image_url'
+            )),
+            requiresCodeGen:
+              dto.platform === 'desktop'
+              || /(code|file|workspace|repo|directory|debug|fix|implement|refactor|patch|terminal|command)/i.test(messageText),
+            isA2AOrchestration: /(multi[- ]?agent|sub-?agent|orchestrat|coordinate|delegate)/i.test(messageText),
+          },
+        });
+
+        if (requestedTier === 'smart' || requestedTier === 'local') {
+          // For smart, override the model picked by the chain.
+          // For local, we keep tierDecision.chosenModel; if the backend cannot
+          // run it (LOCAL_ONLY model id), the existing local-only fallback
+          // logic above will already have re-routed to the cloud twin and
+          // set localOnlyFallbackReason — we honor that and update the
+          // decision's reason for transparency.
+          if (requestedTier === 'local' && localOnlyFallbackReason) {
+            tierDecision = {
+              ...tierDecision,
+              reason: `${tierDecision.reason}; backend_unavailable_using_cloud_twin`,
+              chosenModel: resolvedModel,
+              privacyScope: 'network',
+            };
+          } else if (!isLocalOnlyModel(tierDecision.chosenModel) || requestedTier === 'local') {
+            resolvedModel = tierDecision.chosenModel;
+          }
+        }
+
+        this.logger.log(
+          `[tier] requested=${requestedTier} classified=${tierDecision.classifiedTier} `
+          + `chosen=${tierDecision.chosenModel} reason=${tierDecision.reason}`,
+        );
+      } catch (err: any) {
+        this.logger.warn(`[tier] resolve failed: ${err?.message}; keeping fallback model ${resolvedModel}`);
+      }
+    }
     let resolvedProvider = agentAccount?.preferredProvider || undefined;
     const requestedProvider = this.inferProviderFromModelId(sanitizedDtoModel);
     const modelBoundProvider = this.inferProviderFromModelId(resolvedModel);
@@ -2573,6 +2638,20 @@ export class OpenClawProxyService {
       }
     }
 
+    // Codex-borrow P1 — surface the Tier decision so the client can render
+    // micro-copy ("Smart picked Claude Haiku, ~$0.001 / 1.2s, leaves device").
+    if (tierDecision) {
+      try {
+        streamingCallbacks?.onEvent?.({
+          type: 'meta',
+          tier: tierDecision.requestedTier,
+          tierDecision,
+        });
+      } catch (err: any) {
+        this.logger.warn(`tier_decision meta emit failed: ${err?.message}`);
+      }
+    }
+
     let result: any;
     // Phase 1.6: wrap dispatch with a labelled closure so Phase 1.2 continuation
     // can reuse the same transport (same provider branch) on retry.
@@ -2671,6 +2750,7 @@ export class OpenClawProxyService {
         instanceId: instance.id,
         provider: resolvedProvider ?? null,
         routingReason: finalRoutingReason ?? 'primary',
+        tier: tierDecision?.requestedTier ?? null,
       },
     );
     try {

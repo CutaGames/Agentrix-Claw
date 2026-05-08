@@ -409,6 +409,9 @@ export default function ChatPanel({
     setExecutionModeState(mode);
     writeExecutionMode(mode);
   }, []);
+  // Codex-borrow P1 — micro-copy under tier selector showing the backend's
+  // TierDecision for the most recent turn (e.g. "智能→claude-haiku-4-5 · ~$0.001 · 1500ms · 上传云端").
+  const [lastTierMicroCopy, setLastTierMicroCopy] = useState<string | null>(null);
   const [ballState, setBallState] = useState<BallState>("idle");
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [ttsEnabled, setTtsEnabled] = useState(true);
@@ -2172,6 +2175,7 @@ export default function ChatPanel({
           setPlanForSession,
           setSelectedModel,
           manualModelSelectionRef,
+          setLastTierMicroCopy,
         });
 
         const eventHandler = createStreamEventHandler({
@@ -2318,6 +2322,12 @@ export default function ChatPanel({
           targetSessionId,
           authToken,
           cloudModelForTurn,
+          // Codex-borrow P1 — map desktop ExecutionMode → backend tier.
+          tier: executionMode === "local-only"
+            ? "local"
+            : executionMode === "cloud-only"
+              ? "cloud"
+              : "smart",
           effectiveChatMode,
           chunkHandler,
           metaHandler,
@@ -2953,6 +2963,9 @@ export default function ChatPanel({
         instances={instances}
         selectedModel={selectedModel}
         persistSelectedModel={persistSelectedModel}
+        executionMode={executionMode}
+        setExecutionMode={setExecutionMode}
+        lastTierMicroCopy={lastTierMicroCopy}
         activeHeaderInstance={activeHeaderInstance}
         models={models}
         handleNewChat={handleNewChat}

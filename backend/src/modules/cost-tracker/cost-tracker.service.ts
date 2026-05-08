@@ -23,6 +23,8 @@ export interface PersistCostContext {
   instanceId?: string | null;
   provider?: string | null;
   routingReason?: string | null;
+  /** Codex-borrow P1 — user-facing tier preference (`local | smart | cloud`). */
+  tier?: 'local' | 'smart' | 'cloud' | null;
 }
 
 // ============================================================
@@ -194,6 +196,7 @@ export class CostTrackerService {
             cacheWriteTokens,
             costUsd,
             routingReason: context?.routingReason ?? null,
+            tier: context?.tier ?? null,
           }),
         )
         .catch((err: any) => {

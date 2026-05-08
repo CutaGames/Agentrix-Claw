@@ -627,6 +627,11 @@ export function streamAgentChat(opts: {
   model?: string;
   maxTokens?: number;
   mode?: "ask" | "agent" | "plan";
+  /**
+   * Codex-borrow P1 — explicit user tier preference. Mapped from desktop's
+   * ExecutionMode (`local-only|auto|cloud-only`) by the caller.
+   */
+  tier?: "local" | "smart" | "cloud";
   onChunk: (chunk: string) => void;
   onMeta?: (meta: any) => void;
   onDone: () => void;
@@ -655,6 +660,7 @@ export function streamAgentChat(opts: {
           sessionId: opts.sessionId,
           context,
           model: opts.model,
+          tier: opts.tier,
           options: {
             maxTokens: opts.maxTokens ?? 12288,
             enableParallelLanes: true,
@@ -708,6 +714,8 @@ export function streamChat(opts: {
   model?: string;
   maxTokens?: number;
   mode?: "ask" | "agent" | "plan";
+  /** Codex-borrow P1 — explicit user tier preference. */
+  tier?: "local" | "smart" | "cloud";
   onChunk: (chunk: string) => void;
   onMeta?: (meta: any) => void;
   onDone: () => void;

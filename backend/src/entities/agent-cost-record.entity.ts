@@ -62,6 +62,13 @@ export class AgentCostRecord {
   @Column({ name: 'routing_reason', length: 64, nullable: true })
   routingReason: string | null;
 
+  /**
+   * Codex-borrow P1 — user-facing tier preference at the time of the request.
+   * One of: 'local' | 'smart' | 'cloud'. Null for legacy rows.
+   */
+  @Column({ length: 16, nullable: true })
+  tier: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

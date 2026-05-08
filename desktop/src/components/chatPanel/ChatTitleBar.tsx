@@ -3,6 +3,18 @@ import FloatingBall from "../FloatingBall";
 import { DESKTOP_LOCAL_MODEL_ID, DESKTOP_LOCAL_MODEL_LABEL, isDesktopLocalModelId } from "../../services/localChat";
 import { NotificationBadge } from "../NotificationCenter";
 import type { OpenClawInstance } from "../../services/store";
+import type { ExecutionMode } from "../../services/turnRouter";
+
+/**
+ * Codex-borrow P1 — three-tier executionMode segmented selector.
+ * Maps to backend `tier` field: local-only → 'local', auto → 'smart',
+ * cloud-only → 'cloud'. The UI labels stay in product Chinese.
+ */
+const TIER_OPTIONS: Array<{ mode: ExecutionMode; label: string; tip: string }> = [
+  { mode: "local-only", label: "端侧", tip: "仅本机运行，数据不离开设备" },
+  { mode: "auto",       label: "智能", tip: "后端按复杂度自动选最性价比模型" },
+  { mode: "cloud-only", label: "云端", tip: "始终使用云端高能力模型" },
+];
 
 interface Props {
   ballState: "idle" | "recording" | "thinking" | "speaking";
@@ -17,6 +29,11 @@ interface Props {
   instances: OpenClawInstance[];
   selectedModel: string;
   persistSelectedModel: (modelId: string) => Promise<boolean> | void;
+  /** Codex-borrow P1 — user-facing 3-tier preference. */
+  executionMode: ExecutionMode;
+  setExecutionMode: (mode: ExecutionMode) => void;
+  /** Last TierDecision micro-copy emitted by backend (optional). */
+  lastTierMicroCopy?: string | null;
   activeHeaderInstance?: OpenClawInstance;
   models: Array<{ id: string; label?: string }>;
   handleNewChat: () => void;
@@ -63,6 +80,9 @@ export default function ChatTitleBar({
   instances,
   selectedModel,
   persistSelectedModel,
+  executionMode,
+  setExecutionMode,
+  lastTierMicroCopy,
   activeHeaderInstance,
   models,
   handleNewChat,
@@ -201,6 +221,65 @@ export default function ChatTitleBar({
                 </option>
               ))}
             </select>
+            {/* Codex-borrow P1 — three-tier segmented selector. */}
+            <div
+              data-testid="chat-tier-selector"
+              data-no-drag="true"
+              role="radiogroup"
+              aria-label="Execution tier"
+              style={{
+                display: "inline-flex",
+                marginLeft: 8,
+                border: "1px solid var(--border, #2a3a52)",
+                borderRadius: 6,
+                overflow: "hidden",
+                WebkitAppRegion: "no-drag",
+              }}
+            >
+              {TIER_OPTIONS.map((opt) => {
+                const active = executionMode === opt.mode;
+                return (
+                  <button
+                    key={opt.mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    title={opt.tip}
+                    onClick={() => setExecutionMode(opt.mode)}
+                    data-tier-option={opt.mode}
+                    style={{
+                      background: active ? "var(--accent, #4f8cff)" : "var(--surface-2, rgba(255,255,255,0.04))",
+                      color: active ? "#fff" : "var(--text-muted, #b8c5d6)",
+                      border: "none",
+                      padding: "3px 8px",
+                      fontSize: 11,
+                      cursor: "pointer",
+                      WebkitAppRegion: "no-drag",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            {lastTierMicroCopy && (
+              <span
+                data-testid="chat-tier-microcopy"
+                title={lastTierMicroCopy}
+                style={{
+                  marginLeft: 8,
+                  fontSize: 10,
+                  color: "var(--text-muted, #93a4bd)",
+                  maxWidth: 280,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  WebkitAppRegion: "no-drag",
+                }}
+              >
+                {lastTierMicroCopy}
+              </span>
+            )}
           </>
         )}
       </div>

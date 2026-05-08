@@ -126,6 +126,9 @@ export interface ErrorStreamEvent {
  * Phase 4.3: emitted BEFORE the cloud LLM call when the client requested a
  * local-only model (mobile/desktop on-device) but the backend sanitized it to
  * a cloud fallback. Clients may choose to cancel the stream and run on-device.
+ *
+ * Codex-borrow P1: also used to surface the resolved Tier decision so the UI
+ * can render a transparent micro-copy (e.g. "Smart picked Claude Haiku").
  */
 export interface MetaEvent {
   type: 'meta';
@@ -133,6 +136,18 @@ export interface MetaEvent {
   requestedModel?: string | null;
   routedModel?: string | null;
   reason?: string;
+  /** Codex-borrow P1 — user-facing tier (`local | smart | cloud`). */
+  tier?: 'local' | 'smart' | 'cloud';
+  /** Codex-borrow P1 — full TierDecision object for UI rendering. */
+  tierDecision?: {
+    requestedTier: 'local' | 'smart' | 'cloud';
+    classifiedTier: 'local' | 'light' | 'medium' | 'heavy' | 'ultra';
+    chosenModel: string;
+    reason: string;
+    estimatedCostUsd?: number;
+    estimatedLatencyMs?: number;
+    privacyScope: 'device-only' | 'network';
+  };
 }
 
 // ============================================================

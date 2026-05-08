@@ -30,21 +30,31 @@ export class ClaudeIntegrationController {
   ) {}
 
   /**
-   * If user picked `model: 'auto'` (the default UX recommendation), classify
-   * the prompt and pick the cheapest adequate model. Returns null when no
-   * rewrite happened so callers can keep their original choice.
+   * If user picked `model: 'auto'` (the default UX recommendation) OR sent
+   * an explicit `tier`, classify the prompt and pick the cheapest adequate
+   * model. Returns null when no rewrite happened so callers can keep their
+   * original choice.
+   *
+   * Tier semantics (Codex-borrow P1):
+   *  - 'local' → keep requested local model id; caller falls back to cloud
+   *    twin only if the local model can't run server-side
+   *  - 'smart' → identical to legacy 'auto' (LlmRouter classifies)
+   *  - 'cloud' → keep requestedModel as-is (no auto-route)
    */
   private resolveAutoModel(
     requestedModel: string | undefined,
     prompt: string,
+    tier?: 'local' | 'smart' | 'cloud',
   ): { model: string; tier: string; reason: string; provider: string; name: string } | null {
-    if (!requestedModel || requestedModel.toLowerCase() !== 'auto') return null;
+    const isAuto = !!requestedModel && requestedModel.toLowerCase() === 'auto';
+    const isSmart = tier === 'smart';
+    if (!isAuto && !isSmart) return null;
     try {
       const decision = this.llmRouter.route(prompt || '');
       return {
         model: decision.model.id,
         tier: decision.tier,
-        reason: decision.reason,
+        reason: tier ? `tier=${tier}; ${decision.reason}` : decision.reason,
         provider: decision.model.provider,
         name: decision.model.name,
       };
@@ -232,6 +242,8 @@ export class ClaudeIntegrationController {
         sessionId?: string;
       };
       stream?: boolean;
+      /** Codex-borrow P1 — explicit tier: local | smart | cloud. */
+      tier?: 'local' | 'smart' | 'cloud';
       options?: {
         model?: string;
         temperature?: number;
@@ -241,6 +253,7 @@ export class ClaudeIntegrationController {
     },
   ) {
     const { messages, anthropicApiKey, context = {}, options, sessionId, agentId, mode, platform, deviceId } = body;
+    const tier = body.tier;
     const wantsStream = body.stream === true || String(req.headers?.accept || '').includes('text/event-stream');
     const startMs = Date.now();
 
@@ -268,9 +281,10 @@ export class ClaudeIntegrationController {
     const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
     const lastUserText = this.extractMessageText(lastUserMessage?.content);
 
-    // P2-#9 — Auto routing. When client sets options.model='auto', classify the
-    // prompt and rewrite to the cheapest adequate model BEFORE forwarding.
-    const autoDecision = this.resolveAutoModel(options?.model, lastUserText);
+    // P2-#9 — Auto routing. When client sets options.model='auto' OR an
+    // explicit `tier === 'smart'`, classify the prompt and rewrite to the
+    // cheapest adequate model BEFORE forwarding.
+    const autoDecision = this.resolveAutoModel(options?.model, lastUserText, tier);
     if (autoDecision) {
       body.options = { ...(body.options || {}), model: autoDecision.model };
       if (options) options.model = autoDecision.model;
