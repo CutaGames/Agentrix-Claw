@@ -3,6 +3,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { SuspendProvider } from "./components/SuspendContext";
 import FloatingBall from "./components/FloatingBall";
 import PetEmotionOverlay from "./components/PetEmotionOverlay";
+import PetProactiveBubble from "./components/PetProactiveBubble";
 import ChatPanel from "./components/ChatPanel";
 import LoginPanel from "./components/LoginPanel";
 import PlanTimeline from "./components/PlanTimeline";
@@ -577,6 +578,7 @@ export default function App() {
             onOpenPro={handleOpenPro}
           />
           <PetEmotionOverlay />
+          <PetProactiveBubble />
         </div>
       </div>
     );

@@ -19,6 +19,7 @@
  */
 import { useEffect, useRef, useState, useCallback, type CSSProperties } from "react";
 import PetRenderer from "./PetRenderer";
+import PetProactiveBubble from "./PetProactiveBubble";
 import {
   PathPlayer,
   buildSegment,
@@ -344,6 +345,7 @@ export default function PetCompanionWindow() {
       data-pet-docked={docked ? "1" : "0"}
     >
       <PetRenderer size={docked ? 32 : 160} />
+      {!docked && <PetProactiveBubble />}
       {menu.visible && (
         <div
           role="menu"

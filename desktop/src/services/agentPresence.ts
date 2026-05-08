@@ -196,6 +196,11 @@ function connectPresence(token: string) {
     window.dispatchEvent(new CustomEvent("agentrix:pet-skin-changed", { detail: data }));
   });
 
+  // Pet Phase 6 S2: 主动陪伴气泡（cron 评估 → WS 推送）
+  _presenceSocket.on("presence:pet.proactive", (data) => {
+    window.dispatchEvent(new CustomEvent("agentrix:pet-proactive", { detail: data }));
+  });
+
   // Forward all events to window for other components
   _presenceSocket.onAny((event, data) => {
     window.dispatchEvent(new CustomEvent("agentrix:presence-event", { detail: { event, data } }));
