@@ -6,6 +6,7 @@ import { desktopSyncEventBus, DESKTOP_SYNC_EVENT } from '../desktop-sync/desktop
 import { PetSoulTemplateService } from '../pet-soul-template/pet-soul-template.service';
 import { PetSkinService } from '../pet-skin/pet-skin.service';
 import { UserPlanResolverService } from '../pet-gen-quota/user-plan-resolver.service';
+import { PetAchievementService } from '../pet-achievement/pet-achievement.service';
 import {
   DEFAULT_SOUL_TEMPLATE_ID,
   getSoulUnlockLimit,
@@ -67,6 +68,7 @@ export class LivingPetService {
     private readonly soulService: PetSoulTemplateService,
     private readonly skinService: PetSkinService,
     private readonly planResolver: UserPlanResolverService,
+    private readonly achievementService: PetAchievementService,
   ) {}
 
   /** 获取或自动创建（1 user = 1 主宠）。Phase 1: 懒补默认 soul = 'claw'。 */
@@ -139,6 +141,7 @@ export class LivingPetService {
   /** 增加亲密度 xp（每 lv 指数增长） */
   async addIntimacyXp(userId: string, xp: number): Promise<LivingPet> {
     const pet = await this.getOrCreate(userId);
+    const prevLevel = pet.intimacyLevel;
     pet.intimacyXp = Math.max(0, pet.intimacyXp + xp);
     // lv 公式：lv n 需要 100 * 2^n xp
     let lv = 0;
@@ -153,6 +156,14 @@ export class LivingPetService {
     pet.lastInteractionAt = String(Date.now());
     const saved = await this.petRepo.save(pet);
     this.broadcast(saved);
+    // S4: 亲密度变化 → 试解锁成就
+    if (lv > prevLevel) {
+      try {
+        await this.achievementService.tryUnlock(userId, 'intimacy_level', { level: lv });
+      } catch (e) {
+        this.logger.warn(`achievement unlock failed: ${(e as Error).message}`);
+      }
+    }
     return saved;
   }
 

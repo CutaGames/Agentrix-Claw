@@ -44,6 +44,10 @@ describe('LivingPetService (Phase 1: switchSoul / activateSkin)', () => {
         { provide: PetSoulTemplateService, useValue: soulService },
         { provide: PetSkinService, useValue: skinService },
         { provide: UserPlanResolverService, useValue: planResolver },
+        {
+          provide: require('../pet-achievement/pet-achievement.service').PetAchievementService,
+          useValue: { tryUnlock: jest.fn().mockResolvedValue({ newlyUnlocked: [] }) },
+        },
       ],
     }).compile();
     service = mod.get<LivingPetService>(LivingPetService);

@@ -138,6 +138,8 @@ import { OperationsControlPlaneModule } from './modules/operations-control-plane
 // v3.0 Living Pet (顿领 §3.4): 1 user = 1 主宠状态机 + 亲密度 + 引擎切换契约
 import { LivingPetModule } from './modules/living-pet/living-pet.module';
 import { PetCompanionEngineModule } from './modules/pet-companion-engine/pet-companion-engine.module';
+import { PetAchievementModule } from './modules/pet-achievement/pet-achievement.module';
+import { PetMemoryAlbumModule } from './modules/pet-memory-album/pet-memory-album.module';
 // Phase 1（灵魂 × 皮肤解耦）：6 族群 28 只签名宠物 + 用户皮肤资产
 import { PetSoulTemplateModule } from './modules/pet-soul-template/pet-soul-template.module';
 import { PetSkinModule } from './modules/pet-skin/pet-skin.module';
@@ -338,6 +340,8 @@ import { PetGenerationModule } from './modules/pet-generation/pet-generation.mod
     LivingPetModule,
     // Phase 6 S2 主动陪伴引擎
     PetCompanionEngineModule,
+    PetAchievementModule, // Phase 6 S4 成就
+    PetMemoryAlbumModule, // Phase 6 S4 时光相册
     // Phase 1：灵魂模板 + 皮肤资产
     PetSoulTemplateModule,
     PetSkinModule,

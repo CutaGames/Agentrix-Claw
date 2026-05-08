@@ -201,6 +201,11 @@ function connectPresence(token: string) {
     window.dispatchEvent(new CustomEvent("agentrix:pet-proactive", { detail: data }));
   });
 
+  // Pet Phase 6 S3: 跨端能量同步
+  _presenceSocket.on("presence:pet.energy", (data) => {
+    window.dispatchEvent(new CustomEvent("agentrix:pet-energy", { detail: data }));
+  });
+
   // Forward all events to window for other components
   _presenceSocket.onAny((event, data) => {
     window.dispatchEvent(new CustomEvent("agentrix:presence-event", { detail: { event, data } }));

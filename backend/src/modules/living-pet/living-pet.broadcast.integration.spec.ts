@@ -54,6 +54,17 @@ describe('LivingPetService — broadcast integration (BE-I1.1 / I1.2 / I1.3)', (
         { provide: getRepositoryToken(LivingPet), useValue: petRepo },
         { provide: PetSoulTemplateService, useValue: soulService },
         { provide: PetSkinService, useValue: skinService },
+        {
+          provide: require('../pet-gen-quota/user-plan-resolver.service').UserPlanResolverService,
+          useValue: {
+            resolve: jest.fn().mockResolvedValue('pro_plus'),
+            getPlan: jest.fn().mockResolvedValue('pro_plus'),
+          },
+        },
+        {
+          provide: require('../pet-achievement/pet-achievement.service').PetAchievementService,
+          useValue: { tryUnlock: jest.fn().mockResolvedValue({ newlyUnlocked: [] }) },
+        },
       ],
     }).compile();
     service = mod.get(LivingPetService);

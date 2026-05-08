@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PetEnergyState } from '../../entities/pet-energy-state.entity';
+import { emitDesktopSyncEvent } from '../desktop-sync/desktop-sync.events';
 
 export const ENERGY_MAX = 100;
 export const ENERGY_REGEN_PER_HOUR = 10;
@@ -91,7 +92,9 @@ export class PetEnergyService {
 
     state.energy = Math.max(0, state.energy - cost);
     state.dailySpendCents = state.dailySpendCents + estCost;
-    return this.repo.save(state);
+    const saved = await this.repo.save(state);
+    this.broadcast(saved);
+    return saved;
   }
 
   async pause(userId: string, petSkinId: string, reason: string): Promise<PetEnergyState> {
@@ -99,14 +102,35 @@ export class PetEnergyService {
     state.paused = true;
     state.pausedReason = reason;
     this.logger.warn(`Pet paused user=${userId} pet=${petSkinId} reason=${reason}`);
-    return this.repo.save(state);
+    const saved = await this.repo.save(state);
+    this.broadcast(saved);
+    return saved;
   }
 
   async resume(userId: string, petSkinId: string): Promise<PetEnergyState> {
     const state = await this.getState(userId, petSkinId);
     state.paused = false;
     state.pausedReason = null;
-    return this.repo.save(state);
+    const saved = await this.repo.save(state);
+    this.broadcast(saved);
+    return saved;
+  }
+
+  /** S3 cross-device sync: broadcast energy changes to all user devices. */
+  private broadcast(state: PetEnergyState) {
+    try {
+      emitDesktopSyncEvent(state.userId, 'presence:pet.energy', {
+        pet_skin_id: state.petSkinId,
+        energy: state.energy,
+        energy_max: ENERGY_MAX,
+        daily_spend_cents: state.dailySpendCents,
+        paused: state.paused,
+        paused_reason: state.pausedReason ?? null,
+        updated_at: Date.now(),
+      });
+    } catch (e) {
+      this.logger.warn(`broadcast pet.energy failed: ${(e as Error).message}`);
+    }
   }
 
   /** Reset rolling counters — called daily by scheduler at UTC midnight. */

@@ -50,6 +50,25 @@ export class PetSkinController {
     return { items: items.map((s) => this.service.toDto(s)), total };
   }
 
+  /** Pet Phase 6 S4 — 商店试穿预览（不扣费、5min token） */
+  @Get('preview/:skinId')
+  async preview(@Req() req: any, @Param('skinId') skinId: string) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    const skin = await this.service.findById(skinId);
+    if (!skin) return { ok: false, error: 'skin_not_found' };
+    if (skin.visibility === 'private' && skin.ownerUserId !== userId) {
+      return { ok: false, error: 'forbidden' };
+    }
+    const issuedAt = Date.now();
+    const expiresAt = issuedAt + 5 * 60 * 1000;
+    return {
+      ok: true,
+      skin: this.service.toDto(skin),
+      preview_token: `pv_${skinId}_${userId}_${issuedAt}`,
+      expires_at: expiresAt,
+    };
+  }
+
   @Post('marketplace/:skinId/install')
   async install(
     @Req() req: any,

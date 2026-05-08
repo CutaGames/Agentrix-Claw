@@ -8,18 +8,13 @@ import { PetSoulTemplateModule } from '../pet-soul-template/pet-soul-template.mo
 import { PetSkinModule } from '../pet-skin/pet-skin.module';
 import { PetGenQuotaModule } from '../pet-gen-quota/pet-gen-quota.module';
 import { MarketplacePetModule } from '../marketplace-pet/marketplace-pet.module';
+import { PetAchievementModule } from '../pet-achievement/pet-achievement.module';
 
 /**
- * LivingPetModule — 顿领 §3.4 主宠状态机 + Phase 1 灵魂×皮肤分层
- *
- * - 1 user = 1 LivingPet（unique）
- * - 6 基础表情 + 4 P3 扩展
- * - 自动衰减 + 亲密度 + 引擎切换契约（§3.8）
- * - Phase 1：灵魂切换（switchSoul）+ 皮肤激活（activateSkin）
- * - 通过 desktopSyncEventBus 经 PresenceGateway 广播到 user 房间
+ * LivingPetModule
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([LivingPet]), PetSoulTemplateModule, PetSkinModule, PetGenQuotaModule, MarketplacePetModule],
+  imports: [TypeOrmModule.forFeature([LivingPet]), PetSoulTemplateModule, PetSkinModule, PetGenQuotaModule, MarketplacePetModule, PetAchievementModule],
   controllers: [LivingPetController, PetPublicController],
   providers: [LivingPetService],
   exports: [LivingPetService],
