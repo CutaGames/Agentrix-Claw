@@ -5,14 +5,14 @@ import { AI_TOOLS, TOOL_CATEGORIES, type AiTool } from '../../lib/ai-tools-catal
 
 /**
  * P1-#6 SEO tool matrix index page.
- * Renders /tools â€?30+ tool cards organized by category, each linking to a
+ * Renders /tools ï¿½?30+ tool cards organized by category, each linking to a
  * dedicated /tools/<slug> landing page. Server-side static (no SSR data).
  */
 export default function ToolsIndexPage() {
   const seo = buildSeo({
     title: 'AI Tools Directory Â· 30+ Skills for Every Workflow',
     description:
-      'Explore 30+ AI tools from Agentrix â€?resume builder, pitch deck maker, phone calls, code review, browser automation, and more. Try free, no credit card.',
+      'Explore 30+ AI tools from Agentrix ï¿½?resume builder, pitch deck maker, phone calls, code review, browser automation, and more. Try free, no credit card.',
     path: '/tools',
   });
 
@@ -28,7 +28,7 @@ export default function ToolsIndexPage() {
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-agentrix-fog">
             {AI_TOOLS.length}+ AI skills, all available inside any Agentrix agent. Pick a tool below
-            to learn more â€?or just open chat and ask.
+            to learn more ï¿½?or just open chat and ask.
           </p>
           <div className="mt-6 flex justify-center gap-3">
             <Link

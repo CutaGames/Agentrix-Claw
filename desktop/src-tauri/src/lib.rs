@@ -878,6 +878,25 @@ async fn computer_use_browser_close_tab(target_id: String) -> Result<(), String>
     computer_use::cdp::close_tab(&target_id).await.map_err(|e| format!("{e}"))
 }
 
+#[tauri::command]
+async fn computer_use_browser_eval(
+    target_id: Option<String>,
+    expression: String,
+) -> Result<computer_use::cdp_eval::EvalResult, String> {
+    computer_use::redlines::enforce_no_priv_escalation(&expression).map_err(|e| format!("{e}"))?;
+    computer_use::cdp::ensure_browser_running().await.map_err(|e| format!("{e}"))?;
+    computer_use::cdp_eval::evaluate(target_id, &expression).await.map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+async fn computer_use_browser_click_selector(
+    target_id: Option<String>,
+    selector: String,
+) -> Result<(), String> {
+    computer_use::cdp::ensure_browser_running().await.map_err(|e| format!("{e}"))?;
+    computer_use::cdp_eval::click_selector(target_id, &selector).await.map_err(|e| format!("{e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     setup_panic_hook();
@@ -992,6 +1011,8 @@ pub fn run() {
             computer_use_browser_navigate,
             computer_use_browser_list_tabs,
             computer_use_browser_close_tab,
+            computer_use_browser_eval,
+            computer_use_browser_click_selector,
         ])
         .setup(|app| {
             // Grant WebView2 permissions (microphone, camera, etc.) on the main window

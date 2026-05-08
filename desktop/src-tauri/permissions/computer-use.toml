@@ -21,4 +21,6 @@ commands.allow = [
   "computer_use_browser_navigate",
   "computer_use_browser_list_tabs",
   "computer_use_browser_close_tab",
+  "computer_use_browser_eval",
+  "computer_use_browser_click_selector",
 ]

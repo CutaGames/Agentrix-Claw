@@ -21,6 +21,7 @@ use std::fmt;
 
 pub mod redlines;
 pub mod cdp;
+pub mod cdp_eval;
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", content = "message")]

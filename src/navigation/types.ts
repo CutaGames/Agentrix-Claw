@@ -169,6 +169,7 @@ export type TeamStackParamList = {
 export type MainTabParamList = {
   Today: undefined;
   Agent: undefined;   // labeled "Agents"
+  Pet: undefined;     // V4: 萃宠中心 (PRD mobile-prd-v4 §2.1)
   Team: undefined;
   Wallet: undefined;
   Me: undefined;

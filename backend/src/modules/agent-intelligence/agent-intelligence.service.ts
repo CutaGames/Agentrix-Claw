@@ -391,7 +391,7 @@ Execute this step now. Use the appropriate tool if specified. Report the result 
   ): Promise<void> {
     const existing = await this.memoryRepo.findOne({
       where: scope === MemoryScope.USER
-        ? { userId, agentId: agentId || undefined, key, scope }
+        ? { userId, key, scope }
         : { sessionId, key, scope },
     });
 
@@ -403,7 +403,7 @@ Execute this step now. Use the appropriate tool if specified. Report the result 
       const mem = this.memoryRepo.create({
         sessionId: scope === MemoryScope.USER ? undefined : sessionId,
         userId,
-        agentId,
+        agentId: scope === MemoryScope.USER ? undefined : agentId,
         key,
         value,
         type,

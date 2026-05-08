@@ -1,0 +1,16 @@
+﻿[
+    {
+        "id":  "device-online",
+        "title":  "Android device online",
+        "status":  "passed",
+        "notes":  "MDX0220309000133       device product:ELS-AN00 model:ELS_AN00 device:HWELS transport_id:5",
+        "snapshot":  ""
+    },
+    {
+        "id":  "fatal",
+        "title":  "Fatal test runner error",
+        "status":  "failed",
+        "notes":  "/sdcard/agentrix-01-wait-chat-or-auth.xml: 1 file pulled, 0 skipped. 1.7 MB/s (4291 bytes in 0.002s)",
+        "snapshot":  ""
+    }
+]

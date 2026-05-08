@@ -173,6 +173,7 @@
 | R4-8 | SEO：所有 `/console` `/admin` `noindex`；公开页加 OG + sitemap | 全量 |
 | R4-9 | bundle 分析 + `next/dynamic` 切割 admin/wallet 路由 + 评估 Next 13.5.6 → 15 升级路径 | next.config.js |
 | R4-10 | 占位页清理：`pages/admin/placeholder.tsx` `tickets.tsx coming soon` `risk.tsx coming soon` 真实化或删除 | 多个 |
+| **R4-11** | **Pet Asset Pipeline 决策会**：锁定路线 B（Rive 短期 + VRM 中期）替代 Live2D 商用 license；输出 V4 落地排期与 `PetRenderer` 接口草案 | 详见 [DESKTOP_LIVE2D_BLOCKERS_20260505.zh-CN.md §替代路线评估](DESKTOP_LIVE2D_BLOCKERS_20260505.zh-CN.md) |
 
 ### Gate (R4 整体)
 - [ ] 用户登录后 ≤ 2 跳能到达旧版**所有**核心商业页

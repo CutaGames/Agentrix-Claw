@@ -1,11 +1,11 @@
 # Agentrix Desktop — Automated E2E Report
 
-- **Generated:** 2026-05-08 07:41:51 UTC
+- **Generated:** 2026-05-08 09:13:49 UTC
 - **Build:** `agentrix-desktop.exe` v0.1.1
-- **Total:** 10 scenarios
-- **Passed:** 10
+- **Total:** 14 scenarios
+- **Passed:** 14
 - **Failed:** 0
-- **Duration:** 1056 ms total
+- **Duration:** 1123 ms total
 
 ## Baseline Screenshot
 
@@ -15,16 +15,20 @@
 
 | Domain | Scenario | Result | Duration | Detail |
 |---|---|---|---|---|
-| lifecycle | `app.launch` | ✅ PASS | 51 ms | found running instance |
-| lifecycle | `window.present` | ✅ PASS | 48 ms | found Agentrix Desktop@"Agentrix" |
-| system | `screen.baseline` | ✅ PASS | 831 ms | 1280x720 png (600169 bytes) → screenshots/baseline.png |
-| computer-use | `mouse.move-roundtrip` | ✅ PASS | 84 ms | before=(990, 578) target=(1015, 578) after=(1015, 578) dx=0px |
+| lifecycle | `app.launch` | ✅ PASS | 16 ms | found running instance |
+| lifecycle | `window.present` | ✅ PASS | 13 ms | found Visual Studio Code@"PRD_PET_PHASE6_PLAN.zh-CN.md - Agentrix-website - Visual Studio Code" |
+| system | `screen.baseline` | ✅ PASS | 643 ms | 1280x720 png (529998 bytes) → screenshots/baseline.png |
+| computer-use | `mouse.move-roundtrip` | ✅ PASS | 104 ms | before=(898, 388) target=(923, 388) after=(923, 388) dx=0px |
 | computer-use | `keyboard.text-input` | ✅ PASS | 0 ms | Enigo::text() backend reachable (no-op send) |
 | guardrails | `redline.priv-escalation-blocked` | ✅ PASS | 0 ms | blocked: 'please run sudo rm -rf /tmp/foo' |
 | guardrails | `redline.normal-text-allowed` | ✅ PASS | 0 ms | allowed: 'Hello, please summarize this doc.' |
 | guardrails | `redline.terminal-app-blocked` | ✅ PASS | 0 ms | blocked terminal app: cmd.exe |
 | system | `monitors.enumerate` | ✅ PASS | 0 ms | 1 monitor(s): 1920x1080 |
-| system | `windows.enumerate` | ✅ PASS | 42 ms | 10 top-level windows |
+| system | `windows.enumerate` | ✅ PASS | 10 ms | 7 top-level windows |
+| pet-companion | `pet.bezier-clamp` | ✅ PASS | 0 ms | clamp ok (1728,832) |
+| pet-companion | `pet.window.present` | ✅ PASS | 7 ms | pet window not opened (opt-in via tray); 7 windows total |
+| pet-companion | `pet.commands.registered` | ✅ PASS | 271 ms | 3 pet IPC commands embedded |
+| pet-companion | `pet.tray-menu.embedded` | ✅ PASS | 59 ms | tray entry embedded |
 
 ## Coverage matrix
 

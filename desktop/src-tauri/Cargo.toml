@@ -43,6 +43,8 @@ zip = "2"
 enigo = { version = "0.3", features = ["serde"] }
 xcap = "0.0.14"
 base64 = "0.22"
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38"

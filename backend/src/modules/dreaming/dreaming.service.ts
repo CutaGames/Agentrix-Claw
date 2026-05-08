@@ -66,6 +66,7 @@ export class DreamingService {
 
   /** Start a new dream cycle */
   async startDream(userId: string, dto: StartDreamDto): Promise<DreamingSession> {
+    const defaultScopes = dto.agentId ? [MemoryScope.AGENT] : [MemoryScope.USER];
     const session = this.dreamRepo.create({
       userId,
       agentId: dto.agentId,
@@ -74,7 +75,7 @@ export class DreamingService {
       startedAt: new Date(),
       metadata: {
         triggerType: dto.triggerType ?? 'manual',
-        memoryScopes: dto.memoryScopes ?? [MemoryScope.AGENT],
+        memoryScopes: dto.memoryScopes ?? defaultScopes,
       },
     });
 
@@ -91,7 +92,8 @@ export class DreamingService {
   /** Core dream processing logic */
   private async processDream(session: DreamingSession): Promise<void> {
     const startTime = Date.now();
-    const scopes = (session.metadata?.memoryScopes ?? ['agent']) as MemoryScope[];
+    const scopes = (session.metadata?.memoryScopes ?? [session.agentId ? MemoryScope.AGENT : MemoryScope.USER]) as MemoryScope[];
+    const insightScope = session.agentId ? MemoryScope.AGENT : MemoryScope.USER;
 
     try {
       // Recall recent memories based on scopes
@@ -129,7 +131,7 @@ export class DreamingService {
             {
               key: `dream_insight_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
               value: { insight: insight.content, type: insight.type, sources: insight.sourceMemoryIds },
-              scope: MemoryScope.AGENT,
+              scope: insightScope,
               type: MemoryType.ENTITY,
               importance: insight.confidence,
               tags: ['dream', 'insight', insight.type],

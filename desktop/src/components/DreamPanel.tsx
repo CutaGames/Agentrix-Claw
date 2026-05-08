@@ -42,6 +42,7 @@ export default function DreamPanel({ open, onClose }: Props) {
   const [starting, setStarting] = useState(false);
   const [selectedPhase, setSelectedPhase] = useState<"light" | "deep" | "rem">("light");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string>("");
 
   const token = localStorage.getItem("agentrix_token");
 
@@ -71,17 +72,40 @@ export default function DreamPanel({ open, onClose }: Props) {
     if (open) fetchSessions();
   }, [open, fetchSessions]);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    if (!sessions.some((session) => session.status === "running" || session.status === "pending")) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void fetchSessions();
+    }, 2000);
+
+    return () => window.clearInterval(timer);
+  }, [fetchSessions, open, sessions]);
+
   const startDream = async () => {
     if (!token) return;
     setStarting(true);
+    setStatusMessage("");
     try {
-      await apiFetch(`${API_BASE}/dreaming/start`, {
+      const response = await apiFetch(`${API_BASE}/dreaming/start`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ phase: selectedPhase, triggerType: "manual" }),
       });
-      await fetchSessions();
-    } catch {}
+      if (response.ok) {
+        setStatusMessage(`${PHASE_META[selectedPhase].label} dream started. Refreshing insights…`);
+        await fetchSessions();
+      } else {
+        setStatusMessage("Failed to start dream session.");
+      }
+    } catch {
+      setStatusMessage("Failed to start dream session.");
+    }
     setStarting(false);
   };
 
@@ -121,6 +145,9 @@ export default function DreamPanel({ open, onClose }: Props) {
           >
             {starting ? "Starting..." : `Start ${PHASE_META[selectedPhase].label} Dream`}
           </button>
+          {statusMessage ? (
+            <div style={statusCopy}>{statusMessage}</div>
+          ) : null}
         </div>
 
         {/* Sessions */}
@@ -206,6 +233,12 @@ const startBtn: CSSProperties = {
 };
 const content: CSSProperties = {
   flex: 1, overflowY: "auto", padding: 16,
+};
+const statusCopy: CSSProperties = {
+  marginTop: 8,
+  fontSize: 11,
+  color: "var(--text-dim, #8ba3be)",
+  lineHeight: 1.5,
 };
 const sessionCard: CSSProperties = {
   background: "var(--bg-card, #1a2235)", borderRadius: 10,

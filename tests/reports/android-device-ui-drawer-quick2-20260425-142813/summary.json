@@ -1,0 +1,961 @@
+﻿[
+    {
+        "id":  "device-online",
+        "title":  "Android device online",
+        "status":  "passed",
+        "notes":  "MDX0220309000133       device product:ELS-AN00 model:ELS_AN00 device:HWELS transport_id:6",
+        "snapshot":  ""
+    },
+    {
+        "id":  "foreground-app",
+        "title":  "Agentrix foreground",
+        "status":  "passed",
+        "notes":  "app.agentrix.claw",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-or-auth",
+        "title":  "Wait chat-or-auth",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "01-wait-chat-or-auth"
+    },
+    {
+        "id":  "crash-launch",
+        "title":  "Crash scan after launch",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-chat tab",
+        "title":  "Tap chat tab",
+        "status":  "passed",
+        "notes":  "对话 [0,2445][300,2486]",
+        "snapshot":  "05-before-chat-tab"
+    },
+    {
+        "id":  "crash-chat tab",
+        "title":  "Crash scan after chat tab",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-discover tab",
+        "title":  "Tap discover tab",
+        "status":  "passed",
+        "notes":  "发现 [300,2445][600,2486]",
+        "snapshot":  "07-before-discover-tab"
+    },
+    {
+        "id":  "crash-discover tab",
+        "title":  "Crash scan after discover tab",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-team tab",
+        "title":  "Tap team tab",
+        "status":  "passed",
+        "notes":  "团队 [600,2445][900,2486]",
+        "snapshot":  "09-before-team-tab"
+    },
+    {
+        "id":  "crash-team tab",
+        "title":  "Crash scan after team tab",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-me tab",
+        "title":  "Tap me tab",
+        "status":  "passed",
+        "notes":  "我的 [900,2445][1200,2486]",
+        "snapshot":  "11-before-me-tab"
+    },
+    {
+        "id":  "crash-me tab",
+        "title":  "Crash scan after me tab",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-chat tab return",
+        "title":  "Tap chat tab return",
+        "status":  "passed",
+        "notes":  "对话 [0,2445][300,2486]",
+        "snapshot":  "13-before-chat-tab-return"
+    },
+    {
+        "id":  "crash-chat tab return",
+        "title":  "Crash scan after chat tab return",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "chat-turns",
+        "title":  "Chat turn coverage",
+        "status":  "warning",
+        "notes":  "skipped by -SkipChatTurns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-chat tab for quick model",
+        "title":  "Tap chat tab for quick model",
+        "status":  "passed",
+        "notes":  "对话 [0,2445][300,2486]",
+        "snapshot":  "15-before-chat-tab-for-quick-model"
+    },
+    {
+        "id":  "keyboard-foreground-recover",
+        "title":  "Keyboard foreground recovery",
+        "status":  "warning",
+        "notes":  "returned from com.huawei.android.launcher",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-quick model switch",
+        "title":  "Tap quick model switch",
+        "status":  "passed",
+        "notes":  "quick-model-switch [0,466][1200,552]",
+        "snapshot":  "16-before-quick-model-switch"
+    },
+    {
+        "id":  "tap-chat settings",
+        "title":  "Tap chat settings",
+        "status":  "passed",
+        "notes":  "agent-chat-settings-button [1041,187][1160,306]",
+        "snapshot":  "18-before-chat-settings"
+    },
+    {
+        "id":  "wait-chat settings sheet",
+        "title":  "Wait chat settings sheet",
+        "status":  "passed",
+        "notes":  "chat-settings-sheet",
+        "snapshot":  "19-wait-chat-settings-sheet"
+    },
+    {
+        "id":  "wait-duplex toggle present",
+        "title":  "Wait duplex toggle present",
+        "status":  "passed",
+        "notes":  "chat-duplex-toggle",
+        "snapshot":  "20-wait-duplex-toggle-present"
+    },
+    {
+        "id":  "keyboard-foreground-recover",
+        "title":  "Keyboard foreground recovery",
+        "status":  "warning",
+        "notes":  "returned from com.huawei.android.launcher",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-voice mode toggle",
+        "title":  "Tap voice mode toggle",
+        "status":  "passed",
+        "notes":  "chat-voice-mode-toggle [1028,2256][1160,2388]",
+        "snapshot":  "22-before-voice-mode-toggle"
+    },
+    {
+        "id":  "tap-realtime voice button",
+        "title":  "Tap realtime voice button",
+        "status":  "passed",
+        "notes":  "chat-voice-action-button [40,2243][822,2388]",
+        "snapshot":  "27-before-realtime-voice-button"
+    },
+    {
+        "id":  "wait-text-mode-after-voice-controls-return",
+        "title":  "Wait text-mode-after-voice-controls-return",
+        "status":  "passed",
+        "notes":  "chat-text-input",
+        "snapshot":  "33-wait-text-mode-after-voice-controls-return"
+    },
+    {
+        "id":  "text-mode-after-voice-controls-returned",
+        "title":  "Text chat mode after-voice-controls returned",
+        "status":  "passed",
+        "notes":  "voice mode closed",
+        "snapshot":  ""
+    },
+    {
+        "id":  "crash-chat-controls",
+        "title":  "Crash scan after chat-controls",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-chat tab for drawer",
+        "title":  "Tap chat tab for drawer",
+        "status":  "passed",
+        "notes":  "对话 [0,2445][300,2486]",
+        "snapshot":  "34-before-chat-tab-for-drawer"
+    },
+    {
+        "id":  "text-mode-before-drawer",
+        "title":  "Text chat mode before-drawer",
+        "status":  "passed",
+        "notes":  "chat-text-input",
+        "snapshot":  "35-text-mode-before-drawer"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-memory",
+        "title":  "Wait chat-ready-before-drawer-memory",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "36-wait-chat-ready-before-drawer-memory"
+    },
+    {
+        "id":  "keyboard-foreground-recover",
+        "title":  "Keyboard foreground recovery",
+        "status":  "warning",
+        "notes":  "returned from com.huawei.android.launcher",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-memory",
+        "title":  "Wait chat-ready-memory",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "37-wait-chat-ready-memory"
+    },
+    {
+        "id":  "tap-drawer-open-memory",
+        "title":  "Tap drawer-open-memory",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "38-before-drawer-open-memory"
+    },
+    {
+        "id":  "wait-drawer-memory",
+        "title":  "Wait drawer-memory",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "39-wait-drawer-memory"
+    },
+    {
+        "id":  "tap-drawer-item-memory",
+        "title":  "Tap drawer-item-memory",
+        "status":  "passed",
+        "notes":  "记忆中心 [192,905][831,972]",
+        "snapshot":  "40-before-drawer-item-memory"
+    },
+    {
+        "id":  "crash-drawer-memory",
+        "title":  "Crash scan after drawer-memory",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-memory-0",
+        "title":  "Wait chat-ready-after-drawer-memory-0",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-memory-0-retry",
+        "title":  "Wait chat-ready-after-drawer-memory-0-retry",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-memory-1",
+        "title":  "Wait chat-ready-after-drawer-memory-1",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "57-wait-chat-ready-after-drawer-memory-1"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-workflows",
+        "title":  "Wait chat-ready-before-drawer-workflows",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "58-wait-chat-ready-before-drawer-workflows"
+    },
+    {
+        "id":  "keyboard-foreground-recover",
+        "title":  "Keyboard foreground recovery",
+        "status":  "warning",
+        "notes":  "returned from com.huawei.android.launcher",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-workflows",
+        "title":  "Wait chat-ready-workflows",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "59-wait-chat-ready-workflows"
+    },
+    {
+        "id":  "tap-drawer-open-workflows",
+        "title":  "Tap drawer-open-workflows",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "60-before-drawer-open-workflows"
+    },
+    {
+        "id":  "wait-drawer-workflows",
+        "title":  "Wait drawer-workflows",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "61-wait-drawer-workflows"
+    },
+    {
+        "id":  "tap-drawer-item-workflows",
+        "title":  "Tap drawer-item-workflows",
+        "status":  "passed",
+        "notes":  "工作流 [192,1073][831,1140]",
+        "snapshot":  "62-before-drawer-item-workflows"
+    },
+    {
+        "id":  "crash-drawer-workflows",
+        "title":  "Crash scan after drawer-workflows",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-workflows-0",
+        "title":  "Wait chat-ready-after-drawer-workflows-0",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-workflows-0-retry",
+        "title":  "Wait chat-ready-after-drawer-workflows-0-retry",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-workflows-1",
+        "title":  "Wait chat-ready-after-drawer-workflows-1",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "80-wait-chat-ready-after-drawer-workflows-1"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-skills",
+        "title":  "Wait chat-ready-before-drawer-skills",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "81-wait-chat-ready-before-drawer-skills"
+    },
+    {
+        "id":  "keyboard-foreground-recover",
+        "title":  "Keyboard foreground recovery",
+        "status":  "warning",
+        "notes":  "returned from com.huawei.android.launcher",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-skills",
+        "title":  "Wait chat-ready-skills",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "82-wait-chat-ready-skills"
+    },
+    {
+        "id":  "tap-drawer-open-skills",
+        "title":  "Tap drawer-open-skills",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "83-before-drawer-open-skills"
+    },
+    {
+        "id":  "wait-drawer-skills",
+        "title":  "Wait drawer-skills",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "84-wait-drawer-skills"
+    },
+    {
+        "id":  "tap-drawer-item-skills",
+        "title":  "Tap drawer-item-skills",
+        "status":  "passed",
+        "notes":  "技能管理 [192,1241][831,1308]",
+        "snapshot":  "85-before-drawer-item-skills"
+    },
+    {
+        "id":  "crash-drawer-skills",
+        "title":  "Crash scan after drawer-skills",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-skills-0",
+        "title":  "Wait chat-ready-after-drawer-skills-0",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-skills-0-retry",
+        "title":  "Wait chat-ready-after-drawer-skills-0-retry",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-skills-1",
+        "title":  "Wait chat-ready-after-drawer-skills-1",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "102-wait-chat-ready-after-drawer-skills-1"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-logs",
+        "title":  "Wait chat-ready-before-drawer-logs",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "103-wait-chat-ready-before-drawer-logs"
+    },
+    {
+        "id":  "keyboard-foreground-recover",
+        "title":  "Keyboard foreground recovery",
+        "status":  "warning",
+        "notes":  "returned from com.huawei.android.launcher",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-logs",
+        "title":  "Wait chat-ready-logs",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "104-wait-chat-ready-logs"
+    },
+    {
+        "id":  "tap-drawer-open-logs",
+        "title":  "Tap drawer-open-logs",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "105-before-drawer-open-logs"
+    },
+    {
+        "id":  "wait-drawer-logs",
+        "title":  "Wait drawer-logs",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "106-wait-drawer-logs"
+    },
+    {
+        "id":  "tap-drawer-item-logs",
+        "title":  "Tap drawer-item-logs",
+        "status":  "passed",
+        "notes":  "运行日志 [192,1409][831,1476]",
+        "snapshot":  "107-before-drawer-item-logs"
+    },
+    {
+        "id":  "crash-drawer-logs",
+        "title":  "Crash scan after drawer-logs",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-logs-0",
+        "title":  "Wait chat-ready-after-drawer-logs-0",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-logs-0-retry",
+        "title":  "Wait chat-ready-after-drawer-logs-0-retry",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-logs-1",
+        "title":  "Wait chat-ready-after-drawer-logs-1",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "124-wait-chat-ready-after-drawer-logs-1"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-desktop",
+        "title":  "Wait chat-ready-before-drawer-desktop",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "125-wait-chat-ready-before-drawer-desktop"
+    },
+    {
+        "id":  "keyboard-foreground-recover",
+        "title":  "Keyboard foreground recovery",
+        "status":  "warning",
+        "notes":  "returned from com.huawei.android.launcher",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-desktop",
+        "title":  "Wait chat-ready-desktop",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "126-wait-chat-ready-desktop"
+    },
+    {
+        "id":  "tap-drawer-open-desktop",
+        "title":  "Tap drawer-open-desktop",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "127-before-drawer-open-desktop"
+    },
+    {
+        "id":  "wait-drawer-desktop",
+        "title":  "Wait drawer-desktop",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "128-wait-drawer-desktop"
+    },
+    {
+        "id":  "tap-drawer-item-desktop",
+        "title":  "Tap drawer-item-desktop",
+        "status":  "passed",
+        "notes":  "桌面控制 [192,1711][831,1778]",
+        "snapshot":  "129-before-drawer-item-desktop"
+    },
+    {
+        "id":  "crash-drawer-desktop",
+        "title":  "Crash scan after drawer-desktop",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-desktop-0",
+        "title":  "Wait chat-ready-after-drawer-desktop-0",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-desktop-0-retry",
+        "title":  "Wait chat-ready-after-drawer-desktop-0-retry",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-desktop-1",
+        "title":  "Wait chat-ready-after-drawer-desktop-1",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "145-wait-chat-ready-after-drawer-desktop-1"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-wearables",
+        "title":  "Wait chat-ready-before-drawer-wearables",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "146-wait-chat-ready-before-drawer-wearables"
+    },
+    {
+        "id":  "keyboard-foreground-recover",
+        "title":  "Keyboard foreground recovery",
+        "status":  "warning",
+        "notes":  "returned from com.huawei.android.launcher",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-wearables",
+        "title":  "Wait chat-ready-wearables",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "147-wait-chat-ready-wearables"
+    },
+    {
+        "id":  "tap-drawer-open-wearables",
+        "title":  "Tap drawer-open-wearables",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "148-before-drawer-open-wearables"
+    },
+    {
+        "id":  "wait-drawer-wearables",
+        "title":  "Wait drawer-wearables",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "149-wait-drawer-wearables"
+    },
+    {
+        "id":  "tap-drawer-item-wearables",
+        "title":  "Tap drawer-item-wearables",
+        "status":  "passed",
+        "notes":  "可穿戴设备 [192,1879][831,1946]",
+        "snapshot":  "150-before-drawer-item-wearables"
+    },
+    {
+        "id":  "crash-drawer-wearables",
+        "title":  "Crash scan after drawer-wearables",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-wearables-0",
+        "title":  "Wait chat-ready-after-drawer-wearables-0",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-wearables-0-retry",
+        "title":  "Wait chat-ready-after-drawer-wearables-0-retry",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-wearables-1",
+        "title":  "Wait chat-ready-after-drawer-wearables-1",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "167-wait-chat-ready-after-drawer-wearables-1"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-scan",
+        "title":  "Wait chat-ready-before-drawer-scan",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "168-wait-chat-ready-before-drawer-scan"
+    },
+    {
+        "id":  "keyboard-foreground-recover",
+        "title":  "Keyboard foreground recovery",
+        "status":  "warning",
+        "notes":  "returned from com.huawei.android.launcher",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-scan",
+        "title":  "Wait chat-ready-scan",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "169-wait-chat-ready-scan"
+    },
+    {
+        "id":  "tap-drawer-open-scan",
+        "title":  "Tap drawer-open-scan",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "170-before-drawer-open-scan"
+    },
+    {
+        "id":  "wait-drawer-scan",
+        "title":  "Wait drawer-scan",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "171-wait-drawer-scan"
+    },
+    {
+        "id":  "tap-drawer-item-scan",
+        "title":  "Tap drawer-item-scan",
+        "status":  "passed",
+        "notes":  "扫码连接 [192,2047][831,2114]",
+        "snapshot":  "172-before-drawer-item-scan"
+    },
+    {
+        "id":  "crash-drawer-scan",
+        "title":  "Crash scan after drawer-scan",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-scan-0",
+        "title":  "Wait chat-ready-after-drawer-scan-0",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-scan-0-retry",
+        "title":  "Wait chat-ready-after-drawer-scan-0-retry",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-scan-1",
+        "title":  "Wait chat-ready-after-drawer-scan-1",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "187-wait-chat-ready-after-drawer-scan-1"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-permissions",
+        "title":  "Wait chat-ready-before-drawer-permissions",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "188-wait-chat-ready-before-drawer-permissions"
+    },
+    {
+        "id":  "keyboard-foreground-recover",
+        "title":  "Keyboard foreground recovery",
+        "status":  "warning",
+        "notes":  "returned from com.huawei.android.launcher",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-permissions",
+        "title":  "Wait chat-ready-permissions",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "189-wait-chat-ready-permissions"
+    },
+    {
+        "id":  "tap-drawer-open-permissions",
+        "title":  "Tap drawer-open-permissions",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "190-before-drawer-open-permissions"
+    },
+    {
+        "id":  "wait-drawer-permissions",
+        "title":  "Wait drawer-permissions",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "191-wait-drawer-permissions"
+    },
+    {
+        "id":  "tap-drawer-item-permissions",
+        "title":  "Tap drawer-item-permissions",
+        "status":  "passed",
+        "notes":  "权限管理 [192,2349][831,2416]",
+        "snapshot":  "192-before-drawer-item-permissions"
+    },
+    {
+        "id":  "crash-drawer-permissions",
+        "title":  "Crash scan after drawer-permissions",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-permissions-0",
+        "title":  "Wait chat-ready-after-drawer-permissions-0",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-permissions-0-retry",
+        "title":  "Wait chat-ready-after-drawer-permissions-0-retry",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-permissions-1",
+        "title":  "Wait chat-ready-after-drawer-permissions-1",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "209-wait-chat-ready-after-drawer-permissions-1"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-agent-account",
+        "title":  "Wait chat-ready-before-drawer-agent-account",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "210-wait-chat-ready-before-drawer-agent-account"
+    },
+    {
+        "id":  "keyboard-foreground-recover",
+        "title":  "Keyboard foreground recovery",
+        "status":  "warning",
+        "notes":  "returned from com.huawei.android.launcher",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-agent-account",
+        "title":  "Wait chat-ready-agent-account",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "211-wait-chat-ready-agent-account"
+    },
+    {
+        "id":  "tap-drawer-open-agent-account",
+        "title":  "Tap drawer-open-agent-account",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "212-before-drawer-open-agent-account"
+    },
+    {
+        "id":  "wait-drawer-agent-account",
+        "title":  "Wait drawer-agent-account",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "213-wait-drawer-agent-account"
+    },
+    {
+        "id":  "tap-drawer-item-agent-account",
+        "title":  "Tap drawer-item-agent-account",
+        "status":  "passed",
+        "notes":  "Agent 账号 [0,0][0,0]",
+        "snapshot":  "214-before-drawer-item-agent-account"
+    },
+    {
+        "id":  "crash-drawer-agent-account",
+        "title":  "Crash scan after drawer-agent-account",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-agent-account-0",
+        "title":  "Wait chat-ready-after-drawer-agent-account-0",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "219-wait-chat-ready-after-drawer-agent-account-0"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-team-space",
+        "title":  "Wait chat-ready-before-drawer-team-space",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "220-wait-chat-ready-before-drawer-team-space"
+    },
+    {
+        "id":  "wait-chat-ready-team-space",
+        "title":  "Wait chat-ready-team-space",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "221-wait-chat-ready-team-space"
+    },
+    {
+        "id":  "tap-drawer-open-team-space",
+        "title":  "Tap drawer-open-team-space",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "222-before-drawer-open-team-space"
+    },
+    {
+        "id":  "wait-drawer-team-space",
+        "title":  "Wait drawer-team-space",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "223-wait-drawer-team-space"
+    },
+    {
+        "id":  "tap-drawer-item-team-space",
+        "title":  "Tap drawer-item-team-space",
+        "status":  "passed",
+        "notes":  "团队空间 [0,0][0,0]",
+        "snapshot":  "224-before-drawer-item-team-space"
+    },
+    {
+        "id":  "crash-drawer-team-space",
+        "title":  "Crash scan after drawer-team-space",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-team-space-0",
+        "title":  "Wait chat-ready-after-drawer-team-space-0",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "229-wait-chat-ready-after-drawer-team-space-0"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-console",
+        "title":  "Wait chat-ready-before-drawer-console",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "230-wait-chat-ready-before-drawer-console"
+    },
+    {
+        "id":  "wait-chat-ready-console",
+        "title":  "Wait chat-ready-console",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "231-wait-chat-ready-console"
+    },
+    {
+        "id":  "tap-drawer-open-console",
+        "title":  "Tap drawer-open-console",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "232-before-drawer-open-console"
+    },
+    {
+        "id":  "wait-drawer-console",
+        "title":  "Wait drawer-console",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "233-wait-drawer-console"
+    },
+    {
+        "id":  "tap-drawer-item-console",
+        "title":  "Tap drawer-item-console",
+        "status":  "warning",
+        "notes":  "node not present",
+        "snapshot":  "234-before-drawer-item-console"
+    },
+    {
+        "id":  "tap-drawer-item-console",
+        "title":  "Tap drawer-item-console",
+        "status":  "passed",
+        "notes":  "Agent 完整控制台 [192,2417][831,2484]",
+        "snapshot":  "235-before-drawer-item-console"
+    },
+    {
+        "id":  "crash-drawer-console",
+        "title":  "Crash scan after drawer-console",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-console-0",
+        "title":  "Wait chat-ready-after-drawer-console-0",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-console-0-retry",
+        "title":  "Wait chat-ready-after-drawer-console-0-retry",
+        "status":  "warning",
+        "notes":  "timeout 25s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-ready-after-drawer-console-1",
+        "title":  "Wait chat-ready-after-drawer-console-1",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "252-wait-chat-ready-after-drawer-console-1"
+    },
+    {
+        "id":  "tap-me tab for local model",
+        "title":  "Tap me tab for local model",
+        "status":  "passed",
+        "notes":  "我的 [900,2445][1200,2486]",
+        "snapshot":  "253-before-me-tab-for-local-model"
+    },
+    {
+        "id":  "tap-settings menu",
+        "title":  "Tap settings menu",
+        "status":  "failed",
+        "notes":  "node not found",
+        "snapshot":  "254-before-settings-menu"
+    },
+    {
+        "id":  "fatal",
+        "title":  "Fatal test runner error",
+        "status":  "failed",
+        "notes":  "Could not find UI node for settings menu (设置, Settings).",
+        "snapshot":  ""
+    }
+]

@@ -28,8 +28,8 @@ import {
 } from "./desktop";
 
 const HEARTBEAT_MS = 15_000;
-const STATE_POLL_MS = 5_000;
-const COMMAND_POLL_MS = 3_000;
+const STATE_POLL_MS = 1_500;
+const COMMAND_POLL_MS = 1_000;
 const COMMAND_EXECUTION_TIMEOUT_MS = 10 * 60_000;
 const APPROVAL_WAIT_MS = 15 * 60_000;
 
@@ -49,6 +49,7 @@ let approvalWaiters = new Map<
   }
 >();
 let socketListenerAttached = false;
+let approvalResponseListenerAttached = false;
 
 class ApprovalRejectedError extends Error {}
 class ApprovalTimedOutError extends Error {}
@@ -219,6 +220,8 @@ export async function requireDesktopActionApproval(request: {
   if (!request.token) {
     throw new Error("Sign in is required to approve this desktop action.");
   }
+
+  attachApprovalResponseListener();
 
   if (sessionKey) {
     const pendingRequest = pendingApprovalRequests.get(sessionKey);
@@ -473,9 +476,23 @@ async function heartbeat() {
   }
 }
 
+function attachApprovalResponseListener() {
+  if (approvalResponseListenerAttached) return;
+  approvalResponseListenerAttached = true;
+  window.addEventListener("agentrix:approval-response-local", ((event: Event) => {
+    const approval = (event as CustomEvent).detail as DesktopRemoteApproval | undefined;
+    if (!approval) {
+      return;
+    }
+    settleApprovalRecord(approval);
+    void refreshState();
+  }) as EventListener);
+}
+
 function attachSocketListener() {
   if (socketListenerAttached) return;
   socketListenerAttached = true;
+  attachApprovalResponseListener();
   window.addEventListener("agentrix:socket-event", ((event: Event) => {
     const detail = (event as CustomEvent).detail || {};
     if (detail.event === "desktop-sync:command") {
@@ -490,15 +507,6 @@ function attachSocketListener() {
     ) {
       void refreshState();
     }
-  }) as EventListener);
-
-  window.addEventListener("agentrix:approval-response-local", ((event: Event) => {
-    const approval = (event as CustomEvent).detail as DesktopRemoteApproval | undefined;
-    if (!approval) {
-      return;
-    }
-    settleApprovalRecord(approval);
-    void refreshState();
   }) as EventListener);
 }
 

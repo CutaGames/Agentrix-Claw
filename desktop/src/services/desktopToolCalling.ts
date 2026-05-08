@@ -621,6 +621,38 @@ export const DESKTOP_LOCAL_TOOLS: ToolDef[] = [
       parameters: { type: "object", properties: {} },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "computer_use_browser_eval",
+      description:
+        "Evaluate a JavaScript expression in the Agentrix-controlled Chrome tab and return the result. Use to extract DOM data, read text, or compute values from the page. The expression is wrapped in try/catch so thrown errors return structured results instead of failing.",
+      parameters: {
+        type: "object",
+        properties: {
+          target_id: { type: "string", description: "CDP target id; defaults to the first page" },
+          expression: { type: "string", description: "JS expression, e.g. document.title" },
+        },
+        required: ["expression"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computer_use_browser_click_selector",
+      description:
+        "Click a DOM element matched by a CSS selector in the controlled Chrome tab. Returns an error if no element matches.",
+      parameters: {
+        type: "object",
+        properties: {
+          target_id: { type: "string", description: "CDP target id; defaults to the first page" },
+          selector: { type: "string", description: "CSS selector, e.g. 'button[type=submit]'" },
+        },
+        required: ["selector"],
+      },
+    },
+  },
 ];
 
 /**
@@ -738,6 +770,8 @@ async function executeToolCall(
       case "computer_use_window_tree":
       case "computer_use_browser_navigate":
       case "computer_use_browser_list_tabs":
+      case "computer_use_browser_eval":
+      case "computer_use_browser_click_selector":
         return await executeComputerUse(name, args, context);
 
       default:
@@ -1180,6 +1214,36 @@ async function executeComputerUse(
       case "computer_use_browser_list_tabs": {
         const tabs = await invokeDesktopCommand<unknown[]>("computer_use_browser_list_tabs");
         return JSON.stringify({ tabs });
+      }
+      case "computer_use_browser_eval": {
+        const expression = String(args.expression ?? "").trim();
+        if (!expression) return JSON.stringify({ error: "expression is required" });
+        const target_id = args.target_id ? String(args.target_id) : undefined;
+        await requireApproval(
+          "computer-use-browser-eval" as any,
+          `Browser eval: ${expression.slice(0, 80)}`,
+          `Allow Agentrix to run this JavaScript in the controlled Chrome tab?\n${expression.slice(0, 400)}`,
+        );
+        const result = await invokeDesktopCommand<{ value: string; type: string; thrown: boolean }>(
+          "computer_use_browser_eval",
+          { target_id, expression },
+        );
+        return JSON.stringify(result);
+      }
+      case "computer_use_browser_click_selector": {
+        const selector = String(args.selector ?? "").trim();
+        if (!selector) return JSON.stringify({ error: "selector is required" });
+        const target_id = args.target_id ? String(args.target_id) : undefined;
+        await requireApproval(
+          "computer-use-browser-click" as any,
+          `Browser click: ${selector}`,
+          `Allow Agentrix to click \`${selector}\` in the controlled Chrome tab?`,
+        );
+        await invokeDesktopCommand<void>("computer_use_browser_click_selector", {
+          target_id,
+          selector,
+        });
+        return JSON.stringify({ success: true });
       }
       default:
         return JSON.stringify({ error: `Unknown computer_use tool: ${name}` });

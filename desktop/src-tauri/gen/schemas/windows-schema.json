@@ -645,6 +645,12 @@
           "markdownDescription": "Enables the desktop_bridge_write_file command without any pre-configured scope."
         },
         {
+          "description": "Codex-borrow Phase B — grants Computer Use commands (synthetic mouse/keyboard,\nscreenshot, window enumeration, system focus). Behind this Tauri-level grant,\nthe JS UI still enforces the per-action user prompt and the hardcoded\nred-lines (terminals, sudo, self-control) live in Rust regardless.\n",
+          "type": "string",
+          "const": "computer-use",
+          "markdownDescription": "Codex-borrow Phase B — grants Computer Use commands (synthetic mouse/keyboard,\nscreenshot, window enumeration, system focus). Behind this Tauri-level grant,\nthe JS UI still enforces the per-action user prompt and the hardcoded\nred-lines (terminals, sudo, self-control) live in Rust regardless.\n"
+        },
+        {
           "description": "Denies the desktop_bridge_close_chat_panel command without any pre-configured scope.",
           "type": "string",
           "const": "deny-desktop-bridge-close-chat-panel",

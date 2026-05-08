@@ -12,10 +12,13 @@ import { getBscBalance, BSC_TESTNET } from '../../services/bscPayment';
 import { colors } from '../../theme/colors';
 
 interface WalletProjection {
-  totals: { fiat_cents: number; crypto_usd_cents: number; pending_cents: number };
-  balances: Array<{ id: string; label: string; currency: string; amount_cents: number }>;
-  auto_earn: { mrr_cents: number; last_24h_cents: number; active_executors: number };
-  recent_txs: Array<{ id: string; description: string; amount_cents: number; ts: number; type: 'in' | 'out' }>;
+  user_id?: string;
+  as_of?: number;
+  totals?: { fiat_cents?: number; crypto_usd_cents?: number; pending_cents?: number };
+  balances?: Array<{ chain?: string; symbol?: string; amount_raw?: string; amount_usd_cents?: number; id?: string; label?: string; currency?: string; amount_cents?: number }>;
+  agent_accounts?: Array<{ agent_id: string; balance_usd_cents: number; auto_earn_today_cents: number; pending_splits_cents: number }>;
+  auto_earn?: { mrr_cents?: number; last_24h_cents?: number; active_executors?: number };
+  recent_txs?: Array<{ id?: string; tx_id?: string; description?: string; kind?: string; amount_cents?: number; amount_usd_cents?: number; ts?: number; at?: number; type?: 'in' | 'out' }>;
 }
 
 interface BscBalance { token: 'USDT' | 'USDC'; amount: string; decimals: number }
@@ -31,15 +34,16 @@ export function WalletDashboardScreen() {
     setLoading(true);
     try {
       const wp = await apiFetch<WalletProjection>('/v1/wallet/projection');
-      setData(wp);
-    } catch {
+      setData(wp || null);
+    } catch (err) {
+      console.warn('[Wallet] projection failed:', err);
       setData(null);
     }
     try {
       // Demo address — production reads from useAuthStore
       const addr = '0x0000000000000000000000000000000000000000';
-      const usdt = await getBscBalance(addr, 'USDT');
-      const usdc = await getBscBalance(addr, 'USDC');
+      const usdt = await getBscBalance(addr, 'USDT').catch(() => null);
+      const usdc = await getBscBalance(addr, 'USDC').catch(() => null);
       const list: BscBalance[] = [];
       if (usdt) list.push({ token: 'USDT', ...usdt });
       if (usdc) list.push({ token: 'USDC', ...usdc });
@@ -69,11 +73,11 @@ export function WalletDashboardScreen() {
           <ActivityIndicator color={colors.accent} style={{ marginTop: 8 }} />
         ) : (
           <Text style={styles.heroValue}>
-            ${(((data?.totals.fiat_cents ?? 0) + (data?.totals.crypto_usd_cents ?? 0)) / 100).toFixed(2)}
+            ${(((data?.totals?.fiat_cents ?? 0) + (data?.totals?.crypto_usd_cents ?? 0)) / 100).toFixed(2)}
           </Text>
         )}
-        {(data?.totals.pending_cents ?? 0) > 0 && (
-          <Text style={styles.heroPending}>待结算 ${(data!.totals.pending_cents / 100).toFixed(2)}</Text>
+        {(data?.totals?.pending_cents ?? 0) > 0 && (
+          <Text style={styles.heroPending}>待结算 ${((data?.totals?.pending_cents ?? 0) / 100).toFixed(2)}</Text>
         )}
       </View>
 
@@ -81,9 +85,9 @@ export function WalletDashboardScreen() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Auto-Earn</Text>
         <View style={styles.row}>
-          <Stat label="MRR" value={`$${((data?.auto_earn.mrr_cents ?? 0) / 100).toFixed(2)}`} accent="#86efac" />
-          <Stat label="近 24h" value={`$${((data?.auto_earn.last_24h_cents ?? 0) / 100).toFixed(2)}`} />
-          <Stat label="执行器" value={String(data?.auto_earn.active_executors ?? 0)} />
+          <Stat label="MRR" value={`$${((data?.auto_earn?.mrr_cents ?? 0) / 100).toFixed(2)}`} accent="#86efac" />
+          <Stat label="近 24h" value={`$${((data?.auto_earn?.last_24h_cents ?? 0) / 100).toFixed(2)}`} />
+          <Stat label="执行器" value={String(data?.auto_earn?.active_executors ?? 0)} />
         </View>
         <Pressable style={styles.linkBtn} onPress={() => navigation.navigate('AutoEarn' as never)}>
           <Text style={styles.linkBtnText}>查看 →</Text>
@@ -115,14 +119,19 @@ export function WalletDashboardScreen() {
         {(data?.recent_txs ?? []).length === 0 ? (
           <Text style={styles.dim}>暂无交易</Text>
         ) : (
-          data!.recent_txs.map((tx) => (
-            <View key={tx.id} style={styles.txRow}>
-              <Text style={styles.txDesc} numberOfLines={1}>{tx.description}</Text>
-              <Text style={[styles.txAmount, { color: tx.type === 'in' ? '#86efac' : '#fca5a5' }]}>
-                {tx.type === 'in' ? '+' : '-'}${(tx.amount_cents / 100).toFixed(2)}
-              </Text>
-            </View>
-          ))
+          (data?.recent_txs ?? []).map((tx, idx) => {
+            const cents = tx.amount_cents ?? tx.amount_usd_cents ?? 0;
+            const desc = tx.description || tx.kind || tx.tx_id || '交易';
+            const isIn = tx.type === 'in' || (tx.kind === 'earn');
+            return (
+              <View key={tx.id || tx.tx_id || idx} style={styles.txRow}>
+                <Text style={styles.txDesc} numberOfLines={1}>{desc}</Text>
+                <Text style={[styles.txAmount, { color: isIn ? '#86efac' : '#fca5a5' }]}>
+                  {isIn ? '+' : '-'}${(Math.abs(cents) / 100).toFixed(2)}
+                </Text>
+              </View>
+            );
+          })
         )}
       </View>
     </ScrollView>
