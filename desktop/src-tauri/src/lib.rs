@@ -801,6 +801,43 @@ fn computer_use_probe_permissions() -> Result<Option<String>, String> {
     Ok(cu_backend().probe_permissions())
 }
 
+// ── Computer Use: Browser via system Chrome (Phase B3) ───────────────────────
+
+#[tauri::command]
+async fn computer_use_browser_launch() -> Result<computer_use::cdp::BrowserStatus, String> {
+    computer_use::cdp::ensure_browser_running()
+        .await
+        .map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+async fn computer_use_browser_status() -> Result<computer_use::cdp::BrowserStatus, String> {
+    Ok(computer_use::cdp::status().await)
+}
+
+#[tauri::command]
+async fn computer_use_browser_navigate(
+    url: String,
+) -> Result<computer_use::cdp::BrowserTab, String> {
+    if !(url.starts_with("http://") || url.starts_with("https://") || url.starts_with("about:")) {
+        return Err("only http(s)/about URLs are allowed".into());
+    }
+    computer_use::cdp::ensure_browser_running()
+        .await
+        .map_err(|e| format!("{e}"))?;
+    computer_use::cdp::open_tab(&url).await.map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+async fn computer_use_browser_list_tabs() -> Result<Vec<computer_use::cdp::BrowserTab>, String> {
+    computer_use::cdp::list_tabs().await.map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+async fn computer_use_browser_close_tab(target_id: String) -> Result<(), String> {
+    computer_use::cdp::close_tab(&target_id).await.map_err(|e| format!("{e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     setup_panic_hook();
@@ -901,6 +938,12 @@ pub fn run() {
             computer_use_window_tree,
             computer_use_focus_window,
             computer_use_probe_permissions,
+            // Computer Use: Browser (Phase B3)
+            computer_use_browser_launch,
+            computer_use_browser_status,
+            computer_use_browser_navigate,
+            computer_use_browser_list_tabs,
+            computer_use_browser_close_tab,
         ])
         .setup(|app| {
             // Grant WebView2 permissions (microphone, camera, etc.) on the main window

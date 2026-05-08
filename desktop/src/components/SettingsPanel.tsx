@@ -33,6 +33,15 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
   const [wakeWordAccessKey, setWakeWordAccessKey] = useState("");
   const [wakeWordBuiltInKeyword, setWakeWordBuiltInKeyword] = useState("picovoice");
   const [wakeWordCustomKeywordPath, setWakeWordCustomKeywordPath] = useState("");
+  // ── Computer Use (Phase B7) ────────────────────────────────────────────────
+  const COMPUTER_USE_ENABLED_KEY = "agentrix_computer_use_enabled";
+  const COMPUTER_USE_BROWSER_KEY = "agentrix_computer_use_browser_enabled";
+  const [computerUseEnabled, setComputerUseEnabled] = useState<boolean>(
+    () => localStorage.getItem(COMPUTER_USE_ENABLED_KEY) === "1",
+  );
+  const [computerUseBrowserEnabled, setComputerUseBrowserEnabled] = useState<boolean>(
+    () => localStorage.getItem(COMPUTER_USE_BROWSER_KEY) === "1",
+  );
   const [wakeWordDisplayName, setWakeWordDisplayName] = useState("Picovoice");
   const [wakeWordSensitivity, setWakeWordSensitivity] = useState("0.65");
   const [wakeWordStatus, setWakeWordStatus] = useState("");
@@ -287,6 +296,33 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
             value={autoStart}
             onChange={handleToggleAutoStart}
           />
+        </div>
+
+        {/* Computer Use (Phase B) */}
+        <div style={section}>
+          <div style={sectionTitle}>Computer Use</div>
+          <ToggleRow
+            label="Allow Agent to control mouse / keyboard / screen"
+            value={computerUseEnabled}
+            onChange={(v) => {
+              setComputerUseEnabled(v);
+              localStorage.setItem(COMPUTER_USE_ENABLED_KEY, v ? "1" : "0");
+              window.dispatchEvent(new CustomEvent("agentrix:computer-use-changed", { detail: { enabled: v } }));
+            }}
+          />
+          <ToggleRow
+            label="Allow Agent to drive an isolated Chrome browser"
+            value={computerUseBrowserEnabled}
+            onChange={(v) => {
+              setComputerUseBrowserEnabled(v);
+              localStorage.setItem(COMPUTER_USE_BROWSER_KEY, v ? "1" : "0");
+            }}
+          />
+          <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 6, lineHeight: 1.5 }}>
+            Each action still asks for your approval. Terminals, sudo/runas, and the
+            Agentrix window itself are blocked at the Rust layer regardless of this
+            setting.
+          </div>
         </div>
 
         {/* Hotkeys */}

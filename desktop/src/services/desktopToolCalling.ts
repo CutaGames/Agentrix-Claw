@@ -596,7 +596,54 @@ export const DESKTOP_LOCAL_TOOLS: ToolDef[] = [
       parameters: { type: "object", properties: {} },
     },
   },
+  // ── Computer Use: Browser via system Chrome (Phase B3) ────────────────────
+  {
+    type: "function",
+    function: {
+      name: "computer_use_browser_navigate",
+      description:
+        "Open a URL in an Agentrix-controlled Chrome window (isolated profile, --remote-debugging-port=9222). Use when the user asks the agent to look something up, fill a form, or take action on the web.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "Full http(s) URL" },
+        },
+        required: ["url"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computer_use_browser_list_tabs",
+      description:
+        "List currently open tabs in the controlled Chrome instance (id, title, url).",
+      parameters: { type: "object", properties: {} },
+    },
+  },
 ];
+
+/**
+ * Returns the tool list with Computer Use tools filtered out unless the
+ * user has enabled them in Settings (Phase B7 gate). Browser tools are
+ * gated independently from screen/keyboard/mouse tools.
+ */
+export function getActiveDesktopTools(): ToolDef[] {
+  let cuEnabled = false;
+  let browserEnabled = false;
+  try {
+    cuEnabled = localStorage.getItem("agentrix_computer_use_enabled") === "1";
+    browserEnabled = localStorage.getItem("agentrix_computer_use_browser_enabled") === "1";
+  } catch {
+    /* SSR / non-browser context */
+  }
+  return DESKTOP_LOCAL_TOOLS.filter((tool) => {
+    const name = tool.function?.name || "";
+    if (name.startsWith("computer_use_browser_")) return browserEnabled;
+    if (name.startsWith("computer_use_")) return cuEnabled;
+    return true;
+  });
+}
 
 // ── Tool Execution ─────────────────────────────────────
 
@@ -689,6 +736,8 @@ async function executeToolCall(
       case "computer_use_type":
       case "computer_use_key":
       case "computer_use_window_tree":
+      case "computer_use_browser_navigate":
+      case "computer_use_browser_list_tabs":
         return await executeComputerUse(name, args, context);
 
       default:
@@ -1111,6 +1160,27 @@ async function executeComputerUse(
         const result = await invokeDesktopCommand<unknown[]>("computer_use_window_tree");
         return JSON.stringify({ windows: result });
       }
+      case "computer_use_browser_navigate": {
+        const url = String(args.url ?? "").trim();
+        if (!/^https?:\/\//i.test(url)) {
+          return JSON.stringify({ error: "url must be http(s)" });
+        }
+        await requireApproval(
+          "computer-use-browser-navigate" as any,
+          `Open in browser: ${url}`,
+          `Allow Agentrix to open this URL in its controlled Chrome window?\n${url}`,
+        );
+        const tab = await invokeDesktopCommand<{
+          id: string;
+          title: string;
+          url: string;
+        }>("computer_use_browser_navigate", { url });
+        return JSON.stringify({ success: true, tab });
+      }
+      case "computer_use_browser_list_tabs": {
+        const tabs = await invokeDesktopCommand<unknown[]>("computer_use_browser_list_tabs");
+        return JSON.stringify({ tabs });
+      }
       default:
         return JSON.stringify({ error: `Unknown computer_use tool: ${name}` });
     }
@@ -1405,7 +1475,7 @@ export async function runDesktopToolCallingLoop(
     }
 
     workingMessages = compactToolContextMessages(workingMessages);
-    const result = await sidecar.chatWithTools(workingMessages, DESKTOP_LOCAL_TOOLS, {
+    const result = await sidecar.chatWithTools(workingMessages, getActiveDesktopTools(), {
       temperature: options.temperature,
       maxTokens: options.maxTokens,
       tool_choice: "auto",

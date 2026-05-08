@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 pub mod redlines;
+pub mod cdp;
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", content = "message")]
