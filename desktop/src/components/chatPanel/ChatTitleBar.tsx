@@ -50,6 +50,7 @@ interface Props {
   setShowMoreMenu: (value: boolean | ((prev: boolean) => boolean)) => void;
   setEconomyPanelOpen: (value: boolean) => void;
   setMemoryPanelOpen: (value: boolean) => void;
+  setTaskLogPanelOpen: (value: boolean) => void;
   setDreamPanelOpen: (value: boolean) => void;
   setPluginPanelOpen: (value: boolean) => void;
   setWikiPanelOpen: (value: boolean) => void;
@@ -99,6 +100,7 @@ export default function ChatTitleBar({
   setShowMoreMenu,
   setEconomyPanelOpen,
   setMemoryPanelOpen,
+  setTaskLogPanelOpen,
   setDreamPanelOpen,
   setPluginPanelOpen,
   setWikiPanelOpen,
@@ -341,6 +343,7 @@ export default function ChatTitleBar({
                     { emoji: "🌿", label: "Worktree Board", action: () => setWorktreePanelOpen(true) },
                     { emoji: "🕸", label: "Skill Canvas", action: () => setSkillCanvasPanelOpen(true) },
                     { emoji: "💰", label: "Agent Economy", action: () => setEconomyPanelOpen(true) },
+                    { emoji: "📋", label: "Work Log", action: () => setTaskLogPanelOpen(true) },
                     { emoji: "🧠", label: "Memory", action: () => setMemoryPanelOpen(true) },
                     { emoji: "💤", label: "Dreaming", action: () => setDreamPanelOpen(true) },
                     { emoji: "🧩", label: "Plugin Hub", action: () => setPluginPanelOpen(true) },

@@ -74,6 +74,7 @@ import { ContextVisualizer } from "./ContextVisualizer";
 import CrossDevicePanel from "./CrossDevicePanel";
 import AgentEconomyPanel from "./AgentEconomyPanel";
 import MemoryPanel from "./MemoryPanel";
+import TaskLogPanel from "./TaskLogPanel";
 import DreamPanel from "./DreamPanel";
 import PluginPanel from "./PluginPanel";
 import MemoryWikiPanel from "./MemoryWikiPanel";
@@ -454,6 +455,7 @@ export default function ChatPanel({
   const [operationsContinuity, setOperationsContinuity] = useState<OperationsContinuity | null>(null);
   const [economyPanelOpen, setEconomyPanelOpen] = useState(false);
   const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
+  const [taskLogPanelOpen, setTaskLogPanelOpen] = useState(false);
   const [dreamPanelOpen, setDreamPanelOpen] = useState(false);
   const [pluginPanelOpen, setPluginPanelOpen] = useState(false);
   const [wikiPanelOpen, setWikiPanelOpen] = useState(false);
@@ -3012,6 +3014,7 @@ export default function ChatPanel({
         setShowMoreMenu={setShowMoreMenu}
         setEconomyPanelOpen={setEconomyPanelOpen}
         setMemoryPanelOpen={setMemoryPanelOpen}
+        setTaskLogPanelOpen={setTaskLogPanelOpen}
         setDreamPanelOpen={setDreamPanelOpen}
         setPluginPanelOpen={setPluginPanelOpen}
         setWikiPanelOpen={setWikiPanelOpen}
@@ -3140,6 +3143,13 @@ export default function ChatPanel({
         onClose={() => setMemoryPanelOpen(false)}
         token={token}
         sessionId={sessionIdRef.current}
+      />
+
+      {/* Work Log panel (AgentTask autonomy queue) */}
+      <TaskLogPanel
+        open={taskLogPanelOpen}
+        onClose={() => setTaskLogPanelOpen(false)}
+        token={token}
       />
 
       <TaskWorkbenchPanel
