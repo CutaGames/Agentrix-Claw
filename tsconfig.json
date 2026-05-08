@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "skipLibCheck": true,
+    "strict": false
+  },
+  "extends": "expo/tsconfig.base",
+  "exclude": [
+    "node_modules",
+    "backend",
+    "contract",
+    "desktop",
+    "frontend",
+    "tests",
+    "marketplace_server.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/__tests__/**",
+    "src_deprecated",
+    "tmp",
+    "desktop/src-tauri/target",
+    "desktop/dist",
+    "frontend/.next",
+    "backend/dist"
+  ]
+}

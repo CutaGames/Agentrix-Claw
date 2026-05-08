@@ -1,0 +1,37 @@
+.git/
+.expo/
+.expo-shared/
+node_modules/
+**/node_modules/
+
+# Unrelated apps and services
+backend/
+desktop/
+desktop-installer/
+frontend/.next/
+
+# Generated build outputs
+dist/
+build/
+builds/
+coverage/
+playwright-report/
+test-results/
+tests/reports/
+desktop/src-tauri/target/
+desktop/dist/
+
+# Local diagnostics and bundles
+*.bundle
+*.log
+failed_jobs.txt
+jobs.json
+fetch_log.txt
+eas-debug.log
+eas-build-list.log
+
+# Helper scripts not needed for mobile archive
+*.sh
+*.py
+*.cmd
+scripts/

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  P0-W3-3 — Android App Actions 6 core (PRD mobile-prd-v3 §4.5)
+
+  Equivalent to iOS App Intents (AgentrixAppIntents.swift). Surfaces six built-in
+  intents to Google Assistant / Search via the App Actions framework.
+
+  To enable:
+    1. Add `<meta-data android:name="com.google.android.actions" android:resource="@xml/actions" />`
+       to <application> in AndroidManifest.xml.
+    2. Implement `AgentrixIntentBridgeModule` (RN native module) to receive the
+       deep-link parameters and dispatch into JS.
+    3. Build the App Actions test tool to verify each intent.
+
+  Built-in intents docs:
+    https://developer.android.com/guide/app-actions/built-in-intents
+-->
+<actions>
+
+  <!-- 1. Ask Aira (general Q&A) -->
+  <action intentName="actions.intent.GET_THING">
+    <action-display
+      labelTemplate="@string/aa_ask_aira_label"
+      icon="@mipmap/ic_launcher" />
+    <fulfillment urlTemplate="agentrix://intent/ask-aira{?question}">
+      <parameter-mapping
+        intentParameter="thing.name"
+        urlParameter="question" />
+    </fulfillment>
+  </action>
+
+  <!-- 2. Draft (compose) -->
+  <action intentName="actions.intent.CREATE_MESSAGE">
+    <fulfillment urlTemplate="agentrix://intent/draft{?topic,style}">
+      <parameter-mapping
+        intentParameter="message.text"
+        urlParameter="topic" />
+    </fulfillment>
+  </action>
+
+  <!-- 3. Approve (custom intent) -->
+  <action intentName="custom.actions.intent.APPROVE">
+    <fulfillment urlTemplate="agentrix://intent/approve{?approvalId}" />
+    <parameter name="approvalId" type="https://schema.org/Text" />
+  </action>
+
+  <!-- 4. Wallet status -->
+  <action intentName="actions.intent.GET_ACCOUNT">
+    <fulfillment urlTemplate="agentrix://intent/wallet-status" />
+  </action>
+
+  <!-- 5. Invoke Agent (custom) -->
+  <action intentName="custom.actions.intent.INVOKE_AGENT">
+    <fulfillment urlTemplate="agentrix://intent/invoke-agent{?agent,input}" />
+    <parameter name="agent" type="https://schema.org/Text" required="true" />
+    <parameter name="input" type="https://schema.org/Text" />
+  </action>
+
+  <!-- 6. Pet mood (custom) -->
+  <action intentName="custom.actions.intent.PET_MOOD">
+    <fulfillment urlTemplate="agentrix://intent/pet-mood" />
+  </action>
+
+</actions>
