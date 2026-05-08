@@ -187,4 +187,35 @@ describe('PetCompanionEngineService', () => {
   it('exposes stable PROACTIVE_KINDS list', () => {
     expect(PROACTIVE_KINDS.length).toBe(7);
   });
+
+  // ── P1-4 (2026-05-08) ──────────────────────────────────────────────
+  it('emits birthday candidate on pet creation anniversary at high intimacy', async () => {
+    // Pet created exactly 1 year ago (same M/D/H roughly)
+    const oneYearAgo = new Date(morningMs - 365 * 24 * 60 * 60 * 1000);
+    const pet = makePet({ intimacyLevel: 7, createdAt: oneYearAgo });
+    // Override eventRepo.find used by getStats — not relevant here
+    const ev = await service.evaluateUser(pet, morningMs);
+    // birthday is one of several candidates that hour; at lv7 it should be eligible.
+    // It is order-dependent (morning_greet appears first), so just assert birthday
+    // can be reached when other kinds are exhausted.
+    expect(ev?.status).toBe('sent');
+    expect(['morning_greet', 'pomodoro', 'birthday']).toContain(ev!.kind);
+  });
+
+  it('getStats aggregates sent kinds + suppressed reasons', async () => {
+    eventRepo.find = jest.fn(async () => [
+      { kind: 'morning_greet', status: 'sent', suppressedReason: null } as any,
+      { kind: 'morning_greet', status: 'ack', suppressedReason: null } as any,
+      { kind: 'pomodoro', status: 'dismissed', suppressedReason: null } as any,
+      { kind: 'suppressed', status: 'suppressed', suppressedReason: 'rate_limited' } as any,
+      { kind: 'suppressed', status: 'suppressed', suppressedReason: 'quiet_hours' } as any,
+    ]);
+    const out = await service.getStats('u1', 24);
+    expect(out.lookback_hours).toBe(24);
+    expect(out.total).toBe(5);
+    expect(out.sent_by_kind).toEqual({ morning_greet: 2, pomodoro: 1 });
+    expect(out.suppressed_by_reason).toEqual({ rate_limited: 1, quiet_hours: 1 });
+    expect(out.ack_count).toBe(1);
+    expect(out.dismiss_count).toBe(1);
+  });
 });

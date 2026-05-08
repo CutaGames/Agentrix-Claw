@@ -73,13 +73,24 @@ export class PetSkinController {
   async install(
     @Req() req: any,
     @Param('skinId') skinId: string,
-    @Body() body: { acknowledgedPriceCents?: number } = {},
+    @Body() body: { acknowledgedPriceCents?: number; orderId?: string } = {},
   ) {
     const userId = req.user?.userId || req.user?.sub || req.user?.id;
     const installed = await this.service.installFromMarketplace(userId, skinId, {
       acknowledgedPriceCents: body?.acknowledgedPriceCents,
+      orderId: body?.orderId,
     });
     return { skin: this.service.toDto(installed) };
+  }
+
+  /**
+   * Pet Phase 6 P0-6 — server-authoritative entitlements snapshot.
+   * Frontend must consume this rather than hardcoding tier rules.
+   */
+  @Get('entitlements')
+  async entitlements(@Req() req: any) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    return this.service.resolveEntitlements(userId);
   }
 
   @Get('marketplace/:skinId/royalty-preview')

@@ -4,6 +4,8 @@ import { Between, Repository } from 'typeorm';
 import { PetMinigameScore } from '../../entities/pet-minigame-score.entity';
 import { LivingPetService } from '../living-pet/living-pet.service';
 import { PetAchievementService } from '../pet-achievement/pet-achievement.service';
+import { PetEnergyService } from '../pet-energy/pet-energy.service';
+import { PetSkinService } from '../pet-skin/pet-skin.service';
 
 export const MINIGAME_KEYS = ['scratch', 'feed', 'code_buddy'] as const;
 export type MinigameKey = (typeof MINIGAME_KEYS)[number];
@@ -22,6 +24,17 @@ const XP_RATE_PER_GAME: Record<MinigameKey, number> = {
   feed: 0.6,
   code_buddy: 0.4,
 };
+/**
+ * Pet Phase 6 P0-5 — 每分奖励多少能量。
+ * 与 XP 不同，十分之一量级：scratch=0.05/分、feed=0.06/分、code_buddy=0.04/分。
+ * 低限 0，上限由 ENERGY_AWARD_CAP_PER_PLAY 控制，避免刷分补满能量。
+ */
+const ENERGY_RATE_PER_GAME: Record<MinigameKey, number> = {
+  scratch: 0.05,
+  feed: 0.06,
+  code_buddy: 0.04,
+};
+const ENERGY_AWARD_CAP_PER_PLAY = 8;
 
 export interface PlayResult {
   score: PetMinigameScore;
@@ -38,6 +51,8 @@ export class PetMinigameService {
     private readonly repo: Repository<PetMinigameScore>,
     private readonly livingPetService: LivingPetService,
     private readonly achievementService: PetAchievementService,
+    private readonly energyService: PetEnergyService,
+    private readonly skinService: PetSkinService,
   ) {}
 
   /** 提交一次游戏得分（防作弊后写库 + 派奖）。 */
@@ -69,13 +84,18 @@ export class PetMinigameService {
     }
 
     const xp = Math.max(1, Math.round(score * XP_RATE_PER_GAME[key]));
+    // P0-5 — real energy reward (was hard-coded to 0)
+    const energyReward = Math.max(
+      0,
+      Math.min(ENERGY_AWARD_CAP_PER_PLAY, Math.round(score * ENERGY_RATE_PER_GAME[key])),
+    );
     const row = await this.repo.save(
       this.repo.create({
         userId,
         gameKey: key,
         score,
         intimacyXpAwarded: xp,
-        energyAwarded: 0,
+        energyAwarded: energyReward,
         metadata,
       }),
     );
@@ -85,6 +105,21 @@ export class PetMinigameService {
       await this.livingPetService.addIntimacyXp(userId, xp);
     } catch (e) {
       this.logger.warn(`addIntimacyXp failed: ${(e as Error).message}`);
+    }
+
+    // P0-5 — credit pet energy on the user's currently active skin
+    if (energyReward > 0) {
+      try {
+        const active = await this.skinService.getActive(userId);
+        const activeSkinId = active?.activeSkinId;
+        if (activeSkinId) {
+          await this.energyService.credit(userId, activeSkinId, energyReward, {
+            reason: `minigame:${key}`,
+          });
+        }
+      } catch (e) {
+        this.logger.warn(`credit minigame energy failed: ${(e as Error).message}`);
+      }
     }
 
     // S4 成就：第一次玩 / 高分玩家

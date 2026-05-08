@@ -1,13 +1,29 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { PetSkin } from '../../entities/pet-skin.entity';
 import { PetActiveSkin } from '../../entities/pet-active-skin.entity';
+import { Order, OrderStatus } from '../../entities/order.entity';
 import { AncestorChainService } from '../marketplace-pet/ancestor-chain.service';
 import { splitRoyalty, RoyaltySplitResult } from '../marketplace-pet/royalty-splitter';
+import { UserPlanResolverService, PlanTier } from '../pet-gen-quota/user-plan-resolver.service';
 
 /** V4 §3.2 — platform commission (basis points) for skin sales. */
 const SKIN_PLATFORM_BPS = 500;
+
+/**
+ * P0-6 gating — which plan tiers are allowed to purchase paid pet skins.
+ * Free tier may install any free / platform skin, but must upgrade for paid.
+ */
+const PAID_SKIN_INSTALL_ALLOWED_TIERS: PlanTier[] = ['pro', 'pro_plus', 'enterprise'];
+
+/** P0-3 — Order statuses that count as a fulfilled payment for skin install. */
+const PAID_ORDER_STATUSES: OrderStatus[] = [
+  OrderStatus.PAID,
+  OrderStatus.COMPLETED,
+  OrderStatus.SETTLED,
+  OrderStatus.FULFILLED,
+];
 
 export interface CreateSkinInput {
   ownerUserId: string | null;
@@ -41,7 +57,10 @@ export class PetSkinService {
     private readonly skinRepo: Repository<PetSkin>,
     @InjectRepository(PetActiveSkin)
     private readonly activeRepo: Repository<PetActiveSkin>,
+    @InjectRepository(Order)
+    private readonly orderRepo: Repository<Order>,
     private readonly ancestorChain: AncestorChainService,
+    private readonly planResolver: UserPlanResolverService,
   ) {}
 
   /**
@@ -128,18 +147,27 @@ export class PetSkinService {
    * For platform skins (owner=NULL) we just return the row — they're already visible.
    * For other-user skins we clone the row with source='purchased'.
    *
-   * Pricing:
-   *  - priceCents=0 → free install (no payment required).
-   *  - priceCents>0 → caller MUST pass `acknowledgedPriceCents` matching the
-   *    current price. The split is computed via RoyaltySplitter and embedded
-   *    into the clone manifest (`purchaseSplit`) for downstream payout
-   *    settlement (Stripe Connect / wallet debit handled out-of-band by the
-   *    payment service).
+   * Pricing (Pet Phase 6 P0-3 / P0-6 hardened, 2026-05-08):
+   *  - priceCents=0 → free install (no payment required, no tier gate).
+   *  - priceCents>0 → caller MUST:
+   *      1. be on a paid plan tier (P0-6 server-authoritative gate); free tier
+   *         users get a `pet_skin_requires_pro` ForbiddenException so the
+   *         frontend can route to the upgrade screen.
+   *      2. supply a valid `orderId` whose Order is owned by the buyer, paid,
+   *         priced equal to the skin, scoped to this skin, and not yet
+   *         consumed for another install (P0-3). The legacy
+   *         `acknowledgedPriceCents`-only path is rejected with
+   *         `payment_required` so the previous "confirm dialog → install"
+   *         shortcut can no longer bypass payment.
+   *  The order is then marked as consumed (metadata.consumedForSkinInstall =
+   *  installedSkinId) so a single payment maps to a single install. The split
+   *  is computed via RoyaltySplitter and embedded into the clone manifest
+   *  (`purchaseSplit`) for downstream payout settlement.
    */
   async installFromMarketplace(
     userId: string,
     skinId: string,
-    opts: { acknowledgedPriceCents?: number } = {},
+    opts: { acknowledgedPriceCents?: number; orderId?: string } = {},
   ): Promise<PetSkin> {
     const src = await this.skinRepo.findOne({ where: { id: skinId } });
     if (!src) throw new NotFoundException(`pet skin not found: ${skinId}`);
@@ -152,12 +180,40 @@ export class PetSkinService {
     }
 
     let purchaseSplit: RoyaltySplitResult | null = null;
+    let consumedOrder: Order | null = null;
     if (src.priceCents > 0) {
-      if (opts.acknowledgedPriceCents !== src.priceCents) {
-        throw new ForbiddenException(
-          `price acknowledgement required (priceCents=${src.priceCents})`,
-        );
+      // P0-6 — server-authoritative tier gate
+      const tier = await this.planResolver.getPlan(userId);
+      if (!PAID_SKIN_INSTALL_ALLOWED_TIERS.includes(tier)) {
+        throw new ForbiddenException({
+          code: 'pet_skin_requires_pro',
+          message: 'Free tier cannot purchase paid pet skins, please upgrade to Pro.',
+          tier,
+          required_tier: 'pro',
+        });
       }
+      // P0-3 — require an actual paid Order (no more confirm-dialog shortcut)
+      if (opts.acknowledgedPriceCents !== src.priceCents) {
+        throw new ForbiddenException({
+          code: 'price_acknowledgement_required',
+          message: `price acknowledgement required (priceCents=${src.priceCents})`,
+          priceCents: src.priceCents,
+        });
+      }
+      if (!opts.orderId) {
+        throw new ForbiddenException({
+          code: 'payment_required',
+          message: 'paid pet skin install requires a valid orderId from a completed payment',
+          skinId,
+          priceCents: src.priceCents,
+        });
+      }
+      consumedOrder = await this.assertPaidOrderForSkin({
+        orderId: opts.orderId,
+        userId,
+        skinId: src.id,
+        priceCents: src.priceCents,
+      });
       purchaseSplit = await this.computeSplit(src, userId);
     }
 
@@ -177,6 +233,7 @@ export class PetSkinService {
                 grossPriceCents: src.priceCents,
                 ...purchaseSplit,
                 payoutStatus: 'pending',
+                orderId: consumedOrder?.id ?? null,
               },
             }
           : {}),
@@ -192,10 +249,115 @@ export class PetSkinService {
       priceCents: 0,
     });
     const saved = await this.skinRepo.save(clone);
+
+    // P0-3 — mark order consumed so a single payment can't be replayed for
+    // multiple installs. We store the resulting skin id back on the order's
+    // metadata; the next install attempt with the same orderId will fail at
+    // assertPaidOrderForSkin().
+    if (consumedOrder) {
+      try {
+        consumedOrder.metadata = {
+          ...(consumedOrder.metadata || {}),
+          consumedForSkinInstall: saved.id,
+          consumedForSkinSourceId: src.id,
+          consumedAt: new Date().toISOString(),
+        };
+        await this.orderRepo.save(consumedOrder);
+      } catch (e) {
+        this.logger.warn(
+          `mark order consumed failed (order=${consumedOrder.id}, skin=${saved.id}): ${(e as Error).message}`,
+        );
+      }
+    }
+
     this.logger.log(
-      `PetSkin installed from marketplace: ${saved.id} from=${src.id} user=${userId} priceCents=${src.priceCents}`,
+      `PetSkin installed from marketplace: ${saved.id} from=${src.id} user=${userId} priceCents=${src.priceCents} orderId=${consumedOrder?.id ?? '-'}`,
     );
     return saved;
+  }
+
+  /**
+   * P0-3 — Validate that a given Order represents a real, paid, single-use
+   * purchase for `skinId` made by `userId`. Throws a structured
+   * ForbiddenException for any failure so the FE can react precisely.
+   */
+  private async assertPaidOrderForSkin(input: {
+    orderId: string;
+    userId: string;
+    skinId: string;
+    priceCents: number;
+  }): Promise<Order> {
+    const order = await this.orderRepo.findOne({ where: { id: input.orderId } });
+    if (!order) {
+      throw new ForbiddenException({
+        code: 'order_not_found',
+        message: `order not found: ${input.orderId}`,
+      });
+    }
+    if (order.userId !== input.userId) {
+      throw new ForbiddenException({
+        code: 'order_not_owned',
+        message: 'order does not belong to current user',
+      });
+    }
+    if (!PAID_ORDER_STATUSES.includes(order.status)) {
+      throw new ForbiddenException({
+        code: 'order_not_paid',
+        message: `order is not paid (status=${order.status})`,
+        status: order.status,
+      });
+    }
+    const orderAmountCents = Math.round(Number(order.amount) * 100);
+    if (orderAmountCents !== input.priceCents) {
+      throw new ForbiddenException({
+        code: 'order_amount_mismatch',
+        message: `order amount cents (${orderAmountCents}) does not match skin price (${input.priceCents})`,
+        orderAmountCents,
+        priceCents: input.priceCents,
+      });
+    }
+    const md = (order.metadata || {}) as Record<string, unknown>;
+    const orderSkinId = order.productId || (md.skinId as string | undefined);
+    if (orderSkinId && orderSkinId !== input.skinId) {
+      throw new ForbiddenException({
+        code: 'order_skin_mismatch',
+        message: `order skin id (${orderSkinId}) does not match requested skin (${input.skinId})`,
+      });
+    }
+    if (!orderSkinId) {
+      throw new ForbiddenException({
+        code: 'order_missing_skin_id',
+        message: 'order does not reference a pet skin (productId or metadata.skinId required)',
+      });
+    }
+    if (md.consumedForSkinInstall) {
+      throw new ForbiddenException({
+        code: 'order_already_consumed',
+        message: 'order has already been consumed by a previous skin install',
+        consumedForSkinInstall: md.consumedForSkinInstall,
+      });
+    }
+    return order;
+  }
+
+  /**
+   * P0-6 helper — entitlements snapshot used by /v1/pet/entitlements and
+   * frontend gate banners. Server-authoritative; never trust the client.
+   */
+  async resolveEntitlements(userId: string): Promise<{
+    tier: PlanTier;
+    can_install_paid_skin: boolean;
+    can_breed: boolean;
+    paid_install_requires_order: true;
+  }> {
+    const tier = await this.planResolver.getPlan(userId);
+    return {
+      tier,
+      can_install_paid_skin: PAID_SKIN_INSTALL_ALLOWED_TIERS.includes(tier),
+      // S5 social breeding stays open in P0; P1+ may tighten further.
+      can_breed: true,
+      paid_install_requires_order: true,
+    };
   }
 
   /**

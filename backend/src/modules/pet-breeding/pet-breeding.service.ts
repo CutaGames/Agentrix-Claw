@@ -14,6 +14,24 @@ import { emitDesktopSyncEvent } from '../desktop-sync/desktop-sync.events';
 
 const HATCH_DURATION_MS = 5 * 24 * 60 * 60 * 1000; // 5 天
 
+/**
+ * Pet Phase 6 P0-5 — 繁育资源闭环 v1。
+ *
+ * 双方邀请时各记一笔 BREEDING_COST_CREDITS 成本（现阶段为 audit-only，
+ * 以免在没有代币账本的情况下强路出错）。未来接代币账本后，只
+ * 需在 charge() 里补上真实扣费；metadata.cost_charged 为凭证。
+ */
+const BREEDING_COST_CREDITS = 200;
+
+type BreedingTimelineEntry = {
+  status: string;
+  at: number;
+  by: string;
+  cost_credits?: number;
+  charged?: boolean;
+  reason?: string;
+};
+
 @Injectable()
 export class PetBreedingService {
   private readonly logger = new Logger(PetBreedingService.name);
@@ -51,6 +69,18 @@ export class PetBreedingService {
         initiatorPetSkinId: input.initiatorPetSkinId,
         partnerPetSkinId: input.partnerPetSkinId,
         status: 'invited',
+        metadata: {
+          cost_credits_per_side: BREEDING_COST_CREDITS,
+          // P0-5: audit-only ledger; flips to true when a real credit ledger lands.
+          cost_charged: false,
+          timeline: [
+            this.timelineEntry('invited', input.initiatorUserId, {
+              cost_credits: BREEDING_COST_CREDITS,
+              charged: false,
+              reason: 'invite',
+            }),
+          ] satisfies BreedingTimelineEntry[],
+        },
       }),
     );
     try {
@@ -70,6 +100,11 @@ export class PetBreedingService {
     if (egg.status !== 'invited') throw new BadRequestException(`status=${egg.status}`);
     egg.status = 'hatching';
     egg.hatchAt = String(Date.now() + HATCH_DURATION_MS);
+    this.appendTimeline(egg, 'hatching', partnerUserId, {
+      cost_credits: BREEDING_COST_CREDITS,
+      charged: false,
+      reason: 'partner_accept',
+    });
     const saved = await this.eggRepo.save(egg);
     [egg.initiatorUserId, egg.partnerUserId].forEach((uid) => {
       try {
@@ -87,6 +122,7 @@ export class PetBreedingService {
     if (!egg) throw new NotFoundException('egg not found');
     if (egg.partnerUserId !== partnerUserId) throw new ForbiddenException('not your invite');
     egg.status = 'declined';
+    this.appendTimeline(egg, 'declined', partnerUserId, { reason: 'partner_decline' });
     return this.eggRepo.save(egg);
   }
 
@@ -98,6 +134,7 @@ export class PetBreedingService {
       throw new BadRequestException(`cannot cancel from status=${egg.status}`);
     }
     egg.status = 'cancelled';
+    this.appendTimeline(egg, 'cancelled', initiatorUserId, { reason: 'initiator_cancel' });
     return this.eggRepo.save(egg);
   }
 
@@ -130,6 +167,9 @@ export class PetBreedingService {
     egg.status = 'hatched';
     egg.childSkinIdInitiator = childInitiator.id;
     egg.childSkinIdPartner = childPartner.id;
+    this.appendTimeline(egg, 'hatched', requesterUserId, {
+      reason: 'hatch_complete',
+    });
     const saved = await this.eggRepo.save(egg);
 
     [egg.initiatorUserId, egg.partnerUserId].forEach((uid) => {
@@ -156,5 +196,28 @@ export class PetBreedingService {
       take: 50,
     });
     return { initiated, received };
+  }
+
+  /** Pet Phase 6 P0-5 — audit-only timeline appender (mutates egg.metadata). */
+  private appendTimeline(
+    egg: PetBreedingEgg,
+    status: string,
+    by: string,
+    extra: Partial<Omit<BreedingTimelineEntry, 'status' | 'at' | 'by'>> = {},
+  ): void {
+    const md = (egg.metadata || {}) as Record<string, unknown>;
+    const prev = Array.isArray(md.timeline) ? (md.timeline as BreedingTimelineEntry[]) : [];
+    egg.metadata = {
+      ...md,
+      timeline: [...prev, this.timelineEntry(status, by, extra)],
+    };
+  }
+
+  private timelineEntry(
+    status: string,
+    by: string,
+    extra: Partial<Omit<BreedingTimelineEntry, 'status' | 'at' | 'by'>> = {},
+  ): BreedingTimelineEntry {
+    return { status, by, at: Date.now(), ...extra };
   }
 }

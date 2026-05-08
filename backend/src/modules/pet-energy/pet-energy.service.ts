@@ -97,6 +97,34 @@ export class PetEnergyService {
     return saved;
   }
 
+  /**
+   * P0-5 — Credit energy to pet (e.g. minigame reward / daily login).
+   * Cap at ENERGY_MAX. Broadcasts presence:pet.energy on change.
+   */
+  async credit(
+    userId: string,
+    petSkinId: string,
+    amount: number,
+    opts: { reason?: string; now?: Date } = {},
+  ): Promise<PetEnergyState> {
+    const delta = Math.max(0, Math.floor(amount || 0));
+    if (delta === 0) {
+      return this.getState(userId, petSkinId, opts.now);
+    }
+    const state = await this.getState(userId, petSkinId, opts.now);
+    const before = state.energy;
+    state.energy = Math.min(ENERGY_MAX, state.energy + delta);
+    if (state.energy === before) {
+      return state;
+    }
+    const saved = await this.repo.save(state);
+    this.logger.log(
+      `pet.energy credited user=${userId} pet=${petSkinId} +${delta} → ${saved.energy} reason=${opts.reason ?? 'unspecified'}`,
+    );
+    this.broadcast(saved);
+    return saved;
+  }
+
   async pause(userId: string, petSkinId: string, reason: string): Promise<PetEnergyState> {
     const state = await this.getState(userId, petSkinId);
     state.paused = true;

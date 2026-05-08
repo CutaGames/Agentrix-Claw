@@ -9,12 +9,21 @@ import { PetSkinModule } from '../pet-skin/pet-skin.module';
 import { PetGenQuotaModule } from '../pet-gen-quota/pet-gen-quota.module';
 import { MarketplacePetModule } from '../marketplace-pet/marketplace-pet.module';
 import { PetAchievementModule } from '../pet-achievement/pet-achievement.module';
+import { PetEnergyModule } from '../pet-energy/pet-energy.module';
 
 /**
  * LivingPetModule
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([LivingPet]), PetSoulTemplateModule, PetSkinModule, PetGenQuotaModule, MarketplacePetModule, PetAchievementModule],
+  imports: [
+    TypeOrmModule.forFeature([LivingPet]),
+    PetSoulTemplateModule,
+    PetSkinModule,
+    PetGenQuotaModule,
+    MarketplacePetModule,
+    PetAchievementModule,
+    PetEnergyModule,
+  ],
   controllers: [LivingPetController, PetPublicController],
   providers: [LivingPetService],
   exports: [LivingPetService],

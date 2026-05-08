@@ -104,6 +104,12 @@ export class PetCompanionEngineController {
     };
   }
 
+  /** P1-4 观测：近 N 小时推送/抑制/点击统计。 */
+  @Get('stats')
+  async stats(@Req() req: any, @Query('hours') hours?: string) {
+    return this.service.getStats(this.uid(req), Number(hours) || 24);
+  }
+
   /** Debug-only：开发环境直接触发一次评估，便于 E2E 验证 */
   @Post('_test/evaluate')
   async testEvaluate(@Req() req: any) {

@@ -4,12 +4,15 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PetSkinService } from './pet-skin.service';
 import { PetSkin } from '../../entities/pet-skin.entity';
 import { PetActiveSkin } from '../../entities/pet-active-skin.entity';
+import { Order, OrderStatus } from '../../entities/order.entity';
 import { AncestorChainService } from '../marketplace-pet/ancestor-chain.service';
+import { UserPlanResolverService } from '../pet-gen-quota/user-plan-resolver.service';
 
 /**
  * BE-T1.2: 来源跟踪 (source = generated / purchased / remixed)
  * BE-T1.3: pet-active-skin 唯一约束（一 user 仅一 active）
  * BE-T1.6 (skin variant): activate 不属于 user 的私有皮肤 → ForbiddenException
+ * Pet Phase 6 P0-3 / P0-6 (2026-05-08): paid install 需 paid Order + 非 free tier
  */
 describe('PetSkinService', () => {
   let service: PetSkinService;
@@ -27,19 +30,31 @@ describe('PetSkinService', () => {
     findOne: jest.fn(),
   };
 
+  const orderRepo = {
+    findOne: jest.fn(),
+    save: jest.fn((d) => Promise.resolve(d)),
+  };
+
   const ancestorChain = {
     resolveChain: jest.fn().mockResolvedValue([]),
+  };
+
+  const planResolver = {
+    getPlan: jest.fn().mockResolvedValue('pro'),
   };
 
   beforeEach(async () => {
     jest.clearAllMocks();
     ancestorChain.resolveChain.mockResolvedValue([]);
+    planResolver.getPlan.mockResolvedValue('pro');
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
         PetSkinService,
         { provide: getRepositoryToken(PetSkin), useValue: skinRepo },
         { provide: getRepositoryToken(PetActiveSkin), useValue: activeRepo },
+        { provide: getRepositoryToken(Order), useValue: orderRepo },
         { provide: AncestorChainService, useValue: ancestorChain },
+        { provide: UserPlanResolverService, useValue: planResolver },
       ],
     }).compile();
     service = mod.get<PetSkinService>(PetSkinService);
@@ -214,14 +229,24 @@ describe('PetSkinService', () => {
       ancestorChain.resolveChain.mockResolvedValue([
         { creatorUserId: 'creator0', royaltyRateBps: 1500 },
       ]);
+      orderRepo.findOne.mockResolvedValue({
+        id: 'order-1',
+        userId: 'buyer',
+        productId: 's1',
+        amount: 10, // $10.00 → 1000 cents
+        status: OrderStatus.PAID,
+        metadata: {},
+      });
       const out = await service.installFromMarketplace('buyer', 's1', {
         acknowledgedPriceCents: 1000,
+        orderId: 'order-1',
       });
       const split = (out.manifest as any).purchaseSplit;
       expect(split).toBeDefined();
       expect(split.grossPriceCents).toBe(1000);
       expect(split.platformCents).toBe(50); // 5% of 1000c
       expect(split.payoutStatus).toBe('pending');
+      expect(split.orderId).toBe('order-1');
       // creator0 gets 15% royalty = 150c
       const creatorPayout = split.payouts.find(
         (p: any) => p.recipientUserId === 'creator0' && p.reason === 'royalty',
@@ -229,6 +254,115 @@ describe('PetSkinService', () => {
       expect(creatorPayout?.amountCents).toBe(150);
       // seller gets 1000 - 50 - 150 = 800
       expect(split.sellerCents).toBe(800);
+      // P0-3 — order is marked consumed so a single payment cannot be replayed
+      expect(orderRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            consumedForSkinInstall: expect.any(String),
+            consumedForSkinSourceId: 's1',
+          }),
+        }),
+      );
+    });
+
+    // ---- P0-6 server-authoritative tier gating ----
+    it('rejects paid install for free-tier users with pet_skin_requires_pro', async () => {
+      planResolver.getPlan.mockResolvedValue('free');
+      skinRepo.findOne.mockResolvedValue({
+        id: 's1',
+        ownerUserId: 'seller',
+        retired: false,
+        visibility: 'public',
+        moderationStatus: 'approved',
+        priceCents: 500,
+      });
+      await expect(
+        service.installFromMarketplace('buyer', 's1', {
+          acknowledgedPriceCents: 500,
+          orderId: 'order-1',
+        }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'pet_skin_requires_pro' }),
+      });
+      // Free skin still installs even on free tier
+      planResolver.getPlan.mockResolvedValue('free');
+      skinRepo.findOne.mockResolvedValue({
+        id: 's2',
+        ownerUserId: 'seller',
+        retired: false,
+        visibility: 'public',
+        moderationStatus: 'approved',
+        priceCents: 0,
+        manifest: {},
+      });
+      await expect(service.installFromMarketplace('buyer', 's2')).resolves.toMatchObject({
+        source: 'purchased',
+      });
+    });
+
+    // ---- P0-3 paid install requires real Order ----
+    it('rejects paid install without orderId (payment_required)', async () => {
+      skinRepo.findOne.mockResolvedValue({
+        id: 's1',
+        ownerUserId: 'seller',
+        retired: false,
+        visibility: 'public',
+        moderationStatus: 'approved',
+        priceCents: 500,
+      });
+      await expect(
+        service.installFromMarketplace('buyer', 's1', { acknowledgedPriceCents: 500 }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'payment_required' }),
+      });
+    });
+
+    it.each([
+      ['order_not_found', null],
+      ['order_not_owned', { id: 'o1', userId: 'someone-else', amount: 5, status: OrderStatus.PAID, productId: 's1', metadata: {} }],
+      ['order_not_paid', { id: 'o1', userId: 'buyer', amount: 5, status: OrderStatus.CREATED, productId: 's1', metadata: {} }],
+      ['order_amount_mismatch', { id: 'o1', userId: 'buyer', amount: 4, status: OrderStatus.PAID, productId: 's1', metadata: {} }],
+      ['order_skin_mismatch', { id: 'o1', userId: 'buyer', amount: 5, status: OrderStatus.PAID, productId: 'other-skin', metadata: {} }],
+      ['order_already_consumed', { id: 'o1', userId: 'buyer', amount: 5, status: OrderStatus.PAID, productId: 's1', metadata: { consumedForSkinInstall: 'previous' } }],
+    ])('rejects paid install with %s', async (code, orderRow) => {
+      skinRepo.findOne.mockResolvedValue({
+        id: 's1',
+        ownerUserId: 'seller',
+        retired: false,
+        visibility: 'public',
+        moderationStatus: 'approved',
+        priceCents: 500,
+      });
+      orderRepo.findOne.mockResolvedValue(orderRow);
+      await expect(
+        service.installFromMarketplace('buyer', 's1', {
+          acknowledgedPriceCents: 500,
+          orderId: 'o1',
+        }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code }),
+      });
+    });
+  });
+
+  // ---- P0-6 entitlements snapshot ----
+  describe('resolveEntitlements (P0-6)', () => {
+    it('marks free tier as cannot install paid skins', async () => {
+      planResolver.getPlan.mockResolvedValue('free');
+      const e = await service.resolveEntitlements('u1');
+      expect(e).toEqual({
+        tier: 'free',
+        can_install_paid_skin: false,
+        can_breed: true,
+        paid_install_requires_order: true,
+      });
+    });
+
+    it.each(['pro', 'pro_plus', 'enterprise'] as const)('allows %s tier to install paid skins', async (tier) => {
+      planResolver.getPlan.mockResolvedValue(tier);
+      const e = await service.resolveEntitlements('u1');
+      expect(e.can_install_paid_skin).toBe(true);
+      expect(e.tier).toBe(tier);
     });
   });
 

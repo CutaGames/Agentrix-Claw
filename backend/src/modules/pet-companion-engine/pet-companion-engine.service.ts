@@ -252,6 +252,28 @@ export class PetCompanionEngineService {
       });
     }
 
+    // birthday: 以宠物创建日作为周年锥 (P1-4 2026-05-08)。
+    // 仅在“创建后≥1 年 且 今天为同月同日”时计入候选；dedup 窗口 1 年 →
+    // 走 不重复推送。亲密度门槛 lv7 依然生效。
+    if (pet.createdAt instanceof Date) {
+      const now = new Date(nowMs);
+      const sameDay =
+        pet.createdAt.getMonth() === now.getMonth() &&
+        pet.createdAt.getDate() === now.getDate();
+      const ageMs = nowMs - pet.createdAt.getTime();
+      if (sameDay && ageMs >= 364 * 24 * 60 * 60 * 1000) {
+        const years = Math.max(1, Math.floor(ageMs / (365 * 24 * 60 * 60 * 1000)));
+        out.push({
+          kind: 'birthday',
+          payload: {
+            title: `· ${pet.name || '它'} 的生日 ·`,
+            body: `今天是我们相遇的第 ${years} 周年～谢谢你一直在。`,
+            cta: { label: '写张生日卡', action: 'open_birthday_card' },
+          },
+        });
+      }
+    }
+
     // birthday: 不在 service 实现（需要用户 profile 生日字段，留给 P7）
     return out;
   }
@@ -385,5 +407,54 @@ export class PetCompanionEngineService {
       order: { createdAt: 'DESC' },
       take: Math.min(100, Math.max(1, limit)),
     });
+  }
+
+  /**
+   * P1-4 可观测性：返回近 N 小时内的分发/抑制统计。
+   *
+   * 输出按 kind 计数 + 按 suppressed_reason 计数，供
+   * frontend admin / QA 调试“为什么今天没推送”。
+   */
+  async getStats(
+    userId: string,
+    lookbackHours = 24,
+  ): Promise<{
+    lookback_hours: number;
+    total: number;
+    sent_by_kind: Record<string, number>;
+    suppressed_by_reason: Record<string, number>;
+    ack_count: number;
+    dismiss_count: number;
+  }> {
+    const hours = Math.max(1, Math.min(24 * 30, Math.floor(lookbackHours)));
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const rows = await this.eventRepo.find({
+      where: { userId, createdAt: Between(since, new Date()) },
+      order: { createdAt: 'DESC' },
+      take: 500,
+    });
+    const sent_by_kind: Record<string, number> = {};
+    const suppressed_by_reason: Record<string, number> = {};
+    let ack = 0;
+    let dismiss = 0;
+    for (const r of rows) {
+      if (r.status === 'sent' || r.status === 'ack' || r.status === 'dismissed') {
+        sent_by_kind[r.kind] = (sent_by_kind[r.kind] ?? 0) + 1;
+      }
+      if (r.status === 'suppressed' && r.suppressedReason) {
+        suppressed_by_reason[r.suppressedReason] =
+          (suppressed_by_reason[r.suppressedReason] ?? 0) + 1;
+      }
+      if (r.status === 'ack') ack += 1;
+      if (r.status === 'dismissed') dismiss += 1;
+    }
+    return {
+      lookback_hours: hours,
+      total: rows.length,
+      sent_by_kind,
+      suppressed_by_reason,
+      ack_count: ack,
+      dismiss_count: dismiss,
+    };
   }
 }

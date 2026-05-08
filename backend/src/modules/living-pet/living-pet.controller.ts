@@ -3,6 +3,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { LivingPetService, PetEmotion } from './living-pet.service';
 import { PetSkinService } from '../pet-skin/pet-skin.service';
 import { RemixBreedingService } from '../marketplace-pet/remix-breeding.service';
+import { PetAchievementService } from '../pet-achievement/pet-achievement.service';
+import { PetEnergyService } from '../pet-energy/pet-energy.service';
 
 /**
  * 顿领 §3.4 主宠 API
@@ -20,6 +22,8 @@ export class LivingPetController {
     private readonly service: LivingPetService,
     private readonly skinService: PetSkinService,
     private readonly breedingService: RemixBreedingService,
+    private readonly achievementService: PetAchievementService,
+    private readonly energyService: PetEnergyService,
   ) {}
 
   @Get('state')
@@ -27,6 +31,63 @@ export class LivingPetController {
     const userId = req.user?.userId || req.user?.sub || req.user?.id;
     const pet = await this.service.getOrCreate(userId);
     return this.service.toDto(pet);
+  }
+
+  /**
+   * P1-5 统一快照端点。
+   *
+   * 三端（Web/Mobile/Desktop）在“冷启动 / 重连 / 从后台恢复”时调用以一次拿齐所有
+   * pet 核心状态，避免 3-4 个并发 GET 及中间状态闪烁。不包含重型集合（memory/album
+   * 另走专端端点）。
+   */
+  @Get('snapshot')
+  async snapshot(@Req() req: any) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    const pet = await this.service.getOrCreate(userId);
+    const active = await this.skinService.getActive(userId);
+    let activeSkin: unknown = null;
+    if (active?.activeSkinId) {
+      const skin = await this.skinService.findById(active.activeSkinId);
+      if (skin) {
+        activeSkin = {
+          id: skin.id,
+          display_name: skin.displayName,
+          url: skin.url,
+          thumbnail_url: skin.thumbnailUrl,
+          format: skin.format,
+          source: skin.source,
+        };
+      }
+    }
+    let energy: unknown = null;
+    if (active?.activeSkinId) {
+      try {
+        const state = await this.energyService.getState(userId, active.activeSkinId);
+        energy = {
+          energy: state.energy,
+          paused: (state as any).paused ?? false,
+          paused_reason: (state as any).pausedReason ?? null,
+          updated_at: state.updatedAt ? state.updatedAt.getTime() : null,
+        };
+      } catch {
+        energy = null;
+      }
+    }
+    let achievements: unknown[] = [];
+    try {
+      achievements = (await this.achievementService.listForUser(userId)).filter(
+        (a: any) => a.unlocked,
+      );
+    } catch {
+      achievements = [];
+    }
+    return {
+      pet: this.service.toDto(pet),
+      active_skin: activeSkin,
+      energy,
+      achievements,
+      server_time: Date.now(),
+    };
   }
 
   @Post('emotion')
