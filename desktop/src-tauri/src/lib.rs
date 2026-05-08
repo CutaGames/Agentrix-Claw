@@ -105,12 +105,40 @@ async fn desktop_bridge_snap_ball_to_edge(app: AppHandle) -> Result<(), String> 
 #[tauri::command]
 async fn desktop_bridge_resize_ball_window(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("main") {
-        let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }));
-        // PRO mode (large window): make resizable and non-always-on-top
-        // Compact/ball mode (small window): keep pinned and non-resizable
+        // Three modes:
+        //   ball     (<= 120):  borderless, transparent-ish, alwaysOnTop, snapped bottom-right
+        //   compact  (120-500): decorated, normal, centered
+        //   pro      (>  500):  decorated, resizable, normal, centered
+        let is_ball = width <= 120.0 && height <= 120.0;
         let is_pro = width > 500.0 || height > 700.0;
+
+        let _ = win.set_decorations(!is_ball);
         let _ = win.set_resizable(is_pro);
-        let _ = win.set_always_on_top(!is_pro);
+        let _ = win.set_always_on_top(is_ball);
+        let _ = win.set_skip_taskbar(is_ball);
+
+        let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }));
+
+        if is_ball {
+            // Snap to bottom-right of the window's current monitor so the user
+            // can actually find the floating ball (first-run visibility fix).
+            if let Ok(Some(monitor)) = win.current_monitor() {
+                let mp = monitor.position();
+                let ms = monitor.size();
+                let scale = monitor.scale_factor();
+                let pw = (width * scale) as i32;
+                let ph = (height * scale) as i32;
+                let margin = (24.0 * scale) as i32;
+                let x = mp.x + (ms.width as i32) - pw - margin;
+                let y = mp.y + (ms.height as i32) - ph - margin - (48.0 * scale) as i32; // taskbar reserve
+                let _ = win.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
+            }
+        } else {
+            // Re-center for compact/pro panels so the user can see them
+            // even if the ball previously snapped to a corner.
+            let _ = win.center();
+        }
+
         Ok(())
     } else {
         Err("main window not found".into())

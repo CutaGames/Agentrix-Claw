@@ -17,15 +17,19 @@
       {
         "label": "main",
         "title": "Agentrix",
-        "width": 100,
-        "height": 100,
+        "width": 480,
+        "height": 640,
+        "minWidth": 80,
+        "minHeight": 80,
+        "center": true,
         "url": "index.html",
         "dragDropEnabled": false,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "resizable": false,
-        "skipTaskbar": true
+        "decorations": true,
+        "transparent": false,
+        "alwaysOnTop": false,
+        "resizable": true,
+        "skipTaskbar": false,
+        "visible": true
       }
     ]
   },

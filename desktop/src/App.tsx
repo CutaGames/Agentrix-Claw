@@ -117,24 +117,34 @@ export default function App() {
     } catch {}
   }, []);
 
-  // When panelOpen changes, resize the main window accordingly
+  const [onboarded, setOnboarded] = useState(() => localStorage.getItem("agentrix_onboarded") === "1");
+  const { token, isGuest, loadToken, enterGuest } = useAuthStore();
+  const [networkStatus, setNetworkStatus] = useState<NetworkStatus>(getNetworkStatus());
+  const [wakeWordRevision, setWakeWordRevision] = useState(0);
+  const desktopWakeWordConfig = readDesktopWakeWordConfig();
+
+  // When panelOpen changes, resize the main window accordingly.
+  // Only shrink to the floating ball once the user is fully ready
+  // (logged in + onboarded). Before that, keep the window at compact-panel
+  // size so LoginPanel / OnboardingPanel actually fit and are visible.
   useEffect(() => {
     if (windowLabel !== "main" && windowLabel !== "dev") return;
+    const ready = (!!token || isGuest) && onboarded;
     if (panelOpen) {
       if (panelMode === "pro") {
         resizeMainWindow(1100, 820);
       } else {
         resizeMainWindow(480, 640);
       }
-    } else {
+    } else if (ready) {
       resizeMainWindow(80, 80);
+    } else {
+      // First-run / not-yet-logged-in: keep the window big enough for the
+      // LoginPanel + OnboardingPanel UI; otherwise it would be a 80×80
+      // invisible square in the screen corner.
+      resizeMainWindow(480, 640);
     }
-  }, [panelMode, panelOpen, windowLabel, resizeMainWindow]);
-  const [onboarded, setOnboarded] = useState(() => localStorage.getItem("agentrix_onboarded") === "1");
-  const { token, isGuest, loadToken, enterGuest } = useAuthStore();
-  const [networkStatus, setNetworkStatus] = useState<NetworkStatus>(getNetworkStatus());
-  const [wakeWordRevision, setWakeWordRevision] = useState(0);
-  const desktopWakeWordConfig = readDesktopWakeWordConfig();
+  }, [panelMode, panelOpen, windowLabel, resizeMainWindow, token, isGuest, onboarded]);
 
   useEffect(() => {
     loadToken();
@@ -657,6 +667,7 @@ export default function App() {
           />
         ) : (
           <div
+            data-tauri-drag-region
             style={{
               width: "100%",
               height: "100%",
