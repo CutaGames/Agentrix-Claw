@@ -8,6 +8,7 @@ import { WardrobeScreen } from '../screens/pet/WardrobeScreen';
 import { SkinMarketplaceScreen } from '../screens/pet/SkinMarketplaceScreen';
 import { BreedScreen } from '../screens/pet/BreedScreen';
 import SoulPickerScreen from '../screens/pet/SoulPickerScreen';
+import { PetPlaygroundScreen } from '../screens/pet/PetPlaygroundScreen';
 import { PlanApprovalScreen } from '../screens/plan/PlanApprovalScreen';
 
 // P0-W2-1 Today tab — Living Companion entry (PRD mobile-prd-v3 §4.1.1)
@@ -18,6 +19,7 @@ export type TodayStackParamList = {
   SkinMarketplace: undefined;
   Breed: undefined;
   SoulPicker: undefined;
+  PetPlayground: undefined;
   PlanApproval: undefined;
 };
 
@@ -63,6 +65,11 @@ export function TodayStackNavigator() {
         name="SoulPicker"
         component={SoulPickerScreen}
         options={{ title: t({ en: 'Switch Soul', zh: '切换灵魂' }) }}
+      />
+      <Stack.Screen
+        name="PetPlayground"
+        component={PetPlaygroundScreen}
+        options={{ title: t({ en: 'Pet Playground', zh: '成长 · 游戏 · 繁育' }) }}
       />
       <Stack.Screen
         name="PlanApproval"
