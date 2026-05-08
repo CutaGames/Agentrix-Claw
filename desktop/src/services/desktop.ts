@@ -13,7 +13,11 @@ export type DesktopActionKind =
   | "run-command"
   | "read-file"
   | "write-file"
-  | "open-browser";
+  | "open-browser"
+  // Computer Use (Phase B)
+  | "computer-use-click"
+  | "computer-use-type"
+  | "computer-use-key";
 
 export interface DesktopCommandResult {
   command: string;
@@ -74,6 +78,11 @@ async function invokeDesktop<T>(command: string, args?: Record<string, unknown>)
     throw new Error("Desktop command is only available inside the packaged Tauri app.");
   }
   return invoke<T>(command, args);
+}
+
+/** Public wrapper around the private `invokeDesktop` for callers outside this module. */
+export function invokeDesktopCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  return invokeDesktop<T>(command, args);
 }
 
 export async function secureGetToken(): Promise<string | null> {

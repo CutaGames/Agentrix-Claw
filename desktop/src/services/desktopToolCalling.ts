@@ -6,9 +6,9 @@
  * endpoint with `tools` parameter (requires --jinja flag on llama-server).
  *
  * Tool calling flow:
- *   1. Call chatWithTools() — sidecar returns tool_calls or text
+ *   1. Call chatWithTools() �?sidecar returns tool_calls or text
  *   2. Execute tool calls locally
- *   3. Feed results back as tool messages → re-call
+ *   3. Feed results back as tool messages �?re-call
  *   4. Stream final natural-language response
  */
 
@@ -98,7 +98,7 @@ function extractWorkspacePathHint(messages: ChatMessage[]): string | undefined {
 
     for (const prefix of KNOWN_WORKSPACE_HINT_PREFIXES) {
       const pattern = new RegExp(
-        "(?:^|[\\s\"'(`])" + escapeRegExp(prefix) + "(?:[\\\\/]|\\s*(?:目录|文件夹|folder|dir|directory|下|中)\\b)",
+        "(?:^|[\\s\"'(`])" + escapeRegExp(prefix) + "(?:[\\\\/]|\\s*(?:目录|文件夹|folder|dir|directory|下|�?\\b)",
         "i",
       );
       if (pattern.test(text)) {
@@ -510,6 +510,92 @@ export const DESKTOP_LOCAL_TOOLS: ToolDef[] = [
       },
     },
   },
+  // ── Computer Use (Phase B) ────────────────────────────────────────────────
+  // Cross-platform mouse/keyboard/screen primitives. Each tool routes through
+  // Rust red-lines (terminals/sudo/self) before touching the OS, and through
+  // the desktop approval sheet for user-visible consent.
+  {
+    type: "function",
+    function: {
+      name: "computer_use_screenshot",
+      description:
+        "Take a PNG screenshot of a monitor (base64). Use to ground UI actions before clicking. Optional region/max_size to keep payload small.",
+      parameters: {
+        type: "object",
+        properties: {
+          monitor_index: { type: "number", description: "0-based monitor index, default 0 (primary)" },
+          region: {
+            type: "array",
+            description: "Optional [x,y,w,h] crop in physical pixels",
+            items: { type: "number" },
+          },
+          max_size: { type: "number", description: "Longest-edge cap for downscale, default 1600" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computer_use_click",
+      description: "Move mouse to (x,y) and click. Requires user approval each call.",
+      parameters: {
+        type: "object",
+        properties: {
+          x: { type: "number" },
+          y: { type: "number" },
+          button: { type: "string", enum: ["left", "right", "middle"] },
+          double: { type: "boolean", description: "Double-click when true" },
+        },
+        required: ["x", "y"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computer_use_move",
+      description: "Move the mouse pointer to (x,y) without clicking.",
+      parameters: {
+        type: "object",
+        properties: { x: { type: "number" }, y: { type: "number" } },
+        required: ["x", "y"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computer_use_type",
+      description:
+        "Type text into the focused control. Refused if it contains sudo/runas/rm-rf etc. Requires user approval.",
+      parameters: {
+        type: "object",
+        properties: { text: { type: "string" } },
+        required: ["text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computer_use_key",
+      description: "Send a key combo such as 'ctrl+shift+t' or 'cmd+space'.",
+      parameters: {
+        type: "object",
+        properties: { combo: { type: "string", description: "e.g. 'ctrl+c', 'cmd+shift+4'" } },
+        required: ["combo"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computer_use_window_tree",
+      description: "Enumerate visible top-level windows with title, app name, and bounds.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
 ];
 
 // ── Tool Execution ─────────────────────────────────────
@@ -596,6 +682,14 @@ async function executeToolCall(
 
       case "run_auto_repair_command":
         return await executeRunAutoRepairCommand(args);
+
+      case "computer_use_screenshot":
+      case "computer_use_click":
+      case "computer_use_move":
+      case "computer_use_type":
+      case "computer_use_key":
+      case "computer_use_window_tree":
+        return await executeComputerUse(name, args, context);
 
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` });
@@ -916,6 +1010,116 @@ async function executeRunAutoRepairCommand(args: Record<string, unknown>): Promi
   }
 }
 
+// ── Computer Use executor (Phase B6) ─────────────────────────────────────────
+// Routes the LLM-facing tool name to the corresponding Tauri command. The
+// Rust side enforces hardcoded red-lines (terminals, sudo, self) and the
+// approval sheet enforces per-action user consent.
+async function executeComputerUse(
+  name: string,
+  args: Record<string, unknown>,
+  context: DesktopToolContext,
+): Promise<string> {
+  try {
+    const { invokeDesktopCommand } = await import("./desktop");
+    const { requireDesktopActionApproval } = await import("./desktopAgentSync");
+
+    const requireApproval = async (kind: string, title: string, description: string) => {
+      await requireDesktopActionApproval({
+        token: context.authToken,
+        kind: kind as any,
+        title,
+        description,
+        payload: Object.fromEntries(
+          Object.entries(args).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)]),
+        ) as Record<string, string>,
+        sessionId: context.sessionId,
+      });
+    };
+
+    switch (name) {
+      case "computer_use_screenshot": {
+        const result = await invokeDesktopCommand<{
+          png_base64: string;
+          width: number;
+          height: number;
+          monitor_index: number;
+        }>("computer_use_screenshot", {
+          monitorIndex: typeof args.monitor_index === "number" ? args.monitor_index : undefined,
+          region: Array.isArray(args.region) ? args.region : undefined,
+          maxSize: typeof args.max_size === "number" ? args.max_size : undefined,
+        });
+        // Trim payload �?return dimensions + a base64 prefix; full PNG only when
+        // the model explicitly references it (kept as data url).
+        return JSON.stringify({
+          width: result.width,
+          height: result.height,
+          monitor_index: result.monitor_index,
+          image_data_url: `data:image/png;base64,${result.png_base64}`,
+        });
+      }
+      case "computer_use_click": {
+        const x = Number(args.x);
+        const y = Number(args.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+          return JSON.stringify({ error: "x and y are required numbers" });
+        }
+        await requireApproval(
+          "computer-use-click",
+          `Computer Use: click at (${x}, ${y})`,
+          `Allow Agentrix to click ${args.button || "left"} button at screen coordinates (${x}, ${y})?`,
+        );
+        await invokeDesktopCommand<void>("computer_use_click", {
+          x,
+          y,
+          button: args.button,
+          double: args.double,
+        });
+        return JSON.stringify({ success: true });
+      }
+      case "computer_use_move": {
+        const x = Number(args.x);
+        const y = Number(args.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+          return JSON.stringify({ error: "x and y are required numbers" });
+        }
+        await invokeDesktopCommand<void>("computer_use_move", { x, y });
+        return JSON.stringify({ success: true });
+      }
+      case "computer_use_type": {
+        const text = String(args.text ?? "");
+        if (!text) return JSON.stringify({ error: "text is required" });
+        await requireApproval(
+          "computer-use-type",
+          `Computer Use: type ${text.length} chars`,
+          `Allow Agentrix to type the following into the focused window?\n\n${text.slice(0, 200)}${text.length > 200 ? "..." : ""}`,
+        );
+        await invokeDesktopCommand<void>("computer_use_type", { text });
+        return JSON.stringify({ success: true });
+      }
+      case "computer_use_key": {
+        const combo = String(args.combo ?? "").trim();
+        if (!combo) return JSON.stringify({ error: "combo is required" });
+        await requireApproval(
+          "computer-use-key",
+          `Computer Use: key combo ${combo}`,
+          `Allow Agentrix to send key combo '${combo}'?`,
+        );
+        await invokeDesktopCommand<void>("computer_use_key", { combo });
+        return JSON.stringify({ success: true });
+      }
+      case "computer_use_window_tree": {
+        const result = await invokeDesktopCommand<unknown[]>("computer_use_window_tree");
+        return JSON.stringify({ windows: result });
+      }
+      default:
+        return JSON.stringify({ error: `Unknown computer_use tool: ${name}` });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return JSON.stringify({ error: `${name} failed: ${message}` });
+  }
+}
+
 function clampMaxResultsForCodeIndex(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) return 300;
@@ -1027,7 +1231,7 @@ async function executeSearchSkills(
   }
 
   try {
-    // Desktop doesn't have a dedicated skill search API yet — use backend
+    // Desktop doesn't have a dedicated skill search API yet �?use backend
     const res = await fetch(`${API_BASE}/skills/search?q=${encodeURIComponent(query)}&limit=5`, {
       headers: context.authToken ? { Authorization: `Bearer ${context.authToken}` } : {},
     });
@@ -1064,7 +1268,7 @@ async function executeGetInstalledSkills(
   }
 
   try {
-    // Desktop doesn't have a dedicated instance skills API yet — use backend
+    // Desktop doesn't have a dedicated instance skills API yet �?use backend
     const res = await fetch(`${API_BASE}/openclaw/proxy/${context.instanceId}/skills`, {
       headers: context.authToken ? { Authorization: `Bearer ${context.authToken}` } : {},
     });
@@ -1214,7 +1418,7 @@ export async function runDesktopToolCallingLoop(
 
     const toolCalls = choice.message?.tool_calls;
     if (!toolCalls?.length) {
-      // No tool calls — final text response
+      // No tool calls �?final text response
       const responseText = parseToolResponseText(choice.message?.content || "");
       return { text: responseText, usedTools };
     }
@@ -1233,7 +1437,7 @@ export async function runDesktopToolCallingLoop(
     workingMessages.push(...toolResultMessages);
   }
 
-  // Max iterations reached — get final response without tools
+  // Max iterations reached �?get final response without tools
   if (options.abortSignal?.aborted) {
     return { text: "", usedTools };
   }
