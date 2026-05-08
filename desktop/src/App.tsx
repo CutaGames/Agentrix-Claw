@@ -8,6 +8,7 @@ import LoginPanel from "./components/LoginPanel";
 import PlanTimeline from "./components/PlanTimeline";
 import OnboardingPanel from "./components/OnboardingPanel";
 import SpotlightPanel from "./components/SpotlightPanel";
+import PetCompanionWindow from "./components/PetCompanionWindow";
 import agentrixLogo from "./assets/agentrix-logo.png";
 import { useAuthStore } from "./services/store";
 import { initSessionSync, destroySessionSync } from "./services/sessionSync";
@@ -584,6 +585,11 @@ export default function App() {
   // Spotlight window — minimal search/chat overlay
   if (windowLabel === "spotlight") {
     return <SpotlightPanel />;
+  }
+
+  // Pet Companion window (Phase 6 S1) — autonomous wandering desktop pet.
+  if (windowLabel === "pet-companion") {
+    return <PetCompanionWindow />;
   }
 
   // Chat panel window (opened by Tauri command)

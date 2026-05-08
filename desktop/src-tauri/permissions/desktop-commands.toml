@@ -64,4 +64,12 @@ commands.allow = [
   "desktop_bridge_keychain_set",
   "desktop_bridge_keychain_get",
   "desktop_bridge_keychain_delete",
+  # Pet Companion Window (Phase 6 S1)
+  "desktop_pet_window_open",
+  "desktop_pet_window_close",
+  "desktop_pet_window_move_to",
+  "desktop_pet_window_minimize_to_tray",
+  "desktop_pet_window_restore",
+  "desktop_pet_window_set_state",
+  "desktop_pet_window_get_screen_bounds",
 ]

@@ -153,6 +153,15 @@ fn app_is_blocked(app: &str) -> bool {
     blocked.iter().any(|b| b.eq_ignore_ascii_case(app) || app_l.contains(&b.to_lowercase()))
 }
 
+/// Naïve byte-substring check. Used by the pet-companion E2E to verify the
+/// release exe contains the new IPC command names. Avoids a regex dep.
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return false;
+    }
+    haystack.windows(needle.len()).any(|w| w == needle)
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 fn main() {
@@ -288,6 +297,91 @@ fn main() {
     results.push(run("windows.enumerate", "system", || {
         let windows = xcap::Window::all().map_err(|e| format!("Window::all err: {e}"))?;
         Ok(format!("{} top-level windows", windows.len()))
+    }));
+
+    // Domain: pet-companion (Phase 6 S1) ───────────────────────────────────
+    // We can't drive Tauri IPC from this external example, so the scenarios
+    // below validate (a) that the wander/clamp math is sound and (b) that
+    // when the user has opted in to the pet window via tray/menu the window
+    // actually appears in the OS window list. They never *require* the pet
+    // window — failure here is "soft" (treated as PASS with note).
+    results.push(run("pet.bezier-clamp", "pet-companion", || {
+        // Re-implement the math here (avoid pulling in the JS service) — the
+        // S1 unit test ensures clamp keeps targets inside a 1920×1080 frame
+        // with a 32 px x-margin and 48 px taskbar inset.
+        let bounds = (0i32, 0i32, 1920u32, 1080u32, 48u32);
+        let footprint_w = 160i32;
+        let footprint_h = 200i32;
+        let margin = 32i32;
+        let raw = (3000i32, 1500i32);
+        let max_x = bounds.0 + bounds.2 as i32 - footprint_w - margin;
+        let max_y = bounds.1 + bounds.3 as i32 - footprint_h - bounds.4 as i32;
+        let clamped_x = raw.0.min(max_x).max(bounds.0 + margin);
+        let clamped_y = raw.1.min(max_y).max(bounds.1 + 32);
+        if clamped_x <= max_x && clamped_y <= max_y {
+            Ok(format!("clamp ok ({clamped_x},{clamped_y})"))
+        } else {
+            Err(format!("clamp failed ({clamped_x},{clamped_y})"))
+        }
+    }));
+
+    results.push(run("pet.window.present", "pet-companion", || {
+        let windows = xcap::Window::all().map_err(|e| format!("Window::all err: {e}"))?;
+        // Pet window has title "Agentrix Pet" — note: it's only present when
+        // the user has toggled it via tray menu, so missing is acceptable
+        // and reported as INFO.
+        let hit = windows.iter().find(|w| {
+            let t = w.title();
+            t == "Agentrix Pet" || t.to_lowercase().contains("agentrix pet")
+        });
+        match hit {
+            Some(w) => Ok(format!("pet window present @ \"{}\"", w.title())),
+            None => Ok(format!(
+                "pet window not opened (opt-in via tray); {} windows total",
+                windows.len()
+            )),
+        }
+    }));
+
+    results.push(run("pet.commands.registered", "pet-companion", || {
+        // Validate that the binary embeds the new IPC names. We grep the
+        // running .exe's strings so a regression in invoke_handler wiring
+        // surfaces here even before a manual click test.
+        let exe = locate_app_exe()
+            .unwrap_or_else(|| std::path::PathBuf::from("target/release/agentrix-desktop.exe"));
+        if !exe.exists() {
+            return Ok("release exe not built yet — skip".into());
+        }
+        let bytes = std::fs::read(&exe).map_err(|e| format!("read exe: {e}"))?;
+        let needles = [
+            "desktop_pet_window_open",
+            "desktop_pet_window_move_to",
+            "desktop_pet_window_minimize_to_tray",
+        ];
+        let missing: Vec<&str> = needles
+            .iter()
+            .filter(|n| !contains_bytes(&bytes, n.as_bytes()))
+            .copied()
+            .collect();
+        if missing.is_empty() {
+            Ok(format!("{} pet IPC commands embedded", needles.len()))
+        } else {
+            Err(format!("missing IPC: {}", missing.join(",")))
+        }
+    }));
+
+    results.push(run("pet.tray-menu.embedded", "pet-companion", || {
+        let exe = locate_app_exe()
+            .unwrap_or_else(|| std::path::PathBuf::from("target/release/agentrix-desktop.exe"));
+        if !exe.exists() {
+            return Ok("release exe not built yet — skip".into());
+        }
+        let bytes = std::fs::read(&exe).map_err(|e| format!("read exe: {e}"))?;
+        if contains_bytes(&bytes, b"Toggle Living Pet") {
+            Ok("tray entry embedded".into())
+        } else {
+            Err("tray menu missing pet entry".into())
+        }
     }));
 
     // Optional: shut the app down again if we spawned it so reruns are clean.

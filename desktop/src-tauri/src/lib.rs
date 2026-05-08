@@ -6,6 +6,7 @@ use tauri::tray::TrayIconBuilder;
 
 mod commands;
 mod computer_use;
+mod pet_window;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BallPosition {
@@ -33,6 +34,45 @@ async fn desktop_bridge_open_spotlight(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn desktop_bridge_close_spotlight(app: AppHandle) -> Result<(), String> {
     commands::close_spotlight(app)
+}
+
+// ── Pet Companion Window (Phase 6 S1) ────────────────────────────────────────
+
+#[tauri::command]
+async fn desktop_pet_window_open(app: AppHandle) -> Result<(), String> {
+    pet_window::open_pet_window(app)
+}
+
+#[tauri::command]
+async fn desktop_pet_window_close(app: AppHandle) -> Result<(), String> {
+    pet_window::close_pet_window(app)
+}
+
+#[tauri::command]
+async fn desktop_pet_window_move_to(app: AppHandle, x: i32, y: i32) -> Result<(), String> {
+    pet_window::move_pet_to(app, x, y)
+}
+
+#[tauri::command]
+async fn desktop_pet_window_minimize_to_tray(app: AppHandle) -> Result<(), String> {
+    pet_window::minimize_pet_to_tray(app)
+}
+
+#[tauri::command]
+async fn desktop_pet_window_restore(app: AppHandle) -> Result<(), String> {
+    pet_window::restore_pet_window(app)
+}
+
+#[tauri::command]
+async fn desktop_pet_window_set_state(app: AppHandle, state: String) -> Result<(), String> {
+    pet_window::set_pet_state(app, state)
+}
+
+#[tauri::command]
+async fn desktop_pet_window_get_screen_bounds(
+    app: AppHandle,
+) -> Result<pet_window::PetScreenBounds, String> {
+    pet_window::get_pet_screen_bounds(app)
 }
 
 #[tauri::command]
@@ -929,6 +969,14 @@ pub fn run() {
             // Crash watchdog
             desktop_bridge_get_recent_crashes,
             desktop_bridge_clear_crash_logs,
+            // Pet Companion Window (Phase 6 S1)
+            desktop_pet_window_open,
+            desktop_pet_window_close,
+            desktop_pet_window_move_to,
+            desktop_pet_window_minimize_to_tray,
+            desktop_pet_window_restore,
+            desktop_pet_window_set_state,
+            desktop_pet_window_get_screen_bounds,
             // Computer Use (Phase B)
             computer_use_screenshot,
             computer_use_click,
@@ -957,6 +1005,7 @@ pub fn run() {
             let new_chat    = MenuItemBuilder::with_id("new_chat", "New Chat").build(app)?;
             let voice_chat  = MenuItemBuilder::with_id("voice_chat", "🎤 Voice Chat (Ctrl+Shift+V)").build(app)?;
             let pet_creator = MenuItemBuilder::with_id("pet_creator", "🐾 Pet Creator").build(app)?;
+            let pet_companion = MenuItemBuilder::with_id("pet_companion", "🐾 Toggle Living Pet").build(app)?;
             let settings    = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
             let check_update = MenuItemBuilder::with_id("check_update", "Check for Updates…").build(app)?;
             let open_logs   = MenuItemBuilder::with_id("open_logs", "Open Logs Folder").build(app)?;
@@ -969,6 +1018,7 @@ pub fn run() {
                 .item(&new_chat)
                 .item(&voice_chat)
                 .item(&pet_creator)
+                .item(&pet_companion)
                 .item(&settings)
                 .separator()
                 .item(&check_update)
@@ -1035,6 +1085,14 @@ pub fn run() {
                                 let _ = win.show();
                                 let _ = win.set_focus();
                                 let _ = win.eval("window.dispatchEvent(new CustomEvent('agentrix:open-pet-creator'))");
+                            }
+                        }
+                        "pet_companion" => {
+                            // Toggle the always-on-top wandering pet window.
+                            if app_handle.get_webview_window("pet-companion").is_some() {
+                                let _ = pet_window::close_pet_window(app_handle.clone());
+                            } else {
+                                let _ = pet_window::open_pet_window(app_handle.clone());
                             }
                         }
                         "check_update" => {
