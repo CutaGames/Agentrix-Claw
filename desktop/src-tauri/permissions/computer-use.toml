@@ -1,0 +1,18 @@
+[[permission]]
+identifier = "computer-use"
+description = """
+Codex-borrow Phase B — grants Computer Use commands (synthetic mouse/keyboard,
+screenshot, window enumeration, system focus). Behind this Tauri-level grant,
+the JS UI still enforces the per-action user prompt and the hardcoded
+red-lines (terminals, sudo, self-control) live in Rust regardless.
+"""
+commands.allow = [
+  "computer_use_screenshot",
+  "computer_use_click",
+  "computer_use_move",
+  "computer_use_type",
+  "computer_use_key",
+  "computer_use_window_tree",
+  "computer_use_focus_window",
+  "computer_use_probe_permissions",
+]

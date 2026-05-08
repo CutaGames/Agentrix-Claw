@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "desktop-commands",
+    "computer-use",
     "core:window:default",
     "core:window:allow-close",
     "core:window:allow-show",

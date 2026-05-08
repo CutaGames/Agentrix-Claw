@@ -5,6 +5,7 @@ use tauri::tray::TrayIconBuilder;
 
 
 mod commands;
+mod computer_use;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BallPosition {
@@ -736,6 +737,70 @@ fn desktop_bridge_clear_crash_logs() -> Result<u32, String> {
     Ok(count)
 }
 
+// ── Computer Use (Phase B) ────────────────────────────────────────────────────
+//
+// Cross-platform Win+Mac primitives. JS layer enforces the user-facing
+// three-layer authorization (OS perms / app whitelist / per-action prompt);
+// Rust enforces only the hardcoded red-lines that must NEVER be bypassed
+// (see `computer_use::redlines`).
+
+use computer_use::{ComputerUseBackend, DefaultBackend};
+
+fn cu_backend() -> DefaultBackend { DefaultBackend }
+
+#[tauri::command]
+fn computer_use_screenshot(
+    monitor_index: Option<usize>,
+    region: Option<[i32; 4]>,
+    max_size: Option<u32>,
+) -> Result<computer_use::Screenshot, String> {
+    cu_backend()
+        .screenshot(&computer_use::ScreenshotOptions { monitor_index, region, max_size })
+        .map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+fn computer_use_click(
+    x: i32,
+    y: i32,
+    button: Option<computer_use::MouseButton>,
+    double: Option<bool>,
+) -> Result<(), String> {
+    cu_backend()
+        .click(x, y, button.unwrap_or(computer_use::MouseButton::Left), double.unwrap_or(false))
+        .map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+fn computer_use_move(x: i32, y: i32) -> Result<(), String> {
+    cu_backend().move_pointer(x, y).map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+fn computer_use_type(text: String) -> Result<(), String> {
+    cu_backend().type_text(&text).map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+fn computer_use_key(combo: String) -> Result<(), String> {
+    cu_backend().key_combo(&combo).map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+fn computer_use_window_tree() -> Result<Vec<computer_use::WindowNode>, String> {
+    cu_backend().window_tree().map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+fn computer_use_focus_window(window_id: String) -> Result<(), String> {
+    cu_backend().focus_window(&window_id).map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+fn computer_use_probe_permissions() -> Result<Option<String>, String> {
+    Ok(cu_backend().probe_permissions())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     setup_panic_hook();
@@ -827,6 +892,15 @@ pub fn run() {
             // Crash watchdog
             desktop_bridge_get_recent_crashes,
             desktop_bridge_clear_crash_logs,
+            // Computer Use (Phase B)
+            computer_use_screenshot,
+            computer_use_click,
+            computer_use_move,
+            computer_use_type,
+            computer_use_key,
+            computer_use_window_tree,
+            computer_use_focus_window,
+            computer_use_probe_permissions,
         ])
         .setup(|app| {
             // Grant WebView2 permissions (microphone, camera, etc.) on the main window
