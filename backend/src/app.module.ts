@@ -140,6 +140,8 @@ import { LivingPetModule } from './modules/living-pet/living-pet.module';
 import { PetCompanionEngineModule } from './modules/pet-companion-engine/pet-companion-engine.module';
 import { PetAchievementModule } from './modules/pet-achievement/pet-achievement.module';
 import { PetMemoryAlbumModule } from './modules/pet-memory-album/pet-memory-album.module';
+import { PetMinigameModule } from './modules/pet-minigame/pet-minigame.module';
+import { PetBreedingModule } from './modules/pet-breeding/pet-breeding.module';
 // Phase 1（灵魂 × 皮肤解耦）：6 族群 28 只签名宠物 + 用户皮肤资产
 import { PetSoulTemplateModule } from './modules/pet-soul-template/pet-soul-template.module';
 import { PetSkinModule } from './modules/pet-skin/pet-skin.module';
@@ -342,6 +344,8 @@ import { PetGenerationModule } from './modules/pet-generation/pet-generation.mod
     PetCompanionEngineModule,
     PetAchievementModule, // Phase 6 S4 成就
     PetMemoryAlbumModule, // Phase 6 S4 时光相册
+    PetMinigameModule, // Phase 6 S5 迷你游戏
+    PetBreedingModule, // Phase 6 S5 社交繁育
     // Phase 1：灵魂模板 + 皮肤资产
     PetSoulTemplateModule,
     PetSkinModule,
