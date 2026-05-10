@@ -227,6 +227,13 @@ function PlayPreview({ navigation, t }: { navigation: Nav; t: any }) {
   return (
     <>
       <SectionCard
+        emoji="📸"
+        title={t({ en: 'Photo Mimic · Weekly Contest', zh: '宠物模仿秀 · 每周赛季' })}
+        body={t({ en: 'Snap a photo → AI builds a pet → vote for the best. Champion wins 5000 AXP!', zh: '拍张照 → AI 造宠 → 投票选最佳。冠军赢 5000 AXP！' })}
+        cta={t({ en: 'Enter', zh: '参赛' })}
+        onPress={() => navigation.navigate('PhotoMimic')}
+      />
+      <SectionCard
         emoji="🎯"
         title={t({ en: 'Predict', zh: 'BTC 5min 预测' })}
         body={t({ en: 'Up or down? Your pet can place the bet for you.', zh: '涨还是跌？让主宠替你下注 $1' })}

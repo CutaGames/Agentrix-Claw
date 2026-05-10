@@ -197,6 +197,9 @@ import { AxpModule } from './modules/axp/axp.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { PetCoRaisingModule } from './modules/pet-coraising/pet-coraising.module';
 import { PetGreetingModule } from './modules/pet-greeting/pet-greeting.module';
+import { PhotoMimicModule } from './modules/photo-mimic/photo-mimic.module';
+// ── G1 Photo Mimic Game (docs/G1_PHOTO_MIMIC_GAME_2026-05) ──
+import { PhotoMimicModule } from './modules/photo-mimic/photo-mimic.module';
 
 @Module({
   imports: [
@@ -416,6 +419,8 @@ import { PetGreetingModule } from './modules/pet-greeting/pet-greeting.module';
     SubscriptionModule,
     PetCoRaisingModule,
     PetGreetingModule,
+    PhotoMimicModule,
+    PhotoMimicModule,
   ],
   controllers: [AppController],
   providers: [
