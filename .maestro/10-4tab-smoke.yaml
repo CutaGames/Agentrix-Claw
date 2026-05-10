@@ -15,7 +15,8 @@ appId: app.agentrix.claw
 - tapOn: "Home"
 
 # HomeScreen: pet switcher + scan + bell + summon CTA
-- assertVisible: "🏠"
+- assertVisible:
+    text: "🏠"
     optional: true
 
 - takeScreenshot: "10-home-visible"
