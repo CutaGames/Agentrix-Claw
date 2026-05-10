@@ -64,8 +64,9 @@
 - 🏪 开店卖货、招揽宠物代工（商家视角）
 - 🧸 做 IP 联名实体玩偶（硬件合作方视角）
 - 🎮 开发宠物多人游戏（游戏工作室视角）
-- 👨‍👩‍👧 家庭成员共养（家庭主视角）
 - 👥 带公会打比赛（社区主视角）
+
+> 家庭 / 亲子场景不单独做"家庭账号"产品，通过共养 loop 覆盖。Phase 3（50k+ MAU）再评估是否独立 Family 档位。
 
 **订阅升级 = 配额提升 + 能力深度**，不是"买新身份"。这是 Agentrix 对 Cursor / ChatGPT / Rabbit 的根本差异化护城河。
 
@@ -83,10 +84,10 @@
 │ 🔧 供给侧 │      │ 👥 需求侧     │     │ 🤝 关系侧   │
 ├───────────┤      ├───────────────┤     ├─────────────┤
 │ 技能开发  │      │ 个人 / 商家    │     │ 推广者      │
-│ 宠物设计  │      │ 开发者 / 家庭  │     │ 公会主      │
+│ 宠物设计  │      │ 开发者        │     │ 公会主      │
 │ AI 模型商 │      │ 企业          │     │ 创作者 KOL  │
-│ 硬件合作  │      │              │     │ 家长 / 监护 │
-│ MCP 供应  │      │              │     │ 联盟 Alliance│
+│ 硬件合作  │      │              │     │ 联盟 Alliance│
+│ MCP 供应  │      │              │     │              │
 │ 广告主    │      │              │     │              │
 └───────────┘      └───────────────┘     └─────────────┘
 
@@ -287,8 +288,8 @@
 │  📱 iPhone · 💻 Desktop · ⌚ Watch · 🧸 Toy     │
 │  [+ 添加设备 / 扫码配对]                        │
 ├────────────────────────────────────────────────┤
-│ 👥 团队与家庭 ▾ (无团队时折叠)                  │
-│  团队空间 · 家庭账号 · 邀请成员                 │
+│ 👥 团队 ▾ (无团队时折叠)                        │
+│  团队空间 · 邀请成员 · 任务看板                  │
 ├────────────────────────────────────────────────┤
 │ ⚙️ 设置 · 通知 · 账户 · 安全 · 关于             │
 ├────────────────────────────────────────────────┤
@@ -352,7 +353,6 @@
 | **自定义 System Prompt** | – | – | – | ✅ | ✅ |
 | **自定义模型路由** | – | – | – | ✅ | ✅ |
 | **Pet SDK Beta** | – | – | – | – | ✅ |
-| **家庭子账号** | 0 | 1 | 3 | 6 | 10 |
 | **审核优先级** | 72h | 48h | 48h | 24h | 2h 专属 lane |
 | **客服响应** | 社区 | 72h | 48h | 24h | 4h 专属 |
 | **首页推荐权重** | 1× | 1.2× | 1.5× | 2× | 3× |
@@ -822,14 +822,13 @@ contract AXPTokenBridge is Ownable {
 | 75 | `WearableMonitorScreen` | Agent | 我 · 设备 · 穿戴详情 | ✅ |
 | 76 | - | - | `GlassConnectScreen` | 🆕 |
 | 77 | - | - | `ToyBindingScreen` (NFC/BLE/MQTT) | 🆕 |
-| 78 | **团队与家庭区（折叠）** | - | - | - |
+| 78 | **团队区（折叠）** | - | - | - |
 | 79 | `TeamDashboardScreen` | Team | 我 · 团队 | ✅ |
 | 80 | `TeamApprovalDetailScreen` | Team | 全局铃铛 · 审批详情 | 🔀 |
 | 81 | `TeamSpaceScreen` | Agent + Team | 我 · 团队 · 空间 | 🔀 合 2 处 |
 | 82 | `TeamInviteScreen` | Agent + Team | 我 · 团队 · 邀请 | 🔀 合 2 处 |
 | 83 | `TaskBoardScreen` | Team | 我 · 团队 · 任务看板 | ✅ |
 | 84 | `AgentProfileScreen` | Team | 我 · 团队 · 成员详情 | ✅ |
-| 85 | - | - | `FamilyAccountScreen` | 🆕 |
 
 ### 7.5 Buddy 下属（主宠抽屉 10 入口）屏
 
@@ -1139,7 +1138,6 @@ const linking = {
                   TeamInvite: 'me/team/invite',
                   TeamTask: 'me/team/task/:taskId',
                   TeamMember: 'me/team/member/:agentId',
-                  Family: 'me/family',
                   Settings: 'me/settings',
                   Account: 'me/account',
                   AdvancedApiKeys: 'me/advanced/api-keys',
@@ -1249,7 +1247,7 @@ const linking = {
 | D2 | `SubscribePlanScreen`：5 档展示 + Stripe 跳转 + AXP 抵扣选项 | 0.5d | 可查看 5 档 + 点击升级 |
 | D3 | 配额可视化：每个能力入口旁显示"5/30"+ 升级引导 | 0.5d | 技能/皮肤/商品/硬件/游戏配额可见 |
 | D4 | 推广中心合并：`ReferralDashboard + CreateLink + MyLinks + Commission*` → 统一 `PromoteScreen` | 0.3d | 推广链 + 佣金 + AXP 收入一屏 |
-| D5 | 设备与连接折叠区 + 团队与家庭折叠区 | 0.3d | 折叠/展开正常 |
+| D5 | 设备与连接折叠区 + 团队折叠区 | 0.3d | 折叠/展开正常 |
 | D6 | 高级区（uiComplexity ≥ advanced）：所有下沉屏挂载 | 0.3d | 高级区可展开 + 所有屏可达 |
 
 **Sprint D Gate**（2026-05-10 阶段性验收）：
@@ -1260,7 +1258,7 @@ const linking = {
 - [x] Devices / Team / Advanced 折叠区上线；beginner 模式点开 Advanced 弹一次性解锁 Alert
 - [x] `typecheck:root` 通过（0 新错误）
 - [ ] Stripe checkout 真实流程留 Sprint D2+（需后端 priceId 映射 + webhook 对接）
-- [ ] Family 账号入口（有家庭时才显示）留 Sprint E（需 family-account API 对接）
+- [x] Family 账号：**决策 2026-05-10 不做**，共养 loop 已覆盖家庭共养心智，Phase 3（50k+ MAU）再评估
 
 ---
 
@@ -1426,7 +1424,6 @@ RootNavigator
     │   │   ├── TeamDashboardScreen / TeamSpaceScreen / TeamInviteScreen
     │   │   ├── TaskBoardScreen / TaskDetailScreen / AgentProfileScreen
     │   │   └── AgentAccountScreen (shared)
-    │   ├── FamilyAccountScreen
     │   ├── SettingsScreen / AccountScreen
     │   └── Advanced (折叠)
     │       ├── ApiKeysScreen / LocalAiModelScreen

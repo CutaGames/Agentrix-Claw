@@ -105,7 +105,7 @@ if ($remoteBranchExists) {
 # --- Guard 6: clean worktree inside workdir (NOT source repo!) ---
 $workdirReal = (Resolve-Path $workdir).Path
 if ($workdirReal -eq $repoRoot -or -not (Test-Path (Join-Path $workdirReal '.git'))) {
-  Fail "Cowardly refusing to clean $workdirReal: doesn't look like a fresh clone"
+  Fail "Cowardly refusing to clean ${workdirReal}: doesn't look like a fresh clone"
 }
 Get-ChildItem -LiteralPath $workdirReal -Force -Exclude '.git' | ForEach-Object {
   Remove-Item -LiteralPath $_.FullName -Recurse -Force
@@ -119,9 +119,15 @@ foreach ($rel in $paths) {
     continue
   }
   $dst = Join-Path $workdirReal $rel
+  # Guard: wipe destination first so a "container over leaf" (or vice versa)
+  # shape mismatch from a stale mirror commit can't crash the copy.
+  if (Test-Path $dst) {
+    Remove-Item -LiteralPath $dst -Recurse -Force
+  }
   $dstDir = Split-Path $dst -Parent
   if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Path $dstDir -Force | Out-Null }
   if (Test-Path $src -PathType Container) {
+    New-Item -ItemType Directory -Path $dst -Force | Out-Null
     Copy-Item -Path (Join-Path $src '*') -Destination $dst -Recurse -Force
   } else {
     Copy-Item -Path $src -Destination $dst -Force
