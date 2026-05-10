@@ -29,7 +29,7 @@ import {
 import { initLlamaBridge } from './src/services/llamaRnBridge';
 import { OtaModelDownloadService } from './src/services/otaModelDownload.service';
 import { WatchDataLayerService } from './src/services/wearables/watchDataLayerBridge.service';
-import { VoiceQuickFab } from './src/components/VoiceQuickFab';
+import { AxpToastHost } from './src/components/AxpToastHost';
 import { resolveLegacyPath } from './src/navigation/legacyRouteTable';
 import { getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
 
@@ -582,9 +582,17 @@ export default function App() {
         <NavigationContainer linking={linking as any}>
           <StatusBar style="light" />
           <AppNavigator />
-          {/* Global Voice Quick FAB — PRD mobile-prd-v3 §3.2. Auth/onboarding screens
-              can opt-out by emitting `agentrix:voice-fab-hide` (handled inside the FAB). */}
-          <VoiceQuickFab />
+          {/* Global AXP toast — surfaces +N AXP when earns happen anywhere. */}
+          <AxpToastHost />
+          {/*
+            VoiceQuickFab (mobile-prd-v3 §3.2) removed 2026-05-10:
+            the always-on mic bubble was orphaned — `handleTap` only flipped
+            mobileFormStore and dispatched a globalThis event with no
+            listener, so users saw a floating ball that did nothing except
+            occlude content on Plaza/Play/Home. Voice entry now lives
+            inside Summon/AgentChatScreen where the actual STT pipeline
+            exists. Restore on a per-screen basis once Voice Quick ships.
+          */}
         </NavigationContainer>
       </QueryClientProvider>
     </AppErrorBoundary>

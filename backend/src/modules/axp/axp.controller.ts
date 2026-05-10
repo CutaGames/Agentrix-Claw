@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AxpService } from './axp.service';
+import { CheckinService } from './checkin.service';
 
 /**
  * AXP API — per docs/MOBILE_REFACTOR_AND_ECOSYSTEM_PLAN_2026-05.zh-CN.md §4.
@@ -25,12 +26,27 @@ import { AxpService } from './axp.service';
 @UseGuards(JwtAuthGuard)
 @Controller('v1/axp')
 export class AxpController {
-  constructor(private readonly axp: AxpService) {}
+  constructor(
+    private readonly axp: AxpService,
+    private readonly checkin: CheckinService,
+  ) {}
 
   @Get('balance')
   async balance(@Req() req: any) {
     const userId = req.user?.userId || req.user?.sub || req.user?.id;
     return this.axp.getBalance(userId);
+  }
+
+  @Get('checkin/status')
+  async checkinStatus(@Req() req: any) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    return this.checkin.getStatus(userId);
+  }
+
+  @Post('checkin')
+  async doCheckin(@Req() req: any) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    return this.checkin.checkin(userId);
   }
 
   @Get('history')

@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { apiFetch } from '../../services/api';
 import { colors } from '../../theme/colors';
+import { showAxpToast } from '../../stores/axpToastStore';
 
 type Mode = 'text' | 'image';
 type Tier = 'free' | 'budget' | 'standard' | 'premium';
@@ -31,6 +32,104 @@ interface PetTask {
 const TIER_ICON: Record<Tier, string> = {
   free: '🆓', budget: '💰', standard: '🔥', premium: '💎',
 };
+
+// Map backend task status → stepper progress. Backend uses meshy/hunyuan3d
+// vocab (queued / processing / generating / texturing / completed / failed).
+const STEP_LABELS = ['排队', '上传', '建模', '纹理', '完成'] as const;
+
+function stepIndexFromStatus(status: string): number {
+  const s = (status || '').toLowerCase();
+  if (['queued', 'pending', 'created'].includes(s)) return 0;
+  if (['uploading', 'submitted', 'preprocessing', 'started'].includes(s)) return 1;
+  if (['processing', 'generating', 'modeling', 'running'].includes(s)) return 2;
+  if (['texturing', 'post_processing', 'rendering'].includes(s)) return 3;
+  if (['completed', 'finished', 'success', 'done'].includes(s)) return 4;
+  // failed / canceled mapped by caller with hasError flag
+  return 0;
+}
+
+function PetCreationStepper({ status, hasError }: { status: string; hasError: boolean }) {
+  const idx = stepIndexFromStatus(status);
+  const failedAt = hasError ? idx : -1;
+  return (
+    <View style={stepperStyles.wrap}>
+      <View style={stepperStyles.row}>
+        {STEP_LABELS.map((label, i) => {
+          const done = i < idx;
+          const active = i === idx && !hasError;
+          const failed = i === failedAt;
+          const dotStyle = failed
+            ? stepperStyles.dotFailed
+            : done
+              ? stepperStyles.dotDone
+              : active
+                ? stepperStyles.dotActive
+                : stepperStyles.dotIdle;
+          return (
+            <React.Fragment key={label}>
+              <View style={stepperStyles.step}>
+                <View style={[stepperStyles.dot, dotStyle]}>
+                  {failed ? (
+                    <Text style={stepperStyles.dotText}>✕</Text>
+                  ) : done ? (
+                    <Text style={stepperStyles.dotText}>✓</Text>
+                  ) : active ? (
+                    <ActivityIndicator size="small" color="#0B1220" />
+                  ) : (
+                    <Text style={stepperStyles.dotIdleText}>{i + 1}</Text>
+                  )}
+                </View>
+                <Text style={[
+                  stepperStyles.label,
+                  (done || active) && !failed && stepperStyles.labelActive,
+                  failed && stepperStyles.labelFailed,
+                ]}>
+                  {label}
+                </Text>
+              </View>
+              {i < STEP_LABELS.length - 1 && (
+                <View style={[stepperStyles.bar, i < idx && !hasError && stepperStyles.barDone]} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </View>
+      <Text style={stepperStyles.status}>
+        {hasError
+          ? `❌ 在"${STEP_LABELS[failedAt] ?? '未知阶段'}"阶段失败`
+          : idx === 4
+            ? '🎉 生成完成！'
+            : `状态：${status || '—'} · 约 30-90 秒完成`}
+      </Text>
+    </View>
+  );
+}
+
+const stepperStyles = StyleSheet.create({
+  wrap: { marginTop: 8, marginBottom: 8 },
+  row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 },
+  step: { alignItems: 'center', width: 56 },
+  dot: {
+    width: 28, height: 28, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+  dotIdle: { backgroundColor: 'rgba(148,163,184,0.12)', borderColor: 'rgba(148,163,184,0.35)' },
+  dotActive: { backgroundColor: '#22d3ee', borderColor: '#22d3ee' },
+  dotDone: { backgroundColor: '#22c55e', borderColor: '#22c55e' },
+  dotFailed: { backgroundColor: '#ef4444', borderColor: '#ef4444' },
+  dotText: { color: '#0B1220', fontSize: 13, fontWeight: '800' },
+  dotIdleText: { color: 'rgba(226,232,240,0.65)', fontSize: 12, fontWeight: '700' },
+  bar: {
+    flex: 1, height: 2, backgroundColor: 'rgba(148,163,184,0.25)',
+    marginHorizontal: -4,
+  },
+  barDone: { backgroundColor: '#22c55e' },
+  label: { fontSize: 10, color: 'rgba(226,232,240,0.55)', marginTop: 6, fontWeight: '600' },
+  labelActive: { color: '#e5e7eb' },
+  labelFailed: { color: '#fca5a5' },
+  status: { marginTop: 10, fontSize: 12, color: '#cbd5e1', textAlign: 'center' },
+});
 
 export function PetCreatorScreen() {
   const [mode, setMode] = useState<Mode>('text');
@@ -56,7 +155,19 @@ export function PetCreatorScreen() {
     const id = setInterval(async () => {
       try {
         const fresh = await apiFetch<PetTask>(`/pet-generation/tasks/${task.taskId}`);
-        if (fresh) setTask(fresh);
+        if (fresh) {
+          setTask((prev) => {
+            // Fire a one-time completion toast when we cross into completed.
+            if (prev && prev.status !== 'completed' && fresh.status === 'completed') {
+              showAxpToast({
+                amount: 50,
+                emoji: '✨',
+                reason: { en: 'Pet generated!', zh: '萌宠生成完成！' },
+              });
+            }
+            return fresh;
+          });
+        }
       } catch (e: any) {
         console.warn('[PetCreator] poll', e?.message);
       }
@@ -192,7 +303,7 @@ export function PetCreatorScreen() {
       {task && (
         <View style={styles.taskCard}>
           <Text style={styles.taskTitle}>{task.prompt || task.taskId}</Text>
-          <Text style={styles.taskStatus}>状态: {task.status}</Text>
+          <PetCreationStepper status={task.status} hasError={!!task.error} />
           {task.error && (
             <View style={styles.errBox}>
               <Text style={styles.errBoxTitle}>❌ 生成失败</Text>
@@ -293,7 +404,6 @@ const styles = StyleSheet.create({
   submitText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   taskCard: { marginTop: 20, padding: 14, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
   taskTitle: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  taskStatus: { color: colors.textSecondary, fontSize: 12, marginTop: 4 },
   taskUrl: { color: '#22d3ee', fontSize: 11, marginTop: 8 },
   errBox: { marginTop: 10, padding: 10, backgroundColor: 'rgba(248,113,113,0.08)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(248,113,113,0.3)' },
   errBoxTitle: { color: '#f87171', fontWeight: '700', fontSize: 12 },

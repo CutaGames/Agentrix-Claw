@@ -1,4 +1,14 @@
 /**
+ * VoiceQuickFab — **DEPRECATED 2026-05-10**.
+ *
+ * Previously mounted globally in App.tsx as an always-on mic bubble
+ * (PRD mobile-prd-v3 §3.2 Voice Quick). Removed because `handleTap`
+ * only flipped mobileFormStore and dispatched a globalThis event with
+ * no active listener, so users saw a FAB that did nothing except
+ * occlude Plaza/Play content. File kept to avoid breaking any
+ * reference before a future per-screen voice-entry redesign — do not
+ * re-mount globally without re-wiring the tap side-effect.
+ *
  * VoiceQuickFab — Mobile floating mic FAB (PRD mobile-prd-v3 §3.2 Voice Quick).
  *
  * Always-on tappable bubble that toggles the Voice Quick form. Wraps a long-press

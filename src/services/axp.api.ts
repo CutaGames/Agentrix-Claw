@@ -65,3 +65,29 @@ export async function earnAxp(input: {
     body: JSON.stringify(input),
   });
 }
+
+// ── Daily check-in ───────────────────────────────────────────
+
+export interface CheckinStatus {
+  last_checkin_date: string | null;
+  streak: number;
+  can_checkin_today: boolean;
+  pending_amount: number;
+  base_amount: number;
+  streak_bonus: number;
+  streak_bonus_cap: number;
+}
+
+export interface CheckinResult extends CheckinStatus {
+  earned: number;
+  balance: number;
+  ledger_id: string;
+}
+
+export async function fetchCheckinStatus(): Promise<CheckinStatus> {
+  return apiFetch<CheckinStatus>('/v1/axp/checkin/status');
+}
+
+export async function doCheckin(): Promise<CheckinResult> {
+  return apiFetch<CheckinResult>('/v1/axp/checkin', { method: 'POST' });
+}

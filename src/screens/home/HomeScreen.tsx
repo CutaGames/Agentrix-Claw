@@ -35,6 +35,7 @@ import { useI18n } from '../../stores/i18nStore';
 import { colors } from '../../theme/colors';
 import { fetchAxpBalance } from '../../services/axp.api';
 import { fetchMyQuota } from '../../services/subscription.api';
+import { CheckinCard } from './CheckinCard';
 import type { HomeStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<HomeStackParamList, 'HomeRoot'>;
@@ -161,6 +162,30 @@ export function HomeScreen() {
         </Text>
         <Text style={styles.summonCtaArrow}>›</Text>
       </TouchableOpacity>
+
+      {/* ── Create Pet CTA (P0-5: was buried in drawer) ─────── */}
+      <TouchableOpacity
+        style={styles.createPetCta}
+        onPress={() => navigation.navigate('PetCreator')}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.createPetEmoji}>✨</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.createPetTitle}>
+            {t({ en: 'Photo → 3D Pet', zh: '拍照生成专属萌宠' })}
+          </Text>
+          <Text style={styles.createPetSub}>
+            {t({
+              en: 'Snap a photo · text prompt · AI builds your pet in ~90s',
+              zh: '拍照 / 文字描述 · AI 约 90 秒造一只新宠',
+            })}
+          </Text>
+        </View>
+        <Text style={styles.createPetArrow}>›</Text>
+      </TouchableOpacity>
+
+      {/* ── Daily check-in (P0-2: first AXP earn hook) ──────── */}
+      <CheckinCard />
 
       {/* ── Pet wallet glance ─────────────────────────────────── */}
       <Pressable style={styles.walletCard} onPress={() => navigation.navigate('PetWallet')}>
@@ -384,6 +409,23 @@ const styles = StyleSheet.create({
   summonCtaEmoji: { fontSize: 22 },
   summonCtaText: { flex: 1, fontSize: 16, fontWeight: '700', color: '#fff' },
   summonCtaArrow: { fontSize: 24, color: '#fff', opacity: 0.8 },
+  // Create Pet CTA (P0-5)
+  createPetCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(249,115,22,0.14)',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(249,115,22,0.5)',
+  },
+  createPetEmoji: { fontSize: 30 },
+  createPetTitle: { fontSize: 15, fontWeight: '800', color: colors.textPrimary, marginBottom: 2 },
+  createPetSub: { fontSize: 12, color: colors.textSecondary, lineHeight: 17 },
+  createPetArrow: { fontSize: 22, color: colors.textMuted, marginLeft: 4 },
   // Wallet
   walletCard: {
     backgroundColor: colors.bgCard,
