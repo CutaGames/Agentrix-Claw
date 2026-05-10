@@ -27,12 +27,14 @@ appId: app.agentrix.claw
 - takeScreenshot: "13-subscribe-catalog"
 
 # Cycle toggle
-- tapOn: "Yearly"
+- tapOn:
+    text: "Yearly"
     optional: true
 
 - takeScreenshot: "13-subscribe-yearly"
 
-- tapOn: "Monthly"
+- tapOn:
+    text: "Monthly"
     optional: true
 
 # Each of 5 tiers should be visible
