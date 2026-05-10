@@ -105,7 +105,7 @@ export function WebProactiveBubble({
               cursor: 'pointer',
             }}
           >
-            {event.cta.label}
+            {typeof event.cta === 'string' ? event.cta : (event.cta as any)?.label ?? 'OK'}
           </button>
         ) : null}
         <button
