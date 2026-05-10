@@ -2,7 +2,11 @@ name: Sync Mobile Frontend To Public Build Repo
 
 on:
   push:
-    branches: [main, master, build*]
+    # 2026-05-10 fix: `build*` glob doesn't match `build/xxx` (slash is a
+    # separator), so prefix branches like `build/sprint-a-b-c-2026-05-10`
+    # silently fail to trigger sync. Expanded to both `build*` (hyphen
+    # form) and `build/**` (slash form).
+    branches: [main, master, 'build*', 'build/**']
     paths:
       - App.tsx
       - app.json

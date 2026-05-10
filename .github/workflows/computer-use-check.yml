@@ -2,7 +2,7 @@ name: Computer Use - cargo check (Win/Mac)
 
 on:
   push:
-    branches: [main, 'build*', 'v3-*']
+    branches: [main, 'build*', 'build/**', 'v3-*']
     paths:
       - 'desktop/src-tauri/Cargo.toml'
       - 'desktop/src-tauri/src/computer_use/**'

@@ -2,7 +2,10 @@ name: Build → Test → Release APK
 
 on:
   push:
-    branches: [main, master, build*, v*]
+    # 2026-05-10 fix: `build*` glob does NOT match `build/xxx` (slash is
+    # a path separator in minimatch). Expanded to cover both hyphen and
+    # slash prefix variants.
+    branches: [main, master, 'build*', 'build/**', 'v*']
   workflow_dispatch:
 
 permissions:

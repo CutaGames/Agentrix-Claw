@@ -2,7 +2,9 @@ name: Build iOS Simulator
 
 on:
   push:
-    branches: [main, master, build*, v*]
+    # 2026-05-10 fix: see build-apk-trigger.yml — `build*` doesn't cover
+    # `build/xxx` shape because `*` stops at `/`.
+    branches: [main, master, 'build*', 'build/**', 'v*']
   workflow_dispatch:
 
 permissions:

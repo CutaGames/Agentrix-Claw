@@ -7,14 +7,15 @@
  *
  *   Sprint B2  - Feed (full)            : replaces `FeedStub`
  *   Sprint B4  - Tasks (full)           : replaces `TasksStub`
- *   Sprint B5  - Pets (Skin auction)    : replaces `PetsSkinsStub`, `PetsStub`
+ *   Sprint B5  - Pets (Skin auction)    : ✅ replaced 2026-05-10 by SkinAuctionScreen
  *   Sprint B6  - Play (Predict + entries): replaces `PlayStub`
- *   Sprint B7  - Messaging (real DM)    : replaces `MessagingStub`
+ *   Sprint B7  - Messaging (real DM)    : ✅ replaced 2026-05-10 by MessagingScreen
  *   Sprint B/C - Toy custom             : real partner-inquiry form
  *
  * (PlazaGreetingCardComposeStub / PlazaGreetingCardInboxStub removed
  *  2026-05-10 — replaced by real `GreetingCardComposeScreen` /
- *  `GreetingCardInboxScreen`.)
+ *  `GreetingCardInboxScreen`. PlazaPetsSkinsStub removed 2026-05-10 —
+ *  replaced by real SkinAuctionScreen wired to /pet-skin/marketplace.)
  */
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
@@ -33,18 +34,6 @@ function StubScreen({ emoji, title, body, sprint }: { emoji: string; title: stri
   );
 }
 
-export function PlazaMessagingStub() {
-  const { t } = useI18n();
-  return (
-    <StubScreen
-      emoji="💬"
-      title={t({ en: 'Messaging', zh: '私信与群聊' })}
-      body={t({ en: 'Unified DM + group chat. Currently the four legacy DM screens are being consolidated.', zh: '统一私信与群聊中心。目前正在合并 4 个旧 DM 屏。' })}
-      sprint="Sprint B7"
-    />
-  );
-}
-
 export function PlazaToyCustomStub() {
   const { t } = useI18n();
   return (
@@ -53,18 +42,6 @@ export function PlazaToyCustomStub() {
       title={t({ en: 'Turn pet into a physical toy', zh: '定制实体玩偶' })}
       body={t({ en: 'L2 partner program — submit a brief to our hardware team.', zh: 'L2 联名计划 — 提交定制需求给硬件团队。' })}
       sprint="Sprint B/C"
-    />
-  );
-}
-
-export function PlazaPetsSkinsStub() {
-  const { t } = useI18n();
-  return (
-    <StubScreen
-      emoji="🎨"
-      title={t({ en: 'Skin Auction', zh: '皮肤拍卖' })}
-      body={t({ en: 'Browse, bid, and list pet skins. Phase 1 MVP.', zh: '浏览 / 出价 / 挂牌主宠皮肤。Phase 1 首发。' })}
-      sprint="Sprint B5"
     />
   );
 }

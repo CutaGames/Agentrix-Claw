@@ -11,14 +11,14 @@ import { useI18n } from '../stores/i18nStore';
 
 import { PlazaScreen } from '../screens/plaza/PlazaScreen';
 import {
-  PlazaMessagingStub,
   PlazaToyCustomStub,
-  PlazaPetsSkinsStub,
   PlazaPetsStub,
   PlazaPlayStub,
 } from '../screens/plaza/PlazaPlaceholderScreens';
 import { GreetingCardComposeScreen } from '../screens/plaza/GreetingCardComposeScreen';
 import { GreetingCardInboxScreen } from '../screens/plaza/GreetingCardInboxScreen';
+import { SkinAuctionScreen } from '../screens/plaza/SkinAuctionScreen';
+import { MessagingScreen } from '../screens/plaza/MessagingScreen';
 
 // Reused screens — keep current imports working
 import { FeedScreen } from '../screens/social/FeedScreen';
@@ -98,7 +98,7 @@ export function PlazaStackNavigator() {
       {/* Messaging ─────────────────────────────────────────── */}
       <Stack.Screen
         name="Messaging"
-        component={PlazaMessagingStub}
+        component={MessagingScreen}
         options={{ title: t({ en: 'Messages', zh: '消息' }) }}
       />
       <Stack.Screen
@@ -159,12 +159,12 @@ export function PlazaStackNavigator() {
       />
       <Stack.Screen
         name="PetsSkins"
-        component={PlazaPetsSkinsStub}
+        component={SkinAuctionScreen}
         options={{ title: t({ en: 'Skin Auction', zh: '皮肤拍卖' }) }}
       />
       <Stack.Screen
         name="SkinAuctionDetail"
-        component={PlazaPetsSkinsStub}
+        component={SkinAuctionScreen}
         options={{ title: t({ en: 'Skin', zh: '皮肤' }) }}
       />
       <Stack.Screen

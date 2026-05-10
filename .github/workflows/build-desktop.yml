@@ -2,7 +2,7 @@ name: Build Desktop (Win/Mac/Linux)
 
 on:
   push:
-    branches: [main, 'build*']
+    branches: [main, 'build*', 'build/**']
     tags:
       - 'desktop-v*'
     paths:

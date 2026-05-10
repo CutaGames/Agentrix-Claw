@@ -40,7 +40,13 @@ function log(kind, msg) {
 
 function request(path, opts = {}) {
   return new Promise((resolve, reject) => {
-    const url = new URL(path, API_BASE);
+    // `new URL(relativePath, base)` with path starting with '/' drops
+    // the base's path component. Normalize: always build the full URL
+    // by concatenation so the API_BASE '/api' suffix is preserved.
+    const fullUrl = path.startsWith('http')
+      ? path
+      : `${API_BASE.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+    const url = new URL(fullUrl);
     const mod = url.protocol === 'https:' ? https : http;
     const headers = {
       'Content-Type': 'application/json',

@@ -184,9 +184,11 @@ jobs:
 
 | # | 问题 | 严重度 | 发现者 | 状态 |
 |---|-----|:---:|-------|------|
-| 1 | 线上 `api.agentrix.top` 返回 404 for `/v1/subscription/catalog` 等 Sprint B/C 端点 | 高 | L2 smoke | 🟡 待部署 |
+| 1 | ~~线上 `api.agentrix.top` 返回 404 for `/v1/subscription/catalog` 等 Sprint B/C 端点~~ | 高 | L2 smoke | ✅ 2026-05-10 已部署 + 修复（见 #4/#5） |
 | 2 | (占位) Plaza 5 段 segmented 在某些屏幕宽度下 horizontalScroll 会覆盖 topbar | – | 待测 | – |
 | 3 | (占位) 共养 feed 成功后 HomeScreen 的 AXP glance 需要手动下拉刷新才更新 | – | 待测 | – |
+| 4 | 生产环境 `agentrix-backend` / `agentrix-frontend` PM2 进程都配 `PORT=3000`，启动顺序决定谁抢到 3000；重启 backend 后 frontend 占住 3000 导致 nginx 代理到 Next.js → `/api/*` 全 404 | 高 | 部署冒烟 | ✅ 已修：部署脚本先 `pm2 stop frontend` 让路，backend 稳固 3000 后再启动 frontend 到备用端口 |
+| 5 | `scripts/test/mobile-api-smoke.mjs` 的 `new URL('/v1/x', 'https://api.agentrix.top/api')` 在 Node 里会把 base 的 `/api` 丢掉 → 本地 smoke 假阳性 404 | 中 | 自己 dogfood | ✅ 已修：改为字符串拼接 `API_BASE + '/' + path`，保留 `/api` 前缀 |
 
 实际发现的问题会在这里持续登记。
 
