@@ -50,7 +50,8 @@ appId: app.agentrix.claw
     optional: true
 
 # Tap a free template (Cheer)
-- tapOn: "Cheer"
+- tapOn:
+    text: "Cheer"
     optional: true
 
 - takeScreenshot: "14-greeting-template-selected"
@@ -58,7 +59,8 @@ appId: app.agentrix.claw
 - back
 
 # ── Greeting Inbox from Play segment ─────────────────────
-- tapOn: "Play"
+- tapOn:
+    text: "Play"
     optional: true
 
 - waitForAnimationToEnd:
