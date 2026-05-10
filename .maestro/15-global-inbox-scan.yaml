@@ -24,7 +24,8 @@ appId: app.agentrix.claw
     optional: true
 
 # Close modal (if it's modal-presented)
-- tapOn: "✕"
+- tapOn:
+    text: "✕"
     optional: true
 
 # Scan from top bar
