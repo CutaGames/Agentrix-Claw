@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput, Share, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput, Share, Platform, ActivityIndicator, AppState } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
@@ -13,6 +13,8 @@ import {
   getAndroidOverlayPermissionStatus,
   requestAndroidOverlayPermission,
   syncAndroidBackgroundWakeWordConfig,
+  startAndroidBackgroundWakeWordService,
+  stopAndroidBackgroundWakeWordService,
   isAndroidBackgroundWakeWordAvailable,
 } from '../../services/androidBackgroundWakeWord.service';
 import {
@@ -70,9 +72,23 @@ export function ClawSettingsScreen() {
     if (Platform.OS !== 'android' || !isAndroidBackgroundWakeWordAvailable()) {
       return;
     }
-    void getAndroidOverlayPermissionStatus()
-      .then(setOverlayPermissionGranted)
-      .catch(() => setOverlayPermissionGranted(false));
+    const fetchStatus = () => {
+      void getAndroidOverlayPermissionStatus()
+        .then(setOverlayPermissionGranted)
+        .catch(() => setOverlayPermissionGranted(false));
+    };
+    fetchStatus();
+    // Re-probe when the user returns from the system "display over other apps"
+    // permission page — without this, state stays stale and the foreground
+    // service is never (re)started after the user finally grants access.
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        fetchStatus();
+      }
+    });
+    return () => {
+      sub.remove();
+    };
   }, [wakeWordConfig.enabled, wakeWordConfig.localModel]);
 
   useEffect(() => {
@@ -87,7 +103,24 @@ export function ClawSettingsScreen() {
       activeInstanceName: null,
       model: hasLocalModel ? wakeWordConfig.localModel : null,
     }).catch(() => {});
-  }, [hasLocalModel, wakeWordConfig.displayName, wakeWordConfig.enabled, wakeWordConfig.localModel, wakeWordConfig.sensitivity]);
+
+    // Actually start/stop the foreground service so the system-level
+    // floating ball appears in the overlay and keeps the wake-word
+    // listener alive after the user leaves the app. Prior builds only
+    // called syncConfig, which silently left the service stopped.
+    if (wakeWordConfig.enabled && overlayPermissionGranted) {
+      void startAndroidBackgroundWakeWordService().catch(() => {});
+    } else if (!wakeWordConfig.enabled) {
+      void stopAndroidBackgroundWakeWordService().catch(() => {});
+    }
+  }, [
+    hasLocalModel,
+    wakeWordConfig.displayName,
+    wakeWordConfig.enabled,
+    wakeWordConfig.localModel,
+    wakeWordConfig.sensitivity,
+    overlayPermissionGranted,
+  ]);
 
   const wakeWordEngineOptions: { id: WakeWordEngine; label: string; desc: string }[] = [
     {
@@ -114,6 +147,33 @@ export function ClawSettingsScreen() {
   const handleToggleWakeWord = () => {
     const nextEnabled = !wakeWordConfig.enabled;
     setWakeWordConfig({ enabled: nextEnabled });
+
+    // Auto-prompt for overlay permission when enabling — required for the
+    // system-level floating ball to appear outside the app.
+    if (
+      nextEnabled
+      && Platform.OS === 'android'
+      && isAndroidBackgroundWakeWordAvailable()
+      && !overlayPermissionGranted
+    ) {
+      Alert.alert(
+        t({ en: 'Allow floating ball over other apps', zh: '允许悬浮球显示在其他应用之上' }),
+        t({
+          en: 'Agentrix needs overlay permission so the floating ball stays visible on the home screen and above other apps. Tap OK to open the system setting.',
+          zh: '需要"显示在其他应用之上"权限，这样悬浮球才能在桌面和其他应用上显示。点确定打开系统设置授权。',
+        }),
+        [
+          { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+          {
+            text: t({ en: 'OK', zh: '确定' }),
+            onPress: () => {
+              void requestAndroidOverlayPermission().catch(() => {});
+            },
+          },
+        ],
+      );
+    }
+
     if (
       nextEnabled
       && Platform.OS === 'android'

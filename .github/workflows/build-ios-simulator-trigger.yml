@@ -1,0 +1,14 @@
+name: Build iOS Simulator
+
+on:
+  push:
+    branches: [main, master, build*, v*]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-ios-simulator:
+    uses: ./.github/workflows/build-ios-simulator.yml
+    secrets: inherit

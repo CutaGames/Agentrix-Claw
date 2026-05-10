@@ -18,6 +18,9 @@ import { SocialListenerScreen } from '../screens/social/SocialListenerScreen';
 import { ScanScreen } from '../screens/me/ScanScreen';
 import { LocalAiModelScreen } from '../screens/me/LocalAiModelScreen';
 import { WearableHubScreen } from '../screens/agent/WearableHubScreen';
+import { SubscribePlanScreen } from '../screens/me/SubscribePlanScreen';
+import { AxpCenterScreen } from '../screens/me/AxpCenterScreen';
+import { AxpRewardShopScreen } from '../screens/me/AxpRewardShopScreen';
 import { useI18n } from '../stores/i18nStore';
 
 const Stack = createNativeStackNavigator<MeStackParamList>();
@@ -35,7 +38,7 @@ export function MeStackNavigator() {
       }}
     >
       <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: t({ en: 'Me', zh: '我的' }) }} />
-      <Stack.Screen name="Scan" component={ScanScreen} options={{ title: t({ en: 'Scan QR', zh: '扫一扫' }) }} />
+      <Stack.Screen name="Scan" component={ScanScreen} options={{ title: t({ en: 'Scan & Create', zh: '扫描与生成' }) }} />
       <Stack.Screen name="ReferralDashboard" component={ReferralDashboardScreen} options={{ title: t({ en: 'Referrals & Earnings', zh: '推广与收益' }) }} />
       <Stack.Screen name="Settings" component={ClawSettingsScreen} options={{ title: t({ en: 'Settings', zh: '设置' }) }} />
       <Stack.Screen name="ApiKeys" component={ApiKeysScreen} options={{ title: t({ en: 'AI Providers', zh: 'AI 厂商与订阅' }) }} />
@@ -50,6 +53,9 @@ export function MeStackNavigator() {
       <Stack.Screen name="SocialListener" component={SocialListenerScreen} options={{ title: t({ en: 'Social Listener', zh: '社交监听' }) }} />
       <Stack.Screen name="LocalAiModel" component={LocalAiModelScreen} options={{ title: t({ en: 'Local AI Model', zh: '本地 AI 模型' }) }} />
       <Stack.Screen name="WearableHub" component={WearableHubScreen} options={{ title: t({ en: 'Wearable Devices', zh: '可穿戴设备' }) }} />
+      <Stack.Screen name="Subscribe" component={SubscribePlanScreen} options={{ title: t({ en: 'Subscribe', zh: '订阅' }) }} />
+      <Stack.Screen name="AxpCenter" component={AxpCenterScreen} options={{ title: t({ en: 'AXP Center', zh: 'AXP 中心' }) }} />
+      <Stack.Screen name="AxpRewardShop" component={AxpRewardShopScreen} options={{ title: t({ en: 'Redeem Shop', zh: '兑换中心' }) }} />
     </Stack.Navigator>
   );
 }

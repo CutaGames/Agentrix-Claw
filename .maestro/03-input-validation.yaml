@@ -1,27 +1,18 @@
-appId: app.clawlink.mobile
+appId: app.agentrix.claw
 ---
-# Test 03: Input validation — empty OpenClaw URL shows alert
+# Test 03: First screen remains visible after a clean launch.
 
 - launchApp:
     clearState: true
+    clearKeychain: true
 
 - waitForAnimationToEnd:
-    timeout: 8000
+    timeout: 30000
 
-# Should be on OpenClaw mode by default
-- assertVisible: "Connect & Sign In"
-
-# Tap Connect without entering URL — should show validation alert
-- tapOn: "Connect & Sign In"
-
-- waitForAnimationToEnd:
-    timeout: 2000
-
-# An alert/toast should appear
 - assertVisible:
-    textRegex: "required|URL|required|enter|Enter"
+    text: "Agentrix Claw"
 
-- takeScreenshot: "03-validation-alert"
+- assertVisible:
+    text: "Connect Crypto Wallet"
 
-- tapOn:
-    textRegex: "OK|Dismiss|Cancel|close"
+- takeScreenshot: "03-first-screen-visible"

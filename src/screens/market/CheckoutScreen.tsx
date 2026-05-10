@@ -95,6 +95,7 @@ export function CheckoutScreen() {
   const [stripeOpen, setStripeOpen] = useState(false);
   const [transakOpen, setTransakOpen] = useState(false);
   const [scanData, setScanData] = useState<PayIntentResult | null>(null);
+  const [scanPolling, setScanPolling] = useState(false);
   const [paySuccess, setPaySuccess] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -225,6 +226,57 @@ export function CheckoutScreen() {
     }
   }, [haptic, createOrder, ensureToken, openWebCheckout, navigation]);
 
+  const handleScanToPay = useCallback(async () => {
+    haptic();
+    if (scanData) {
+      // Toggle QR off
+      stopPolling();
+      setScanData(null);
+      return;
+    }
+    setActiveMethod('scan');
+    setPaying(true);
+    try {
+      const result = await apiFetch<PayIntentResult>('/payments/pay-intent', {
+        method: 'POST',
+        body: JSON.stringify({ skillId, amount: price, currency }),
+      });
+      if (result?.eip681Uri) {
+        setScanData(result);
+        // Start polling for payment completion
+        setScanPolling(true);
+        const startTime = Date.now();
+        pollingRef.current = setInterval(async () => {
+          if (Date.now() - startTime > POLL_TIMEOUT) {
+            stopPolling();
+            Alert.alert('Timeout', 'QR payment expired. Please try again.');
+            setScanData(null);
+            return;
+          }
+          try {
+            const status = await apiFetch<any>(
+              `/payments/pay-intent/${result.payIntentId}/status`,
+            );
+            if (status?.status === 'completed' || status?.status === 'paid') {
+              stopPolling();
+              setScanData(null);
+              haptic();
+              setPaySuccess(true);
+            }
+          } catch { /* keep polling */ }
+        }, POLL_INTERVAL);
+      } else {
+        // Fallback: open web QR flow
+        await openWebCheckout('qrcode');
+      }
+    } catch (e: any) {
+      Alert.alert('Scan to Pay', e?.message ?? 'Could not generate QR code. Try another method.');
+    } finally {
+      setPaying(false);
+      setActiveMethod(null);
+    }
+  }, [haptic, skillId, price, currency, scanData, stopPolling, openWebCheckout]);
+
   const handleWalletPay = useCallback(async () => {
     haptic();
     setActiveMethod('walletconnect');
@@ -285,57 +337,6 @@ export function CheckoutScreen() {
       setActiveMethod(null);
     }
   }, [haptic, createOrder, ensureToken, openWebCheckout, handleScanToPay]);
-
-  const handleScanToPay = useCallback(async () => {
-    haptic();
-    if (scanData) {
-      // Toggle QR off
-      stopPolling();
-      setScanData(null);
-      return;
-    }
-    setActiveMethod('scan');
-    setPaying(true);
-    try {
-      const result = await apiFetch<PayIntentResult>('/payments/pay-intent', {
-        method: 'POST',
-        body: JSON.stringify({ skillId, amount: price, currency }),
-      });
-      if (result?.eip681Uri) {
-        setScanData(result);
-        // Start polling for payment completion
-        setScanPolling(true);
-        const startTime = Date.now();
-        pollingRef.current = setInterval(async () => {
-          if (Date.now() - startTime > POLL_TIMEOUT) {
-            stopPolling();
-            Alert.alert('Timeout', 'QR payment expired. Please try again.');
-            setScanData(null);
-            return;
-          }
-          try {
-            const status = await apiFetch<any>(
-              `/payments/pay-intent/${result.payIntentId}/status`,
-            );
-            if (status?.status === 'completed' || status?.status === 'paid') {
-              stopPolling();
-              setScanData(null);
-              haptic();
-              setPaySuccess(true);
-            }
-          } catch { /* keep polling */ }
-        }, POLL_INTERVAL);
-      } else {
-        // Fallback: open web QR flow
-        await openWebCheckout('qrcode');
-      }
-    } catch (e: any) {
-      Alert.alert('Scan to Pay', e?.message ?? 'Could not generate QR code. Try another method.');
-    } finally {
-      setPaying(false);
-      setActiveMethod(null);
-    }
-  }, [haptic, skillId, price, currency, scanData, stopPolling, openWebCheckout, navigation]);
 
   const handleStripeMethod = useCallback(async (method: 'stripe_card' | 'stripe_apple' | 'stripe_google' | 'stripe_alipay') => {
     haptic();

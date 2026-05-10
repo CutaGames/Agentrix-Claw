@@ -171,6 +171,10 @@ export function classifyTurnForAuto(input: TurnClassificationInput): ExecutionTi
   // Any non-image attachment (PDF, spreadsheet, audio file) → cloud for proper parsing.
   if (input.hasNonImageAttachment) return 'cloud';
 
+  // Images stay on-device: the local Qwen2.5-Omni / Gemma 4 vision path is the
+  // whole point of shipping mmproj. Cloud fallback only happens when the local
+  // runtime isn't ready, via resolveExecutionTier() — not as a default route.
+
   // Very long prompts → cloud context window is larger.
   if (input.approxContextTokens > 6000) return 'cloud';
 

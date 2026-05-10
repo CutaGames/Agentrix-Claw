@@ -5,6 +5,7 @@ import type {
   MobileLocalRuntimeCapabilities,
 } from './mobileLocalInference.service';
 import { extractVideoFrames, isVideoFrameExtractionAvailable } from './videoFrameExtraction.service';
+import { LocalImagePreprocessService } from './localImagePreprocess.service';
 
 
 
@@ -131,8 +132,18 @@ export function resolveLocalTurnExecution(
         return { mode: 'blocked', reason: 'attachment-not-local', attachment };
       }
 
+      // Non-wav/mp3 audio (e.g. m4a/aac/ogg from Android recorders) is
+      // acceptable IF the whisper-base on-device STT encoder is available:
+      // we transcribe to text in `buildLocalUserContent` and feed that to the
+      // local text model. This keeps voice notes working on-device even
+      // though llama.rn only accepts wav/mp3 as `input_audio`.
       if (resolveSupportedLocalAudioFormat(attachment) === null) {
-        return { mode: 'blocked', reason: 'audio-format-unsupported', attachment };
+        if (!runtimeCapabilities.supportsAudioInput) {
+          // Still OK — `buildLocalUserContent` will transcribe via whisper
+          // if the audio encoder is present; the runtime doesn't need the
+          // full multimodal projector for this path.
+        }
+        continue;
       }
 
       if (!runtimeCapabilities.supportsAudioInput) {
@@ -176,6 +187,7 @@ export async function buildLocalUserContent(
   text: string,
   attachments: UploadedChatAttachment[],
   runtimeCapabilities?: MobileLocalRuntimeCapabilities,
+  modelId?: string,
 ): Promise<MobileLocalChatContent> {
   const trimmed = text.trim();
   if (attachments.length === 0) {
@@ -195,9 +207,17 @@ export async function buildLocalUserContent(
       && isImageAttachment(attachment)
       && (!runtimeCapabilities || runtimeCapabilities.supportsVisionInput)
     ) {
+      // Downscale before handing to mmproj. Per-model profile: Gemma stays at
+      // ~768px/Q0.85; Qwen2.5-Omni and Qwen3.5-Omni-Light drop to ~512px/Q0.80
+      // because their dynamic ViT + Q8 projector otherwise push first-token
+      // past 240s on mid-tier Android CPUs.
+      const preparedUri = await LocalImagePreprocessService.downscaleForLocalVision(
+        attachment.localUri!,
+        modelId,
+      );
       content.push({
         type: 'image_url',
-        image_url: { url: attachment.localUri },
+        image_url: { url: preparedUri },
       });
       continue;
     }
@@ -215,9 +235,10 @@ export async function buildLocalUserContent(
           text: `[Video: ${attachment.originalName}, ${frames.length} frames extracted at ~1fps]`,
         });
         for (const frame of frames) {
+          const preparedFrameUri = await LocalImagePreprocessService.downscaleForLocalVision(frame.uri, modelId);
           content.push({
             type: 'image_url',
-            image_url: { url: frame.uri },
+            image_url: { url: preparedFrameUri },
           });
         }
         continue;
@@ -240,6 +261,37 @@ export async function buildLocalUserContent(
         },
       });
       continue;
+    }
+
+    // Audio attachment in an unsupported format (m4a/aac/ogg from Android
+    // recorders) OR the model has no direct `input_audio` support: try the
+    // whisper-base on-device STT encoder to transcribe locally, then feed
+    // the transcript as text. This keeps voice-note workflows on-device.
+    if (hasUsableLocalUri(attachment) && isAudioAttachment(attachment)) {
+      try {
+        const { LocalWhisperService } = await import('./localWhisperService');
+        // Resolve the right on-device whisper encoder for the active model
+        // (gemma-4-2b / gemma-4-4b / qwen2.5-omni-3b / qwen3.5-omni-light all ship their own copy).
+        // Fall back to gemma-4-2b because that's the one we ship by default.
+        const candidateModelIds = Array.from(new Set([modelId, 'gemma-4-2b', 'gemma-4-4b', 'qwen3.5-omni-light', 'qwen2.5-omni-3b']
+          .filter((m): m is string => typeof m === 'string' && m.length > 0)));
+        const whisperModelId = candidateModelIds.find((m) => LocalWhisperService.isAvailableForModel(m));
+        if (whisperModelId) {
+          const transcript = await LocalWhisperService.transcribe(
+            whisperModelId,
+            attachment.localUri!,
+          );
+          if (transcript && transcript.trim()) {
+            content.push({
+              type: 'text',
+              text: `[Voice note "${attachment.originalName}", transcribed on-device]\n${transcript.trim()}`,
+            });
+            continue;
+          }
+        }
+      } catch {
+        // Fall through to the generic describe fallback below.
+      }
     }
 
     content.push({

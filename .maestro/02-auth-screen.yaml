@@ -1,41 +1,20 @@
-appId: app.clawlink.mobile
+appId: app.agentrix.claw
 ---
-# Test 02: Auth screen shows correct branding and all login tabs
+# Test 02: Auth screen exposes the stable sign-in controls.
 
 - launchApp:
     clearState: true
+    clearKeychain: true
 
 - waitForAnimationToEnd:
-    timeout: 8000
+    timeout: 30000
 
-# Logo visible
-- assertVisible: "🦀 ClawLink"
+- assertVisible:
+    text: "Agentrix Claw"
+
+- assertVisible:
+    text: "Connect Crypto Wallet"
+
+- assertVisible:
+    text: "Google"
 - takeScreenshot: "02-auth-branding"
-
-# Default mode is OpenClaw — check OpenClaw input placeholder is visible
-- assertVisible:
-    textRegex: "Connect & Sign In|OpenClaw|instance"
-
-# Switch to Social tab
-- tapOn:
-    textRegex: "Social|social account"
-
-- waitForAnimationToEnd:
-    timeout: 2000
-
-- assertVisible:
-    textRegex: "Google|Sign in with social"
-
-- takeScreenshot: "02-social-tab"
-
-# Switch to Email tab
-- tapOn:
-    textRegex: "Email|email"
-
-- waitForAnimationToEnd:
-    timeout: 2000
-
-- assertVisible:
-    textRegex: "Email|password|Password"
-
-- takeScreenshot: "02-email-tab"

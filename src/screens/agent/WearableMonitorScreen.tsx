@@ -10,10 +10,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
-import { apiFetch } from '../../services/api';
 import { WearableDataCollectorService } from '../../services/wearables/wearableDataCollector.service';
 import { WearableAutomationEngineService } from '../../services/wearables/wearableAutomationEngine.service';
 import { WearablePairingStoreService } from '../../services/wearables/wearablePairingStore.service';
+import { WearableTelemetrySyncService } from '../../services/wearables/wearableTelemetrySync.service';
 import {
   type AutomationRule,
   type CollectorState,
@@ -122,7 +122,7 @@ export function WearableMonitorScreen({ navigation, route }: any) {
           reconnectMaxAttempts: 5, reconnectDelayMs: 3_000,
         },
         async (payload) => {
-          await apiFetch('/wearable-telemetry/upload', { method: 'POST', body: JSON.stringify(payload) });
+          await WearableTelemetrySyncService.uploadTelemetry(payload);
         },
       );
       await WearableDataCollectorService.start();

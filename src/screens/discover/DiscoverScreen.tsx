@@ -48,6 +48,23 @@ export function DiscoverScreen() {
         <Text style={styles.searchPlaceholder}>{t({ en: 'Search skills, agents, tasks...', zh: '搜索技能、智能体、任务…' })}</Text>
       </TouchableOpacity>
 
+      {/* 🎯 BTC Predict hero entry */}
+      <TouchableOpacity style={styles.predictHero} onPress={() => navigation.navigate('Predict')}>
+        <View style={styles.predictHeroBadge}>
+          <Text style={styles.predictHeroBadgeText}>🔥 {t({ en: 'NEW', zh: '新上线' })}</Text>
+        </View>
+        <Text style={styles.predictHeroIcon}>🎯</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.predictHeroTitle}>
+            {t({ en: 'BTC 5-min Predict', zh: 'BTC 5分钟预测' })}
+          </Text>
+          <Text style={styles.predictHeroSub}>
+            {t({ en: 'Up or down? Bet with virtual USDC · settled on-chain price', zh: '涨还是跌？虚拟 USDC 下注 · 链上价格开奖' })}
+          </Text>
+        </View>
+        <Text style={styles.predictHeroArrow}>›</Text>
+      </TouchableOpacity>
+
       {/* Tab switcher */}
       <View style={styles.tabRow}>
         <TouchableOpacity
@@ -148,6 +165,21 @@ const styles = StyleSheet.create({
   },
   searchIcon: { fontSize: 16 },
   searchPlaceholder: { color: colors.textMuted, fontSize: 15, flex: 1 },
+  predictHero: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#1e3a8a', borderRadius: 16, padding: 16,
+    borderWidth: 2, borderColor: colors.accent, marginBottom: 18,
+    position: 'relative',
+  },
+  predictHeroBadge: {
+    position: 'absolute', top: -8, right: 12,
+    backgroundColor: '#7c2d12', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+  },
+  predictHeroBadgeText: { color: '#fed7aa', fontSize: 10, fontWeight: '800' },
+  predictHeroIcon: { fontSize: 36 },
+  predictHeroTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  predictHeroSub: { color: '#bfdbfe', fontSize: 12, marginTop: 4, lineHeight: 16 },
+  predictHeroArrow: { color: colors.accent, fontSize: 28, fontWeight: '700' },
   tabRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
   tab: {
     flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center',

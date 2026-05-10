@@ -17,6 +17,7 @@ import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { checkAndPromptUpdate, silentBackgroundUpdate } from './src/services/appUpdate.service';
 import { migrateFromAsyncStorage } from './src/stores/mmkvStorage';
 import { applyVoiceUiE2EBootstrap, isVoiceUiE2EEnabled } from './src/testing/e2e';
+import { applyPetSoulE2EBootstrap, isPetSoulE2EEnabled } from './src/testing/petSoulE2E';
 import { resolveMobileWakeWordConfig } from './src/config/wakeWord';
 import { hasLocalWakeWordModel, thresholdFromSensitivity } from './src/services/localWakeWord.service';
 import {
@@ -27,6 +28,10 @@ import {
 } from './src/services/androidBackgroundWakeWord.service';
 import { initLlamaBridge } from './src/services/llamaRnBridge';
 import { OtaModelDownloadService } from './src/services/otaModelDownload.service';
+import { WatchDataLayerService } from './src/services/wearables/watchDataLayerBridge.service';
+import { VoiceQuickFab } from './src/components/VoiceQuickFab';
+import { resolveLegacyPath } from './src/navigation/legacyRouteTable';
+import { getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
 
 // Register llama.rn bridge for on-device LLM inference
 initLlamaBridge();
@@ -36,6 +41,8 @@ const queryClient = new QueryClient({
     queries: { staleTime: 5 * 60 * 1000, retry: 2 },
   },
 });
+
+const isMaestroE2E = process.env.EXPO_PUBLIC_MAESTRO_E2E === '1';
 
 function SplashScreen() {
   return (
@@ -78,6 +85,8 @@ function AppNavigator() {
   const { setAuth, setInitialized, clearAuth } = useAuthStore.getState();
   const notifSubRef = useRef<Notifications.Subscription | null>(null);
   const isVoiceUiE2E = isVoiceUiE2EEnabled();
+  const isPetSoulE2E = isPetSoulE2EEnabled();
+  const skipStartupIntegrations = isVoiceUiE2E || isPetSoulE2E || isMaestroE2E;
   const wakeWordConfig = useMemo(() => resolveMobileWakeWordConfig(wakeWordSettings), [wakeWordSettings]);
   const hasLocalModel = hasLocalWakeWordModel(wakeWordConfig.localModel);
   const backgroundWakeWordEnabled = Platform.OS === 'android'
@@ -190,6 +199,11 @@ function AppNavigator() {
   }, []);
 
   useEffect(() => {
+    if (isPetSoulE2E && applyPetSoulE2EBootstrap()) {
+      setInitialized(true);
+      return;
+    }
+
     if (isVoiceUiE2E && applyVoiceUiE2EBootstrap()) {
       setInitialized(true);
       return;
@@ -276,12 +290,12 @@ function AppNavigator() {
     };
     restoreSession();
 
-    // Check for OTA updates after session restore
-    checkAndPromptUpdate().catch(() => {});
+    if (!skipStartupIntegrations) {
+      checkAndPromptUpdate().catch(() => {});
+    }
 
-    // Silent update check when app returns to foreground
     const handleAppStateChange = (state: AppStateStatus) => {
-      if (state === 'active') {
+      if (!skipStartupIntegrations && state === 'active') {
         silentBackgroundUpdate().catch(() => {});
       }
     };
@@ -291,10 +305,42 @@ function AppNavigator() {
       stopNotificationPolling();
       appStateSub.remove();
     };
-  }, [clearAuth, isVoiceUiE2E, setAuth, setInitialized]);
+  }, [clearAuth, isVoiceUiE2E, setAuth, setInitialized, skipStartupIntegrations]);
 
   useEffect(() => {
-    if (isVoiceUiE2E) {
+    if (skipStartupIntegrations || Platform.OS !== 'android') {
+      return;
+    }
+
+    const syncCurrentAuth = () => {
+      const currentState = useAuthStore.getState();
+      if (!currentState.token) {
+        return;
+      }
+      void WatchDataLayerService.syncAuthState({
+        accessToken: currentState.token,
+        userId: currentState.user?.id ?? null,
+        expiresAt: null,
+      }).catch((error) => {
+        console.warn('Failed to sync watch auth state:', error);
+      });
+    };
+
+    void WatchDataLayerService.startListening()
+      .then(syncCurrentAuth)
+      .catch((error) => {
+        console.warn('Failed to start Wear Data Layer listener:', error);
+      });
+
+    const unsubscribeAuthRequest = WatchDataLayerService.onMessage('/agentrix/auth/request', syncCurrentAuth);
+    return () => {
+      unsubscribeAuthRequest();
+      void WatchDataLayerService.stopListening().catch(() => {});
+    };
+  }, [isAuthenticated, skipStartupIntegrations, token]);
+
+  useEffect(() => {
+    if (skipStartupIntegrations) {
       return;
     }
 
@@ -307,10 +353,10 @@ function AppNavigator() {
         shouldSetBadge: notificationsEnabled,
       }),
     });
-  }, [isVoiceUiE2E, notificationsEnabled]);
+  }, [skipStartupIntegrations, notificationsEnabled]);
 
   useEffect(() => {
-    if (isVoiceUiE2E) {
+    if (skipStartupIntegrations) {
       return;
     }
 
@@ -335,10 +381,10 @@ function AppNavigator() {
       notifSubRef.current?.remove();
       notifSubRef.current = null;
     };
-  }, [isVoiceUiE2E, notificationsEnabled]);
+  }, [skipStartupIntegrations, notificationsEnabled]);
 
   useEffect(() => {
-    if (isVoiceUiE2E || !isInitialized || !isAuthenticated || !token || !notificationsEnabled) {
+    if (skipStartupIntegrations || !isInitialized || !isAuthenticated || !token || !notificationsEnabled) {
       stopNotificationPolling();
       useNotificationStore.getState().setPushToken(null);
       return;
@@ -371,9 +417,14 @@ function AppNavigator() {
       cancelled = true;
       stopNotificationPolling();
     };
-  }, [isAuthenticated, isInitialized, isVoiceUiE2E, notificationsEnabled, token]);
+  }, [isAuthenticated, isInitialized, skipStartupIntegrations, notificationsEnabled, token]);
 
   if (!isInitialized) return <SplashScreen />;
+
+  if (isPetSoulE2E) {
+    const { PetSoulE2EApp } = require('./src/testing/PetSoulE2EApp');
+    return <PetSoulE2EApp />;
+  }
 
   if (isVoiceUiE2E) {
     const { VoiceUiE2EApp } = require('./src/testing/VoiceUiE2EApp');
@@ -385,11 +436,22 @@ function AppNavigator() {
 }
 
 // Deep link config
+//
+// MOBILE_REFACTOR_AND_ECOSYSTEM_PLAN_2026-05 Sprint A:
+//   - 4-tab IA: Home / Summon / Plaza / Me (canonical)
+//   - Legacy tab names (Agent/Discover/Team/Pet/Wallet/Today) kept as
+//     hidden aliases so existing deep links keep working.
+//   - `resolveLegacyPath()` rewrites incoming paths from the old IA to
+//     the new canonical paths before React Navigation parses them.
 const linking = {
   // Production: Linking.createURL('/') resolves to "agentrix://" (scheme from app.json).
   // Development (Expo Go): resolves to "exp://...". Both are included so QR pairing
   // works on both dev and production builds.
   prefixes: [Linking.createURL('/'), 'agentrix://', 'clawlink://', 'https://clawlink.app', 'https://agentrix.top'],
+  getStateFromPath: (path: string, options: any) => {
+    const normalized = resolveLegacyPath(path);
+    return defaultGetStateFromPath(normalized, options);
+  },
   config: {
     screens: {
       Auth: {
@@ -398,36 +460,117 @@ const linking = {
           AuthCallback: 'auth/callback',
         },
       },
+      InvitationGate: 'invitation-gate',
       Onboarding: {
         screens: {
           DeploySelect: 'onboarding/deploy',
           CloudDeploy: 'onboarding/cloud',
           ConnectExisting: 'onboarding/connect',
+          LocalDeploy: 'onboarding/local',
+          SocialBind: 'onboarding/social/:instanceId',
         },
       },
       Main: {
         screens: {
-          MainTabs: {
+          Home: {
             screens: {
-              Agent: {
-                initialRouteName: 'AgentChat',
-                screens: {
-                  AgentChat: '',
-                  AgentConsole: 'agent/console',
-                  VoiceChat: 'voice-chat',
-                  OpenClawBind: 'agent/bind',
-                  // Desktop installer QR code deep link:
-                  // agentrix://connect?instanceId=<id>&token=<tok>&host=<ip>&port=<port>
-                  LocalConnect: 'connect',
-                },
-              },
-              Explore: { screens: { Marketplace: 'market', SkillDetail: 'market/skill/:skillId' } },
-              Social: { screens: { Feed: 'social' } },
-              Me: { screens: { Profile: 'me', ReferralDashboard: 'me/referral', Settings: 'me/settings' } },
+              HomeRoot: 'home',
+              PetCompanion: 'home/pet',
+              PetSkills: 'home/pet/skills',
+              PetTasks: 'home/pet/tasks',
+              PetWallet: 'home/pet/wallet',
+              PetWalletBalance: 'home/pet/wallet/balance',
+              PetMemory: 'home/pet/memory',
+              PetMemoryDreaming: 'home/pet/memory/dreaming',
+              PetMemoryLogs: 'home/pet/memory/logs',
+              PetPlay: 'home/pet/play',
+              PetWardrobe: 'home/pet/wardrobe',
+              PetSoul: 'home/pet/soul',
+              PetBreed: 'home/pet/breed',
+              PetIdentity: 'home/pet/identity',
+              PetCreator: 'home/pet/creator',
+              PetPermissions: 'home/pet/permissions',
+              PetSpace: 'home/pet/space/:spaceId',
+              PetTeam: 'home/pet/team',
+              PetWorkflow: 'home/pet/skills/workflow',
+              PetWorkflowDetail: 'home/pet/skills/workflow/:workflowId',
+              CoRaisingInvite: 'home/co-raising/invite',
+              CoRaisingLanding: 'home/co-raising/:token',
+              CoRaisingActivity: 'home/co-raising/activity',
+              PlanApproval: 'home/approvals',
             },
           },
+          Summon: {
+            screens: {
+              SummonRoot: 'summon',
+              VoiceChat: 'summon/voice',
+            },
+          },
+          Plaza: {
+            screens: {
+              PlazaRoot: 'plaza',
+              Feed: 'plaza/feed',
+              PostDetail: 'plaza/feed/post/:postId',
+              ShowcaseDetail: 'plaza/feed/showcase/:postId',
+              UserProfile: 'plaza/feed/user/:userId',
+              CreatePost: 'plaza/feed/create',
+              Messaging: 'plaza/messaging',
+              DirectMessage: 'plaza/messaging/:userId',
+              GroupChat: 'plaza/messaging/group/:groupId',
+              Skills: 'plaza/skills',
+              SkillDetail: 'plaza/skills/:skillId',
+              Checkout: 'plaza/checkout/:skillId',
+              SkillInstall: 'plaza/skills/install/:skillId',
+              Tasks: 'plaza/tasks',
+              TaskDetail: 'plaza/tasks/:taskId',
+              PostTask: 'plaza/tasks/post',
+              Pets: 'plaza/pets',
+              PetsSkins: 'plaza/pets/skins',
+              SkinAuctionDetail: 'plaza/pets/skins/:auctionId',
+              PetAuctionDetail: 'plaza/pets/auction/:auctionId',
+              Play: 'plaza/play',
+              Predict: 'plaza/play/predict',
+              CoRaisingInvite: 'plaza/co-raising/invite',
+              CoRaisingLanding: 'plaza/co-raising/:token',
+              GreetingCardCompose: 'plaza/greeting/compose',
+              GreetingCardInbox: 'plaza/greeting/inbox',
+              ShareCard: 'plaza/share-card',
+              CreateLink: 'plaza/share-card/create',
+              ToyCustom: 'plaza/toy/custom',
+            },
+          },
+          Me: {
+            screens: {
+              Profile: 'me',
+              Account: 'me/account',
+              Settings: 'me/settings',
+              ReferralDashboard: 'me/promote',
+              ApiKeys: 'me/advanced/api-keys',
+              LocalAiModel: 'me/advanced/local-ai',
+              WalletConnect: 'me/wallet/connect',
+              WalletSetup: 'me/wallet/setup',
+              WalletBackup: 'me/wallet/backup',
+              NotificationCenter: 'me/notifications',
+              MySkills: 'me/skills',
+              MyOrders: 'me/orders',
+              SocialListener: 'me/advanced/social-listener',
+              Scan: 'me/scan',
+              WearableHub: 'me/devices/wearable',
+              Subscribe: 'me/subscribe',
+              AxpCenter: 'me/axp',
+              AxpRewardShop: 'me/axp/shop',
+              ShareCard: 'me/share-card',
+            },
+          },
+          // ── Legacy tabs (hidden, but keep deep link compat) ──
+          // These are intentionally minimal: the resolver rewrites old
+          // paths to new paths, so legacy `config.screens.Agent.*` style
+          // links are no longer needed. They remain accessible via
+          // legacy `navigate('Agent', { screen: ... })` call sites.
         },
       },
+      Inbox: 'inbox',
+      Scan: 'scan',
     },
   },
 };
@@ -439,6 +582,9 @@ export default function App() {
         <NavigationContainer linking={linking as any}>
           <StatusBar style="light" />
           <AppNavigator />
+          {/* Global Voice Quick FAB — PRD mobile-prd-v3 §3.2. Auth/onboarding screens
+              can opt-out by emitting `agentrix:voice-fab-hide` (handled inside the FAB). */}
+          <VoiceQuickFab />
         </NavigationContainer>
       </QueryClientProvider>
     </AppErrorBoundary>

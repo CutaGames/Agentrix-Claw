@@ -51,6 +51,7 @@ type LocalBridgeGenerateResult =
 type LocalBridge = {
   isAvailable?: (options?: { model?: string }) => boolean | Promise<boolean>;
   getCapabilities?: (options?: { model?: string }) => Partial<MobileLocalRuntimeCapabilities> | Promise<Partial<MobileLocalRuntimeCapabilities>>;
+  prewarmMultimodal?: (modelId: string) => Promise<void>;
   generate?: (payload: {
     model?: string;
     messages: MobileLocalChatMessage[];
@@ -123,8 +124,11 @@ function buildDeclaredCapabilities(
         available: OtaModelDownloadService.isModelDownloaded(modelId),
         supportsVisionInput: OtaModelDownloadService.hasMultimodalAssets(modelId)
           && OtaModelDownloadService.declaresVisionInput(modelId),
-        supportsAudioInput: OtaModelDownloadService.hasMultimodalAssets(modelId)
-          && OtaModelDownloadService.declaresAudioInput(modelId),
+        // Audio is handled by the whisper-base audio encoder (separate OTA asset).
+        // supportsAudioInput is true only when the encoder is downloaded, because
+        // the main model GGUF has no audio tokeniser — audio sent without the
+        // encoder causes "Exception in HostFunction: <unknown>" in llama.cpp.
+        supportsAudioInput: OtaModelDownloadService.hasAudioInputAssets(modelId),
         supportsAudioOutput: OtaModelDownloadService.hasAnyOnDeviceAudioOutputAssets(modelId),
       }
     : null;
@@ -354,6 +358,19 @@ export class MobileLocalInferenceService {
     return mergeCapabilities(declared, capabilityOverride);
   }
 
+  /**
+   * Fire-and-forget: pre-load the on-device context + multimodal projector
+   * for `modelId` so subsequent image / audio turns do not pay the 10–20 s
+   * projector-load cost on the critical path. Safe to call repeatedly.
+   */
+  static prewarmMultimodal(modelId: string): void {
+    const resolvedBridge = resolveBridge();
+    const prewarm = resolvedBridge?.bridge.prewarmMultimodal;
+    if (!prewarm) return;
+    // Do not await — the whole point is to overlap with user input.
+    Promise.resolve(prewarm(modelId)).catch(() => {/* best-effort */});
+  }
+
   static async getCapabilities(options?: { model?: string }): Promise<MobileLocalRuntimeCapabilities> {
     const resolvedBridge = resolveBridge();
     const declared = buildDeclaredCapabilities(resolvedBridge, options);
@@ -445,9 +462,9 @@ export class MobileLocalInferenceService {
       model?: string;
       temperature?: number;
       maxTokens?: number;
-      /** Abort if the overall stream doesn't complete within this many ms. Default 30s. */
+      /** Abort if the overall stream doesn't complete within this many ms. Default 60s. */
       timeoutMs?: number;
-      /** Abort if no token chunk arrives within this many ms. Default 15s. */
+      /** Abort if no token chunk arrives within this many ms. Default 25s. */
       stallTimeoutMs?: number;
       /** Optional caller-controlled abort signal. */
       signal?: AbortSignal;
@@ -458,8 +475,8 @@ export class MobileLocalInferenceService {
       throw new Error('Local mobile inference bridge is not available on this device.');
     }
     const { bridge, source } = resolvedBridge;
-    const overallTimeoutMs = options?.timeoutMs ?? 30_000;
-    const stallTimeoutMs = options?.stallTimeoutMs ?? 15_000;
+    const overallTimeoutMs = options?.timeoutMs ?? 60_000;
+    const stallTimeoutMs = options?.stallTimeoutMs ?? 25_000;
 
     if (typeof bridge.generateStream === 'function') {
       const queuedChunks: string[] = [];

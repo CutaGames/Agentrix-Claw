@@ -1,5 +1,0 @@
-{
-  "messages": [{"role": "user", "content": "say hello in 3 words"}],
-  "options": {"model": "us.anthropic.claude-sonnet-4-6-v1:0"},
-  "context": {"userId": "6e10af3f-dc63-416b-a205-9914b10a2a1e"}
-}

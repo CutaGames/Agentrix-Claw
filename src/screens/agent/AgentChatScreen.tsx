@@ -72,6 +72,7 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
   MobileLocalInferenceService.modelId,
   'gemma-4-2b',
   'gemma-4-4b',
+  'qwen3.5-omni-light', // placeholder for future official release or community 3B
   'qwen2.5-omni-3b',
   'gemma-nano-2b',
   'gemma-nano-2b-local',
@@ -80,7 +81,7 @@ const LOCAL_ONLY_MODEL_IDS = new Set([
 // ── Token budget estimation for local context management ──
 const LOCAL_CONTEXT_WINDOW = 4096;
 const LOCAL_RESPONSE_RESERVE = 2048; // n_predict default
-const LOCAL_SYSTEM_PROMPT_ESTIMATE = 200; // tokens for enriched system prompt
+const LOCAL_SYSTEM_PROMPT_ESTIMATE = 400; // tokens for enriched system prompt (capped at 600 chars ≈ 150 tokens + safety margin)
 
 /** Rough token estimate: ~2 chars/token for mixed CJK/Latin text */
 function estimateTokens(text: string): number {
@@ -110,6 +111,7 @@ function trimHistoryToTokenBudget(
   return result;
 }
 const MOBILE_AUTO_CONTINUE_LIMIT = 3;
+const MOBILE_STREAM_CHUNK_FLUSH_MS = 50;
 const MOBILE_CONTINUE_PROMPT = 'Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting. If you were in the middle of a tool-driven task, resume the unfinished steps first and only summarize after the task is complete.';
 
 function isLocalOnlyModelId(modelId?: string | null) {
@@ -118,6 +120,8 @@ function isLocalOnlyModelId(modelId?: string | null) {
 
 function getLocalModelLabel(modelId: string) {
   switch (modelId) {
+    case 'qwen3.5-omni-light':
+      return 'Qwen 3.5 Omni Light (Local)';
     case 'qwen2.5-omni-3b':
       return 'Qwen 2.5 Omni 3B (Local)';
     case 'gemma-4-4b':
@@ -223,6 +227,7 @@ async function transcribeAudioAttachments(
       const audioUri = att.publicUrl || att.localUri;
       if (!audioUri) return att;
 
+      let transcribeErrorDetail = '';
       try {
         const formData = new FormData();
         if (audioUri.startsWith('http')) {
@@ -233,32 +238,56 @@ async function transcribeAudioAttachments(
           formData.append('audio', { uri: audioUri, name: att.originalName || 'voice.m4a', type: att.mimetype || 'audio/m4a' } as any);
         }
         const ac = new AbortController();
-        const timeout = setTimeout(() => ac.abort(), 30_000);
-        const resp = await fetch(`${API_BASE}/voice/transcribe`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-          signal: ac.signal,
-        });
-        clearTimeout(timeout);
-        if (resp.ok) {
-          const data = await resp.json();
-          const transcript = data?.text || data?.transcript || '';
-          if (transcript) {
-            transcribedTexts.push(transcript);
-            return {
-              ...att,
-              kind: 'text' as any,
-              mimetype: 'text/plain',
-              originalName: `${att.originalName} (transcribed)`,
-              _transcriptText: transcript,
-            };
+        // Mirror the hard timeout used in useVoiceSession to survive worst-case
+        // Gemini STT chain + AWS fallback, and race an independent timer because
+        // AbortController does not always reject the in-flight fetch on RN.
+        const TRANSCRIBE_TIMEOUT_MS = 45_000;
+        const timeout = setTimeout(() => ac.abort(), TRANSCRIBE_TIMEOUT_MS);
+        try {
+          const resp = await Promise.race([
+            fetch(`${API_BASE}/voice/transcribe`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+              body: formData,
+              signal: ac.signal,
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () => reject(new Error('transcribe-timeout')),
+                TRANSCRIBE_TIMEOUT_MS + 1_000,
+              ),
+            ),
+          ]);
+          if (resp.ok) {
+            const data = await resp.json();
+            const transcript = data?.text || data?.transcript || '';
+            if (transcript) {
+              transcribedTexts.push(transcript);
+              return {
+                ...att,
+                kind: 'text' as any,
+                mimetype: 'text/plain',
+                originalName: `${att.originalName} (transcribed)`,
+                _transcriptText: transcript,
+              };
+            }
+          } else {
+            try { transcribeErrorDetail = await resp.text(); } catch { /* ignore */ }
           }
+        } finally {
+          clearTimeout(timeout);
+          try { ac.abort(); } catch {}
         }
       } catch (err) {
         console.warn('[transcribeAudioAttachments] failed:', err);
+        return {
+          ...att,
+          _transcribeErrorDetail: String((err as any)?.message || err || '').slice(0, 240),
+        } as any;
       }
-      return att;
+      return transcribeErrorDetail
+        ? ({ ...att, _transcribeErrorDetail: transcribeErrorDetail.slice(0, 240) } as any)
+        : att;
     }),
   );
   return { attachments: result, transcribedTexts };
@@ -329,48 +358,19 @@ function dedupeUrls(urls: string[]) {
   return [...new Set(urls)];
 }
 
-function extractUrlsFromMessage(content: string) {
-  const markdownImageUrls = Array.from(content.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)).map((match) => match[1]);
-  const plainUrls = Array.from(content.matchAll(/https?:\/\/[^\s)]+/g)).map((match) => match[0].replace(/[),.;]+$/, ''));
-  const allUrls = dedupeUrls([...markdownImageUrls, ...plainUrls]);
-  const imageUrls = allUrls.filter((url) => /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(url));
-  const audioUrls = allUrls.filter((url) => /\.(mp3|wav|m4a|ogg|aac|flac|opus|wma)(\?.*)?$/i.test(url));
-  const videoUrls = allUrls.filter((url) => /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(url));
-  const fileUrls = allUrls.filter((url) => !imageUrls.includes(url) && !audioUrls.includes(url) && !videoUrls.includes(url) && /(\/api\/uploads\/|\.(pdf|txt|md|csv|json|docx?|xlsx?|pptx?))(\?.*)?$/i.test(url));
-  return { imageUrls, audioUrls, videoUrls, fileUrls };
-}
-
-function getCopyableMessageText(message: Message) {
-  const attachmentLines = (message.attachments || []).map((attachment) => `${attachment.originalName}: ${attachment.publicUrl || attachment.localUri || ''}`);
-  return [message.content.trim(), ...attachmentLines].filter(Boolean).join('\n');
-}
-
-function buildDisplayMessageText(content: string) {
-  if (!content) return '';
-
-  const { imageUrls, audioUrls, videoUrls, fileUrls } = extractUrlsFromMessage(content);
-  let display = content
-    .replace(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g, '')
-    .replace(/\[User Attachments\][\s\S]*$/g, '')
-    .trim();
-
-  for (const url of [...imageUrls, ...audioUrls, ...videoUrls, ...fileUrls]) {
-    display = display.replace(new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '');
-  }
-
-  return renderContent(display)
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
-}
-
-// Strip basic markdown: **bold** -> bold, *italic* -> italic
-function renderContent(text: string) {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\*(.+?)\*/g, '$1')
-    .replace(/`(.+?)`/g, '$1');
-}
+// 2026-05-10 A5 minimal extraction: these 4 helpers moved to
+// `chatMessage.utils.ts` for unit-test coverage & main-file size reduction.
+// Re-exported locally so the rest of this 4000+ line file doesn't change.
+import {
+  extractUrlsFromMessage as _extractUrlsFromMessage,
+  getCopyableMessageText as _getCopyableMessageText,
+  buildDisplayMessageText as _buildDisplayMessageText,
+  stripInlineMarkdown as _stripInlineMarkdown,
+} from './chatMessage.utils';
+const extractUrlsFromMessage = _extractUrlsFromMessage;
+const getCopyableMessageText = _getCopyableMessageText;
+const buildDisplayMessageText = _buildDisplayMessageText;
+const renderContent = _stripInlineMarkdown;
 
 // Inline audio player for audio URLs in messages
 const InlineAudioPlayer = ({ uri }: { uri: string }) => {
@@ -528,7 +528,7 @@ const ThoughtRibbon = ({ thoughts, streaming }: { thoughts: string[]; streaming?
 };
 
 // ─── MessageBubble — Spatial Flow borderless design with swipe actions ──────
-const MessageBubble = ({
+const MessageBubble = React.memo(({ 
   item,
   onSpeak,
   onStopSpeaking,
@@ -806,7 +806,20 @@ const MessageBubble = ({
       {messageContent}
     </Swipeable>
   );
-};
+}, (prev, next) => (
+  prev.item.id === next.item.id &&
+  prev.item.content === next.item.content &&
+  prev.item.streaming === next.item.streaming &&
+  prev.item.error === next.item.error &&
+  prev.item.thoughts === next.item.thoughts &&
+  prev.item.attachments === next.item.attachments &&
+  prev.speakingMessageId === next.speakingMessageId &&
+  prev.onSpeak === next.onSpeak &&
+  prev.onStopSpeaking === next.onStopSpeaking &&
+  prev.onPreviewImage === next.onPreviewImage &&
+  prev.onQuoteMessage === next.onQuoteMessage &&
+  prev.onExportNote === next.onExportNote
+));
 
 export function AgentChatScreen() {
   const route = useRoute<RouteT>();
@@ -910,6 +923,8 @@ export function AgentChatScreen() {
   const isNearBottomRef = useRef(true);
   const activeAssistantMessageIdRef = useRef<string | null>(null);
   const responseInterruptedRef = useRef(false);
+  const streamChunkBufferRef = useRef<Map<string, string[]>>(new Map());
+  const streamChunkFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSendRef = useRef<(overrideText?: string | any, overrideAttachments?: UploadedChatAttachment[]) => Promise<void>>(async () => {});
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   // Token quota for energy bar
@@ -1093,11 +1108,12 @@ export function AgentChatScreen() {
         if (agentAccountId) {
           const { getUnifiedAgent } = await import('../../services/unifiedAgent');
           const agent = await getUnifiedAgent(activeInstance!.id);
+          const agentMetadata = (agent as any)?.metadata;
           if (agent.defaultModel) {
             setAgentPreferredModel(agent.defaultModel);
           }
-          if (agent.metadata?.voice_id) {
-            setAgentVoiceId(agent.metadata.voice_id);
+          if (agentMetadata?.voice_id) {
+            setAgentVoiceId(agentMetadata.voice_id);
           }
           // Build enriched context for local model system prompt
           const contextParts: string[] = [];
@@ -1278,16 +1294,39 @@ export function AgentChatScreen() {
     );
   }, [remoteClipboard, t]);
 
-  const scrollToBottom = useCallback((force = false) => {
+  const scrollToBottom = useCallback((force = false, animated = false) => {
     if (!force && !isNearBottomRef.current) return;
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated }), 50);
   }, []);
 
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
     if (!lastMessage) return;
-    scrollToBottom(lastMessage.role === 'user');
+    scrollToBottom(lastMessage.role === 'user', lastMessage.role === 'user');
   }, [messages.length, scrollToBottom]);
+
+  const flushBufferedStreamChunks = useCallback(() => {
+    streamChunkFlushTimerRef.current = null;
+    const entries = Array.from(streamChunkBufferRef.current.entries());
+    streamChunkBufferRef.current.clear();
+    if (entries.length === 0) return;
+
+    setMessages((prev) =>
+      prev.map((m) => {
+        const chunks = entries.find(([id]) => id === m.id)?.[1];
+        if (!chunks?.length) return m;
+        return { ...m, content: m.content + chunks.join('') };
+      })
+    );
+  }, []);
+
+  useEffect(() => () => {
+    if (streamChunkFlushTimerRef.current) {
+      clearTimeout(streamChunkFlushTimerRef.current);
+      streamChunkFlushTimerRef.current = null;
+    }
+    streamChunkBufferRef.current.clear();
+  }, []);
 
   const stopCurrentResponse = useCallback((showInterruptedHint = false) => {
     responseInterruptedRef.current = true;
@@ -1304,6 +1343,8 @@ export function AgentChatScreen() {
     const activeMessageId = activeAssistantMessageIdRef.current;
     if (!activeMessageId) return;
 
+    flushBufferedStreamChunks();
+
     setMessages((prev) => prev.map((m) => {
       if (m.id !== activeMessageId || !m.streaming) return m;
       if (m.content || m.thoughts?.length) {
@@ -1319,7 +1360,7 @@ export function AgentChatScreen() {
     }));
 
     activeAssistantMessageIdRef.current = null;
-  }, [t]);
+  }, [flushBufferedStreamChunks, t]);
 
   const clearAutoContinueTimer = useCallback(() => {
     if (autoContinueTimerRef.current) {
@@ -1356,22 +1397,29 @@ export function AgentChatScreen() {
   useEffect(() => () => clearAutoContinueTimer(), [clearAutoContinueTimer]);
 
   const appendToStreamingMessage = useCallback((msgId: string, chunk: string) => {
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== msgId) return m;
-
-        let newContent = m.content + chunk;
-        let newThoughts = m.thoughts || [];
-
-        if (chunk.includes('[Tool Call]') || chunk.includes('Thinking...')) {
-          newThoughts = [...newThoughts, chunk.trim()];
+    if (chunk.includes('[Tool Call]') || chunk.includes('Thinking...')) {
+      flushBufferedStreamChunks();
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== msgId) return m;
+          const newThoughts = [...(m.thoughts || []), chunk.trim()];
           return { ...m, thoughts: newThoughts };
-        }
+        })
+      );
+      return;
+    }
 
-        return { ...m, content: newContent };
-      })
-    );
-  }, []);
+    const existing = streamChunkBufferRef.current.get(msgId);
+    if (existing) {
+      existing.push(chunk);
+    } else {
+      streamChunkBufferRef.current.set(msgId, [chunk]);
+    }
+
+    if (!streamChunkFlushTimerRef.current) {
+      streamChunkFlushTimerRef.current = setTimeout(flushBufferedStreamChunks, MOBILE_STREAM_CHUNK_FLUSH_MS);
+    }
+  }, [flushBufferedStreamChunks]);
 
   const completeStreamingAssistantMessage = useCallback((errorMessage?: string) => {
     const activeMessageId = activeAssistantMessageIdRef.current;
@@ -1381,6 +1429,12 @@ export function AgentChatScreen() {
     if (!activeMessageId) {
       return;
     }
+
+    if (streamChunkFlushTimerRef.current) {
+      clearTimeout(streamChunkFlushTimerRef.current);
+      streamChunkFlushTimerRef.current = null;
+    }
+    flushBufferedStreamChunks();
 
     setMessages((prev) => prev.map((message) => {
       if (message.id !== activeMessageId) {
@@ -1585,6 +1639,18 @@ export function AgentChatScreen() {
   }) => {
     try {
       setUploadingAttachment(true);
+
+      // Kick off mmproj projector pre-warming in parallel with the upload.
+      // For image / audio attachments on a local multimodal model, this
+      // overlaps the ~10–20 s projector load with the user still composing
+      // their prompt, removing it from the first-token critical path.
+      const isImage = localAttachment.mimeType.startsWith('image/');
+      const isAudio = localAttachment.mimeType.startsWith('audio/');
+      const activeLocalModel = localAiModelId;
+      if ((isImage || isAudio) && activeLocalModel && isLocalOnlyModelId(activeLocalModel)) {
+        MobileLocalInferenceService.prewarmMultimodal(activeLocalModel);
+      }
+
       const uploaded = await uploadChatAttachment({
         uri: localAttachment.uri,
         name: localAttachment.fileName,
@@ -1597,7 +1663,7 @@ export function AgentChatScreen() {
     } finally {
       setUploadingAttachment(false);
     }
-  }, [t]);
+  }, [t, localAiModelId]);
 
   const removePendingAttachment = useCallback((fileName: string) => {
     setPendingAttachments((prev) => prev.filter((attachment) => attachment.fileName !== fileName));
@@ -1644,6 +1710,30 @@ export function AgentChatScreen() {
         }
       } catch (err) {
         console.warn('[handleSend] audio transcription failed, sending as-is:', err);
+      }
+      // If transcription produced no text and the only attachments are audio,
+      // do NOT silently send the raw m4a to a text-only chat model — it will
+      // just answer "I cannot process audio". Surface the failure instead.
+      const stillHasUntranscribedAudio = resolvedAttachments.some(
+        (a) => (a.mimetype?.startsWith('audio/') || a.originalName.match(/\.(mp3|wav|m4a|ogg|aac|flac|opus)$/i))
+          && !(a as any)._transcriptText,
+      );
+      if (stillHasUntranscribedAudio && !audioTranscriptText && !text.trim()) {
+        const firstTranscribeError = (resolvedAttachments as any[]).find((a) => a?._transcribeErrorDetail)?._transcribeErrorDetail;
+        const detail = firstTranscribeError ? `\n\n${String(firstTranscribeError).slice(0, 200)}` : '';
+        try {
+          const { Alert } = require('react-native');
+          Alert.alert(
+            t({ en: 'Transcription Failed', zh: '转写失败' }),
+            t({
+              en: `We could not transcribe the audio. Please try again or type your message.${detail}`,
+              zh: `语音转写失败。请稍后重试或直接输入文字。${detail}`,
+            }),
+          );
+        } catch {}
+        setSending(false);
+        if (voicePhase !== 'idle') setVoicePhase('idle');
+        return;
       }
     }
 
@@ -1767,12 +1857,32 @@ export function AgentChatScreen() {
           reason: `local-turn-blocked:${localTurnDecision.reason}`,
         });
         if (!tierDecision.allowCloudFallback) {
-          finishAssistantWithError(
-            t({
-              en: 'This local model cannot handle this turn. Switch to Smart/Cloud mode or adjust the request.',
-              zh: '当前端侧模型无法处理此轮。请切换到「智能 / 云端」模式或调整输入。',
-            })
-          );
+          const reason = localTurnDecision.reason;
+          const blockedMessage = reason === 'projector-required'
+            ? t({
+                en: 'This local model cannot see images yet — the vision add-on (≈986 MB) has not been downloaded. Open "Me → Local AI Model" to download it, or switch to Smart / Cloud mode.',
+                zh: '端侧模型暂时看不到图片：尚未下载视觉插件（约 986 MB）。请到「我的 → 本地 AI 模型」下载完整包，或切换到「智能 / 云端」模式。',
+              })
+            : reason === 'audio-format-unsupported'
+            ? t({
+                en: 'This audio format isn\'t supported on-device yet. Record or convert to wav/mp3, or switch to Smart / Cloud mode.',
+                zh: '端侧模型暂时不支持该音频格式，请使用 wav/mp3，或切换到「智能 / 云端」模式。',
+              })
+            : reason === 'audio-input-unavailable'
+            ? t({
+                en: 'On-device audio input is not enabled for this local model. Download the full multimodal package or switch to Smart / Cloud mode.',
+                zh: '当前端侧模型未启用直连音频输入。请下载完整多模态包，或切换到「智能 / 云端」模式。',
+              })
+            : reason === 'attachment-not-local'
+            ? t({
+                en: 'This attachment can\'t be read locally. Pick it from your device library or switch to Smart / Cloud mode.',
+                zh: '该附件无法在本地读取，请从设备相册/文件选择，或切换到「智能 / 云端」模式。',
+              })
+            : t({
+                en: 'This local model cannot handle this turn. Switch to Smart / Cloud mode or adjust the request.',
+                zh: '当前端侧模型无法处理此轮。请切换到「智能 / 云端」模式或调整输入。',
+              });
+          finishAssistantWithError(blockedMessage);
           return;
         }
         setMessages((prev) =>
@@ -1792,7 +1902,39 @@ export function AgentChatScreen() {
           setResolvedModelLabel(localModelLabel);
         }
         let localAssistantText = '';
-        const localUserContent = await buildLocalUserContent(text, attachments, localRuntimeSnapshot || undefined);
+        const localUserContent = await buildLocalUserContent(text, attachments, localRuntimeSnapshot || undefined, effectiveModelId);
+
+        // Show a clear progress placeholder for multimodal turns so users
+        // don't interpret the slow first-token path (mmproj image encoding
+        // takes 1–3 min on a phone CPU) as the app being frozen.
+        const placeholderIsMultimodal = Array.isArray(localUserContent)
+          && localUserContent.some((p) => p.type === 'image_url' || p.type === 'input_audio');
+        const placeholderHasImage = Array.isArray(localUserContent)
+          && localUserContent.some((p) => p.type === 'image_url');
+        let progressTickerId: ReturnType<typeof setInterval> | null = null;
+        const progressStartedAt = Date.now();
+        if (placeholderIsMultimodal) {
+          const renderPlaceholder = (elapsedSec: number) => {
+            const expected = placeholderHasImage
+              ? t({ en: 'image ~30–60 s after first run', zh: '图片首轮约 30-60 秒，已缓存后再发同张图会更快' })
+              : t({ en: 'audio ~10–25 s typical', zh: '音频通常 10-25 秒' });
+            return t({
+              en: `🖼️ Encoding on-device… ${elapsedSec}s elapsed (${expected}). Keep the app in the foreground for best speed.\n`,
+              zh: `🖼️ 正在端侧处理…已用 ${elapsedSec} 秒（${expected}）。请保持前台以获得最佳速度。\n`,
+            });
+          };
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantMsgId ? { ...m, content: renderPlaceholder(0), streaming: true } : m))
+          );
+          progressTickerId = setInterval(() => {
+            const elapsedSec = Math.round((Date.now() - progressStartedAt) / 1000);
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantMsgId && !m.error
+                ? { ...m, content: renderPlaceholder(elapsedSec), streaming: true }
+                : m))
+            );
+          }, 2000);
+        }
 
         const rawLocalHistory = currentMsgs
           .filter((message) => (message.role === 'user' || message.role === 'assistant') && message.content.trim())
@@ -1801,12 +1943,23 @@ export function AgentChatScreen() {
             content: message.content,
           }));
 
+        // Multimodal turns (image / audio): skip all prior chat history.
+        // Rationale: image+history can easily exceed 2k context tokens, and
+        // each extra token adds ~30–80 ms on Android CPU for Qwen2.5-Omni 3B
+        // before the first output token. History almost never helps a vision
+        // answer; the visible question + the image is what matters. For
+        // text-only turns keep the normal budget so conversation continuity
+        // stays intact.
+        const isMultimodalUserTurn = Array.isArray(localUserContent)
+          && localUserContent.some((p) => p.type === 'image_url' || p.type === 'input_audio');
         const userTokens = estimateTokens(typeof localUserContent === 'string' ? localUserContent : text);
-        const trimmedHistory = trimHistoryToTokenBudget(rawLocalHistory, userTokens);
+        const trimmedHistory = isMultimodalUserTurn
+          ? []
+          : trimHistoryToTokenBudget(rawLocalHistory, userTokens);
         const localHistory = await Promise.all(trimmedHistory.map(async (message) => ({
           role: message.role as 'user' | 'assistant',
           content: message.role === 'user'
-            ? await buildLocalUserContent(message.content, [], localRuntimeSnapshot || undefined)
+            ? await buildLocalUserContent(message.content, [], localRuntimeSnapshot || undefined, effectiveModelId)
             : message.content,
         })));
 
@@ -1830,20 +1983,58 @@ export function AgentChatScreen() {
             { role: 'user', content: localUserContent },
           ];
 
+          // Multimodal turns on a phone CPU are dramatically slower than
+          // text: mmproj has to encode every image, and Gemma 4 2B vision
+          // commonly takes 2–5 minutes for the first token on an 8-core
+          // mid-tier Android CPU with a single 2 MB JPEG. Detect image /
+          // audio content and pick a much more generous watchdog; text-only
+          // turns keep the tighter bounds so stuck runs still get aborted.
+          const isMultimodalTurn = Array.isArray(localUserContent)
+            && localUserContent.some((p) => p.type === 'image_url' || p.type === 'input_audio');
+          // In 'auto' mode with cloud fallback available, fail fast to cloud
+          // instead of making the user wait the full 5-min stall budget.
+          const canFailFastToCloud = tierDecision.allowCloudFallback && executionMode === 'auto';
+          const localTurnTimeoutMs = isMultimodalTurn
+            ? (canFailFastToCloud ? 240_000 : 600_000)
+            : 180_000;
+          const localTurnStallMs = isMultimodalTurn
+            ? (canFailFastToCloud ? 120_000 : 300_000)
+            : 90_000;
+
           // Direct streaming — the primary local inference path.
           // Tool calling is disabled for now: Gemma 4's Generic format handler
           // in llama.cpp is unreliable (often returns empty text), and basic chat
           // doesn't need tools. Re-enable when model support stabilises.
+          //
+          // Multimodal output cap: a phone doesn't need a 2000-token essay
+          // about a photo. Capping image / audio turns at 384 output tokens
+          // saves ~30s of generation time on Android CPU and keeps answers
+          // chat-appropriate.
+          const localMaxTokens = isMultimodalTurn ? 384 : undefined;
           for await (const chunk of MobileLocalInferenceService.generateTextStream(localMessages, {
             model: effectiveModelId,
-            timeoutMs: 30_000,
-            stallTimeoutMs: 15_000,
+            timeoutMs: localTurnTimeoutMs,
+            stallTimeoutMs: localTurnStallMs,
+            maxTokens: localMaxTokens,
             signal: localAbort.signal,
           })) {
             if (localAbort.signal.aborted || responseInterruptedRef.current) break;
             if (!chunk) continue;
             const visible = thinkFilter.push(chunk);
             if (!visible) continue;
+            // On the first real visible token, clear the multimodal
+            // "encoding…" placeholder so we don't prepend it to the answer.
+            if (!localProducedOutput && placeholderIsMultimodal) {
+              if (progressTickerId) {
+                clearInterval(progressTickerId);
+                progressTickerId = null;
+              }
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMsgId ? { ...m, content: '', streaming: true } : m
+                )
+              );
+            }
             localProducedOutput = true;
             streamSucceeded = true;
             localAssistantText += visible;
@@ -1900,6 +2091,10 @@ export function AgentChatScreen() {
             reason: finalAssistant ? 'ok' : 'empty-output',
           });
         } catch (error: any) {
+          if (progressTickerId) {
+            clearInterval(progressTickerId);
+            progressTickerId = null;
+          }
           if (responseInterruptedRef.current || localAbort.signal.aborted) {
             trackLocalInferenceOutcome({
               platform: 'mobile',
@@ -1964,10 +2159,16 @@ export function AgentChatScreen() {
       }
       const localFellBack = localAttempted && !streamSucceeded;
       if (!streamSucceeded && localFellBack && !tierDecision.allowCloudFallback) {
+        // Surface the concrete underlying error (timeout / stall / runtime
+        // load failure / mmproj init failure) instead of a generic catch-all.
+        // The turn has already set `localErrorMessage` in the inner catch;
+        // recorded in voice diagnostics. Here we replay it so the user sees
+        // what actually went wrong instead of the misleading "unavailable or
+        // timed out" placeholder.
         finishAssistantWithError(
           t({
-            en: 'Local model is unavailable or timed out. Switch to Smart/Cloud mode or try again.',
-            zh: '端侧模型不可用或超时。请切换到「智能 / 云端」模式或稍后重试。',
+            en: 'Local inference did not finish. Please try again, or switch to Smart / Cloud mode. (Check Me → Local AI Model for a full on-device diagnostic.)',
+            zh: '端侧推理未能完成，请重试，或切换到「智能 / 云端」模式。（详情可在「我的 → 本地 AI 模型」查看端侧诊断日志。）',
           })
         );
         return;
@@ -2075,6 +2276,12 @@ export function AgentChatScreen() {
       }
 
       if (responseInterruptedRef.current) return;
+
+      if (streamChunkFlushTimerRef.current) {
+        clearTimeout(streamChunkFlushTimerRef.current);
+        streamChunkFlushTimerRef.current = null;
+      }
+      flushBufferedStreamChunks();
 
       // If stream ran but produced no content, show a friendly error
       setMessages((prev) => {
@@ -2420,19 +2627,23 @@ export function AgentChatScreen() {
     }
   }, [t]);
 
-  const renderMessage = ({ item }: { item: Message }) => {
+  const handlePreviewImage = useCallback((uri: string) => {
+    setPreviewImageUri(uri);
+  }, []);
+
+  const renderMessage = useCallback(({ item }: { item: Message }) => {
     return (
       <MessageBubble
         item={item}
         onSpeak={handleSpeakMessage}
         onStopSpeaking={stopSpeaking}
         speakingMessageId={speakingMessageId}
-        onPreviewImage={(uri) => setPreviewImageUri(uri)}
+        onPreviewImage={handlePreviewImage}
         onQuoteMessage={handleQuoteMessage}
         onExportNote={handleExportNote}
       />
     );
-  };
+  }, [handleExportNote, handlePreviewImage, handleQuoteMessage, handleSpeakMessage, speakingMessageId, stopSpeaking]);
 
   // Sprint 2: Auto-provision — when no agent instance exists, show friendly welcome
   const handleAutoProvision = useCallback(async () => {
@@ -2575,7 +2786,9 @@ export function AgentChatScreen() {
         sessionId={sessionIdRef.current}
         agentId={activeInstance?.metadata?.agentAccountId || instanceId}
         instanceName={instanceName}
-        messages={allMessagesRef.current.length > 0 ? allMessagesRef.current.slice(-10) : messages.slice(-10)}
+        messages={(allMessagesRef.current.length > 0 ? allMessagesRef.current : messages)
+          .filter((message) => message.role === 'user' || message.role === 'assistant')
+          .slice(-10) as any}
       />
 
       {isOffline && (
@@ -2614,7 +2827,7 @@ export function AgentChatScreen() {
         renderItem={renderMessage}
         contentContainerStyle={styles.messageList}
         showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => scrollToBottom()}
+        onContentSizeChange={() => scrollToBottom(false, false)}
         onScroll={(event) => {
           const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
           const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
@@ -2623,7 +2836,10 @@ export function AgentChatScreen() {
         scrollEventThrottle={16}
         initialNumToRender={PAGE_SIZE}
         maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
         windowSize={5}
+        removeClippedSubviews
+        keyboardShouldPersistTaps="handled"
         onStartReached={loadOlderMessages}
         onStartReachedThreshold={0.3}
         ListHeaderComponent={
@@ -3035,7 +3251,7 @@ export function AgentChatScreen() {
                     );
                     return;
                   }
-                  setDuplexMode((prev) => !prev);
+                  setDuplexMode(!duplexMode);
                 }}
                 style={[styles.sheetToggle, duplexMode && styles.sheetToggleActive]}
                 testID="chat-duplex-toggle"

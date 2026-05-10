@@ -192,6 +192,6 @@ export const taskMarketplaceApi = {
 
   // 获取我发布的任务
   async getMyTasks(status?: TaskStatus): Promise<TaskItem[]> {
-    return apiFetch<TaskItem[]>(`/merchant-tasks/marketplace/my-tasks${status ? `?status=${status}` : ''}`);
+    return apiFetch<TaskItem[]>(`/merchant-tasks/my-tasks${status ? `?status=${status}` : ''}`);
   },
 };

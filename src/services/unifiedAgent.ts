@@ -26,6 +26,9 @@ export interface UnifiedAgent {
   // 经济身份
   agentAccountId?: string;
   agentUniqueId?: string;
+  walletAddress?: string;
+  balance?: number;
+  balanceCurrency?: string;
   creditScore?: number;
   spendingLimits?: {
     singleTxLimit: number;
@@ -34,6 +37,10 @@ export interface UnifiedAgent {
     currency: string;
   };
   agentType?: string;
+  preferredProvider?: string;
+  preferredModel?: string;
+  metadata?: Record<string, any>;
+  permissions?: Record<string, any>;
 
   // 团队
   teamTemplateSlug?: string;

@@ -24,6 +24,23 @@ export interface MobileDesktopApproval {
   respondedAt?: string;
 }
 
+export type MobileDesktopApprovalLike = Partial<MobileDesktopApproval> & {
+  id?: string;
+  approval_id?: string;
+};
+
+export function getMobileDesktopApprovalId(approval: MobileDesktopApprovalLike | null | undefined): string {
+  return String(approval?.approvalId || approval?.approval_id || approval?.id || '').trim();
+}
+
+export function normalizeMobileDesktopApproval(
+  approval: MobileDesktopApproval | MobileDesktopApprovalLike | null | undefined,
+): MobileDesktopApproval | null {
+  const approvalId = getMobileDesktopApprovalId(approval);
+  if (!approvalId || !approval) return null;
+  return { ...(approval as MobileDesktopApproval), approvalId };
+}
+
 export interface MobileDesktopCommand {
   commandId: string;
   title: string;
@@ -117,7 +134,11 @@ export async function respondToDesktopApproval(
   approvalId: string,
   payload: { decision: 'approved' | 'rejected'; rememberForSession?: boolean },
 ) {
-  return apiFetch<{ ok: boolean; approval: MobileDesktopApproval }>(`/desktop-sync/approvals/${approvalId}/respond`, {
+  const safeApprovalId = String(approvalId || '').trim();
+  if (!safeApprovalId) {
+    throw new Error('approvalId is required to respond to a desktop approval');
+  }
+  return apiFetch<{ ok: boolean; approval: MobileDesktopApproval }>(`/desktop-sync/approvals/${encodeURIComponent(safeApprovalId)}/respond`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });

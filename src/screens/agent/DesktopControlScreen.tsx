@@ -15,11 +15,15 @@ import { useI18n } from '../../stores/i18nStore';
 import {
   createRemoteDesktopCommand,
   fetchDesktopState,
+  getMobileDesktopApprovalId,
+  normalizeMobileDesktopApproval,
   respondToDesktopApproval,
   type DesktopCommandKind,
   type MobileDesktopCommand,
   type MobileDesktopState,
 } from '../../services/desktopSync';
+import { fetchOperationsContinuity, requestOperationsFollowUp, type OperationsContinuityState } from '../../services/operations';
+import { WatchDataLayerService } from '../../services/wearables/watchDataLayerBridge.service';
 
 const prettyJson = (value: unknown) => {
   if (value == null) return 'No result';
@@ -34,6 +38,7 @@ const prettyJson = (value: unknown) => {
 export function DesktopControlScreen() {
   const { t } = useI18n();
   const [state, setState] = useState<MobileDesktopState | null>(null);
+  const [continuity, setContinuity] = useState<OperationsContinuityState | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -47,8 +52,12 @@ export function DesktopControlScreen() {
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
-      const next = await fetchDesktopState();
+      const [next, nextContinuity] = await Promise.all([
+        fetchDesktopState(),
+        fetchOperationsContinuity().catch(() => null),
+      ]);
       setState(next);
+      setContinuity(nextContinuity);
       if (!selectedDeviceId && next.devices[0]?.deviceId) {
         setSelectedDeviceId(next.devices[0].deviceId);
       }
@@ -73,7 +82,7 @@ export function DesktopControlScreen() {
 
   const devices = state?.devices || [];
   const commands = state?.commands || [];
-  const approvals = state?.approvals || [];
+  const approvals = (state?.approvals || []).map(normalizeMobileDesktopApproval).filter(Boolean);
   const sessions = state?.sessions || [];
 
   const selectedDevice = useMemo(
@@ -107,8 +116,14 @@ export function DesktopControlScreen() {
   }, [loadState, selectedDevice, t]);
 
   const handleApproval = useCallback(async (approvalId: string, decision: 'approved' | 'rejected') => {
+    const safeApprovalId = String(approvalId || '').trim();
+    if (!safeApprovalId) {
+      Alert.alert(t({ en: 'Approval Failed', zh: '审批失败' }), t({ en: 'Missing approval id. Refresh desktop state and try again.', zh: '缺少审批ID，请刷新桌面状态后重试。' }));
+      await loadState(true);
+      return;
+    }
     try {
-      await respondToDesktopApproval(approvalId, { decision });
+      await respondToDesktopApproval(safeApprovalId, { decision });
       await loadState(true);
     } catch (error: any) {
       Alert.alert(
@@ -117,6 +132,42 @@ export function DesktopControlScreen() {
       );
     }
   }, [loadState, t]);
+
+  const syncContinuityToWatch = useCallback(async () => {
+    if (!continuity?.wearableSummary) {
+      Alert.alert(t({ en: 'Continuity', zh: '连续任务' }), t({ en: 'No continuity summary is available yet.', zh: '暂时没有可同步的连续任务摘要。' }));
+      return;
+    }
+    try {
+      const payload = {
+        kind: 'operations-continuity',
+        summary: continuity.wearableSummary,
+        sessions: continuity.sessions.slice(0, 3),
+        syncedAt: Date.now(),
+      };
+      await WatchDataLayerService.putDataItem('/agentrix/session/state', payload);
+      await WatchDataLayerService.broadcastMessage('/agentrix/session/state', payload);
+      Alert.alert(t({ en: 'Synced', zh: '已同步' }), t({ en: 'Continuity summary was sent to Wear OS.', zh: '连续任务摘要已发送到 Wear OS。' }));
+    } catch (error: any) {
+      Alert.alert(t({ en: 'Watch Sync Failed', zh: '手表同步失败' }), error?.message || t({ en: 'Could not sync to watch.', zh: '无法同步到手表。' }));
+    }
+  }, [continuity, t]);
+
+  const requestFollowUp = useCallback(async (sessionId: string, title?: string) => {
+    try {
+      await requestOperationsFollowUp({
+        sessionId,
+        title: title || 'Resume Agentrix session',
+        targetDeviceId: selectedDevice?.deviceId,
+        requesterDeviceId: 'mobile-app',
+        action: 'resume-on-desktop',
+      });
+      await loadState(true);
+      Alert.alert(t({ en: 'Queued', zh: '已下发' }), t({ en: 'Follow-up was queued for the desktop.', zh: '已为桌面端下发继续任务。' }));
+    } catch (error: any) {
+      Alert.alert(t({ en: 'Follow-up Failed', zh: '继续任务失败' }), error?.message || t({ en: 'Could not queue follow-up.', zh: '无法下发继续任务。' }));
+    }
+  }, [loadState, selectedDevice?.deviceId, t]);
 
   const latestCommands = commands.slice(0, 8) as MobileDesktopCommand[];
 
@@ -184,6 +235,36 @@ export function DesktopControlScreen() {
         </View>
       </View>
 
+      <View style={styles.section} testID="mobile-operations-continuity">
+        <Text style={styles.sectionTitle}>{t({ en: 'Agent Continuity', zh: '连续任务' })}</Text>
+        <View style={styles.continuityGrid}>
+          <View style={styles.statPill}>
+            <Text style={styles.statValue}>{continuity?.wearableSummary.runningTaskCount ?? 0}</Text>
+            <Text style={styles.statLabel}>{t({ en: 'Running', zh: '运行中' })}</Text>
+          </View>
+          <View style={styles.statPill}>
+            <Text style={styles.statValue}>{continuity?.wearableSummary.pendingApprovalCount ?? approvals.filter((item) => item.status === 'pending').length}</Text>
+            <Text style={styles.statLabel}>{t({ en: 'Approvals', zh: '审批' })}</Text>
+          </View>
+          <View style={styles.statPill}>
+            <Text style={styles.statValue}>{continuity?.wearableSummary.onlineDeviceCount ?? devices.length}</Text>
+            <Text style={styles.statLabel}>{t({ en: 'Online', zh: '在线' })}</Text>
+          </View>
+        </View>
+        <TouchableOpacity style={styles.primaryButton} onPress={() => void syncContinuityToWatch()} testID="sync-continuity-watch-button">
+          <Text style={styles.primaryButtonText}>{t({ en: 'Sync To Watch', zh: '同步到手表' })}</Text>
+        </TouchableOpacity>
+        {continuity?.sessions.slice(0, 3).map((session) => (
+          <View key={session.sessionId} style={styles.card} testID="continuity-session-card">
+            <Text style={styles.cardTitle}>{session.title}</Text>
+            <Text style={styles.cardMeta}>{session.messageCount} messages · {session.deviceType} · {session.activeTaskCount} active</Text>
+            <TouchableOpacity style={styles.secondaryButton} onPress={() => void requestFollowUp(session.sessionId, session.title)}>
+              <Text style={styles.secondaryButtonText}>{t({ en: 'Continue On Desktop', zh: '在桌面继续' })}</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t({ en: 'Run Shell Command', zh: '执行命令' })}</Text>
         <TextInput
@@ -248,21 +329,24 @@ export function DesktopControlScreen() {
         {approvals.filter((item) => item.status === 'pending').length === 0 ? (
           <Text style={styles.emptyText}>{t({ en: 'No pending approvals.', zh: '暂无待处理审批。' })}</Text>
         ) : (
-          approvals.filter((item) => item.status === 'pending').map((approval) => (
-            <View key={approval.approvalId} style={styles.card}>
+          approvals.filter((item) => item.status === 'pending').map((approval, index) => {
+            const approvalId = getMobileDesktopApprovalId(approval);
+            if (!approvalId) return null;
+            return (
+            <View key={approvalId || `${approval.taskId}-${index}`} style={styles.card}>
               <Text style={styles.cardTitle}>{approval.title}</Text>
               <Text style={styles.cardBody}>{approval.description}</Text>
               <Text style={styles.cardMeta}>Risk {approval.riskLevel}</Text>
               <View style={styles.rowWrap}>
-                <TouchableOpacity style={styles.secondaryButton} onPress={() => void handleApproval(approval.approvalId, 'rejected')}>
+                <TouchableOpacity style={styles.secondaryButton} onPress={() => void handleApproval(approvalId, 'rejected')}>
                   <Text style={styles.secondaryButtonText}>{t({ en: 'Reject', zh: '拒绝' })}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.primaryButtonSmall} onPress={() => void handleApproval(approval.approvalId, 'approved')}>
+                <TouchableOpacity style={styles.primaryButtonSmall} onPress={() => void handleApproval(approvalId, 'approved')}>
                   <Text style={styles.primaryButtonText}>{t({ en: 'Approve', zh: '批准' })}</Text>
                 </TouchableOpacity>
               </View>
             </View>
-          ))
+          );})
         )}
       </View>
 
@@ -377,6 +461,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+  },
+  continuityGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  statPill: {
+    flex: 1,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  statValue: {
+    color: colors.textPrimary,
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  statLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 3,
   },
   actionChip: {
     backgroundColor: colors.bgSecondary,

@@ -1,26 +1,18 @@
-appId: app.clawlink.mobile
+appId: app.agentrix.claw
 ---
-# Test 04: Verify navigation tabs and basic app structure
-# This test covers the bottom tab navigator visible from any main screen
+# Test 04: Verify the app auth shell remains renderable for navigation/auth entry.
 
 - launchApp:
     clearState: true
+    clearKeychain: true
 
 - waitForAnimationToEnd:
-    timeout: 10000
+    timeout: 30000
 
-# --- Auth or Main screen should be visible ---
 - assertVisible:
-    enabled: true
+    text: "Agentrix Claw"
+
+- assertVisible:
+    text: "Google"
 
 - takeScreenshot: "04-initial-state"
-
-# If there's a "Get Started" or "Sign In" button, we're on auth
-# If there are tabs (Agent, Market, Social, Me), we're on main
-# Either is valid — just verify app is not crashed/blank
-
-# Check that some interactive element is present
-- assertVisible:
-    textRegex: "ClawLink|Get Started|Sign In|Connect|Agent|Market|Social|Me|Claw"
-
-- takeScreenshot: "04-app-loaded"

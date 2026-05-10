@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,14 +8,9 @@ import {
 } from 'react-native';
 import { watchColors } from '../theme/watchColors';
 import { watchLayout } from '../theme/watchLayout';
-
-interface HealthState {
-  heartRate: number | null;
-  steps: number | null;
-  battery: number | null;
-  spo2: number | null;
-  lastSync: string | null;
-}
+import { useWatchAuth } from '../hooks/useWatchAuth';
+import { useWatchSensors } from '../hooks/useWatchSensors';
+import { useWatchSync } from '../hooks/useWatchSync';
 
 /**
  * Real-time health data display.
@@ -23,36 +18,22 @@ interface HealthState {
  * On real Wear OS, replace with Health Services API.
  */
 export function WatchHealthScreen() {
-  const [health, setHealth] = useState<HealthState>({
-    heartRate: null,
-    steps: null,
-    battery: null,
-    spo2: null,
-    lastSync: null,
-  });
-  const [collecting, setCollecting] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-
-  const startCollection = useCallback(() => {
-    setCollecting(true);
-    // MVP: simulated sensor data (replace with Health Services API on device)
-    timerRef.current = setInterval(() => {
-      setHealth({
-        heartRate: 60 + Math.floor(Math.random() * 40),
-        steps: 2000 + Math.floor(Math.random() * 8000),
-        battery: Math.floor(50 + Math.random() * 50),
-        spo2: 95 + Math.floor(Math.random() * 5),
-        lastSync: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      });
-    }, 2000);
-  }, []);
+  const { token, requestAuthState } = useWatchAuth();
+  const sensors = useWatchSensors(2000);
+  const sync = useWatchSync(sensors.flushBuffer, 60_000, token);
 
   useEffect(() => {
-    startCollection();
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [startCollection]);
+    sensors.start();
+    if (!token) {
+      void requestAuthState();
+    }
+    return sensors.stop;
+  }, [requestAuthState, sensors.start, sensors.stop, token]);
+
+  const health = sensors.data;
+  const lastSync = sync.lastUploadAt
+    ? new Date(sync.lastUploadAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : null;
 
   return (
     <ScrollView
@@ -69,7 +50,7 @@ export function WatchHealthScreen() {
           {health.heartRate ?? '--'}
         </Text>
         <Text style={styles.heroUnit}>bpm</Text>
-        {collecting && (
+        {sensors.collecting && (
           <View style={styles.liveIndicator}>
             <View style={styles.liveDot} />
             <Text style={styles.liveText}>LIVE</Text>
@@ -101,11 +82,11 @@ export function WatchHealthScreen() {
 
       {/* Sync Status */}
       <View style={styles.syncRow}>
-        {collecting ? (
+        {sensors.collecting ? (
           <ActivityIndicator color={watchColors.accent} size="small" />
         ) : null}
         <Text style={styles.syncText}>
-          {health.lastSync ? `同步于 ${health.lastSync}` : '等待传感器…'}
+          {sync.error ? `同步失败 ${sync.error}` : lastSync ? `同步于 ${lastSync}` : '等待传感器…'}
         </Text>
       </View>
     </ScrollView>

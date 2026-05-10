@@ -8,7 +8,7 @@
  *   Phone → Watch:  agent responses, approval requests, TTS audio, session state
  *   Watch → Phone:  voice commands, approval decisions, gesture events, heartbeat
  *
- * Requires:  react-native-wear-connectivity (Expo config plugin)
+ * Native side: AgentrixWearDataLayer Android module wraps Google Wear MessageClient/DataClient.
  */
 
 import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
@@ -22,6 +22,9 @@ export type WatchDataPath =
   | '/agentrix/approval/response'   // Watch → Phone: approve/reject
   | '/agentrix/agent/text'          // Phone → Watch: agent response text
   | '/agentrix/session/state'       // Bidirectional: session sync
+  | '/agentrix/auth/request'        // Watch → Phone: request current auth state
+  | '/agentrix/auth/state'          // Phone → Watch: scoped auth state snapshot
+  | '/agentrix/wearable/gesture'    // Watch/Glass → Phone: gesture intent
   | '/agentrix/heartbeat';          // Bidirectional: keepalive
 
 export interface WatchMessage {
@@ -42,6 +45,13 @@ export interface WatchNode {
   isNearby: boolean;
 }
 
+export interface WatchAuthState {
+  accessToken: string;
+  userId?: string | null;
+  expiresAt?: string | null;
+  syncedAt?: number;
+}
+
 type MessageCallback = (message: WatchMessage) => void;
 
 // ── Bridge ─────────────────────────────────────────────
@@ -56,7 +66,8 @@ interface WearDataLayerBridge {
 
 function resolveNativeBridge(): WearDataLayerBridge | null {
   if (Platform.OS !== 'android') return null;
-  const bridge = (NativeModules as Record<string, unknown>)?.AgentrixWearDataLayer as WearDataLayerBridge | undefined;
+  const modules = NativeModules as Record<string, unknown>;
+  const bridge = (modules.AgentrixWearDataLayer ?? modules.WearDataLayerModule) as WearDataLayerBridge | undefined;
   return bridge || null;
 }
 
@@ -86,7 +97,7 @@ export class WatchDataLayerService {
     this.isListening = true;
 
     // Set up native event listener
-    this.emitter = new NativeEventEmitter(NativeModules.AgentrixWearDataLayer);
+    this.emitter = new NativeEventEmitter(bridge as any);
     this.emitter.addListener('onWearMessage', (event: { path: string; data: string; nodeId?: string }) => {
       try {
         const message: WatchMessage = {
@@ -215,6 +226,16 @@ export class WatchDataLayerService {
     strategy?: string;
   }): Promise<void> {
     await this.putDataItem('/agentrix/voice/state', state);
+  }
+
+  static async requestAuthState(): Promise<void> {
+    await this.broadcastMessage('/agentrix/auth/request', { requestedAt: Date.now() });
+  }
+
+  static async syncAuthState(state: WatchAuthState): Promise<void> {
+    const payload = { ...state, syncedAt: Date.now() };
+    await this.putDataItem('/agentrix/auth/state', payload);
+    await this.broadcastMessage('/agentrix/auth/state', payload);
   }
 
   // ── Internal ─────────────────────────────────────────

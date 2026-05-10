@@ -66,7 +66,7 @@ async function acceptTask(taskId: string): Promise<void> {
   await apiFetch(`/merchant-tasks/${taskId}/accept`, { method: 'PUT' });
 }
 
-async function updateProgress(taskId: string, dto: { percentage?: number; message?: string }): Promise<void> {
+async function updateProgress(taskId: string, dto: { percentage?: number; message?: string; currentStep?: string; attachments?: string[] }): Promise<void> {
   await apiFetch(`/merchant-tasks/${taskId}/progress`, {
     method: 'PUT',
     body: JSON.stringify(dto),
@@ -134,6 +134,8 @@ export function TaskDetailScreen() {
   // ── Safe params extraction ──
   const taskId = route.params?.taskId;
   const [progressVal, setProgressVal] = useState('');
+  const [deliverableSummary, setDeliverableSummary] = useState('');
+  const [deliverableUrl, setDeliverableUrl] = useState('');
   const [agentMsg, setAgentMsg] = useState('');
   const [agentReply, setAgentReply] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -230,6 +232,33 @@ export function TaskDetailScreen() {
     }
   };
 
+  const handleSubmitDeliverable = async () => {
+    const summary = deliverableSummary.trim();
+    const url = deliverableUrl.trim();
+    if (!summary && !url) {
+      Alert.alert(t({ en: 'Required', zh: '必填' }), t({ en: 'Add a short output summary or artifact URL.', zh: '请填写阶段输出摘要或交付物链接。' }));
+      return;
+    }
+    setActionLoading('deliverable');
+    try {
+      await updateProgress(taskId, {
+        currentStep: 'delivered',
+        percentage: 100,
+        message: summary || `Deliverable submitted: ${url}`,
+        attachments: url ? [url] : undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ['task-detail', taskId] });
+      queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
+      setDeliverableSummary('');
+      setDeliverableUrl('');
+      Alert.alert('✅', t({ en: 'Deliverable submitted for human review.', zh: '交付物已提交，等待人工验收。' }));
+    } catch (err: any) {
+      Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || t({ en: 'Failed to submit deliverable', zh: '提交交付物失败' }));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleComplete = () => {
     Alert.alert(
       t({ en: 'Complete Task', zh: '完成任务' }),
@@ -294,6 +323,7 @@ export function TaskDetailScreen() {
   const meta = STATUS_META[task.status] || STATUS_META.pending;
   const pct = getProgressPercent(task.progress);
   const step = getProgressStep(task.progress);
+  const progressUpdates = typeof task.progress === 'object' && Array.isArray(task.progress?.updates) ? task.progress.updates : [];
   const agentIcon = task.agentName ? (AGENT_ICONS[task.agentName.toLowerCase()] ?? '🤖') : '🤖';
   const canStart = task.status === 'pending' || task.status === 'open';
   const canProgress = task.status === 'accepted' || task.status === 'in_progress';
@@ -345,6 +375,32 @@ export function TaskDetailScreen() {
             <View style={[s.progressBarFill, { width: `${Math.min(pct, 100)}%` }]} />
           </View>
           {step && <Text style={s.progressStep}>📍 {step}</Text>}
+        </View>
+
+        <View style={s.outputsCard}>
+          <Text style={s.sectionTitle}>{t({ en: 'Stage Outputs', zh: '阶段输出物' })}</Text>
+          {task.requirements?.deliverables?.length ? (
+            <View style={s.outputBlock}>
+              <Text style={s.outputLabel}>{t({ en: 'Expected', zh: '期望交付' })}</Text>
+              {task.requirements.deliverables.map((item, index) => (
+                <Text key={`${item}-${index}`} style={s.outputText}>• {item}</Text>
+              ))}
+            </View>
+          ) : null}
+          {progressUpdates.length === 0 ? (
+            <Text style={s.outputEmpty}>{t({ en: 'No stage output has been submitted yet.', zh: '暂时还没有提交阶段输出。' })}</Text>
+          ) : (
+            progressUpdates.map((update: any, index: number) => (
+              <View key={`${update?.timestamp || index}`} style={s.outputItem}>
+                <Text style={s.outputLabel}>{t({ en: `Stage ${index + 1}`, zh: `阶段 ${index + 1}` })}</Text>
+                {!!update?.message && <Text style={s.outputText}>{update.message}</Text>}
+                {Array.isArray(update?.attachments) && update.attachments.map((attachment: string, attachmentIndex: number) => (
+                  <Text key={`${attachment}-${attachmentIndex}`} style={s.outputLink}>{attachment}</Text>
+                ))}
+                {!!update?.timestamp && <Text style={s.outputTime}>{new Date(update.timestamp).toLocaleString()}</Text>}
+              </View>
+            ))
+          )}
         </View>
 
         {/* Budget & Info */}
@@ -479,6 +535,35 @@ export function TaskDetailScreen() {
                 )}
               </TouchableOpacity>
             </View>
+
+            <Text style={s.chatLabel}>📦 {t({ en: 'Submit Stage Output', zh: '提交阶段输出' })}</Text>
+            <TextInput
+              style={[s.chatInput, { maxHeight: 110 }]}
+              value={deliverableSummary}
+              onChangeText={setDeliverableSummary}
+              placeholder={t({ en: 'What did the agent produce in this stage?', zh: '这个阶段产出了什么？' })}
+              placeholderTextColor={colors.textMuted}
+              multiline
+            />
+            <TextInput
+              style={s.progressInput}
+              value={deliverableUrl}
+              onChangeText={setDeliverableUrl}
+              placeholder={t({ en: 'Artifact URL or file reference', zh: '交付物链接或文件引用' })}
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity
+              style={s.progressSubmitWide}
+              onPress={handleSubmitDeliverable}
+              disabled={actionLoading === 'deliverable'}
+            >
+              {actionLoading === 'deliverable' ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={s.progressSubmitText}>{t({ en: 'Submit For Review', zh: '提交验收' })}</Text>
+              )}
+            </TouchableOpacity>
           </View>
         )}
 
@@ -565,6 +650,20 @@ const s = StyleSheet.create({
   progressLabel: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
   progressPct: { fontSize: 16, fontWeight: '800', color: colors.textPrimary },
   progressStep: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  outputsCard: {
+    backgroundColor: colors.bgCard, borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: colors.border, gap: 8,
+  },
+  outputBlock: { gap: 4, paddingBottom: 4 },
+  outputItem: {
+    backgroundColor: colors.bgSecondary, borderRadius: 10, padding: 10,
+    borderWidth: 1, borderColor: colors.border, gap: 4,
+  },
+  outputLabel: { fontSize: 11, fontWeight: '800', color: colors.accent },
+  outputText: { fontSize: 12, color: colors.textSecondary, lineHeight: 18 },
+  outputLink: { fontSize: 12, color: '#38bdf8', lineHeight: 18 },
+  outputTime: { fontSize: 10, color: colors.textMuted, marginTop: 2 },
+  outputEmpty: { fontSize: 12, color: colors.textMuted, lineHeight: 18 },
   // Info row
   infoRow: { flexDirection: 'row', gap: 8 },
   infoChip: {
@@ -615,6 +714,7 @@ const s = StyleSheet.create({
     borderColor: colors.border, padding: 10, fontSize: 14, color: colors.textPrimary, textAlign: 'center',
   },
   progressSubmit: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.accent },
+  progressSubmitWide: { alignItems: 'center', paddingVertical: 12, borderRadius: 10, backgroundColor: colors.accent },
   progressSubmitText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   // Complete
   completeBtn: {

@@ -2,6 +2,10 @@
 
 buildscript {
   repositories {
+    def agentrixMavenMirror = findProperty('agentrix.mavenMirrorUrl') ?: System.getenv('AGENTRIX_MAVEN_MIRROR_URL')
+    if (agentrixMavenMirror) {
+      maven { url agentrixMavenMirror }
+    }
     google()
     mavenCentral()
   }
@@ -14,6 +18,10 @@ buildscript {
 
 allprojects {
   repositories {
+    def agentrixMavenMirror = findProperty('agentrix.mavenMirrorUrl') ?: System.getenv('AGENTRIX_MAVEN_MIRROR_URL')
+    if (agentrixMavenMirror) {
+      maven { url agentrixMavenMirror }
+    }
     google()
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
@@ -21,6 +29,15 @@ allprojects {
 }
 
 subprojects {
+  buildscript {
+    repositories {
+      def agentrixMavenMirror = findProperty('agentrix.mavenMirrorUrl') ?: System.getenv('AGENTRIX_MAVEN_MIRROR_URL')
+      if (agentrixMavenMirror) {
+        maven { url agentrixMavenMirror }
+      }
+    }
+  }
+
   afterEvaluate { project ->
     project.tasks.matching { task ->
       task.name.toLowerCase().contains('lintvital')

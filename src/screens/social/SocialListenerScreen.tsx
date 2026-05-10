@@ -40,7 +40,7 @@ interface PlatformStatus {
 
 interface SocialEvent {
   id: string;
-  platform: 'telegram' | 'discord' | 'twitter' | 'feishu' | 'wecom' | 'slack' | 'whatsapp';
+  platform: SocialPlatform;
   eventType: 'mention' | 'dm' | 'message' | 'command';
   senderId: string;
   senderName?: string;
@@ -52,10 +52,11 @@ interface SocialEvent {
 }
 
 type ReplyStrategy = 'auto' | 'approval' | 'notify_only' | 'disabled';
+type SocialPlatform = 'telegram' | 'discord' | 'twitter' | 'feishu' | 'wecom' | 'slack' | 'whatsapp';
 
 interface ReplyConfig {
   id: string;
-  platform: 'telegram' | 'discord' | 'twitter';
+  platform: SocialPlatform;
   strategy: ReplyStrategy;
   replyPrompt?: string;
   replyLanguage: string;
@@ -384,7 +385,7 @@ const STRATEGY_OPTIONS: { value: ReplyStrategy; label: string; labelZh: string; 
 ];
 
 function StrategyPicker({ platform, configs, t }: {
-  platform: 'telegram' | 'discord' | 'twitter';
+  platform: SocialPlatform;
   configs: ReplyConfig[];
   t: any;
 }) {

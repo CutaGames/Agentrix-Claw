@@ -15,6 +15,7 @@ import { WearableAgentCapabilityService } from '../../services/wearables/wearabl
 import { WearableBleGatewayService } from '../../services/wearables/wearableBleGateway.service';
 import { WearableDeviceAdapterService } from '../../services/wearables/wearableDeviceAdapter.service';
 import { WearablePairingStoreService } from '../../services/wearables/wearablePairingStore.service';
+import { WearableTelemetrySyncService, type WearableVerificationSyncResult } from '../../services/wearables/wearableTelemetrySync.service';
 import {
   type AgentCapabilityPreview,
   type BlePermissionState,
@@ -73,6 +74,7 @@ export function WearableHubScreen({ navigation }: any) {
   const [connectionStage, setConnectionStage] = useState<WearableConnectionStage | null>(null);
   const [profile, setProfile] = useState<WearableProfile | null>(null);
   const [capabilityPreview, setCapabilityPreview] = useState<AgentCapabilityPreview | null>(null);
+  const [verificationSync, setVerificationSync] = useState<WearableVerificationSyncResult | null>(null);
   const [serviceSnapshots, setServiceSnapshots] = useState<WearableServiceSnapshot[]>([]);
   const [pairedRecords, setPairedRecords] = useState<PairedWearableRecord[]>([]);
   const scanStopRef = useRef<null | (() => void)>(null);
@@ -145,6 +147,7 @@ export function WearableHubScreen({ navigation }: any) {
     setConnectionStage(null);
     setProfile(null);
     setCapabilityPreview(null);
+    setVerificationSync(null);
     setSelectedCandidateId(null);
     if (connectedDeviceIdRef.current) {
       await WearableBleGatewayService.disconnectDevice(connectedDeviceIdRef.current);
@@ -183,6 +186,7 @@ export function WearableHubScreen({ navigation }: any) {
     setConnectionError(null);
     setProfile(null);
     setCapabilityPreview(null);
+    setVerificationSync(null);
     setServiceSnapshots([]);
     setConnectionStage('connecting');
     if (connectedDeviceIdRef.current && connectedDeviceIdRef.current !== candidate.id) {
@@ -203,6 +207,8 @@ export function WearableHubScreen({ navigation }: any) {
       setConnectionStage('done');
       const records = await WearablePairingStoreService.save(p, cap.verificationEvent);
       if (mountedRef.current) setPairedRecords(records);
+      const syncResult = await WearableTelemetrySyncService.registerVerification(cap.verificationEvent, p);
+      if (mountedRef.current) setVerificationSync(syncResult);
     } catch (e: any) {
       if (mountedRef.current) { setConnectionStage(null); setConnectionError(e?.message || 'Connection failed'); }
     }
@@ -446,6 +452,31 @@ export function WearableHubScreen({ navigation }: any) {
             );
           })}
 
+          {profile && capabilityPreview && (
+            <View testID="wearable-verification-card" style={st.verificationCard}>
+              <View style={st.verificationHeader}>
+                <Text style={st.verificationTitle}>{t({ en: 'Agent verification', zh: 'Agent 验证事件' })}</Text>
+                <Text style={st.verificationBadge}>
+                  {verificationSync?.status === 'synced'
+                    ? t({ en: 'Synced', zh: '已同步' })
+                    : verificationSync?.status === 'queued'
+                      ? t({ en: 'Queued', zh: '已排队' })
+                      : t({ en: 'Ready', zh: '待同步' })}
+                </Text>
+              </View>
+              <Text style={st.verificationSummary}>{capabilityPreview.summary}</Text>
+              <Text style={st.verificationMeta}>
+                {profile.servicesCount} GATT · {profile.readableCount} readable · {profile.notifiableCount} notify · {serviceSnapshots.length} services
+              </Text>
+              <Text style={st.verificationPayload} numberOfLines={2}>
+                {capabilityPreview.verificationEvent.type} / {profile.firstReadCharacteristicUuid || 'no-readable-characteristic'}
+              </Text>
+              {verificationSync?.error && (
+                <Text style={st.verificationError} numberOfLines={2}>{verificationSync.error}</Text>
+              )}
+            </View>
+          )}
+
           {/* Empty */}
           {!isScanning && scanCandidates.length === 0 && pairedRecords.length === 0 && (
             <View style={st.empty}>
@@ -589,6 +620,17 @@ const st = StyleSheet.create({
   connectedText: { color: colors.success, fontSize: 14, fontWeight: '600', flex: 1 },
   goMonitorBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: colors.primary, borderRadius: 8 },
   goMonitorText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  verificationCard: {
+    backgroundColor: colors.bgCard, borderRadius: 16, padding: 14,
+    borderWidth: 1, borderColor: colors.primary + '55', gap: 8,
+  },
+  verificationHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  verificationTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+  verificationBadge: { fontSize: 11, fontWeight: '700', color: colors.primary, backgroundColor: colors.primary + '15', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
+  verificationSummary: { fontSize: 12, color: colors.textSecondary, lineHeight: 18 },
+  verificationMeta: { fontSize: 11, color: colors.textMuted },
+  verificationPayload: { fontSize: 11, color: colors.textMuted, fontFamily: 'monospace' },
+  verificationError: { fontSize: 11, color: colors.warning, lineHeight: 16 },
   empty: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 32 },
   emptyEmoji: { fontSize: 48, marginBottom: 12 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, marginBottom: 6 },

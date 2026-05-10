@@ -23,6 +23,8 @@ interface DownloadRequestOptions {
 interface LocalModelInfo {
   id: string;
   name: string;
+  parameters?: string;
+  description?: string;
   descriptionEn: string;
   descriptionZh: string;
   tier: string;
@@ -44,6 +46,15 @@ const AVAILABLE_MODELS: LocalModelInfo[] = [
     descriptionEn: 'Higher quality local Gemma package with the same multimodal projector bundle. Better reasoning, but it needs more RAM; realtime voice still routes through on-device speech recognition -> local text, while heavy tool orchestration remains in the cloud path.',
     descriptionZh: '更高质量的本地 Gemma 包，包含同样的多模态投影器。推理更强，但更吃内存；实时语音仍会先走端侧语音识别再进入本地文本轮次，重工具编排则继续保留云端路径。',
     tier: 'LOCAL',
+  },
+  {
+    id: 'qwen3.5-omni-light',
+    name: 'Qwen 3.5 Omni Light (Beta)',
+    parameters: '～3B',
+    description: '端侧多模态对话模型（占位，等待官方 GGUF 发布）',
+    descriptionEn: 'Preview local multimodal model package. The registry entry is prepared, but the official GGUF release is still pending.',
+    descriptionZh: '预览版端侧多模态模型包。下载注册表已预置，但仍在等待官方 GGUF 发布。',
+    tier: 'LOCAL BETA',
   },
   {
     id: 'qwen2.5-omni-3b',
@@ -136,7 +147,9 @@ export function LocalAiModelScreen() {
       case 'model':
         return t({ en: 'Base model', zh: '基础模型' });
       case 'multimodalProjector':
-        return t({ en: 'Multimodal projector', zh: '多模态投影器' });
+        return t({ en: 'Multimodal projector (vision)', zh: '多模态投影器（图像）' });
+      case 'audioEncoder':
+        return t({ en: 'Audio encoder (whisper-base, for voice input)', zh: '音频编码器（whisper-base，语音输入用）' });
       case 'audioOutputModel':
         return t({ en: 'Speech model', zh: '语音模型' });
       case 'vocoder':

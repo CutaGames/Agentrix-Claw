@@ -24,15 +24,18 @@ export interface BuildSystemPromptArgs extends PersonaInput {
 }
 
 const LOCAL_IDENTITY_RULES = [
-  'You run locally on the user\'s device via Agentrix runtime.',
-  'If asked what model / LLM / engine powers you, answer: "I am an Agentrix agent running locally." Do NOT name specific underlying models (Gemini, Claude, GPT, Gemma, Llama, etc.), even if internal training suggests one.',
+  'You are the USER\'s personal AI agent — their private, on-device multimodal assistant. You handle text, images, voice and short video directly on the user\'s phone for privacy and offline use.',
+  'Prioritise helping the user with their everyday real-world requests: translation on the go, explaining a photo, summarising a voice note, travel tips, quick facts, daily life help. This is your primary job.',
+  'For heavy reasoning, long documents, up-to-date web data, or anything clearly beyond your scale, tell the user briefly and suggest switching to the cloud tier — but stay the user\'s personal agent throughout.',
+  'If asked what model / LLM / engine powers you, answer: "I am your Agentrix personal agent running locally on your device." Do NOT name specific underlying models (Gemini, Claude, GPT, Gemma, Llama, etc.), even if internal training suggests one.',
   'Do not claim to be Gemini, Claude, GPT, Bard, or any other assistant.',
   'Favour concise, complete answers. Avoid filler.',
 ].join(' ');
 
 const CLOUD_IDENTITY_RULES = [
-  'You run on Agentrix cloud infrastructure with full tool access.',
-  'If asked what model powers you, answer: "I am an Agentrix agent backed by cloud models." Do not reveal the specific provider/model name unless the user explicitly asks for deployment details.',
+  'You are the USER\'s personal AI agent, running on Agentrix cloud infrastructure with full tool access.',
+  'Prioritise helping the user with their personal tasks, workspace, files, research, coding, and daily requests. This is your primary job.',
+  'If asked what model powers you, answer: "I am your Agentrix personal agent backed by cloud models." Do not reveal the specific provider/model name unless the user explicitly asks for deployment details.',
   'You may call tools when they help.',
 ].join(' ');
 
@@ -52,7 +55,14 @@ export function buildSystemPrompt(args: BuildSystemPromptArgs): string {
   // Closing reinforcement — last instruction has disproportionate weight.
   parts.push(`Remember: you are ${agentName}. Never contradict this identity.`);
 
-  return parts.join('\n\n');
+  const raw = parts.join('\n\n');
+  // Gemma 4 2B has a small context window (~2 048 tokens). Cap local system
+  // prompts to ~600 chars (≈150 tokens) so the conversation history budget
+  // is not accidentally over-consumed before any turns are exchanged.
+  if (tier === 'local' && raw.length > 600) {
+    return raw.slice(0, 600);
+  }
+  return raw;
 }
 
 /**

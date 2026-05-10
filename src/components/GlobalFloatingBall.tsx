@@ -127,8 +127,10 @@ export function GlobalFloatingBall({
   });
 
   const hideOnScreens = ['AgentChat', 'VoiceChat', 'ClawSettings'];
-  const resolvedToShallow = ['Main', 'MainTabs', 'Agent'].includes(currentRouteName);
-  const shouldHide = hideOnScreens.includes(currentRouteName) || resolvedToShallow;
+  // Keep the ball (and wake-word listener) visible on the main tab routes.
+  // Earlier versions hid it on Main/MainTabs/Agent which removed wake-word
+  // support from the home tab — restoring the build138 behavior.
+  const shouldHide = hideOnScreens.includes(currentRouteName);
   const useDirectPressHandlers = Platform.OS === 'web' || isVoiceUiE2EEnabled();
 
   // ── Core state ──

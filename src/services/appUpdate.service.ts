@@ -151,7 +151,7 @@ export function getUpdateStatus(): UpdateStatus {
     isDownloading: false,
     isRestarting: false,
     lastCheck: Updates.createdAt ?? null,
-    currentVersion: Updates.manifest?.version ?? 'unknown',
+    currentVersion: (Updates.manifest as any)?.version ?? 'unknown',
     runtimeVersion: Updates.runtimeVersion ?? 'unknown',
     channel: Updates.channel ?? 'default',
     isEmbedded: Updates.isEmbeddedLaunch ?? true,

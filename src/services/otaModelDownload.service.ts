@@ -19,6 +19,8 @@ export interface OtaModelEntry {
   id: string;
   name: string;
   filename: string;
+  parameters?: string;
+  format?: string;
   packageRevision?: string;
   /** Download size in bytes */
   sizeBytes: number;
@@ -28,6 +30,8 @@ export interface OtaModelEntry {
   cdnBase: string;
   declaredCapabilities?: OtaModelDeclaredCapabilities;
   multimodalProjector?: OtaModelArtifact;
+  /** Whisper-based audio encoder for on-device STT (used with whisper.rn). */
+  audioEncoder?: OtaModelArtifact;
   audioOutputModel?: OtaModelArtifact;
   vocoder?: OtaModelArtifact;
 }
@@ -40,14 +44,14 @@ export interface OtaModelDeclaredCapabilities {
 }
 
 export interface OtaModelArtifact {
-  kind: 'model' | 'mmproj' | 'tts-model' | 'vocoder';
+  kind: 'model' | 'mmproj' | 'audio-encoder' | 'tts-model' | 'vocoder';
   filename: string;
   sizeBytes: number;
   sizeLabel: string;
   cdnBase?: string;
 }
 
-export type OtaModelArtifactKey = 'model' | 'multimodalProjector' | 'audioOutputModel' | 'vocoder';
+export type OtaModelArtifactKey = 'model' | 'multimodalProjector' | 'audioEncoder' | 'audioOutputModel' | 'vocoder';
 
 interface ResolvedOtaModelArtifact {
   key: OtaModelArtifactKey;
@@ -82,15 +86,26 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     id: 'gemma-4-2b',
     name: 'Gemma 4 E2B (Q4_K_M)',
     filename: 'gemma-4-E2B-it-Q4_K_M.gguf',
-    packageRevision: '2026-04-13-gemma4-e2b-r2',
+    packageRevision: '2026-04-21-gemma4-e2b-r4',
     sizeBytes: 3_110_000_000,
     sizeLabel: '3.1 GB',
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E2B-it-GGUF/resolve/main',
     declaredCapabilities: {
       visionInput: true,
+      // Audio is handled by the whisper-base audio encoder below.
+      // supportsAudioInput is gated on audioEncoder being downloaded.
       audioInput: true,
       videoInput: true,
       onDeviceAudioOutput: false,
+    },
+    audioEncoder: {
+      kind: 'audio-encoder',
+      // whisper.cpp publishes quantized ggml weights as .bin; the hf-mirror/ggml-org/whisper-base
+      // repo does NOT host ggml-base-q5_1 (404). Pull from ggerganov/whisper.cpp instead.
+      filename: 'ggml-base-q5_1.bin',
+      sizeBytes: 57_000_000,
+      sizeLabel: '57 MB',
+      cdnBase: 'https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main',
     },
     multimodalProjector: {
       kind: 'mmproj',
@@ -103,10 +118,39 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     id: 'gemma-4-4b',
     name: 'Gemma 4 E4B (Q4_K_M)',
     filename: 'gemma-4-E4B-it-Q4_K_M.gguf',
-    packageRevision: '2026-04-13-gemma4-e4b-r2',
+    packageRevision: '2026-04-21-gemma4-e4b-r4',
     sizeBytes: 4_980_000_000,
     sizeLabel: '5.0 GB',
     cdnBase: 'https://hf-mirror.com/unsloth/gemma-4-E4B-it-GGUF/resolve/main',
+    declaredCapabilities: {
+      visionInput: true,
+      audioInput: true, // requires audioEncoder (whisper-base) to be downloaded
+      videoInput: true,
+      onDeviceAudioOutput: false,
+    },
+    audioEncoder: {
+      kind: 'audio-encoder',
+      filename: 'ggml-base-q5_1.bin',
+      sizeBytes: 57_000_000,
+      sizeLabel: '57 MB',
+      cdnBase: 'https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main',
+    },
+    multimodalProjector: {
+      kind: 'mmproj',
+      filename: 'mmproj-F16.gguf',
+      sizeBytes: 990_000_000,
+      sizeLabel: '990 MB',
+    },
+  },
+  'qwen3.5-omni-light': {
+    id: 'qwen3.5-omni-light',
+    name: 'Qwen3.5 Omni Light (Coming Soon)',
+    filename: 'Qwen3.5-Omni-3B-Q4_K_M.gguf', // Placeholder, await HF release
+    parameters: '～3B',
+    format: 'GGUF',
+    sizeBytes: 2_100_000_000,
+    sizeLabel: '2.1 GB',
+    cdnBase: 'https://hf-mirror.com/ggml-org/Qwen3.5-Omni-3B-GGUF/resolve/main',
     declaredCapabilities: {
       visionInput: true,
       audioInput: true,
@@ -115,10 +159,18 @@ const MODEL_REGISTRY: Record<string, OtaModelEntry> = {
     },
     multimodalProjector: {
       kind: 'mmproj',
-      filename: 'mmproj-F16.gguf',
-      sizeBytes: 990_000_000,
-      sizeLabel: '990 MB',
+      filename: 'mmproj-Qwen3.5-Omni-3B-Q8_0.gguf',
+      sizeBytes: 1_540_000_000,
+      sizeLabel: '1.5 GB',
+      cdnBase: 'https://hf-mirror.com/ggml-org/Qwen3.5-Omni-3B-GGUF/resolve/main',
     },
+    audioEncoder: {
+      kind: 'audio-encoder',
+      filename: 'ggml-base-q5_1.bin',
+      sizeBytes: 57_000_000,
+      sizeLabel: '57 MB',
+      cdnBase: 'https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main',
+    }
   },
   'qwen2.5-omni-3b': {
     id: 'qwen2.5-omni-3b',
@@ -167,14 +219,19 @@ const DEFAULT_DECLARED_CAPABILITIES: OtaModelDeclaredCapabilities = {
 
 /**
  * Mirror prefixes ordered by priority.
- * hf-mirror.com is primary (China mirror), huggingface.co is direct fallback.
+ *
+ * Note: huggingface.co is intentionally excluded — the mobile app targets
+ * China/SEA networks where huggingface.co is unreachable (SocketTimeout /
+ * connection reset). Falling back to it from a working hf-mirror.com only
+ * masks real retry opportunities and surfaces misleading errors to users.
+ * If additional mirrors are needed, prefer modelscope.cn with repo-specific
+ * URL rewriting.
  */
 const CDN_MIRROR_PREFIXES = [
   'https://hf-mirror.com/',
-  'https://huggingface.co/',
 ];
 
-const MAX_RETRIES_PER_URL = 2;
+const MAX_RETRIES_PER_URL = 3;
 
 function getDownloadUrls(cdnBase: string, filename: string): string[] {
   // ?download=true forces direct file serving, avoids XetHub CAS redirect
@@ -211,6 +268,8 @@ function isRetryableNetworkError(msg: string): boolean {
     lower.includes('econnrefused') ||
     lower.includes('econnreset') ||
     lower.includes('etimedout') ||
+    lower.includes('sockettimeoutexception') ||
+    lower.includes('timeout') ||
     lower.includes('enetunreach') ||
     lower.includes('connection refused') ||
     lower.includes('connection reset') ||
@@ -342,6 +401,10 @@ function resolveArtifacts(entry: OtaModelEntry): ResolvedOtaModelArtifact[] {
 
   if (entry.multimodalProjector) {
     artifacts.push({ key: 'multimodalProjector', artifact: entry.multimodalProjector });
+  }
+
+  if (entry.audioEncoder) {
+    artifacts.push({ key: 'audioEncoder', artifact: entry.audioEncoder });
   }
 
   if (entry.audioOutputModel) {
@@ -910,6 +973,36 @@ export class OtaModelDownloadService {
         : null;
     }
     return entry ? getArtifactPath(entry, 'audioOutputModel', entry.audioOutputModel) : null;
+  }
+
+  static isAudioEncoderDownloaded(modelId: string): boolean {
+    const entry = MODEL_REGISTRY[modelId];
+    if (!entry?.audioEncoder) return false;
+
+    const e2eDownloadedArtifactKeys = this.getE2EMockDownloadedArtifactKeys(modelId);
+    if (e2eDownloadedArtifactKeys) {
+      return e2eDownloadedArtifactKeys.has('audioEncoder');
+    }
+    return isArtifactDownloaded(entry, 'audioEncoder', entry.audioEncoder);
+  }
+
+  static getAudioEncoderPath(modelId: string): string | null {
+    const entry = MODEL_REGISTRY[modelId];
+    const e2eDownloadedArtifactKeys = this.getE2EMockDownloadedArtifactKeys(modelId);
+    if (entry && e2eDownloadedArtifactKeys) {
+      return e2eDownloadedArtifactKeys.has('audioEncoder')
+        ? `e2e://models/${entry.audioEncoder?.filename || 'whisper-encoder.gguf'}`
+        : null;
+    }
+    return entry ? getArtifactPath(entry, 'audioEncoder', entry.audioEncoder) : null;
+  }
+
+  /**
+   * Returns true when the model's audio encoder (whisper GGUF) is downloaded
+   * and usable via whisper.rn for on-device STT before feeding text to the model.
+   */
+  static hasAudioInputAssets(modelId: string): boolean {
+    return this.isAudioEncoderDownloaded(modelId);
   }
 
   static hasMultimodalAssets(modelId: string): boolean {

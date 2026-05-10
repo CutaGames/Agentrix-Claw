@@ -177,6 +177,9 @@ export function ClawSkillDetailScreen() {
         'No Agent',
         'Connect an OpenClaw instance first to install skills.',
         [
+          // 2026-05-10: DeploySelect lives in the legacy Agent stack (kept
+          // mounted as a hidden tab, §7.7). Will move to Me→Devices→Add
+          // in Sprint E after MeStack grows a dedicated Devices sub-nav.
           { text: 'Connect Agent', onPress: () => (navigation as any).navigate('Agent', { screen: 'DeploySelect' }) },
           { text: 'Cancel', style: 'cancel' },
         ]

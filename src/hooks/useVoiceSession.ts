@@ -11,7 +11,7 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Alert, Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { BleManager } from 'react-native-ble-plx';
 import { AudioQueuePlayer } from '../services/AudioQueuePlayer';
 import {
@@ -38,6 +38,7 @@ import {
   estimatePcmDurationMs,
 } from '../services/localPcmWav.service';
 import { LocalSpeechOutputService } from '../services/localSpeechOutput.service';
+import { LocalWhisperService } from '../services/localWhisperService';
 
 // Lazy import to avoid circular dependency TDZ during module initialization.
 // testing/e2e.ts imports Zustand stores at top-level, which can cause
@@ -253,6 +254,41 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       isMountedRef.current = false;
     };
   }, []);
+
+  // Global watchdog: if `voicePhase` is stuck on 'transcribing' for more than
+  // 20s — typical causes are a silently-dropped speech-recognition callback,
+  // a stalled cloud STT request where the timeout promise never won the race,
+  // or a local Whisper context that never returned — force the UI back to
+  // idle with a clear error so the user isn't staring at "正在转写你的语音…"
+  // forever. If there is an interim preview transcript, promote it to the
+  // final message instead of dropping the turn.
+  useEffect(() => {
+    if (voicePhase !== 'transcribing') return;
+    const timer = setTimeout(() => {
+      if (!isMountedRef.current) return;
+      if (voicePhase !== 'transcribing') return;
+      const interim = transcriptPreview?.trim() || '';
+      addVoiceDiagnostic('voice-session', 'transcribing-watchdog-fired', {
+        hasInterim: interim.length > 0,
+        interimChars: interim.length,
+      });
+      if (interim && interim !== '[Local voice message]' && interim !== '[本地语音消息]') {
+        setVoicePhase('thinking');
+        setTimeout(() => onSendMessageRef.current(interim), 40);
+        return;
+      }
+      setVoicePhase('idle');
+      setTranscriptPreview('');
+      try { Alert.alert(
+        t({ en: 'Transcription Timeout', zh: '转写超时' }),
+        t({
+          en: 'Transcription took too long. Please try again or type your message.',
+          zh: '语音转写耗时过长，请重试或直接输入文字。',
+        }),
+      ); } catch {}
+    }, 20_000);
+    return () => clearTimeout(timer);
+  }, [voicePhase, transcriptPreview, t]);
 
   const liveVoiceAvailableRef = useRef(false);
   const sendingRef = useRef(false);
@@ -1556,6 +1592,33 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           };
 
           try {
+            // Pre-flight: request RECORD_AUDIO via expo-av so the system permission
+            // dialog is shown on first use. The Picovoice VoiceProcessor only
+            // exposes hasRecordAudioPermission() (read-only) — without this prep
+            // Android users see "permission denied" even on cold install.
+            if (Audio) {
+              try {
+                const permResult = await Audio.requestPermissionsAsync();
+                if (!permResult?.granted) {
+                  setLiveSpeechPermissionState('denied');
+                  localDirectAudioCaptureRef.current = null;
+                  isRecordingRef.current = false;
+                  setIsRecording(false);
+                  setVoicePhase('idle');
+                  Alert.alert(
+                    t({ en: 'Microphone Permission', zh: '麦克风权限' }),
+                    t({
+                      en: 'Please enable microphone access in Settings to use hold-to-talk with local models.',
+                      zh: '请在系统设置中授予麦克风权限，才能使用本地模型的按住说话。',
+                    }),
+                  );
+                  return;
+                }
+              } catch {
+                // Non-fatal: fall through; realtimeMicrophone.start() will surface a clearer error
+              }
+            }
+
             await realtimeMicrophone.start();
             setLiveSpeechPermissionState('granted');
             setIsRecording(true);
@@ -1575,7 +1638,32 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
               message,
               model: localModelId || 'local-model',
             });
-            throw error;
+            // Surface a user-actionable error instead of silently dying. The most
+            // common causes are: (a) RECORD_AUDIO denied, (b) another app holding
+            // the mic (music player / video call), (c) Picovoice native module
+            // not linked in this build.
+            isRecordingRef.current = false;
+            setIsRecording(false);
+            setVoicePhase('idle');
+            let hint = message;
+            if (/permission denied/i.test(message)) {
+              hint = t({
+                en: 'Microphone permission was denied. Enable it in Settings.',
+                zh: '麦克风权限被拒绝，请到系统设置中开启。',
+              });
+            } else if (/unavailable|not.*linked|undefined/i.test(message)) {
+              hint = t({
+                en: 'Local voice capture is not available in this build. Falling back to cloud recording next time.',
+                zh: '当前版本暂不支持本地直采，下一次将尝试云端录音路径。',
+              });
+            } else {
+              hint = t({
+                en: 'Microphone is busy. Close other audio apps and try again.',
+                zh: '麦克风被占用，请关闭其他音频应用后重试。',
+              });
+            }
+            Alert.alert(t({ en: 'Voice Error', zh: '语音错误' }), hint);
+            return;
           }
         }
 
@@ -1739,7 +1827,15 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
             model: localModelId || 'local-model',
           });
           setVoicePhase('idle');
-          Alert.alert(t({ en: 'No Speech', zh: '未检测到语音' }), t({ en: 'No speech detected.', zh: '未检测到有效语音。' }));
+          // 0 bytes almost always means: mic was never actually granted live frames.
+          // Tell the user what to check instead of just "no speech".
+          Alert.alert(
+            t({ en: 'No Audio Captured', zh: '未采集到音频' }),
+            t({
+              en: 'The microphone did not produce any audio. Make sure permission is granted and no other app is using the mic, then try again.',
+              zh: '麦克风未输出任何音频。请确认已授予权限，且没有其他应用在占用麦克风，然后重试。',
+            }),
+          );
           return;
         }
 
@@ -1751,10 +1847,124 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         });
 
         const wavUri = await persistDirectLocalAudioCaptureAsWav(directCapture.pcmChunks);
-        const localAudioAttachment = await buildLocalRecordedAudioAttachment(wavUri);
-        setTranscriptPreview(t({ en: '[Local voice message]', zh: '[本地语音消息]' }));
-        setVoicePhase('thinking');
-        setTimeout(() => onSendMessageRef.current('', [localAudioAttachment]), 80);
+
+        // ── Native audio path (Qwen2.5-Omni / qwen3.5-omni-light) ─────────
+        // When the on-device model accepts raw audio as an input_audio content
+        // part, bypass STT entirely: hand the WAV straight to the model.
+        // This is the "真正的端云一致原生链路" — no STT round-trip, no
+        // transcription latency, and the model hears the user's actual voice
+        // (tone, pause, language mixing) instead of a lossy text rendering.
+        if (localModelSelected && localAudioInputAvailable) {
+          try {
+            const localAudioAttachment = await buildLocalRecordedAudioAttachment(wavUri);
+            setTranscriptPreview(t({ en: '[Local voice message]', zh: '[本地语音消息]' }));
+            setVoicePhase('thinking');
+            setTimeout(() => onSendMessageRef.current('', [localAudioAttachment]), 60);
+            return;
+          } catch (nativeAudioErr: any) {
+            addVoiceDiagnostic('voice-session', 'hold-local-native-audio-failed', {
+              model: localModelId || 'local-model',
+              error: String(nativeAudioErr?.message || nativeAudioErr),
+            });
+            // Fall through to Whisper / cloud STT below.
+          }
+        }
+
+        // ── On-device STT (whisper.rn) ────────────────────────
+        // If the whisper-base audio encoder is downloaded alongside the model,
+        // transcribe locally — no cloud round-trip, no privacy leak, works offline.
+        // On any failure, fall through to cloud STT below.
+        if (LocalWhisperService.isAvailableForModel(localModelId)) {
+          try {
+            const whisperTranscript = await LocalWhisperService.transcribe(
+              localModelId!,
+              wavUri,
+              voiceLanguageHint,
+            );
+            if (whisperTranscript) {
+              setTranscriptPreview(whisperTranscript);
+              setVoicePhase('thinking');
+              setTimeout(() => onSendMessageRef.current(whisperTranscript), 80);
+              return;
+            }
+          } catch (whisperErr: any) {
+            addVoiceDiagnostic('voice-session', 'hold-local-whisper-failed', {
+              model: localModelId || 'local-model',
+              error: String(whisperErr?.message || whisperErr),
+            });
+            // Fall through to cloud STT
+          }
+        }
+
+        // ── Cloud STT fallback ────────────────────────────────
+        let pcmTranscript = '';
+        let pcmTranscribeTimedOut = false;
+        let pcmTranscribeFailed = false;
+        let pcmTranscribeErrorDetail = '';
+        const pcmFormData = new FormData();
+        pcmFormData.append('audio', { uri: wavUri, name: 'voice.wav', type: 'audio/wav' } as any);
+        const pcmAc = new AbortController();
+        const TRANSCRIBE_TIMEOUT_MS = 45_000;
+        const pcmTimeout = setTimeout(() => pcmAc.abort(), TRANSCRIBE_TIMEOUT_MS);
+        try {
+          const resp = await Promise.race([
+            fetch(`${API_BASE}/voice/transcribe?lang=${voiceLanguageHint}`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+              body: pcmFormData,
+              signal: pcmAc.signal,
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('transcribe-timeout')), TRANSCRIBE_TIMEOUT_MS + 1_000),
+            ),
+          ]);
+          if (resp.ok) {
+            const data = await resp.json();
+            pcmTranscript = data?.text || data?.transcript || '';
+          } else {
+            pcmTranscribeFailed = true;
+            try { pcmTranscribeErrorDetail = await resp.text(); } catch { /* ignore */ }
+          }
+        } catch (err: any) {
+          if (err?.message === 'transcribe-timeout' || err?.name === 'AbortError') {
+            pcmTranscribeTimedOut = true;
+          } else {
+            pcmTranscribeFailed = true;
+            pcmTranscribeErrorDetail = String(err?.message || err);
+          }
+        } finally {
+          clearTimeout(pcmTimeout);
+          try { pcmAc.abort(); } catch {}
+        }
+
+        if (pcmTranscript) {
+          setTranscriptPreview(pcmTranscript);
+          setVoicePhase('thinking');
+          setTimeout(() => onSendMessageRef.current(pcmTranscript), 80);
+        } else if (pcmTranscribeTimedOut) {
+          setVoicePhase('idle');
+          Alert.alert(
+            t({ en: 'Transcription Timeout', zh: '转写超时' }),
+            t({ en: 'Audio transcription took too long. Please try again.', zh: '语音转写超时，请重试。' }),
+          );
+        } else {
+          setVoicePhase('idle');
+          if (pcmTranscribeFailed) {
+            const detail = pcmTranscribeErrorDetail ? `\n\n${pcmTranscribeErrorDetail.slice(0, 200)}` : '';
+            Alert.alert(
+              t({ en: 'Transcription Failed', zh: '转写失败' }),
+              t({
+                en: `Transcription service unavailable. Please retry or type your message.${detail}`,
+                zh: `转写服务暂时不可用，请稍后重试或直接输入文字。${detail}`,
+              }),
+            );
+          } else {
+            Alert.alert(
+              t({ en: 'No Speech', zh: '未检测到语音' }),
+              t({ en: 'No speech detected.', zh: '未检测到有效语音。' }),
+            );
+          }
+        }
         return;
       }
 
@@ -1804,6 +2014,33 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         const uri = recordingRef.current.getURI();
         recordingRef.current = null;
         if (uri) {
+          // ── On-device STT (whisper.rn) ────────────────────────
+          // When the whisper-base encoder is downloaded, transcribe locally
+          // for any local model (replaces both the raw-audio-to-model path
+          // and the cloud transcription path). Falls through to cloud STT
+          // on any error or if encoder is not yet downloaded.
+          if (localModelSelected && LocalWhisperService.isAvailableForModel(localModelId)) {
+            try {
+              const whisperTranscript = await LocalWhisperService.transcribe(
+                localModelId!,
+                uri,
+                voiceLanguageHint,
+              );
+              if (whisperTranscript) {
+                setTranscriptPreview(whisperTranscript);
+                setVoicePhase('thinking');
+                setTimeout(() => onSendMessageRef.current(whisperTranscript), 80);
+                return;
+              }
+            } catch (whisperErr: any) {
+              addVoiceDiagnostic('voice-session', 'local-whisper-m4a-failed', {
+                model: localModelId || 'local-model',
+                error: String(whisperErr?.message || whisperErr),
+              });
+              // Fall through to cloud STT path
+            }
+          }
+
           if (localModelSelected && localAudioInputAvailable && isSupportedLocalAudioRecordingUri(uri)) {
             // Send audio directly to local model that supports audio input
             const localAudioAttachment = await buildLocalRecordedAudioAttachment(uri);
@@ -1816,50 +2053,91 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           // For local models without audio input (e.g. Gemma): record → cloud
           // transcribe → send text to local model. Also used for all cloud models.
           let transcript = '';
+          let transcribeTimedOut = false;
+          let transcribeFailed = false;
+          let transcribeErrorDetail = '';
           const formData = new FormData();
           formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
           const ac = new AbortController();
-          const timeout = setTimeout(() => ac.abort(), 35_000);
+          // Upper bound tolerant of worst case: Gemini STT chain (3 keys × ~15s) → AWS fallback.
+          // We intentionally race an independent timeout promise because some RN builds do not
+          // actually reject the in-flight fetch when AbortController.abort() fires, which would
+          // otherwise leave the UI stuck in the 'transcribing' phase forever.
+          const TRANSCRIBE_TIMEOUT_MS = 45_000;
+          const timeout = setTimeout(() => ac.abort(), TRANSCRIBE_TIMEOUT_MS);
           try {
-            const resp = await fetch(`${API_BASE}/voice/transcribe?lang=${voiceLanguageHint}`, {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${token}` },
-              body: formData,
-              signal: ac.signal,
-            });
+            const resp = await Promise.race([
+              fetch(`${API_BASE}/voice/transcribe?lang=${voiceLanguageHint}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+                signal: ac.signal,
+              }),
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () => reject(new Error('transcribe-timeout')),
+                  TRANSCRIBE_TIMEOUT_MS + 1_000,
+                ),
+              ),
+            ]);
             if (resp.ok) {
               const data = await resp.json();
               transcript = data?.text || data?.transcript || '';
+            } else {
+              transcribeFailed = true;
+              // Capture server response body so the alert (and logs) show the
+              // actual upstream reason (e.g. "Multipart: Unexpected end of form",
+              // "model unavailable", auth errors). Without this the user just
+              // sees a generic "转写失败" with no way to triage.
+              try { transcribeErrorDetail = await resp.text(); } catch { /* ignore */ }
+              console.warn('Transcription HTTP error', resp.status, transcribeErrorDetail.slice(0, 300));
             }
-          } catch (err) {
+          } catch (err: any) {
+            if (err?.message === 'transcribe-timeout' || err?.name === 'AbortError') {
+              transcribeTimedOut = true;
+            } else {
+              transcribeFailed = true;
+              transcribeErrorDetail = String(err?.message || err);
+            }
             console.warn('Transcription failed', err);
           } finally {
             clearTimeout(timeout);
+            try { ac.abort(); } catch {}
           }
 
           if (transcript) {
             setTranscriptPreview(transcript);
             setVoicePhase('thinking');
             setTimeout(() => onSendMessageRef.current(transcript), 80);
+          } else if (transcribeTimedOut) {
+            setVoicePhase('idle');
+            Alert.alert(
+              t({ en: 'Transcription Timeout', zh: '转写超时' }),
+              t({
+                en: 'Audio transcription took too long. Please try again.',
+                zh: '语音转写超时，请重试。',
+              }),
+            );
           } else {
-            // Try uploading audio as attachment fallback
-            try {
-              const { uploadChatAttachment } = require('../services/api');
-              const uploadedAudio = await uploadChatAttachment({
-                uri,
-                name: `voice-${Date.now()}.m4a`,
-                type: 'audio/m4a',
-              });
-              if (uploadedAudio) {
-                setTranscriptPreview('[Voice Message]');
-                setVoicePhase('thinking');
-                setTimeout(() => onSendMessageRef.current('', [uploadedAudio]), 80);
-              } else {
-                setVoicePhase('idle');
-              }
-            } catch {
-              setVoicePhase('idle');
-              Alert.alert(t({ en: 'No Speech', zh: '未检测到语音' }), t({ en: 'No speech detected.', zh: '未检测到有效语音。' }));
+            // Do NOT silently upload the raw m4a and ship it to the text model.
+            // Most cloud chat models (e.g. Gemini Pro text) will simply reply
+            // "I cannot process audio", which looks like the voice button is
+            // broken. Surface a clear error and let the user retry or type.
+            setVoicePhase('idle');
+            if (transcribeFailed) {
+              const detail = transcribeErrorDetail ? `\n\n${transcribeErrorDetail.slice(0, 200)}` : '';
+              Alert.alert(
+                t({ en: 'Transcription Failed', zh: '转写失败' }),
+                t({
+                  en: `Transcription service is unavailable right now. Please try again or type your message.${detail}`,
+                  zh: `转写服务暂时不可用，请稍后重试或直接输入文字。${detail}`,
+                }),
+              );
+            } else {
+              Alert.alert(
+                t({ en: 'No Speech', zh: '未检测到语音' }),
+                t({ en: 'No speech detected.', zh: '未检测到有效语音。' }),
+              );
             }
           }
         } else {

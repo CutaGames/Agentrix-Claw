@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from '../../config/env';
+import { WatchDataLayerService, type WatchMessage } from '../../services/wearables/watchDataLayerBridge.service';
 
 const TOKEN_KEY = 'agentrix.watch.token';
 const REFRESH_KEY = 'agentrix.watch.refreshToken';
@@ -18,22 +19,39 @@ export function useWatchAuth() {
   const [state, setState] = useState<AuthState>({ token: null, loading: true });
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Load stored token on mount
-  useEffect(() => {
-    (async () => {
-      const stored = await AsyncStorage.getItem(TOKEN_KEY);
-      setState({ token: stored, loading: false });
-    })();
-    return () => {
-      if (refreshTimer.current) clearTimeout(refreshTimer.current);
-    };
-  }, []);
-
   const saveTokens = useCallback(async (accessToken: string, refreshToken?: string) => {
     await AsyncStorage.setItem(TOKEN_KEY, accessToken);
     if (refreshToken) await AsyncStorage.setItem(REFRESH_KEY, refreshToken);
     setState({ token: accessToken, loading: false });
   }, []);
+
+  // Load stored token on mount
+  useEffect(() => {
+    (async () => {
+      const stored = await AsyncStorage.getItem(TOKEN_KEY);
+      setState({ token: stored, loading: false });
+      await WatchDataLayerService.startListening();
+      if (!stored) {
+        await WatchDataLayerService.requestAuthState();
+      }
+    })();
+    const unsubscribeAuthState = WatchDataLayerService.onMessage('/agentrix/auth/state', (message: WatchMessage) => {
+      const data = message.data as { accessToken?: unknown; token?: unknown; refreshToken?: unknown };
+      const accessToken = typeof data.accessToken === 'string'
+        ? data.accessToken
+        : typeof data.token === 'string'
+          ? data.token
+          : '';
+      const refreshToken = typeof data.refreshToken === 'string' ? data.refreshToken : undefined;
+      if (accessToken) {
+        void saveTokens(accessToken, refreshToken);
+      }
+    });
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      unsubscribeAuthState();
+    };
+  }, [saveTokens]);
 
   const logout = useCallback(async () => {
     await AsyncStorage.multiRemove([TOKEN_KEY, REFRESH_KEY]);
@@ -61,6 +79,10 @@ export function useWatchAuth() {
       return null;
     }
   }, [logout, saveTokens]);
+
+  const requestAuthState = useCallback(async (): Promise<void> => {
+    await WatchDataLayerService.requestAuthState();
+  }, []);
 
   /** Fetch wrapper that attaches token and retries on 401 */
   const authFetch = useCallback(
@@ -90,5 +112,6 @@ export function useWatchAuth() {
     logout,
     refresh,
     authFetch,
+    requestAuthState,
   };
 }

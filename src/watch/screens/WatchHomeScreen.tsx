@@ -10,6 +10,7 @@ import {
 import { watchColors } from '../theme/watchColors';
 import { watchLayout } from '../theme/watchLayout';
 import { API_BASE } from '../../config/env';
+import { useWatchAuth } from '../hooks/useWatchAuth';
 
 interface HomeState {
   agentOnline: boolean;
@@ -20,6 +21,7 @@ interface HomeState {
 }
 
 export function WatchHomeScreen() {
+  const { authFetch, loading: authLoading, requestAuthState } = useWatchAuth();
   const [state, setState] = useState<HomeState>({
     agentOnline: false,
     lastMessage: '',
@@ -33,7 +35,7 @@ export function WatchHomeScreen() {
     try {
       // Parallel fetch: agent ping + unread alerts
       const [alertRes] = await Promise.allSettled([
-        fetch(`${API_BASE}/wearable-telemetry/triggers/unacknowledged/count`, {
+        authFetch(`${API_BASE}/wearable-telemetry/triggers/unacknowledged/count`, {
           headers: { 'Content-Type': 'application/json' },
         }),
       ]);
@@ -50,16 +52,18 @@ export function WatchHomeScreen() {
       }));
     } catch {
       setState((prev) => ({ ...prev, agentOnline: false }));
+      void requestAuthState();
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authFetch, requestAuthState]);
 
   useEffect(() => {
+    if (authLoading) return;
     fetchStatus();
     const timer = setInterval(fetchStatus, 30_000);
     return () => clearInterval(timer);
-  }, [fetchStatus]);
+  }, [authLoading, fetchStatus]);
 
   if (loading) {
     return (
