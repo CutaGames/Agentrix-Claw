@@ -30,6 +30,8 @@ import { initLlamaBridge } from './src/services/llamaRnBridge';
 import { OtaModelDownloadService } from './src/services/otaModelDownload.service';
 import { WatchDataLayerService } from './src/services/wearables/watchDataLayerBridge.service';
 import { VoiceQuickFab } from './src/components/VoiceQuickFab';
+import { resolveLegacyPath } from './src/navigation/legacyRouteTable';
+import { getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
 
 // Register llama.rn bridge for on-device LLM inference
 initLlamaBridge();
@@ -434,11 +436,22 @@ function AppNavigator() {
 }
 
 // Deep link config
+//
+// MOBILE_REFACTOR_AND_ECOSYSTEM_PLAN_2026-05 Sprint A:
+//   - 4-tab IA: Home / Summon / Plaza / Me (canonical)
+//   - Legacy tab names (Agent/Discover/Team/Pet/Wallet/Today) kept as
+//     hidden aliases so existing deep links keep working.
+//   - `resolveLegacyPath()` rewrites incoming paths from the old IA to
+//     the new canonical paths before React Navigation parses them.
 const linking = {
   // Production: Linking.createURL('/') resolves to "agentrix://" (scheme from app.json).
   // Development (Expo Go): resolves to "exp://...". Both are included so QR pairing
   // works on both dev and production builds.
   prefixes: [Linking.createURL('/'), 'agentrix://', 'clawlink://', 'https://clawlink.app', 'https://agentrix.top'],
+  getStateFromPath: (path: string, options: any) => {
+    const normalized = resolveLegacyPath(path);
+    return defaultGetStateFromPath(normalized, options);
+  },
   config: {
     screens: {
       Auth: {
@@ -447,36 +460,117 @@ const linking = {
           AuthCallback: 'auth/callback',
         },
       },
+      InvitationGate: 'invitation-gate',
       Onboarding: {
         screens: {
           DeploySelect: 'onboarding/deploy',
           CloudDeploy: 'onboarding/cloud',
           ConnectExisting: 'onboarding/connect',
+          LocalDeploy: 'onboarding/local',
+          SocialBind: 'onboarding/social/:instanceId',
         },
       },
       Main: {
         screens: {
-          MainTabs: {
+          Home: {
             screens: {
-              Agent: {
-                initialRouteName: 'AgentChat',
-                screens: {
-                  AgentChat: '',
-                  AgentConsole: 'agent/console',
-                  VoiceChat: 'voice-chat',
-                  OpenClawBind: 'agent/bind',
-                  // Desktop installer QR code deep link:
-                  // agentrix://connect?instanceId=<id>&token=<tok>&host=<ip>&port=<port>
-                  LocalConnect: 'connect',
-                },
-              },
-              Explore: { screens: { Marketplace: 'market', SkillDetail: 'market/skill/:skillId' } },
-              Social: { screens: { Feed: 'social' } },
-              Me: { screens: { Profile: 'me', ReferralDashboard: 'me/referral', Settings: 'me/settings' } },
+              HomeRoot: 'home',
+              PetCompanion: 'home/pet',
+              PetSkills: 'home/pet/skills',
+              PetTasks: 'home/pet/tasks',
+              PetWallet: 'home/pet/wallet',
+              PetWalletBalance: 'home/pet/wallet/balance',
+              PetMemory: 'home/pet/memory',
+              PetMemoryDreaming: 'home/pet/memory/dreaming',
+              PetMemoryLogs: 'home/pet/memory/logs',
+              PetPlay: 'home/pet/play',
+              PetWardrobe: 'home/pet/wardrobe',
+              PetSoul: 'home/pet/soul',
+              PetBreed: 'home/pet/breed',
+              PetIdentity: 'home/pet/identity',
+              PetCreator: 'home/pet/creator',
+              PetPermissions: 'home/pet/permissions',
+              PetSpace: 'home/pet/space/:spaceId',
+              PetTeam: 'home/pet/team',
+              PetWorkflow: 'home/pet/skills/workflow',
+              PetWorkflowDetail: 'home/pet/skills/workflow/:workflowId',
+              CoRaisingInvite: 'home/co-raising/invite',
+              CoRaisingLanding: 'home/co-raising/:token',
+              CoRaisingActivity: 'home/co-raising/activity',
+              PlanApproval: 'home/approvals',
             },
           },
+          Summon: {
+            screens: {
+              SummonRoot: 'summon',
+              VoiceChat: 'summon/voice',
+            },
+          },
+          Plaza: {
+            screens: {
+              PlazaRoot: 'plaza',
+              Feed: 'plaza/feed',
+              PostDetail: 'plaza/feed/post/:postId',
+              ShowcaseDetail: 'plaza/feed/showcase/:postId',
+              UserProfile: 'plaza/feed/user/:userId',
+              CreatePost: 'plaza/feed/create',
+              Messaging: 'plaza/messaging',
+              DirectMessage: 'plaza/messaging/:userId',
+              GroupChat: 'plaza/messaging/group/:groupId',
+              Skills: 'plaza/skills',
+              SkillDetail: 'plaza/skills/:skillId',
+              Checkout: 'plaza/checkout/:skillId',
+              SkillInstall: 'plaza/skills/install/:skillId',
+              Tasks: 'plaza/tasks',
+              TaskDetail: 'plaza/tasks/:taskId',
+              PostTask: 'plaza/tasks/post',
+              Pets: 'plaza/pets',
+              PetsSkins: 'plaza/pets/skins',
+              SkinAuctionDetail: 'plaza/pets/skins/:auctionId',
+              PetAuctionDetail: 'plaza/pets/auction/:auctionId',
+              Play: 'plaza/play',
+              Predict: 'plaza/play/predict',
+              CoRaisingInvite: 'plaza/co-raising/invite',
+              CoRaisingLanding: 'plaza/co-raising/:token',
+              GreetingCardCompose: 'plaza/greeting/compose',
+              GreetingCardInbox: 'plaza/greeting/inbox',
+              ShareCard: 'plaza/share-card',
+              CreateLink: 'plaza/share-card/create',
+              ToyCustom: 'plaza/toy/custom',
+            },
+          },
+          Me: {
+            screens: {
+              Profile: 'me',
+              Account: 'me/account',
+              Settings: 'me/settings',
+              ReferralDashboard: 'me/promote',
+              ApiKeys: 'me/advanced/api-keys',
+              LocalAiModel: 'me/advanced/local-ai',
+              WalletConnect: 'me/wallet/connect',
+              WalletSetup: 'me/wallet/setup',
+              WalletBackup: 'me/wallet/backup',
+              NotificationCenter: 'me/notifications',
+              MySkills: 'me/skills',
+              MyOrders: 'me/orders',
+              SocialListener: 'me/advanced/social-listener',
+              Scan: 'me/scan',
+              WearableHub: 'me/devices/wearable',
+              Subscribe: 'me/subscribe',
+              AxpCenter: 'me/axp',
+              AxpRewardShop: 'me/axp/shop',
+              ShareCard: 'me/share-card',
+            },
+          },
+          // ── Legacy tabs (hidden, but keep deep link compat) ──
+          // These are intentionally minimal: the resolver rewrites old
+          // paths to new paths, so legacy `config.screens.Agent.*` style
+          // links are no longer needed. They remain accessible via
+          // legacy `navigate('Agent', { screen: ... })` call sites.
         },
       },
+      Inbox: 'inbox',
+      Scan: 'scan',
     },
   },
 };

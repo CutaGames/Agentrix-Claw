@@ -1,4 +1,11 @@
-// ---- Navigation Types for ClawLink ----
+// ---- Navigation Types for Agentrix Mobile ----
+//
+// 2026-05-10 Refactor (MOBILE_REFACTOR_AND_ECOSYSTEM_PLAN_2026-05 Sprint A):
+//   4 new canonical tabs → Home / Summon / Plaza / Me
+//   Legacy tab names (Today/Agent/Pet/Team/Wallet/Discover) are kept as
+//   hidden aliases so existing `navigate('Agent', ...)` call sites still
+//   work while we migrate incrementally. See legacyRouteTable.ts for the
+//   deep-link mapping.
 
 export type AuthStackParamList = {
   Login: undefined;
@@ -14,6 +21,7 @@ export type OnboardingStackParamList = {
   SocialBind: { instanceId: string; platform?: 'telegram' };
 };
 
+// ── Legacy AgentStack (still used by many screens, pointed at from new Home/Summon)
 export type AgentStackParamList = {
   AgentConsole: undefined;
   AgentChat: { instanceId?: string; instanceName?: string; voiceMode?: boolean; duplexMode?: boolean };
@@ -123,6 +131,10 @@ export type MeStackParamList = {
   SocialListener: undefined;
   LocalAiModel: undefined;
   WearableHub: undefined;
+  // Refactor additions (Sprint A/D):
+  Subscribe: undefined;
+  AxpCenter: undefined;
+  AxpRewardShop: undefined;
 };
 
 export type DiscoverStackParamList = {
@@ -164,16 +176,116 @@ export type TeamStackParamList = {
   };
 };
 
-// P0-W2-1: 5-Tab refactor (Today/Agents/Team/Wallet/Me) per mobile-prd-v3 §4.1.1
-// Discover kept as registered (not visible) for backward-compat deep links.
+// ── New 4-Tab Stacks (Sprint A) ────────────────────────────────────────────
+
+/**
+ * 🏠 Home Stack — 主宠陪伴仪表（Pet-as-Agent home dashboard）
+ * Contains: HomeScreen + pet drawer entries (Wallet/Memory/Skills/Play/Wardrobe/Soul/Breed/Identity/Creator/Permissions/Space)
+ * Plus Co-Raising (共养) multiplayer entries.
+ */
+export type HomeStackParamList = {
+  HomeRoot: undefined;
+  // Pet drawer (10 entries)
+  PetCompanion: undefined;
+  PetSkills: undefined;
+  PetTasks: undefined;
+  PetWallet: undefined;
+  PetWalletBalance: { agentAccountId: string; agentName: string };
+  PetMemory: undefined;
+  PetMemoryDreaming: undefined;
+  PetMemoryLogs: undefined;
+  PetPlay: undefined;
+  PetWardrobe: undefined;
+  PetSoul: undefined;
+  PetBreed: undefined;
+  PetIdentity: undefined;
+  PetCreator: undefined;
+  PetPermissions: { agentAccountId?: string } | undefined;
+  PetSpace: { spaceId: string; spaceName: string };
+  PetTeam: undefined;
+  PetWorkflow: undefined;
+  PetWorkflowDetail: { workflowId?: string };
+  // Co-Raising (multiplayer Phase 1 α)
+  CoRaisingInvite: undefined;
+  CoRaisingLanding: { token?: string };
+  CoRaisingActivity: undefined;
+  // Plan Approval (legacy reused)
+  PlanApproval: undefined;
+};
+
+/**
+ * 🔮 Summon Stack — 多宠 × 场景会话中心
+ * The conversational Agent is called "Summon" here — "召唤主宠对话".
+ * Multi-session tabs handled inside SummonScreen, not via stack.
+ */
+export type SummonStackParamList = {
+  SummonRoot: { sessionId?: string } | undefined;
+  VoiceChat: { instanceId?: string; instanceName?: string };
+};
+
+/**
+ * 🎪 Plaza Stack — 经济 + 社交 + 游戏
+ * 5 segmented sections inside PlazaScreen: Feed / Skills / Tasks / Pets / Play
+ */
+export type PlazaStackParamList = {
+  PlazaRoot: undefined;
+  // Feed
+  Feed: undefined;
+  PostDetail: { postId: string };
+  ShowcaseDetail: { postId: string };
+  UserProfile: { userId: string };
+  CreatePost: undefined;
+  // Messaging (DM + Group)
+  Messaging: undefined;
+  DirectMessage: { userId: string; userName: string; userAvatar?: string };
+  GroupChat: { groupId: string; groupName: string };
+  // Skills market
+  Skills: undefined;
+  SkillDetail: { skillId: string; skillName: string };
+  Checkout: { skillId: string; skillName?: string };
+  SkillInstall: { skillId: string; skillName: string };
+  // Tasks market
+  Tasks: undefined;
+  TaskDetail: { taskId: string };
+  PostTask: undefined;
+  // Pets market (Phase 1 MVP = Skin Auction)
+  Pets: undefined;
+  PetsSkins: undefined;
+  SkinAuctionDetail: { auctionId: string };
+  PetAuctionDetail: { auctionId: string };
+  // Play (Predict + multiplayer + mini-games)
+  Play: undefined;
+  Predict: undefined;
+  // Co-Raising entry from Plaza
+  CoRaisingInvite: undefined;
+  CoRaisingLanding: { token?: string };
+  // Greeting Cards (multiplayer Phase 1 δ)
+  GreetingCardCompose: undefined;
+  GreetingCardInbox: undefined;
+  // Share card generator
+  ShareCard: ShareCardRouteParams;
+  CreateLink: { skillId: string; skillName: string; skillPrice?: number; skillPriceUnit?: string };
+  // Toy custom
+  ToyCustom: undefined;
+};
+
+// ── Main Tab (new 4 visible + legacy hidden for back-compat) ──────────────
+
 export type MainTabParamList = {
-  Today: undefined;
-  Agent: undefined;   // labeled "Agents"
-  Pet: undefined;     // V4: 萃宠中心 (PRD mobile-prd-v4 §2.1)
-  Team: undefined;
-  Wallet: undefined;
+  // New canonical 4 tabs (visible)
+  Home: undefined;
+  Summon: undefined;
+  Plaza: undefined;
   Me: undefined;
-  Discover: undefined; // hidden, retained for legacy navigate('Discover', ...)
+  // Legacy tab names retained as hidden aliases so existing
+  // `navigate('Agent' / 'Discover' / ...)` call sites still work.
+  // They point to the same underlying stacks as the new tabs.
+  Today: undefined;      // → Home alias
+  Agent: undefined;      // → Summon alias (AgentStackNavigator still mounted)
+  Pet: undefined;        // → Home alias (PetStackNavigator kept for legacy)
+  Team: undefined;       // → Me alias (TeamStackNavigator reused inside Me)
+  Wallet: undefined;     // → Me alias (WalletStackNavigator reused inside Me)
+  Discover: undefined;   // → Plaza alias (DiscoverStackNavigator reused inside Plaza)
 };
 
 export type RootStackParamList = {
