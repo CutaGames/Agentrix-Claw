@@ -7,33 +7,43 @@ import { useLocalization } from '../../contexts/LocalizationContext';
 import { AgentrixLogo } from '../common/AgentrixLogo';
 import { LanguageSwitcher } from '../ui/LanguageSwitcher';
 
-// Agentrix v3 marketing IA: Product ▾ / Pricing / Skills / Developers / Enterprise / Family / Docs / Blog
-// PRD: docs/web-prd-v3.md §4.1, docs/agentrix-cross-platform-prd-v3.md §1
+// Agentrix v4 marketing IA: Product ▾ / Market ▾ / Pricing / Showcase / Developers / Enterprise / Family / Downloads
+// PRD: docs/web-prd-v4.md §2, docs/WEB_REFACTOR_PLAN_2026-05.zh-CN.md §2.2
 
 interface NavItem {
   href: string;
   label: { zh: string; en: string };
   external?: boolean;
+  disabled?: boolean;
 }
 
 const PRODUCT_GROUP: NavItem[] = [
   { href: '/', label: { zh: '产品概览', en: 'Overview' } },
-  { href: '/manifesto', label: { zh: 'Living / Doer / Economy 三层愿景', en: 'Three-Layer Vision' } },
+  { href: '/manifesto', label: { zh: 'Pet-as-Agent 宣言', en: 'Pet-as-Agent Manifesto' } },
   { href: '/features', label: { zh: '5 端能力矩阵', en: '5-Surface Matrix' } },
+  { href: '/clans', label: { zh: '6 族群灵魂', en: '6 Clans' } },
   { href: '/use-cases', label: { zh: '应用场景', en: 'Use Cases' } },
   { href: '/security', label: { zh: '安全与 MPC', en: 'Security & MPC' } },
 ];
 
+const MARKET_GROUP: NavItem[] = [
+  { href: '/market', label: { zh: 'Marketplace 主页', en: 'Marketplace Home' }, disabled: true },
+  { href: '/showcase', label: { zh: 'Showcase 精选', en: 'Showcase' } },
+  { href: '/skills', label: { zh: 'Skills 市场', en: 'Skills Market' } },
+  { href: '/market/auction', label: { zh: '拍卖大厅', en: 'Auction Hall' }, disabled: true },
+  { href: '/market/leaderboard', label: { zh: '创作者排行', en: 'Creator Leaderboard' }, disabled: true },
+];
+
 const PRIMARY_NAV: NavItem[] = [
   { href: '/pricing', label: { zh: '定价', en: 'Pricing' } },
-  { href: '/skills', label: { zh: 'Skill 市场', en: 'Skills' } },
+  { href: '/showcase', label: { zh: 'Showcase', en: 'Showcase' } },
   { href: '/developers', label: { zh: '开发者', en: 'Developers' } },
   { href: '/enterprise', label: { zh: '企业', en: 'Enterprise' } },
   { href: '/family', label: { zh: '家庭', en: 'Family' } },
   { href: '/downloads', label: { zh: '下载', en: 'Downloads' } },
 ];
 
-function ProductDropdown() {
+function NavDropdown({ label, items }: { label: { zh: string; en: string }; items: NavItem[] }) {
   const router = useRouter();
   const { t } = useLocalization();
   const [open, setOpen] = useState(false);
@@ -47,7 +57,7 @@ function ProductDropdown() {
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  const isAnyActive = PRODUCT_GROUP.some((i) => router.pathname === i.href);
+  const isAnyActive = items.some((i) => router.pathname === i.href);
 
   return (
     <div className="relative" ref={ref}>
@@ -58,13 +68,23 @@ function ProductDropdown() {
           isAnyActive ? 'text-agentrix-electric' : 'text-agentrix-fog hover:text-white'
         }`}
       >
-        {t({ zh: '产品', en: 'Product' })}
+        {t(label)}
         <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div className="absolute top-full left-0 mt-3 w-72 rounded-xl border border-agentrix-inkLine bg-agentrix-inkSoft py-2 shadow-2xl shadow-black/40">
-          {PRODUCT_GROUP.map((item) => {
+          {items.map((item) => {
             const active = router.pathname === item.href;
+            if (item.disabled) {
+              return (
+                <span
+                  key={item.href}
+                  className="block px-4 py-2.5 text-sm text-agentrix-mist/50 cursor-not-allowed"
+                >
+                  {t(item.label)} <span className="text-xs">(W2)</span>
+                </span>
+              );
+            }
             return (
               <Link
                 key={item.href}
@@ -112,7 +132,8 @@ export function MarketingHeader() {
         </div>
 
         <nav className="hidden md:flex items-center gap-6">
-          <ProductDropdown />
+          <NavDropdown label={{ zh: '产品', en: 'Product' }} items={PRODUCT_GROUP} />
+          <NavDropdown label={{ zh: '集市', en: 'Market' }} items={MARKET_GROUP} />
           {PRIMARY_NAV.map((item) => (
             <Link
               key={item.href}
@@ -161,7 +182,38 @@ export function MarketingHeader() {
       {mobileOpen && (
         <div className="md:hidden border-t border-agentrix-inkLine bg-agentrix-inkSoft">
           <nav className="flex flex-col px-4 py-3">
-            {[...PRODUCT_GROUP, ...PRIMARY_NAV].map((item) => (
+            <p className="py-1 text-xs font-bold text-agentrix-mist uppercase tracking-wider">{t({ zh: '产品', en: 'Product' })}</p>
+            {PRODUCT_GROUP.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileOpen(false)}
+                className={`py-2 text-sm font-medium ${
+                  isActive(item.href)
+                    ? 'text-agentrix-electric'
+                    : 'text-agentrix-fog hover:text-white'
+                }`}
+              >
+                {t(item.label)}
+              </Link>
+            ))}
+            <p className="mt-2 py-1 text-xs font-bold text-agentrix-mist uppercase tracking-wider">{t({ zh: '集市', en: 'Market' })}</p>
+            {MARKET_GROUP.filter((i) => !i.disabled).map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileOpen(false)}
+                className={`py-2 text-sm font-medium ${
+                  isActive(item.href)
+                    ? 'text-agentrix-electric'
+                    : 'text-agentrix-fog hover:text-white'
+                }`}
+              >
+                {t(item.label)}
+              </Link>
+            ))}
+            <hr className="my-2 border-agentrix-inkLine" />
+            {PRIMARY_NAV.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}

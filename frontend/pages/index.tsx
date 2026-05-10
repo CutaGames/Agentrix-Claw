@@ -1,9 +1,11 @@
 import { MarketingLayout } from '../components/marketing/MarketingLayout'
 import {
   HeroLiving,
+  ThreeSideEcosystem,
   ThreeLayerVision,
   FiveSurfaceStrip,
   V3FeaturesSection,
+  AxpNarrative,
   CompetitiveTable,
   DownloadCallout,
   FAQ,
@@ -15,12 +17,12 @@ export default function Home() {
   const { t } = useLocalization()
   const seo = buildSeo({
     title: t({
-      zh: 'Agentrix · 一只 Agent，陪你 · 帮你 · 替你赚钱',
-      en: 'Agentrix · One agent — with you, for you, earning for you',
+      zh: 'Agentrix · 你养的每一只宠物，都是一个能赚钱的 AI Agent',
+      en: 'Agentrix · Every pet you raise is an AI agent that earns',
     }),
     description: t({
-      zh: 'Living Agent / Doer / Economy 三层愿景，跨 Mobile / Desktop / Web / Watch / Server 5 端无缝陪伴、执行任务、自动结算收益。',
-      en: 'Three-layer vision: Living Agent, Doer, Economy. The same Agent across Mobile, Desktop, Web, Watch and Server — companion, executor, earner.',
+      zh: 'Pet-as-Agent Economy：ERC-8004 独立身份 · MPC 钱包 · X402 微支付。跨 5 端陪你、帮你、替你赚钱。AXP 积分 + 5 档订阅。',
+      en: 'Pet-as-Agent Economy: ERC-8004 identity · MPC wallet · X402 micropay. Across 5 surfaces — companions, works, earns. AXP points + 5-tier subscription.',
     }),
     path: '/',
   })
@@ -29,8 +31,10 @@ export default function Home() {
     <MarketingLayout seo={seo}>
       <HeroLiving />
       <V3FeaturesSection />
+      <ThreeSideEcosystem />
       <ThreeLayerVision />
       <FiveSurfaceStrip />
+      <AxpNarrative />
       <CompetitiveTable />
       <DownloadCallout />
       <FAQ />

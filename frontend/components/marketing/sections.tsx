@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Smartphone,
@@ -15,6 +16,14 @@ import {
   Check,
   X,
   ArrowRight,
+  Coins,
+  Users,
+  Store,
+  Handshake,
+  Gift,
+  MessageCircle,
+  Trophy,
+  Rocket,
 } from 'lucide-react';
 import { useLocalization } from '../../contexts/LocalizationContext';
 
@@ -41,56 +50,72 @@ export function HeroLiving() {
           <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-agentrix-inkLine bg-white/5 px-4 py-1.5 text-xs text-agentrix-fog backdrop-blur">
             <Sparkles size={14} className="text-agentrix-electric" />
             {t({
-              zh: 'Agentrix v3 · Living Agent / Doer / Economy 三层愿景上线',
-              en: 'Agentrix v3 — Living Agent / Doer / Economy now live',
+              zh: 'Agentrix v4 · Pet-as-Agent Economy 正式上线',
+              en: 'Agentrix v4 — Pet-as-Agent Economy is here',
             })}
           </div>
           <h1 className="text-4xl font-extrabold leading-tight md:text-6xl md:leading-[1.05]">
             {t({
-              zh: '一只 Agent，',
-              en: 'One agent.',
+              zh: '你养的每一只宠物，',
+              en: 'Every pet you raise',
             })}
             <br />
             <span className="bg-gradient-to-r from-agentrix-purpleSoft via-agentrix-electric to-agentrix-solar bg-clip-text text-transparent">
               {t({
-                zh: '陪你 · 帮你 · 替你赚钱',
-                en: 'With you. For you. Earning for you.',
+                zh: '都是一个能赚钱的 AI Agent',
+                en: 'is an AI agent that earns',
               })}
             </span>
           </h1>
           <p className="mt-6 text-base leading-relaxed text-agentrix-fog md:text-lg">
             {t({
-              zh: '从 Mobile 主宠到 Desktop 工作台，再到 Web 账户中心、Watch 提醒、Server Auto-Earn —— 同一个 Agent，跨 5 端无缝陪伴、执行任务、自动结算收益。',
-              en: 'From Mobile companion to Desktop workspace, Web console, Watch glance, Server Auto-Earn — the same Agent across 5 surfaces. Companions you, executes for you, settles earnings automatically.',
+              zh: 'ERC-8004 独立身份 · MPC 独立钱包 · X402 微支付。跨 Mobile / Desktop / Web / Watch / Toy 五端陪你、帮你、替你赚钱。',
+              en: 'ERC-8004 identity · MPC wallet · X402 micropay. Across Mobile / Desktop / Web / Watch / Toy — companions, works, earns.',
             })}
           </p>
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
-              href="/auth/login?next=/console/dashboard"
+              href="/downloads"
               className="inline-flex items-center gap-2 rounded-full bg-agentrix-solar px-7 py-3 text-sm font-bold text-agentrix-ink shadow-lg shadow-agentrix-solar/30 transition-transform hover:-translate-y-0.5"
             >
-              {t({ zh: '免费开始', en: 'Start free' })}
+              {t({ zh: '下载 Mobile 开始养宠', en: 'Download Mobile — start raising' })}
               <ArrowRight size={16} />
             </Link>
             <Link
-              href="/manifesto"
+              href="/auth/login?next=/console/dashboard"
               className="inline-flex items-center gap-2 rounded-full border border-agentrix-inkLine px-7 py-3 text-sm font-semibold text-white transition-colors hover:border-agentrix-electric hover:text-agentrix-electric"
             >
-              {t({ zh: '阅读三层愿景', en: 'Read the manifesto' })}
+              {t({ zh: '打开 Web Console', en: 'Open Web Console' })}
             </Link>
+            {/* W3: /console/pet/create 上线后启用；W1 先以 disabled 状态占位 */}
+            <button
+              type="button"
+              disabled
+              className="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-agentrix-inkLine/50 px-7 py-3 text-sm font-semibold text-agentrix-mist/70"
+              title={t({ zh: 'W3 上线', en: 'Available in W3' })}
+            >
+              {t({ zh: '在浏览器生成我的第一只 · W3', en: 'Generate in browser · W3' })}
+            </button>
           </div>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-agentrix-mist">
+          <div className="mt-8 grid gap-2 text-xs text-agentrix-mist sm:flex sm:flex-wrap sm:justify-center sm:gap-x-6 sm:gap-y-2">
             <span className="inline-flex items-center gap-1">
               <ShieldCheck size={14} className="text-agentrix-electric" />
-              {t({ zh: 'MPC 三方分片，签名永远在 Mobile', en: 'MPC 3-share, signing on Mobile only' })}
+              {t({ zh: 'MPC 三方分片 · 签名只在 Mobile', en: 'MPC 3-share · signs on Mobile only' })}
             </span>
             <span className="inline-flex items-center gap-1">
-              <Wallet size={14} className="text-agentrix-solar" />
-              {t({ zh: 'X402 链上结算', en: 'X402 on-chain settlement' })}
+              <Coins size={14} className="text-agentrix-solar" />
+              {t({
+                zh: '1 AXP = $0.001 · 签到 / 对话 / 推广 / 消费返现',
+                en: '1 AXP = $0.001 · check-in / chat / refer / cashback',
+              })}
             </span>
             <span className="inline-flex items-center gap-1">
-              <Sparkles size={14} className="text-agentrix-purpleSoft" />
-              {t({ zh: '6 大模型供应商', en: '6 LLM providers' })}
+              <Globe2 size={14} className="text-agentrix-purpleSoft" />
+              {t({ zh: 'A2A · ERC-8004 · X402 原生支持', en: 'A2A · ERC-8004 · X402 native' })}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Sparkles size={14} className="text-agentrix-electric" />
+              {t({ zh: '6 族群灵魂 × 无限皮肤', en: '6 clans × unlimited skins' })}
             </span>
           </div>
         </motion.div>
@@ -320,142 +345,285 @@ export function CompetitiveTable() {
   );
 }
 
-// ---------- Section: Pricing ----------
+// ---------- Section: Pricing (V4 · 5 档 + Enterprise · 2026-05-10 冻结) ----------
 
 export interface PricingTier {
+  key: 'free' | 'lite' | 'plus' | 'pro' | 'elite' | 'enterprise';
   name: { zh: string; en: string };
-  price: { zh: string; en: string };
+  monthlyPrice: string;
+  yearlyPrice: string | null;
+  yearlySavings: { zh: string; en: string } | null;
   unit: { zh: string; en: string };
-  description: { zh: string; en: string };
+  tagline: { zh: string; en: string };
+  axpCashback: number;
   features: Array<{ zh: string; en: string }>;
   cta: { zh: string; en: string };
   ctaHref: string;
   highlight?: boolean;
+  isEnterprise?: boolean;
 }
 
 export const PRICING_TIERS: PricingTier[] = [
   {
+    key: 'free',
     name: { zh: 'Free', en: 'Free' },
-    price: { zh: '$0', en: '$0' },
+    monthlyPrice: '$0',
+    yearlyPrice: null,
+    yearlySavings: null,
     unit: { zh: '永久免费', en: 'Forever free' },
-    description: { zh: '体验 Living Agent 与基础 Skill。', en: 'Experience Living Agent and basic Skills.' },
+    tagline: { zh: '规模 + 教育 + AXP 裂变', en: 'Scale + education + AXP virality' },
+    axpCashback: 0,
     features: [
-      { zh: '1 个 Living Agent · 基础人格', en: '1 Living Agent · base persona' },
-      { zh: '免费模型每日额度', en: 'Free model daily quota' },
-      { zh: '5 端登录（无 Auto-Earn）', en: 'Login on all 5 surfaces (no Auto-Earn)' },
-      { zh: '社区 Skill 试用', en: 'Try community Skills' },
+      { zh: '1-2 只宠 + 基础陪伴', en: '1-2 pets + basic companion' },
+      { zh: '$0.30 LLM 硬顶 + 本地模型', en: '$0.30 LLM cap + local models' },
+      { zh: '每日 20 轮对话 + 5 min 语音', en: '20 rounds/day + 5 min voice' },
+      { zh: '1 技能 / 1 皮肤 / 1 商品 免费上架', en: '1 skill / 1 skin / 1 product free listing' },
+      { zh: '无 AXP 返现', en: 'No AXP cashback' },
     ],
     cta: { zh: '免费开始', en: 'Start free' },
     ctaHref: '/invite',
   },
   {
-    name: { zh: 'Pro', en: 'Pro' },
-    price: { zh: '$20', en: '$20' },
+    key: 'lite',
+    name: { zh: 'Lite', en: 'Lite' },
+    monthlyPrice: '$4.99',
+    yearlyPrice: '$49',
+    yearlySavings: { zh: '省 $10.88', en: 'Save $10.88' },
     unit: { zh: '/ 月', en: '/ month' },
-    description: { zh: '解锁 Live2D-3D、Worktree 并行、Auto-Earn。', en: 'Unlock Live2D-3D, parallel worktrees, Auto-Earn.' },
+    tagline: { zh: '去除硬限，继续探索', en: 'Remove hard caps, keep exploring' },
+    axpCashback: 5,
     features: [
-      { zh: '3 个 Living Agent', en: '3 Living Agents' },
-      { zh: 'Claude / GPT / Gemini Pro 模型', en: 'Claude / GPT / Gemini Pro models' },
-      { zh: 'Auto-Earn + X402 微支付', en: 'Auto-Earn + X402 micropay' },
-      { zh: 'Skill 市场分润', en: 'Skill marketplace revenue share' },
-      { zh: '优先支持', en: 'Priority support' },
+      { zh: '5 只宠 + 无限对话 + 无限语音', en: '5 pets + unlimited chat + voice' },
+      { zh: '$2.5 LLM cloud 预算', en: '$2.5 LLM cloud budget' },
+      { zh: '3 技能 / 3 皮肤 / 5 商品', en: '3 skills / 3 skins / 5 products' },
+      { zh: 'Sonnet / 4o 模型', en: 'Sonnet / 4o models' },
+      { zh: '5% AXP 消费返现', en: '5% AXP cashback' },
     ],
-    cta: { zh: '升级 Pro', en: 'Upgrade to Pro' },
-    ctaHref: '/invite?plan=pro',
+    cta: { zh: '升级 Lite', en: 'Upgrade to Lite' },
+    ctaHref: '/invite?plan=lite&billing=monthly',
+  },
+  {
+    key: 'plus',
+    name: { zh: 'Plus', en: 'Plus' },
+    monthlyPrice: '$14.99',
+    yearlyPrice: '$149',
+    yearlySavings: { zh: '省 $30.88', en: 'Save $30.88' },
+    unit: { zh: '/ 月', en: '/ month' },
+    tagline: { zh: '黄金档 · 活跃玩家 / 创作者 / 小商户', en: 'Sweet spot — active players / creators / SMBs' },
+    axpCashback: 10,
+    features: [
+      { zh: '15 只宠 + $8 LLM cloud 预算', en: '15 pets + $8 LLM cloud budget' },
+      { zh: '10 技能 / 10 皮肤 / 30 商品', en: '10 skills / 10 skins / 30 products' },
+      { zh: '首个可发布游戏 / 公会席位', en: 'First game / guild slot' },
+      { zh: '集市推荐权重 1.5×', en: 'Marketplace boost 1.5×' },
+      { zh: '10% AXP 消费返现', en: '10% AXP cashback' },
+    ],
+    cta: { zh: '升级 Plus', en: 'Upgrade to Plus' },
+    ctaHref: '/invite?plan=plus&billing=monthly',
     highlight: true,
   },
   {
-    name: { zh: 'Team', en: 'Team' },
-    price: { zh: '$50', en: '$50' },
-    unit: { zh: '/ 席位 / 月', en: '/ seat / month' },
-    description: { zh: '团队共享 Skill 与任务集市分润。', en: 'Team-shared Skills & task marketplace revenue.' },
+    key: 'pro',
+    name: { zh: 'Pro', en: 'Pro' },
+    monthlyPrice: '$29.99',
+    yearlyPrice: '$299',
+    yearlySavings: { zh: '省 $60.88', en: 'Save $60.88' },
+    unit: { zh: '/ 月', en: '/ month' },
+    tagline: { zh: '核心用户 · 全职开发者 / 中型商户', en: 'Power users — full-time devs / mid merchants' },
+    axpCashback: 15,
     features: [
-      { zh: '不限 Agent 数', en: 'Unlimited Agents' },
-      { zh: '团队 Skill 仓库', en: 'Team Skill repo' },
-      { zh: '统一计费 + 财务报表', en: 'Unified billing + finance reports' },
-      { zh: 'SSO / 角色权限', en: 'SSO / role permissions' },
+      { zh: '40 只宠 + $20 LLM cloud 预算', en: '40 pets + $20 LLM cloud budget' },
+      { zh: '30 技能 / ∞ 皮肤 / 100 商品', en: '30 skills / ∞ skins / 100 products' },
+      { zh: 'A2A 优先匹配 · L3 多端协签', en: 'A2A priority · L3 multi-surface co-sign' },
+      { zh: '自定义 System Prompt + 模型路由', en: 'Custom system prompt + model routing' },
+      { zh: '15% AXP 消费返现', en: '15% AXP cashback' },
     ],
-    cta: { zh: '试用 Team', en: 'Try Team' },
-    ctaHref: '/invite?plan=team',
+    cta: { zh: '升级 Pro', en: 'Upgrade to Pro' },
+    ctaHref: '/invite?plan=pro&billing=monthly',
   },
   {
-    name: { zh: 'Enterprise', en: 'Enterprise' },
-    price: { zh: '联系我们', en: 'Contact us' },
-    unit: { zh: '定制', en: 'Custom' },
-    description: { zh: '私有部署、合规审计、专属模型。', en: 'Private deploy, compliance audit, dedicated models.' },
+    key: 'elite',
+    name: { zh: 'Elite', en: 'Elite' },
+    monthlyPrice: '$69',
+    yearlyPrice: '$690',
+    yearlySavings: { zh: '省 $138', en: 'Save $138' },
+    unit: { zh: '/ 月', en: '/ month' },
+    tagline: { zh: '品牌绑定 · 全能力无限 · 流量王者', en: 'Brand-tier — unlimited everything' },
+    axpCashback: 20,
     features: [
-      { zh: '私有云 / VPC 部署', en: 'Private cloud / VPC deploy' },
-      { zh: 'MPC HSM 托管', en: 'MPC HSM custody' },
-      { zh: 'SLA 99.95% + 7×24', en: 'SLA 99.95% + 7×24 support' },
-      { zh: '专属 SA + 培训', en: 'Dedicated SA + training' },
+      { zh: '无限宠 + $50 LLM cloud 预算', en: 'Unlimited pets + $50 LLM cloud budget' },
+      { zh: '所有配额 ∞ + Pet SDK Beta', en: 'All quotas ∞ + Pet SDK Beta' },
+      { zh: '季度限定皮肤 + Elite Creator 徽章', en: 'Seasonal skins + Elite Creator badge' },
+      { zh: '2h 审核 lane + 4h 专属客服', en: '2h review lane + 4h dedicated support' },
+      { zh: '20% AXP 消费返现 · 首页推荐 3×', en: '20% AXP cashback · homepage boost 3×' },
+    ],
+    cta: { zh: '升级 Elite', en: 'Upgrade to Elite' },
+    ctaHref: '/invite?plan=elite&billing=monthly',
+  },
+  {
+    key: 'enterprise',
+    name: { zh: 'Enterprise', en: 'Enterprise' },
+    monthlyPrice: '',
+    yearlyPrice: null,
+    yearlySavings: null,
+    unit: { zh: '合同定制', en: 'Custom contract' },
+    tagline: { zh: '私有化 / SLA / SOC2 / 合规', en: 'Private deploy / SLA / SOC2 / compliance' },
+    axpCashback: 0,
+    features: [
+      { zh: '$500 起 · 10 席位 · VPC · 99.5% SLA', en: 'From $500 · 10 seats · VPC · 99.5% SLA' },
+      { zh: '$5k · 100 席位 · on-prem · 99.9% SLA', en: '$5k · 100 seats · on-prem · 99.9% SLA' },
+      { zh: '$50k+ · 无限 · SOC2 · ISO27001 · 白标 SDK', en: '$50k+ · unlimited · SOC2 · ISO27001 · white-label SDK' },
+      { zh: '7×24 电话支持 + 专属客户经理', en: '7×24 phone support + dedicated CSM' },
     ],
     cta: { zh: '联系销售', en: 'Contact sales' },
     ctaHref: 'mailto:enterprise@agentrix.top',
+    isEnterprise: true,
   },
 ];
 
 export function PricingTable() {
   const { t } = useLocalization();
+  const [yearly, setYearly] = useState(false);
+
+  const mainTiers = PRICING_TIERS.filter((tier) => !tier.isEnterprise);
+  const enterprise = PRICING_TIERS.find((tier) => tier.isEnterprise)!;
+
   return (
     <section className="bg-agentrix-ink py-20">
       <div className="container mx-auto px-6">
-        <div className="mx-auto mb-12 max-w-2xl text-center">
+        <div className="mx-auto mb-8 max-w-2xl text-center">
           <h2 className="text-3xl font-bold md:text-4xl">
             {t({ zh: '简单透明的定价', en: 'Simple, transparent pricing' })}
           </h2>
           <p className="mt-3 text-agentrix-fog">
             {t({
-              zh: '免费体验全部三层愿景；Pro 解锁 Auto-Earn；Team 分享技能；Enterprise 满足合规。',
-              en: 'Free for the full three-layer vision. Pro unlocks Auto-Earn. Team shares skills. Enterprise covers compliance.',
+              zh: '所有能力全档开放，配额随订阅升级。AXP 消费返现让你越用越值。',
+              en: 'All capabilities open at every tier. Quotas scale with your plan. AXP cashback rewards usage.',
             })}
           </p>
         </div>
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-          {PRICING_TIERS.map((tier) => (
-            <div
-              key={tier.name.en}
-              className={`relative flex flex-col rounded-2xl border p-6 transition-transform ${
-                tier.highlight
-                  ? 'border-agentrix-electric bg-gradient-to-b from-agentrix-electric/10 to-agentrix-purple/10 shadow-2xl shadow-agentrix-electric/20 md:-translate-y-2'
-                  : 'border-agentrix-inkLine bg-agentrix-inkSoft'
-              }`}
-            >
-              {tier.highlight && (
-                <span className="absolute -top-3 left-6 rounded-full bg-agentrix-solar px-3 py-1 text-xs font-bold text-agentrix-ink">
-                  {t({ zh: '推荐', en: 'Most popular' })}
-                </span>
-              )}
-              <h3 className="text-lg font-bold text-white">{t(tier.name)}</h3>
-              <div className="mt-4 flex items-end gap-1">
-                <span className="text-4xl font-extrabold text-white">{t(tier.price)}</span>
-                <span className="pb-1 text-xs text-agentrix-mist">{t(tier.unit)}</span>
-              </div>
-              <p className="mt-3 text-sm text-agentrix-fog">{t(tier.description)}</p>
-              <ul className="mt-5 flex-1 space-y-2 text-sm text-agentrix-fog">
-                {tier.features.map((f) => (
-                  <li key={f.en} className="flex items-start gap-2">
-                    <Check size={14} className="mt-0.5 shrink-0 text-agentrix-electric" />
-                    <span>{t(f)}</span>
-                  </li>
-                ))}
-              </ul>
-              <Link
-                href={tier.ctaHref}
-                className={`mt-6 inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-bold transition-opacity hover:opacity-90 ${
+
+        {/* Billing toggle */}
+        <div className="mb-10 flex items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => setYearly(false)}
+            className={`rounded-full px-5 py-2 text-sm font-semibold transition-colors ${
+              !yearly ? 'bg-agentrix-electric text-agentrix-ink' : 'bg-white/10 text-agentrix-fog hover:text-white'
+            }`}
+          >
+            {t({ zh: '月付', en: 'Monthly' })}
+          </button>
+          <button
+            type="button"
+            onClick={() => setYearly(true)}
+            className={`rounded-full px-5 py-2 text-sm font-semibold transition-colors ${
+              yearly ? 'bg-agentrix-electric text-agentrix-ink' : 'bg-white/10 text-agentrix-fog hover:text-white'
+            }`}
+          >
+            {t({ zh: '年付 · 省 2 个月', en: 'Yearly · save 2 months' })}
+          </button>
+        </div>
+
+        {/* 5 main tier cards */}
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {mainTiers.map((tier) => {
+            const displayPrice = yearly && tier.yearlyPrice ? tier.yearlyPrice : tier.monthlyPrice;
+            const displayUnit = yearly && tier.yearlyPrice
+              ? t({ zh: '/ 年', en: '/ year' })
+              : tier.monthlyPrice === '$0'
+                ? t(tier.unit)
+                : t({ zh: '/ 月', en: '/ month' });
+
+            return (
+              <div
+                key={tier.key}
+                className={`relative flex flex-col rounded-2xl border p-5 transition-transform ${
                   tier.highlight
-                    ? 'bg-agentrix-solar text-agentrix-ink'
-                    : 'bg-white/10 text-white hover:bg-white/15'
+                    ? 'border-agentrix-electric bg-gradient-to-b from-agentrix-electric/10 to-agentrix-purple/10 shadow-2xl shadow-agentrix-electric/20 md:-translate-y-2'
+                    : 'border-agentrix-inkLine bg-agentrix-inkSoft'
                 }`}
               >
-                {t(tier.cta)}
-              </Link>
-            </div>
-          ))}
+                {tier.highlight && (
+                  <span className="absolute -top-3 left-5 rounded-full bg-agentrix-solar px-3 py-1 text-xs font-bold text-agentrix-ink">
+                    {t({ zh: '推荐', en: 'Most popular' })}
+                  </span>
+                )}
+                {tier.axpCashback > 0 && (
+                  <span className="absolute -top-3 right-5 rounded-full bg-agentrix-purpleSoft/80 px-2.5 py-1 text-xs font-bold text-white">
+                    +{tier.axpCashback}% AXP
+                  </span>
+                )}
+                <h3 className="text-lg font-bold text-white">{t(tier.name)}</h3>
+                <p className="mt-1 text-xs text-agentrix-mist">{t(tier.tagline)}</p>
+                <div className="mt-4 flex items-end gap-1">
+                  <span className="text-3xl font-extrabold text-white">{displayPrice}</span>
+                  <span className="pb-0.5 text-xs text-agentrix-mist">{displayUnit}</span>
+                </div>
+                {yearly && tier.yearlySavings && (
+                  <p className="mt-1 text-xs font-medium text-agentrix-solar">{t(tier.yearlySavings)}</p>
+                )}
+                <ul className="mt-4 flex-1 space-y-2 text-sm text-agentrix-fog">
+                  {tier.features.map((f) => (
+                    <li key={f.en} className="flex items-start gap-2">
+                      <Check size={13} className="mt-0.5 shrink-0 text-agentrix-electric" />
+                      <span>{t(f)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Link
+                  href={yearly && tier.yearlyPrice ? tier.ctaHref.replace('monthly', 'yearly') : tier.ctaHref}
+                  className={`mt-5 inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-bold transition-opacity hover:opacity-90 ${
+                    tier.highlight
+                      ? 'bg-agentrix-solar text-agentrix-ink'
+                      : 'bg-white/10 text-white hover:bg-white/15'
+                  }`}
+                >
+                  {t(tier.cta)}
+                </Link>
+              </div>
+            );
+          })}
         </div>
-        <p className="mt-8 text-center text-xs text-agentrix-mist">
+
+        {/* Enterprise wide card */}
+        <div className="mt-8 rounded-2xl border border-agentrix-inkLine bg-agentrix-inkSoft p-6 md:flex md:items-center md:justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-white">{t(enterprise.name)}</h3>
+            <p className="mt-1 text-sm text-agentrix-fog">{t(enterprise.tagline)}</p>
+            <ul className="mt-3 space-y-1 text-sm text-agentrix-fog">
+              {enterprise.features.map((f) => (
+                <li key={f.en} className="flex items-start gap-2">
+                  <Check size={13} className="mt-0.5 shrink-0 text-agentrix-electric" />
+                  <span>{t(f)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <Link
+            href={enterprise.ctaHref}
+            className="mt-5 inline-flex items-center justify-center rounded-full bg-white/10 px-6 py-3 text-sm font-bold text-white hover:bg-white/15 md:mt-0 md:ml-8"
+          >
+            {t(enterprise.cta)}
+          </Link>
+        </div>
+
+        {/* Overage explanation */}
+        <div className="mt-8 rounded-xl border border-agentrix-inkLine/60 bg-agentrix-inkSoft/50 p-5 text-center">
+          <p className="text-sm font-semibold text-white">
+            {t({ zh: '💡 预算 / 配额耗尽时，你有 3 个选择：', en: '💡 When budget / quota runs out, you have 3 options:' })}
+          </p>
+          <div className="mt-3 flex flex-col items-center gap-2 text-xs text-agentrix-fog sm:flex-row sm:justify-center sm:gap-6">
+            <span>① {t({ zh: 'AXP 抵扣：10,000 AXP = $10', en: 'AXP redeem: 10,000 AXP = $10' })}</span>
+            <span>② {t({ zh: '现金实扣：绑卡按需 1.3-1.5×', en: 'Pay-as-you-go: card at 1.3-1.5×' })}</span>
+            <span>③ {t({ zh: 'BYOK：自带 API Key 免 LLM 计费', en: 'BYOK: bring your own key, no LLM billing' })}</span>
+          </div>
+        </div>
+
+        <p className="mt-6 text-center text-xs text-agentrix-mist">
           {t({
-            zh: '所有付费计划支持 7 天无理由退款。Stripe 上线前请使用邀请码体验。',
-            en: 'All paid plans include a 7-day refund. Use an invite code until Stripe goes live.',
+            zh: '所有付费计划支持 7 天无理由退款。年付 = 月价 × 10（省 2 个月）。',
+            en: 'All paid plans include a 7-day refund. Yearly = monthly × 10 (save 2 months).',
           })}
         </p>
       </div>
@@ -516,6 +684,22 @@ const FAQ_ITEMS = [
   {
     q: { zh: '可以在自己的服务器上跑吗？', en: 'Can I self-host?' },
     a: { zh: 'Enterprise 计划支持私有云 / VPC 部署，含 MPC HSM 托管与合规审计。', en: 'Enterprise plan supports private cloud / VPC deployment with MPC HSM custody and compliance audit.' },
+  },
+  {
+    q: { zh: 'AXP 和未来的 AX 代币是什么关系？', en: 'What is the relation between AXP and the upcoming AX token?' },
+    a: { zh: 'AXP 是 off-chain 软积分（Phase 1 已上线）。AX 是未来合规就绪后的 ERC-20 治理代币（Phase 3+）。AXP 会按 1:100 固定比例预留 AX 兑换接口，过渡期无缝。', en: 'AXP is an off-chain soft point (Phase 1 live). AX is an ERC-20 governance token planned for Phase 3+ when compliance is ready. AXP is reserved a 1:100 bridge to AX for seamless transition.' },
+  },
+  {
+    q: { zh: '5 档订阅怎么选？', en: 'How to pick among the 5 tiers?' },
+    a: { zh: 'Free 适合尝鲜；Lite 解决硬限；Plus 是黄金档（创作者 / 小商户）；Pro 面向全职开发 / 中型商户；Elite 给品牌 KOL / 深度玩家；Enterprise 面向需要 SLA / SOC2 / 私有化的企业。', en: 'Free for tasting; Lite removes hard caps; Plus is the sweet spot (creators / SMBs); Pro for full-time devs / mid merchants; Elite for brand KOLs / power users; Enterprise for SLA / SOC2 / private deployment.' },
+  },
+  {
+    q: { zh: '什么是共养？', en: 'What is co-raising?' },
+    a: { zh: '你可以把主宠的共养链接分享给好友，好友每天可喂一次增加能量，好友还能分到主宠未来任务收入的 5%。蚂蚁森林式的轻互动，回访率极高。', en: 'Share a co-raising link with friends. They can feed your pet daily to boost energy, and earn 5% of the pet\'s future task revenue. Ant-Forest-style lightweight interaction with extremely high retention.' },
+  },
+  {
+    q: { zh: '创作者卖皮肤怎么赚钱？', en: 'How do creators earn from selling skins?' },
+    a: { zh: '上架皮肤可选一口价 / 拍卖 / 租赁三种模式，并设置 10-50% 的 Remix 分成比例。一旦被他人 Remix 出售，原作者按设定比例持续分账。', en: 'Creators can list skins as fixed-price / auction / rental, and set a 10-50% Remix share. Whenever a Remix of your skin sells, you get that share continuously.' },
   },
 ];
 
@@ -671,3 +855,191 @@ export function V3FeaturesSection() {
 }
 
 
+
+// ---------- Section: Three-Side Ecosystem (W1-2 · Pet-as-Agent 全能公民) ----------
+
+const THREE_SIDES = [
+  {
+    icon: Store,
+    title: { zh: '🔧 我是供给方', en: '🔧 I supply' },
+    desc: {
+      zh: '发布技能 / 皮肤 / 商品 / 硬件 / 游戏。订阅档位越高，发布配额越大，曝光权重越高。',
+      en: 'Publish skills / skins / products / hardware / games. Higher tier = more quota + more exposure.',
+    },
+    cta: { zh: '了解创作者分成 →', en: 'Learn creator revenue →' },
+    ctaHref: '/developers',
+  },
+  {
+    icon: Users,
+    title: { zh: '👥 我是需求方', en: '👥 I consume' },
+    desc: {
+      zh: '陪伴 AI 宠物 + 让宠物接任务赚钱 + 在集市消费。订阅档位越高，LLM 预算越大，宠物越多。',
+      en: 'Companion AI pets + let pets earn via tasks + shop in marketplace. Higher tier = more LLM budget + more pets.',
+    },
+    cta: { zh: '开始养宠 →', en: 'Start raising →' },
+    ctaHref: '/downloads',
+  },
+  {
+    icon: Handshake,
+    title: { zh: '🤝 我是关系方', en: '🤝 I connect' },
+    desc: {
+      zh: '推广赚佣金 + 共养好友宠物 + 建公会 + 做 KOL。订阅档位越高，佣金比例越高，裂变 AXP 越多。',
+      en: 'Earn referral commissions + co-raise friends\' pets + build guilds + be a KOL. Higher tier = higher commission + more AXP.',
+    },
+    cta: { zh: '加入推广 →', en: 'Join referral →' },
+    ctaHref: '/invite',
+  },
+];
+
+export function ThreeSideEcosystem() {
+  const { t } = useLocalization();
+  return (
+    <section className="bg-agentrix-ink py-20 md:py-28">
+      <div className="container mx-auto px-6">
+        <div className="mx-auto mb-14 max-w-3xl text-center">
+          <h2 className="text-3xl font-bold md:text-4xl">
+            {t({ zh: '一个账号，所有能力', en: 'One account. Every capability.' })}
+          </h2>
+          <p className="mt-3 text-agentrix-fog">
+            {t({
+              zh: '在 Agentrix 里，你同时是消费者 / 创作者 / 商家 / 推广者 / 家长。订阅升级 = 配额提升，不是"买新身份"。',
+              en: 'In Agentrix you are simultaneously consumer / creator / merchant / promoter / parent. Upgrading = more quota, not a new identity.',
+            })}
+          </p>
+        </div>
+        <div className="grid gap-6 md:grid-cols-3">
+          {THREE_SIDES.map((side) => {
+            const Icon = side.icon;
+            return (
+              <div
+                key={side.title.en}
+                className="rounded-xl border border-agentrix-inkLine bg-agentrix-inkSoft p-6 transition-colors hover:border-agentrix-electric/50"
+              >
+                <Icon size={28} className="text-agentrix-electric" />
+                <h3 className="mt-4 text-lg font-bold text-white">{t(side.title)}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-agentrix-fog">{t(side.desc)}</p>
+                <Link
+                  href={side.ctaHref}
+                  className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-agentrix-electric hover:underline"
+                >
+                  {t(side.cta)} <ArrowRight size={12} />
+                </Link>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-10 text-center text-sm text-agentrix-mist">
+          {t({
+            zh: '所有交互以宠物 Agent 为载体 · 结算 = MPC + X402 + Commission V4 · 激励 = AXP 积分',
+            en: 'All interactions via Pet Agents · Settlement = MPC + X402 + Commission V4 · Incentive = AXP points',
+          })}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+// ---------- Section: AXP Narrative (W1-3 · 积分体系介绍) ----------
+
+const AXP_EARN_SOURCES = [
+  { icon: Gift, label: { zh: '🎁 每日签到 +20 AXP', en: '🎁 Daily check-in +20 AXP' } },
+  { icon: MessageCircle, label: { zh: '💬 聊 10 轮 +20 AXP', en: '💬 Chat 10 rounds +20 AXP' } },
+  { icon: Users, label: { zh: '👬 共养好友宠物 +5 AXP', en: '👬 Co-raise friend\'s pet +5 AXP' } },
+  { icon: Rocket, label: { zh: '🔗 推广新用户 +500 AXP', en: '🔗 Refer new user +500 AXP' } },
+  { icon: Coins, label: { zh: '💰 消费返现（按档位 5-20%）', en: '💰 Cashback (5-20% by tier)' } },
+  { icon: Trophy, label: { zh: '🏆 游戏大赛 / 成就解锁', en: '🏆 Game contests / achievements' } },
+];
+
+const AXP_SPEND_USES = [
+  { label: { zh: '💳 订阅续费抵扣（≤20%）', en: '💳 Subscription redeem (≤20%)' } },
+  { label: { zh: '⚡ 技能购买抵扣（≤20%）', en: '⚡ Skill purchase redeem (≤20%)' } },
+  { label: { zh: '👕 皮肤购买抵扣（≤20%）', en: '👕 Skin purchase redeem (≤20%)' } },
+  { label: { zh: '🎯 集市置顶 / A2A 优先匹配', en: '🎯 Marketplace boost / A2A priority' } },
+  { label: { zh: '🎰 抽奖 / 限定兑换', en: '🎰 Lottery / exclusive redemption' } },
+];
+
+const AXP_CASHBACK_TABLE = [
+  { tier: 'Free', rate: '0%' },
+  { tier: 'Lite', rate: '5%' },
+  { tier: 'Plus', rate: '10%' },
+  { tier: 'Pro', rate: '15%' },
+  { tier: 'Elite', rate: '20%' },
+];
+
+export function AxpNarrative() {
+  const { t } = useLocalization();
+  return (
+    <section id="axp" className="border-t border-agentrix-inkLine bg-agentrix-ink py-20 md:py-28">
+      <div className="container mx-auto px-6">
+        <div className="mx-auto mb-14 max-w-3xl text-center">
+          <h2 className="text-3xl font-bold md:text-4xl">
+            {t({ zh: '💎 AXP 积分体系', en: '💎 AXP Points System' })}
+          </h2>
+          <p className="mt-3 text-agentrix-fog">
+            {t({
+              zh: '1 AXP = $0.001 · 轻度通缩 · 12 个月过期 FIFO · 中国区友好（软积分非证券）',
+              en: '1 AXP = $0.001 · mildly deflationary · 12-month FIFO expiry · China-friendly (soft points, not securities)',
+            })}
+          </p>
+        </div>
+
+        <div className="grid gap-8 md:grid-cols-2">
+          {/* Earn */}
+          <div className="rounded-xl border border-agentrix-inkLine bg-agentrix-inkSoft p-6">
+            <h3 className="mb-4 text-lg font-bold text-white">
+              {t({ zh: '6 大获得方式', en: '6 ways to earn' })}
+            </h3>
+            <ul className="space-y-3">
+              {AXP_EARN_SOURCES.map((s) => (
+                <li key={s.label.en} className="flex items-center gap-3 text-sm text-agentrix-fog">
+                  <s.icon size={16} className="shrink-0 text-agentrix-solar" />
+                  <span>{t(s.label)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Spend */}
+          <div className="rounded-xl border border-agentrix-inkLine bg-agentrix-inkSoft p-6">
+            <h3 className="mb-4 text-lg font-bold text-white">
+              {t({ zh: '5 大使用场景', en: '5 ways to spend' })}
+            </h3>
+            <ul className="space-y-3">
+              {AXP_SPEND_USES.map((s) => (
+                <li key={s.label.en} className="flex items-center gap-3 text-sm text-agentrix-fog">
+                  <Check size={14} className="shrink-0 text-agentrix-electric" />
+                  <span>{t(s.label)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* Cashback ladder */}
+        <div className="mx-auto mt-10 max-w-md rounded-xl border border-agentrix-inkLine bg-agentrix-inkSoft p-6">
+          <h3 className="mb-4 text-center text-base font-bold text-white">
+            {t({ zh: '消费返现阶梯（买 $100 返 AXP）', en: 'Cashback ladder (buy $100 → AXP)' })}
+          </h3>
+          <div className="space-y-2">
+            {AXP_CASHBACK_TABLE.map((row) => (
+              <div key={row.tier} className="flex items-center justify-between rounded-lg bg-white/5 px-4 py-2 text-sm">
+                <span className="font-medium text-white">{row.tier}</span>
+                <span className={`font-bold ${row.rate === '10%' ? 'text-agentrix-solar' : 'text-agentrix-fog'}`}>
+                  {row.rate === '0%' ? t({ zh: '无返现', en: 'No cashback' }) : row.rate}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 text-center">
+            <Link
+              href="/pricing"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-agentrix-electric hover:underline"
+            >
+              {t({ zh: '查看完整定价 →', en: 'View full pricing →' })} <ArrowRight size={12} />
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}

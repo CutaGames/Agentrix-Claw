@@ -8,8 +8,8 @@ export default function PricingPage() {
   const seo = buildSeo({
     title: t({ zh: '定价 · Agentrix', en: 'Pricing · Agentrix' }),
     description: t({
-      zh: '免费、Pro $20/月、Team $50/席位/月、Enterprise 定制。所有付费计划支持 7 天退款。',
-      en: 'Free, Pro $20/mo, Team $50/seat/mo, Enterprise custom. All paid plans include a 7-day refund.',
+      zh: 'Free / Lite $4.99 / Plus $14.99 / Pro $29.99 / Elite $69 / Enterprise 合同。所有能力全档开放，配额随订阅升级。',
+      en: 'Free / Lite $4.99 / Plus $14.99 / Pro $29.99 / Elite $69 / Enterprise custom. All capabilities open, quotas scale with plan.',
     }),
     path: '/pricing',
   });
@@ -18,12 +18,12 @@ export default function PricingPage() {
       <section className="bg-agentrix-ink pt-16 pb-6 text-center">
         <div className="container mx-auto px-6">
           <h1 className="text-4xl font-extrabold md:text-5xl">
-            {t({ zh: '为成长付费，而不是流量', en: 'Pay for growth, not for traffic' })}
+            {t({ zh: '所有能力全档开放，配额随订阅升级', en: 'All capabilities open. Quotas scale with your plan.' })}
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-agentrix-fog">
             {t({
-              zh: '免费体验全部三层愿景，Pro 解锁 Auto-Earn，Team 共享技能仓库，Enterprise 满足合规。',
-              en: 'Free for the full three-layer vision. Pro unlocks Auto-Earn. Team shares skills. Enterprise covers compliance.',
+              zh: '5 档订阅 + Enterprise 合同。AXP 消费返现让你越用越值，年付省 2 个月。',
+              en: '5 tiers + Enterprise contracts. AXP cashback rewards usage. Yearly saves 2 months.',
             })}
           </p>
         </div>

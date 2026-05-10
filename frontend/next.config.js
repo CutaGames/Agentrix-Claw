@@ -23,14 +23,23 @@ const nextConfig = {
       },
     ];
   },
-  // v3 marketing 重构：旧 marketing 入口下线，301 到 /legacy/<slug> 占位说明
+  // v3→v4 marketing 重构：旧路径 301 到新位置
   async redirects() {
     return [
+      // Legacy marketing pages → /legacy/<slug>
       { source: '/claw', destination: '/legacy/claw', permanent: true },
-      { source: '/predict', destination: '/legacy/predict', permanent: true },
       { source: '/ax-payment', destination: '/legacy/ax-payment', permanent: true },
       { source: '/payment-demo', destination: '/legacy/payment-demo', permanent: true },
       { source: '/alliance', destination: '/legacy/alliance', permanent: true },
+      // V4 Marketplace redirects
+      { source: '/marketplace', destination: '/market', permanent: true },
+      { source: '/marketplace/tasks', destination: '/market', permanent: true },
+      { source: '/marketplace/skins', destination: '/market', permanent: true },
+      { source: '/marketplace/skins/:id', destination: '/market/skin/:id', permanent: true },
+      { source: '/marketplace/pets/:id', destination: '/p/:id', permanent: true },
+      // Console promote merge
+      { source: '/console/wallet/commission', destination: '/console/promote', permanent: false },
+      { source: '/console/wallet/referral', destination: '/console/promote', permanent: false },
     ];
   },
   // 允许加载 Transak SDK 的外部脚本
