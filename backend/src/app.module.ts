@@ -192,6 +192,12 @@ import { PrivacyFenceModule } from './modules/privacy-fence/privacy-fence.module
 // Pet Generation: 3D mesh / avatar generation (Meshy + Hunyuan3D)
 import { PetGenerationModule } from './modules/pet-generation/pet-generation.module';
 
+// ── MOBILE_REFACTOR_AND_ECOSYSTEM_PLAN_2026-05 Sprint B/C prerequisites ──
+import { AxpModule } from './modules/axp/axp.module';
+import { SubscriptionModule } from './modules/subscription/subscription.module';
+import { PetCoRaisingModule } from './modules/pet-coraising/pet-coraising.module';
+import { PetGreetingModule } from './modules/pet-greeting/pet-greeting.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -405,6 +411,11 @@ import { PetGenerationModule } from './modules/pet-generation/pet-generation.mod
     FamilyAccountModule,
     // v3.0 P3-7 隐私围栏 + L3 多端协签 (顿领 §13)
     PrivacyFenceModule,
+    // ── Mobile refactor Sprint B/C (docs/MOBILE_REFACTOR_AND_ECOSYSTEM_PLAN_2026-05) ──
+    AxpModule,
+    SubscriptionModule,
+    PetCoRaisingModule,
+    PetGreetingModule,
   ],
   controllers: [AppController],
   providers: [

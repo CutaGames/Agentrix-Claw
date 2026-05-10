@@ -12,13 +12,13 @@ import { useI18n } from '../stores/i18nStore';
 import { PlazaScreen } from '../screens/plaza/PlazaScreen';
 import {
   PlazaMessagingStub,
-  PlazaGreetingCardComposeStub,
-  PlazaGreetingCardInboxStub,
   PlazaToyCustomStub,
   PlazaPetsSkinsStub,
   PlazaPetsStub,
   PlazaPlayStub,
 } from '../screens/plaza/PlazaPlaceholderScreens';
+import { GreetingCardComposeScreen } from '../screens/plaza/GreetingCardComposeScreen';
+import { GreetingCardInboxScreen } from '../screens/plaza/GreetingCardInboxScreen';
 
 // Reused screens — keep current imports working
 import { FeedScreen } from '../screens/social/FeedScreen';
@@ -200,12 +200,12 @@ export function PlazaStackNavigator() {
       {/* Greeting cards ────────────────────────────────────── */}
       <Stack.Screen
         name="GreetingCardCompose"
-        component={PlazaGreetingCardComposeStub}
+        component={GreetingCardComposeScreen}
         options={{ title: t({ en: 'Greeting Card', zh: '宠物贺卡' }) }}
       />
       <Stack.Screen
         name="GreetingCardInbox"
-        component={PlazaGreetingCardInboxStub}
+        component={GreetingCardInboxScreen}
         options={{ title: t({ en: 'Greeting Inbox', zh: '贺卡收件' }) }}
       />
 

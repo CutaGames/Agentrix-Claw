@@ -28,10 +28,13 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { useI18n } from '../../stores/i18nStore';
 import { colors } from '../../theme/colors';
+import { fetchAxpBalance } from '../../services/axp.api';
+import { fetchMyQuota } from '../../services/subscription.api';
 import type { HomeStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<HomeStackParamList, 'HomeRoot'>;
@@ -72,6 +75,20 @@ export function HomeScreen() {
   const petXpNext = 100;
   const petEmotion = 'calm';
   const petEnergy = 50;
+
+  // Sprint C: live AXP balance glance
+  const axpBalanceQ = useQuery({
+    queryKey: ['axp-balance'],
+    queryFn: fetchAxpBalance,
+    staleTime: 30_000,
+    retry: 1,
+  });
+  const quotaQ = useQuery({
+    queryKey: ['me-quota'],
+    queryFn: fetchMyQuota,
+    staleTime: 60_000,
+    retry: 1,
+  });
 
   const openSummon = useCallback(() => {
     (navigation as any).getParent?.()?.navigate('Summon');
@@ -156,6 +173,30 @@ export function HomeScreen() {
         <Text style={styles.walletBalance}>$0.00</Text>
         <Text style={styles.walletSub}>
           {t({ en: 'Auto-Earn: setup needed', zh: '开启 Auto-Earn · 让主宠替你赚' })}
+        </Text>
+      </Pressable>
+
+      {/* ── AXP balance glance (Sprint C) ───────────────────── */}
+      <Pressable
+        style={styles.axpCard}
+        onPress={() => (navigation as any).getParent?.()?.navigate('Me', { screen: 'AxpCenter' })}
+      >
+        <View style={styles.walletHeaderRow}>
+          <Text style={styles.walletTitle}>
+            💎 {t({ en: 'AXP Balance', zh: 'AXP 余额' })}
+          </Text>
+          <Text style={styles.walletArrow}>›</Text>
+        </View>
+        <Text style={styles.walletBalance}>
+          {axpBalanceQ.data?.balance?.toLocaleString() ?? '—'}
+        </Text>
+        <Text style={styles.walletSub}>
+          {quotaQ.data
+            ? t({
+                en: `${quotaQ.data.effective_tier.toUpperCase()} · ${quotaQ.data.axp_cashback_bps / 100}% cashback`,
+                zh: `${quotaQ.data.effective_tier.toUpperCase()} 档 · 消费返 ${quotaQ.data.axp_cashback_bps / 100}% AXP`,
+              })
+            : t({ en: 'Tap to open AXP center', zh: '点击进入 AXP 中心' })}
         </Text>
       </Pressable>
 
@@ -350,6 +391,14 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: 12,
+  },
+  axpCard: {
+    backgroundColor: colors.accent + '12',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.accent + '55',
     marginBottom: 12,
   },
   walletHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },

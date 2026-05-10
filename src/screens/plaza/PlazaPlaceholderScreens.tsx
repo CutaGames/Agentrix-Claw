@@ -10,8 +10,11 @@
  *   Sprint B5  - Pets (Skin auction)    : replaces `PetsSkinsStub`, `PetsStub`
  *   Sprint B6  - Play (Predict + entries): replaces `PlayStub`
  *   Sprint B7  - Messaging (real DM)    : replaces `MessagingStub`
- *   Sprint C2  - Greeting cards (real)  : replaces `GreetingCardComposeStub`, `GreetingCardInboxStub`
  *   Sprint B/C - Toy custom             : real partner-inquiry form
+ *
+ * (PlazaGreetingCardComposeStub / PlazaGreetingCardInboxStub removed
+ *  2026-05-10 — replaced by real `GreetingCardComposeScreen` /
+ *  `GreetingCardInboxScreen`.)
  */
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
@@ -38,30 +41,6 @@ export function PlazaMessagingStub() {
       title={t({ en: 'Messaging', zh: '私信与群聊' })}
       body={t({ en: 'Unified DM + group chat. Currently the four legacy DM screens are being consolidated.', zh: '统一私信与群聊中心。目前正在合并 4 个旧 DM 屏。' })}
       sprint="Sprint B7"
-    />
-  );
-}
-
-export function PlazaGreetingCardComposeStub() {
-  const { t } = useI18n();
-  return (
-    <StubScreen
-      emoji="🎁"
-      title={t({ en: 'Greeting Card Composer', zh: '宠物贺卡创作' })}
-      body={t({ en: 'Pick a scene, a pet, a message. Your pet delivers the card via universal link.', zh: '选场景 · 选主宠 · 选文案，让主宠替你送达。' })}
-      sprint="Sprint C2"
-    />
-  );
-}
-
-export function PlazaGreetingCardInboxStub() {
-  const { t } = useI18n();
-  return (
-    <StubScreen
-      emoji="📬"
-      title={t({ en: 'Greeting Card Inbox', zh: '贺卡收件箱' })}
-      body={t({ en: "Cards your friends' pets have sent to you.", zh: '好友主宠寄来的贺卡。' })}
-      sprint="Sprint C2"
     />
   );
 }

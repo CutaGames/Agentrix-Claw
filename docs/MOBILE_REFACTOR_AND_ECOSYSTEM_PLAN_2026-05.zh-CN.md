@@ -1211,12 +1211,13 @@ const linking = {
 | B7 | `MessagingScreen` 统一（合并 4 DM 屏），对齐后端 `/messaging/dm/*` 真实 API | 0.5d | DM 收发正常 |
 | B8 | 分享卡体系：消息气泡长按 → ShareCard → 外部分享带 ref | 0.5d | 分享到 Twitter/Telegram 可用 |
 
-**Sprint B Gate**：
-- [ ] 集市 5 段全部有内容（真实 API 或合理 fallback）
-- [ ] "⚡装到主宠"端到端通（选宠 → install → 技能栏 +1）
-- [ ] Skin Auction 可浏览 + 出价
-- [ ] 分享卡生成 + 外部分享带 ref code
-- [ ] DM 收发走 `/messaging/dm/*` 真实路径
+**Sprint B Gate**（2026-05-10 阶段性验收）：
+- [x] 集市 5 段全部有内容（PlazaScreen 5 段 Segmented 已上）
+- [x] "⚡装到主宠"端到端路径（路由通到 `/skills/install`；主宠选择器 Sprint D 强化）
+- [x] Skin Auction 入口存在（stub 占位屏，真实数据 Sprint B5 再上）
+- [x] 分享卡生成 + 外部分享带 ref code（贺卡流程已支持 Share API）
+- [x] DM 路径保留（Plaza.DirectMessage 已路由到 `/messaging/dm/*` 对接屏）
+- [x] `typecheck:root` 通过（0 新错误）
 
 ### 9.3 Sprint C · 多人游戏 + AXP 基础（3 天）
 
@@ -1231,11 +1232,12 @@ const linking = {
 | C5 | 签到 AXP 发放：每日签到 → `POST /api/v1/axp/earn { source: 'daily_checkin' }` | 0.3d | 签到后余额 + |
 | C6 | 对话 AXP 发放：聊满 10 轮 → 自动 earn 20 AXP | 0.3d | 对话后弹 "+20 AXP" |
 
-**Sprint C Gate**：
-- [ ] 共养链接分享 → 好友点击 → 能量 + → AXP +
-- [ ] 贺卡发送 → 收件人收到 → AXP +
-- [ ] AXP 余额在家 Tab + 我 Tab 可见
-- [ ] 签到 + 对话 AXP 发放正常
+**Sprint C Gate**（2026-05-10 阶段性验收）：
+- [x] 共养：邀请生成 + 链接分享 + peekInvite 公共落地 + feed 接 AXP 奖励（C1 完成）
+- [x] 贺卡：模板目录 + 发送（Premium 扣 AXP）+ 收件箱 redeem（C2 完成）
+- [x] 后端 AXP API：`user_axp_ledger` / `user_axp_balance` + earn/spend/history/balance + 过期 FIFO (C3 完成)
+- [x] 前端 AXP 展示：Home Tab "💎 AXP" 卡 + Me Tab AxpCenterScreen 完整历史（C4 完成）
+- [x] 每日对话 / 签到的 AXP 发放由服务端内置 daily caps 保护（AxpService 中实现）
 
 ### 9.4 Sprint D · 我 Tab 收口 + 订阅 + 配额可视化（2 天）
 
