@@ -490,7 +490,11 @@ export function AgentConsoleScreen() {
               <TouchableOpacity style={styles.secondaryBtn} onPress={() => navigation.navigate('DesktopControl')}>
                 <Text style={styles.secondaryBtnText}>{t({ en: 'Open Approvals', zh: '打开审批' })}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={() => (navigation as any).getParent?.()?.navigate('Team', { screen: 'TaskBoard' })}>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={() => {
+                // 2026-05-10: Team/TaskBoard still in legacy Team stack (hidden tab, §7.7).
+                // AgentConsoleScreen itself is slated for deprecation post-Sprint D.
+                (navigation as any).getParent?.()?.navigate('Team', { screen: 'TaskBoard' });
+              }}>
                 <Text style={styles.secondaryBtnText}>{t({ en: 'Team Board', zh: '团队看板' })}</Text>
               </TouchableOpacity>
             </View>

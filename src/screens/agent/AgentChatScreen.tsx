@@ -358,48 +358,19 @@ function dedupeUrls(urls: string[]) {
   return [...new Set(urls)];
 }
 
-function extractUrlsFromMessage(content: string) {
-  const markdownImageUrls = Array.from(content.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)).map((match) => match[1]);
-  const plainUrls = Array.from(content.matchAll(/https?:\/\/[^\s)]+/g)).map((match) => match[0].replace(/[),.;]+$/, ''));
-  const allUrls = dedupeUrls([...markdownImageUrls, ...plainUrls]);
-  const imageUrls = allUrls.filter((url) => /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(url));
-  const audioUrls = allUrls.filter((url) => /\.(mp3|wav|m4a|ogg|aac|flac|opus|wma)(\?.*)?$/i.test(url));
-  const videoUrls = allUrls.filter((url) => /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(url));
-  const fileUrls = allUrls.filter((url) => !imageUrls.includes(url) && !audioUrls.includes(url) && !videoUrls.includes(url) && /(\/api\/uploads\/|\.(pdf|txt|md|csv|json|docx?|xlsx?|pptx?))(\?.*)?$/i.test(url));
-  return { imageUrls, audioUrls, videoUrls, fileUrls };
-}
-
-function getCopyableMessageText(message: Message) {
-  const attachmentLines = (message.attachments || []).map((attachment) => `${attachment.originalName}: ${attachment.publicUrl || attachment.localUri || ''}`);
-  return [message.content.trim(), ...attachmentLines].filter(Boolean).join('\n');
-}
-
-function buildDisplayMessageText(content: string) {
-  if (!content) return '';
-
-  const { imageUrls, audioUrls, videoUrls, fileUrls } = extractUrlsFromMessage(content);
-  let display = content
-    .replace(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g, '')
-    .replace(/\[User Attachments\][\s\S]*$/g, '')
-    .trim();
-
-  for (const url of [...imageUrls, ...audioUrls, ...videoUrls, ...fileUrls]) {
-    display = display.replace(new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '');
-  }
-
-  return renderContent(display)
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
-}
-
-// Strip basic markdown: **bold** -> bold, *italic* -> italic
-function renderContent(text: string) {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\*(.+?)\*/g, '$1')
-    .replace(/`(.+?)`/g, '$1');
-}
+// 2026-05-10 A5 minimal extraction: these 4 helpers moved to
+// `chatMessage.utils.ts` for unit-test coverage & main-file size reduction.
+// Re-exported locally so the rest of this 4000+ line file doesn't change.
+import {
+  extractUrlsFromMessage as _extractUrlsFromMessage,
+  getCopyableMessageText as _getCopyableMessageText,
+  buildDisplayMessageText as _buildDisplayMessageText,
+  stripInlineMarkdown as _stripInlineMarkdown,
+} from './chatMessage.utils';
+const extractUrlsFromMessage = _extractUrlsFromMessage;
+const getCopyableMessageText = _getCopyableMessageText;
+const buildDisplayMessageText = _buildDisplayMessageText;
+const renderContent = _stripInlineMarkdown;
 
 // Inline audio player for audio URLs in messages
 const InlineAudioPlayer = ({ uri }: { uri: string }) => {

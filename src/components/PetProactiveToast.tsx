@@ -38,7 +38,7 @@ export function PetProactiveToast({
   token,
   apiBase = API_BASE,
   onResolved,
-}: PetProactiveToastProps): JSX.Element | null {
+}: PetProactiveToastProps): React.ReactElement | null {
   if (!event) return null;
   const ack = useCallback(async () => {
     await postAction(apiBase, token, `/v1/pet/proactive/${event.event_id}/ack`);
@@ -63,7 +63,7 @@ export function PetProactiveToast({
       <View style={styles.row}>
         {event.cta ? (
           <Pressable onPress={cta} style={[styles.btn, styles.btnPrimary]}>
-            <Text style={styles.btnPrimaryText}>{event.cta.label}</Text>
+            <Text style={styles.btnPrimaryText}>{event.cta}</Text>
           </Pressable>
         ) : null}
         <Pressable onPress={ack} style={styles.btn}>

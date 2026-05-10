@@ -146,8 +146,7 @@ export interface PetSkinRef {
 /** PetState 扩展字段（叠加于 agentrix-presence.ts 的 PetState） */
 export interface PetSoulSkinSnapshot {
   /** 当前灵魂模板 id（如 'claw'） */
-  soul_template_id: PetSoulTemplateId | null;
-  /** 当前激活皮肤 id（uuid） */
+  soul_template_id: PetSoulTemplateId | null;  /** 当前激活皮肤 id（uuid） */
   active_skin_id: string | null;
   /** 用户对默认 SystemPrompt 的覆写片段 */
   personality_overrides: Record<string, unknown>;
@@ -157,14 +156,10 @@ export interface PetSoulSkinSnapshot {
 // §5 Realtime topic 名称（Phase 1 新增）
 // ============================================================
 
-/** Realtime topic 字符串（与 PresenceTopic.* 一致） */
-export const PET_PRESENCE_TOPICS = {
-  petState:        'presence:pet.state',
-  petSoulChanged:  'presence:pet.soul.changed',
-  petSkinChanged:  'presence:pet.skin.changed',
-} as const;
-
-export type PetPresenceTopic = typeof PET_PRESENCE_TOPICS[keyof typeof PET_PRESENCE_TOPICS];
+// 2026-05-10 cleanup: the canonical `PET_PRESENCE_TOPICS` + `PetPresenceTopic`
+// live in `./pet-presence.ts` (richer 10-topic schema). Removing the
+// narrower 3-topic duplicate that used to live here to fix the barrel
+// re-export conflict (TS2308).
 
 // ============================================================
 // §6 API 输入 / 输出 DTO

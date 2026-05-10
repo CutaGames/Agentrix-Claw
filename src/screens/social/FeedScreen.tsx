@@ -164,17 +164,19 @@ export function FeedScreen() {
     const { type, referenceId, referenceName } = post;
     if (type === 'skill_share' || type === 'install_success') {
       if (referenceId) {
-        (navigation as any).navigate('Discover', {
+        // 2026-05-10: use canonical Plaza tab; legacy `Discover` still aliased
+        (navigation as any).navigate('Plaza', {
           screen: 'SkillDetail',
           params: { skillId: referenceId, skillName: referenceName ?? 'Skill' },
         });
       }
     } else if (type === 'agent_deploy' || type === 'conversation_highlight') {
-      (navigation as any).navigate('Agent', { screen: 'AgentChat' });
+      // 2026-05-10: route to the new Summon tab (full-screen chat)
+      (navigation as any).navigate('Summon');
     } else if (type === 'task_complete') {
-      (navigation as any).navigate('Discover', { screen: 'TaskMarket' });
+      (navigation as any).navigate('Plaza', { screen: 'Tasks' });
     } else if (type === 'workflow_result') {
-      (navigation as any).navigate('Agent', { screen: 'WorkflowList' });
+      (navigation as any).navigate('Home', { screen: 'PetWorkflow' });
     }
   }, [navigation]);
 

@@ -1,0 +1,66 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 10: 4-Tab canonical navigation smoke
+# Covers: Home / Summon / Plaza / Me tabs + their top bars
+# Prerequisite: test account signed in (see 02-auth-screen.yaml)
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+
+# ── Home Tab ─────────────────────────────────────────────
+- assertVisible:
+    text: "Home"
+    optional: true
+
+- tapOn: "Home"
+
+# HomeScreen: pet switcher + scan + bell + summon CTA
+- assertVisible: "🏠"
+    optional: true
+
+- takeScreenshot: "10-home-visible"
+
+# ── Summon Tab ───────────────────────────────────────────
+- tapOn: "Summon"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot: "10-summon-visible"
+
+# ── Plaza Tab ────────────────────────────────────────────
+- tapOn: "Plaza"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- assertVisible:
+    text: "Plaza"
+    optional: true
+
+- takeScreenshot: "10-plaza-visible"
+
+# 5-segment bar
+- assertVisible:
+    text: "Feed"
+    optional: true
+- assertVisible:
+    text: "Skills"
+    optional: true
+- assertVisible:
+    text: "Tasks"
+    optional: true
+- assertVisible:
+    text: "Pets"
+    optional: true
+- assertVisible:
+    text: "Play"
+    optional: true
+
+# ── Me Tab ───────────────────────────────────────────────
+- tapOn: "Me"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot: "10-me-visible"

@@ -67,8 +67,11 @@ async function normalizeUploadPayload(file: {
   }
 
   try {
+    // 2026-05-10: expo-file-system@19 (SDK 54) removed the top-level
+    // `EncodingType` export. Use the plain string form, which is the
+    // supported public contract for both legacy and new APIs.
     const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: 'base64' as any,
     });
     return {
       uri: `data:${file.type || 'image/jpeg'};base64,${base64}`,

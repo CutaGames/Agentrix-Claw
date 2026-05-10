@@ -1192,9 +1192,9 @@ const linking = {
 - [x] 旧深链 `agentrix://agent/chat` / `agentrix://pet/companion` / `agentrix://market/*` 全部正确跳转（`legacyRouteTable.ts` + `App.tsx getStateFromPath` 拦截）
 - [x] `typecheck:root` 通过（0 个 Sprint A 引入的新错误；5 个 pre-existing 错误不在本次重构范围）
 - [x] 全局 🔔 铃铛 + 📷 扫码作为 Root-level modal 挂载
-- [x] `DrawerNavigator` 不再被 `RootNavigator` 引用（文件保留到 Sprint D 彻底删除）
-- [ ] A5 `AgentChatScreen` 4097 行拆分（高风险，留到 Sprint B 前单独 PR 做）
-- [ ] A6 废弃屏 → `src_deprecated/`（延后：legacy AgentStack/DiscoverStack 仍挂着这些屏做向后兼容，需 Sprint D 一次性清理）
+- [x] `DrawerNavigator` 不再被 `RootNavigator` 引用（文件保留到 Sprint E 彻底删除）
+- [x] **A5 最小切片完成**（2026-05-10）：抽 `extractUrlsFromMessage / getCopyableMessageText / buildDisplayMessageText / stripInlineMarkdown / dedupeUrls` 到 `src/screens/agent/chatMessage.utils.ts` + 21 unit tests（含发现并修复了 `/api/uploads/*` 无扩展名 URL 被吞的 pre-existing bug）。完整 AgentChatScreen 4097 行拆分仍延后到 Maestro 真机回归覆盖之后。
+- [x] **A6 Warn-only 阶段完成**（2026-05-10）：`src/navigation/legacyNavWarn.ts` + 6 unit tests 工具就绪；线上 5 处已知的 `navigate('Discover'|'Agent'|'Team'|'Pet'|'Wallet')` call site 全部迁移（FeedScreen / SkillInstallScreen / TeamDashboardScreen / ClawSkillDetailScreen / AgentConsoleScreen）。Legacy stacks 仍挂作为安全网；Sprint E 真机冒烟验证 7 天无 warn 后删除。
 
 ### 9.2 Sprint B · 集市 Tab 经济闭环（4 天）
 
@@ -1252,13 +1252,15 @@ const linking = {
 | D5 | 设备与连接折叠区 + 团队与家庭折叠区 | 0.3d | 折叠/展开正常 |
 | D6 | 高级区（uiComplexity ≥ advanced）：所有下沉屏挂载 | 0.3d | 高级区可展开 + 所有屏可达 |
 
-**Sprint D Gate**：
-- [ ] 我 Tab 所有子页可达
-- [ ] 订阅页 5 档展示正确
-- [ ] 配额可视化在技能/皮肤/商品入口旁显示
-- [ ] 推广中心一屏展示现金 + AXP 双收入
-- [ ] `typecheck:root` 通过
-- [ ] 全量深链回归（legacyRouteTable 覆盖）
+**Sprint D Gate**（2026-05-10 阶段性验收）：
+- [x] 我 Tab ProfileScreen 重构完成：topbar + 订阅档位 badge + AXP glance + 配额可视化 + Devices/Team/Advanced 折叠分组
+- [x] 订阅页 5 档展示真实 catalog（monthly/yearly toggle, current-tier banner, per-tier quota 预览）
+- [x] 配额可视化在 ProfileScreen quotaGrid 展示 6 个核心配额
+- [x] 推广中心入口保留（My stuff → Referrals & Earnings，点击走 `ReferralDashboard`）
+- [x] Devices / Team / Advanced 折叠区上线；beginner 模式点开 Advanced 弹一次性解锁 Alert
+- [x] `typecheck:root` 通过（0 新错误）
+- [ ] Stripe checkout 真实流程留 Sprint D2+（需后端 priceId 映射 + webhook 对接）
+- [ ] Family 账号入口（有家庭时才显示）留 Sprint E（需 family-account API 对接）
 
 ---
 

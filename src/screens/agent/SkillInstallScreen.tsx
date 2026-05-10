@@ -107,8 +107,9 @@ export function SkillInstallScreen() {
 
   const doInstall = async () => {
     if (!skillId) {
-      // No specific skill selected — navigate to marketplace to browse
-      (navigation as any).navigate('Discover', { screen: 'Marketplace' });
+      // No specific skill selected — navigate to Plaza marketplace to browse.
+      // 2026-05-10: legacy `Discover` alias still works but Plaza is canonical.
+      (navigation as any).navigate('Plaza', { screen: 'Skills' });
       return;
     }
     setInstalling(true);

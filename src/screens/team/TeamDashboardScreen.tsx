@@ -699,6 +699,9 @@ export function TeamDashboardScreen({ navigation }: Props) {
   }, [queryClient, t]);
 
   const openDesktopControl = useCallback(() => {
+    // 2026-05-10: DesktopControl still lives in the legacy Agent stack which
+    // is kept mounted as a hidden tab during the 4-tab migration (§7.7).
+    // Future: move DesktopControlScreen into MeStack → Devices sub-nav.
     (navigation as any).getParent?.()?.navigate('Agent', { screen: 'DesktopControl' });
   }, [navigation]);
 
