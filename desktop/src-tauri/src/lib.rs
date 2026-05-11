@@ -6,6 +6,7 @@ use tauri::tray::TrayIconBuilder;
 
 mod commands;
 mod computer_use;
+mod hardware_profile;
 mod pet_window;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1009,6 +1010,7 @@ pub fn run() {
             desktop_bridge_download_model,
             desktop_bridge_check_llama_server,
             desktop_bridge_download_llama_server,
+            hardware_profile::desktop_bridge_detect_hardware,
             // LSP sidecars
             desktop_bridge_lsp_status,
             desktop_bridge_start_lsp_sidecar,

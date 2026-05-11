@@ -5,6 +5,7 @@ import { useAuthStore } from "../services/store";
 import { pickWorkspaceFolder, getWorkspaceDir, setWorkspaceDir as saveWorkspaceDir } from "../services/workspace";
 import { readDesktopWakeWordConfig, resetDesktopWakeWordConfig, saveDesktopWakeWordConfig } from "../services/wakeWordConfig";
 import { LocalModelManager, LocalLLMSidecar, type LocalModelDownloadEvent } from "../services/localLLM";
+import ComputeNodeSection from "./ComputeNodeSection";
 import { useI18n } from "../i18n/I18nProvider";
 import { LOCALES, LOCALE_LABELS, type Locale } from "../i18n/strings";
 
@@ -408,6 +409,9 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
 
         {/* Local Models */}
         <LocalModelSection />
+
+        {/* Local compute node (D-MESH Phase 2) — opt-in */}
+        <ComputeNodeSection />
 
         {/* Living Pet (3D / VRM) */}
         <PetVrmSection />
