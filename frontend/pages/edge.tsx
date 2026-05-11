@@ -1,9 +1,7 @@
-import Head from 'next/head'
-import { useState } from 'react'
 import { useRouter } from 'next/router'
-import { Navigation } from '../components/ui/Navigation'
-import { Footer } from '../components/layout/Footer'
+import { MarketingLayout } from '../components/marketing/MarketingLayout'
 import { useLocalization } from '../contexts/LocalizationContext'
+import { buildSeo } from '../lib/seo'
 
 // 五层架构可视化组件
 function ArchitectureDiagram({ t }: { t: (obj: { zh: string; en: string }) => string }) {
@@ -323,15 +321,18 @@ const comparisonData = [
 export default function EdgePage() {
   const router = useRouter()
   const { t } = useLocalization()
+  const seo = buildSeo({
+    title: t({ zh: 'Agentrix Edge — AI 驱动的 POS 智能助手', en: 'Agentrix Edge — AI-Powered POS Smart Assistant' }),
+    description: t({
+      zh: 'Agentrix Edge：基于 Qwen3 0.6B 端侧模型的 POS AI Agent，支持语音收银、智能推荐、离线处理。',
+      en: 'Agentrix Edge: a POS AI agent powered by Qwen3 0.6B on-device — voice cashier, smart recommendations, offline-ready.',
+    }),
+    path: '/edge',
+  })
 
   return (
-    <>
-      <Head>
-        <title>Agentrix Edge - AI 驱动的 POS 智能助手</title>
-        <meta name="description" content="Agentrix Edge：基于 Qwen3 0.6B 端侧模型的 POS AI Agent，支持语音收银、智能推荐、离线处理。" />
-      </Head>
-      <Navigation />
-      <main className="bg-slate-950 text-white">
+    <MarketingLayout seo={seo}>
+      <div className="bg-slate-950 text-white">
         {/* Hero */}
         <section className="border-b border-white/10 bg-gradient-to-br from-blue-600/90 via-indigo-600/90 to-purple-600/90 text-white py-20">
           <div className="container mx-auto px-6 text-center space-y-6">
@@ -632,9 +633,8 @@ export default function EdgePage() {
             </div>
           </div>
         </section>
-      </main>
-      <Footer />
-    </>
+      </div>
+    </MarketingLayout>
   )
 }
 

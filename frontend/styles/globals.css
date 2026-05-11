@@ -4,36 +4,119 @@
 
 @import '../components/ui/ScrollbarHide.css';
 
-/* PayMind V3.0 全局主题 */
+/* ===== Agentrix v4 unified design tokens (Sprint 1) ===== */
 :root {
-  /* 主色 */
+  /* Background scale (darkest -> lightest) */
+  --ax-bg-base: #07080B;
+  --ax-bg-surface: #0B0F19;
+  --ax-bg-elevated: #0E1118;
+  --ax-bg-panel: #141925;
+  --ax-bg-overlay: rgba(7, 8, 11, 0.85);
+
+  /* Border scale */
+  --ax-border: #1C2230;
+  --ax-border-strong: #2D3748;
+
+  /* Text scale */
+  --ax-text-primary: #F1F5F9;
+  --ax-text-secondary: #CBD5E1;
+  --ax-text-muted: #94A3B8;
+  --ax-text-inverted: #07080B;
+
+  /* Brand accents */
+  --ax-accent: #22D3FF;          /* electric cyan — primary CTA / data */
+  --ax-accent-soft: #7EE9FF;
+  --ax-accent-warm: #F59E0B;     /* solar — Auto-Earn / warm CTA */
+  --ax-accent-warm-soft: #FBBF24;
+  --ax-purple: #7C3AED;          /* soul / pet */
+  --ax-purple-soft: #A78BFA;
+
+  /* Semantic */
+  --ax-success: #34D399;
+  --ax-warning: #FBBF24;
+  --ax-danger: #F87171;
+
+  /* Radii */
+  --ax-radius-sm: 8px;
+  --ax-radius-md: 12px;
+  --ax-radius-lg: 16px;
+  --ax-radius-xl: 20px;
+
+  /* ===== Legacy compat (PayMind V3.0) — DO NOT use in new code ===== */
   --primary-blue: #3B82F6;
   --primary-cyan: #06B6D4;
   --ai-neon-blue: #4FD1FF;
-  
-  /* 中性色 */
   --gray-900: #0F1115;
   --gray-800: #17191E;
   --gray-700: #1E2228;
   --gray-600: #2A2F36;
   --gray-100: #F5F7FA;
-  
-  /* 强调色 */
   --pay-green: #22C55E;
   --warning-yellow: #EAB308;
   --error-red: #EF4444;
-  
-  /* 渐变 */
   --ai-gradient: linear-gradient(135deg, #3B82F6 0%, #06B6D4 100%);
   --chain-gradient: linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%);
 }
 
 body {
-  color: var(--gray-100);
-  background: var(--gray-900);
-  font-family: 'Inter', 'OPPOSans', 'HarmonyOS Sans', '思源黑体', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--ax-text-primary);
+  background: var(--ax-bg-base);
+  font-family: var(--font-inter), 'Inter', 'PingFang SC', 'SF Pro SC', 'OPPOSans', 'HarmonyOS Sans', '思源黑体', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Subtle noise overlay via SVG data URI — adds analog warmth to flat dark surfaces */
+  background-image:
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-attachment: fixed;
+}
+
+/* ===== v4 utility classes ===== */
+.ax-glass {
+  background: rgba(20, 25, 37, 0.55);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ax-text-gradient {
+  background: linear-gradient(120deg, var(--ax-accent) 0%, var(--ax-purple-soft) 50%, var(--ax-accent-warm) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: ax-shimmer 4s ease-in-out infinite;
+}
+
+.ax-text-cyan {
+  background: linear-gradient(120deg, #7EE9FF 0%, #22D3FF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Mesh gradient backdrop for hero / important sections */
+.ax-mesh-bg {
+  background-color: var(--ax-bg-base);
+  background-image:
+    radial-gradient(at 27% 37%, rgba(124, 58, 237, 0.22) 0px, transparent 50%),
+    radial-gradient(at 97% 21%, rgba(34, 211, 255, 0.16) 0px, transparent 50%),
+    radial-gradient(at 52% 99%, rgba(245, 158, 11, 0.10) 0px, transparent 50%),
+    radial-gradient(at 10% 90%, rgba(34, 211, 255, 0.08) 0px, transparent 50%);
+}
+
+/* Grid lines decoration */
+.ax-grid-bg {
+  background-image:
+    linear-gradient(rgba(34, 211, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 255, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Soft focus ring for accessibility */
+.ax-focus-ring:focus-visible {
+  outline: 2px solid var(--ax-accent);
+  outline-offset: 2px;
+  border-radius: var(--ax-radius-sm);
 }
 
 /* 全局输入控件默认可读性 */

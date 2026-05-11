@@ -1,9 +1,8 @@
-import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { motion } from 'framer-motion'
-import { Navigation } from '../components/ui/Navigation'
-import { Footer } from '../components/layout/Footer'
+import { MarketingLayout } from '../components/marketing/MarketingLayout'
 import { useLocalization } from '../contexts/LocalizationContext'
+import { buildSeo } from '../lib/seo'
 import {
   Cloud, Laptop, Plug, Download, Smartphone, Terminal,
   CheckCircle, ArrowRight, Zap, HardDrive, Bot, ShoppingBag,
@@ -149,18 +148,18 @@ const colorMap: Record<string, string> = {
 export default function ClawPage() {
   const { t } = useLocalization()
   const router = useRouter()
+  const seo = buildSeo({
+    title: t({ zh: 'Agentrix Claw — 你的 AI Agent，随时随地', en: 'Agentrix Claw — Your AI Agent, Anywhere' }),
+    description: t({
+      zh: '一键云端部署 AI Agent，内置 5200+ Skill、任务集市与 X402 支付。活动期新用户免费赠送 10 GB 云端存储。',
+      en: 'Deploy AI Agents in one tap. 5200+ Skills, Task Market, X402 payments. New users get 10 GB free cloud storage.',
+    }),
+    path: '/claw',
+  })
 
   return (
-    <>
-      <Head>
-        <title>{t({ zh: 'Agentrix Claw — 你的 AI Agent，随时随地', en: 'Agentrix Claw — Your AI Agent, Anywhere' })}</title>
-        <meta name="description" content={t({ zh: '一键云端部署 AI Agent，内置 5200+ Skill、任务集市与 X402 支付。活动期新用户免费赠送 10 GB 云端存储。', en: 'Deploy AI Agents in one tap. 5200+ Skills, Task Market, X402 payments. New users get 10 GB free cloud storage.' })} />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </Head>
-
-      <Navigation />
-
-      <main className="bg-slate-950 text-white min-h-screen">
+    <MarketingLayout seo={seo}>
+      <div className="bg-slate-950 text-white min-h-screen">
 
         {/* ── HERO ─────────────────────────────────────────────────────────── */}
         <section className="relative min-h-[88vh] flex items-center pt-20 overflow-hidden">
@@ -549,9 +548,7 @@ export default function ClawPage() {
           </div>
         </section>
 
-      </main>
-
-      <Footer />
-    </>
+      </div>
+    </MarketingLayout>
   )
 }

@@ -1,5 +1,6 @@
 import type { AppProps } from 'next/app'
 import React, { useEffect } from 'react'
+import { Inter } from 'next/font/google'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Web3Provider } from '../contexts/Web3Context'
 import { PaymentProvider } from '../contexts/PaymentContext'
@@ -7,12 +8,21 @@ import { UserProvider } from '../contexts/UserContext'
 import { ToastProvider } from '../contexts/ToastContext'
 import { CartProvider } from '../contexts/CartContext'
 import { ErrorBoundary } from '../components/ui/ErrorBoundary'
+import { PageTransition } from '../components/ui/ax/PageTransition'
 // V7.0: 使用新的 SmartCheckout 组件，不再需要全局支付弹窗
 import '../styles/globals.css'
 import { AgentModeProvider } from '../contexts/AgentModeContext'
 import { LocalizationProvider } from '../contexts/LocalizationContext'
 import { CurrencyProvider } from '../contexts/CurrencyContext'
 import { I18nProvider } from '../lib/i18n/I18nProvider'
+
+// Self-hosted Inter via next/font (no network at runtime; CSS variable consumed by Tailwind)
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+  display: 'swap',
+  variable: '--font-inter',
+})
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -166,13 +176,20 @@ export default function App({ Component, pageProps, router }: AppProps) {
     </ErrorBoundary>
   )
 
-  return isAdminPage ? (
-    <AdminLayout>
-      <Component {...pageProps} />
-    </AdminLayout>
-  ) : (
-    <FullLayout>
-      <Component {...pageProps} />
-    </FullLayout>
+  // Skip page transition on /console/** (interferes with multi-data dashboard re-renders)
+  // and on auth callback routes (avoid double-flash during OAuth redirect).
+  const skipTransition = router.pathname.startsWith('/console') || router.pathname.startsWith('/auth/callback')
+  const Body = skipTransition
+    ? <Component {...pageProps} />
+    : <PageTransition><Component {...pageProps} /></PageTransition>
+
+  return (
+    <div className={`${inter.variable} font-sans`}>
+      {isAdminPage ? (
+        <AdminLayout>{Body}</AdminLayout>
+      ) : (
+        <FullLayout>{Body}</FullLayout>
+      )}
+    </div>
   )
 }

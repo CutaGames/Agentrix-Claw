@@ -1,8 +1,7 @@
-import Head from 'next/head'
 import { useRouter } from 'next/router'
-import { useState } from 'react'
-import { Navigation } from '../components/ui/Navigation'
-import { Footer } from '../components/layout/Footer'
+import { MarketingLayout } from '../components/marketing/MarketingLayout'
+import { buildSeo } from '../lib/seo'
+import { useLocalization } from '../contexts/LocalizationContext'
 
 const viewSteps = [
   { title: '01 · 对话捕捉', desc: 'Agent 监听用户意图，自动拉取商品、支付上下文与历史行为。' },
@@ -35,20 +34,19 @@ const panels = [
 
 export default function AgentExperience() {
   const router = useRouter()
+  const { t } = useLocalization()
+  const seo = buildSeo({
+    title: t({ zh: 'Agent 体验', en: 'Agent Experience' }),
+    description: t({
+      zh: 'Agentrix Agent 页面展示：对话、支付、资产、联盟在一个操作台完成。',
+      en: 'Agentrix Agent showcase: chat, payment, assets, affiliate — all in one workspace.',
+    }),
+    path: '/agent-experience',
+  })
 
   return (
-    <>
-      <Head>
-        <title>Agent 体验｜Agentrix</title>
-        <meta
-          name="description"
-          content="Agentrix Agent 页面展示：对话、支付、资产、联盟在一个操作台完成，真实还原 AI 商业体工作流。"
-        />
-      </Head>
-
-      <Navigation />
-
-      <main className="min-h-screen bg-slate-950 text-white">
+    <MarketingLayout seo={seo}>
+      <div className="min-h-screen bg-slate-950 text-white">
         <section className="border-b border-white/10 relative overflow-hidden">
           <div className="container mx-auto px-6 py-16 md:py-24 grid lg:grid-cols-2 gap-10 items-center">
             <div className="space-y-6">
@@ -247,10 +245,8 @@ export default function AgentExperience() {
             </div>
           </div>
         </section>
-      </main>
-
-      <Footer />
-    </>
+      </div>
+    </MarketingLayout>
   )
 }
 
