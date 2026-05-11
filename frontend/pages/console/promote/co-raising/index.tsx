@@ -1,5 +1,5 @@
 /**
- * Co-Raising Manager �?web console page for pet owners to create and
+ * Co-Raising Manager — web console page for pet owners to create and
  * manage co-raising invite links. Mirrors the mobile CoRaisingInviteScreen.
  *
  * Per docs/WEB_REFACTOR_PLAN_2026-05 §6 + docs/MOBILE_REFACTOR_AND_ECOSYSTEM_PLAN_2026-05 §6.1
@@ -61,7 +61,7 @@ export default function CoRaisingManagePage(): React.ReactElement {
   const handleCreate = useCallback(async () => {
     if (!agentId.trim()) {
       showToast(
-        t({ zh: '请填写主�?Agent ID', en: 'Please enter your pet agent ID' }),
+        t({ zh: '请填写主宠 Agent ID', en: 'Please enter your pet agent ID' }),
         'warning',
       );
       return;
@@ -88,7 +88,7 @@ export default function CoRaisingManagePage(): React.ReactElement {
     async (invite: CoRaisingInviteView) => {
       try {
         await navigator.clipboard.writeText(invite.share_url);
-        showToast(t({ zh: '链接已复�?, en: 'Link copied' }), 'success');
+        showToast(t({ zh: '链接已复制', en: 'Link copied' }), 'success');
       } catch {
         showToast(t({ zh: '复制失败', en: 'Copy failed' }), 'error');
       }
@@ -117,12 +117,12 @@ export default function CoRaisingManagePage(): React.ReactElement {
 
   const handleCancel = useCallback(
     async (invite: CoRaisingInviteView) => {
-      if (!confirm(t({ zh: '取消邀请？链接将停止接受新喂养者�?, en: 'Cancel invite? Link will stop accepting new feeders.' }))) {
+      if (!confirm(t({ zh: '取消邀请？链接将停止接受新喂养者。', en: 'Cancel invite? Link will stop accepting new feeders.' }))) {
         return;
       }
       try {
         await coRaisingApi.cancelInvite(invite.id);
-        showToast(t({ zh: '已取�?, en: 'Cancelled' }), 'success');
+        showToast(t({ zh: '已取消', en: 'Cancelled' }), 'success');
         await refresh();
       } catch (err: any) {
         showToast(err?.response?.data?.message ?? err?.message ?? 'Cancel failed', 'error');
@@ -138,29 +138,29 @@ export default function CoRaisingManagePage(): React.ReactElement {
   const totalFeeds = invites.reduce((s, i) => s + i.total_feeds, 0);
 
   return (
-    <ConsoleLayout title={t({ zh: '🌱 共养邀�?, en: '🌱 Co-Raising' })}>
+    <ConsoleLayout title={t({ zh: '🌱 共养邀请', en: '🌱 Co-Raising' })}>
       <p className="mb-6 text-sm text-agentrix-fog">
         {t({
-          zh: '邀请好友帮喂你的主�?�?宠物成长更快 �?未来任务收益按比例分给好友。蚂蚁森林式的轻互动�?,
-          en: 'Friends feed your pet �?it levels up faster �?they share future task revenue. Ant-Forest-style lightweight interaction.',
+          zh: '邀请好友帮喂你的主宠 → 宠物成长更快 → 未来任务收益按比例分给好友。蚂蚁森林式的轻互动。',
+          en: 'Friends feed your pet → it levels up faster → they share future task revenue. Ant-Forest-style lightweight interaction.',
         })}
       </p>
 
       {/* Stats row */}
       <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
         <Stat
-          label={t({ zh: '总邀�?, en: 'Total Invites' })}
+          label={t({ zh: '总邀请', en: 'Total Invites' })}
           value={String(totalInvites)}
           icon={<LinkIcon size={16} />}
         />
         <Stat
-          label={t({ zh: '活跃�?, en: 'Active' })}
+          label={t({ zh: '活跃中', en: 'Active' })}
           value={String(activeInvites)}
           icon={<Sprout size={16} />}
           accent="success"
         />
         <Stat
-          label={t({ zh: '总喂养�?, en: 'Feeders' })}
+          label={t({ zh: '总喂养者', en: 'Feeders' })}
           value={String(totalFeeders)}
           icon={<Users size={16} />}
         />
@@ -176,7 +176,7 @@ export default function CoRaisingManagePage(): React.ReactElement {
       <Card className="mb-6">
         <CardHeader
           icon={<Sprout size={18} className="text-agentrix-electric" />}
-          title={t({ zh: '创建新邀�?, en: 'New Invite' })}
+          title={t({ zh: '创建新邀请', en: 'New Invite' })}
         />
         <CardBody>
           <div className="grid gap-4 md:grid-cols-3">
@@ -193,7 +193,7 @@ export default function CoRaisingManagePage(): React.ReactElement {
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-agentrix-mist">
-                {t({ zh: '分成（基点，500 = 5%�?, en: 'Split (bps, 500 = 5%)' })}
+                {t({ zh: '分成（基点，500 = 5%）', en: 'Split (bps, 500 = 5%)' })}
               </label>
               <input
                 value={splitBps}
@@ -204,7 +204,7 @@ export default function CoRaisingManagePage(): React.ReactElement {
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-agentrix-mist">
-                {t({ zh: '最大喂养者（0 = 不限�?, en: 'Max feeders (0 = unlimited)' })}
+                {t({ zh: '最大喂养者（0 = 不限）', en: 'Max feeders (0 = unlimited)' })}
               </label>
               <input
                 value={maxFeeders}
@@ -217,12 +217,12 @@ export default function CoRaisingManagePage(): React.ReactElement {
           <div className="mt-4 flex items-center justify-between">
             <p className="text-xs text-agentrix-mist">
               {t({
-                zh: '提示：每只宠�?= 一�?AgentAccount。在移动端或 /console/agents 可以查到 Agent ID�?,
+                zh: '提示：每只宠物 = 一个 AgentAccount。在移动端或 /console/agents 可以查到 Agent ID。',
                 en: 'Tip: each pet = one AgentAccount. Find the Agent ID in mobile app or /console/agents.',
               })}
             </p>
             <Button onClick={handleCreate} loading={creating} variant="primary">
-              {t({ zh: '生成邀请链�?, en: 'Create invite' })}
+              {t({ zh: '生成邀请链接', en: 'Create invite' })}
             </Button>
           </div>
         </CardBody>
@@ -231,13 +231,13 @@ export default function CoRaisingManagePage(): React.ReactElement {
       {/* Invites list */}
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-bold uppercase tracking-wider text-agentrix-mist">
-          {t({ zh: '我的邀�?, en: 'My Invites' })}
+          {t({ zh: '我的邀请', en: 'My Invites' })}
         </h2>
         <Link
           href="/console/promote/co-raising/activity"
           className="text-xs font-medium text-agentrix-electric hover:underline"
         >
-          {t({ zh: '查看喂养活动 �?, en: 'View feeding activity �? })}
+          {t({ zh: '查看喂养活动 →', en: 'View feeding activity →' })}
         </Link>
       </div>
 
@@ -255,11 +255,11 @@ export default function CoRaisingManagePage(): React.ReactElement {
         <div className="rounded-xl border border-dashed border-agentrix-inkLine bg-agentrix-inkSoft/50 p-10 text-center">
           <Sprout size={48} className="mx-auto text-agentrix-electric/60" />
           <h3 className="mt-4 text-base font-bold">
-            {t({ zh: '还没有邀�?, en: 'No invites yet' })}
+            {t({ zh: '还没有邀请', en: 'No invites yet' })}
           </h3>
           <p className="mt-2 text-xs text-agentrix-mist">
             {t({
-              zh: '在上方创建你的第一个邀请，分享给朋友。他们帮你喂宠，双方都能�?AXP�?,
+              zh: '在上方创建你的第一个邀请，分享给朋友。他们帮你喂宠，双方都能赚 AXP！',
               en: 'Create your first invite above and share with friends. They feed your pet, you both earn AXP!',
             })}
           </p>
@@ -304,13 +304,13 @@ function InviteRow({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <code className="text-sm font-bold text-white font-mono">
-                {invite.token.slice(0, 12)}�?
+                {invite.token.slice(0, 12)}…
               </code>
               <Badge variant={statusVariant as any}>{invite.status}</Badge>
             </div>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-agentrix-mist">
               <span>
-                {t({ zh: '喂养�?, en: 'Feeders' })}:{' '}
+                {t({ zh: '喂养者', en: 'Feeders' })}:{' '}
                 <span className="text-white font-medium">
                   {invite.feeders_count}
                   {invite.max_feeders > 0 ? ` / ${invite.max_feeders}` : ''}

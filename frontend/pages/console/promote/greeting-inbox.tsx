@@ -1,5 +1,5 @@
 /**
- * Greeting Inbox �?received greeting cards from friends.
+ * Greeting Inbox — received greeting cards from friends.
  *
  * Per docs/WEB_REFACTOR_PLAN_2026-05 §6 + docs/MOBILE_REFACTOR_AND_ECOSYSTEM_PLAN_2026-05 §6.2
  */
@@ -10,14 +10,14 @@ import { useLocalization } from '../../../contexts/LocalizationContext';
 import { Card, CardBody, Stat, Badge } from '../../../components/ui/ax';
 import { Gift, ArrowLeft, Sparkles } from 'lucide-react';
 
-// Mock data �?will wire to GET /api/v1/pet/greeting/inbox once backend is public
+// Mock data — will wire to GET /api/v1/pet/greeting/inbox once backend is public
 const MOCK_CARDS = [
   {
     id: '1',
     sender: 'Alex',
     petName: 'Alfred',
     template: 'birthday',
-    message: '祝你生日快乐！一起来养我�?🎂',
+    message: '祝你生日快乐！一起来养我吧 🎂',
     emotion: '🎂',
     axpAwarded: 20,
     redeemed: false,
@@ -39,7 +39,7 @@ const MOCK_CARDS = [
     sender: 'Mike',
     petName: 'Shadow',
     template: 'programmer_day',
-    message: '代码之神保佑�?bug 永除 🙏',
+    message: '代码之神保佑你 bug 永除 🙏',
     emotion: '👾',
     axpAwarded: 30,
     redeemed: false,
@@ -57,7 +57,7 @@ export default function GreetingInboxPage(): React.ReactElement {
   );
 
   return (
-    <ConsoleLayout title={t({ zh: '🎁 贺卡收件�?, en: '🎁 Greeting Inbox' })}>
+    <ConsoleLayout title={t({ zh: '🎁 贺卡收件箱', en: '🎁 Greeting Inbox' })}>
       <div className="mb-6">
         <Link
           href="/console/promote"
@@ -70,7 +70,7 @@ export default function GreetingInboxPage(): React.ReactElement {
 
       <p className="mb-6 text-sm text-agentrix-fog">
         {t({
-          zh: '好友发给你的宠物贺卡。点击收下即可获�?AXP 奖励�?,
+          zh: '好友发给你的宠物贺卡。点击收下即可获得 AXP 奖励。',
           en: 'Greeting cards from friends. Click accept to claim AXP rewards.',
         })}
       </p>
@@ -90,7 +90,7 @@ export default function GreetingInboxPage(): React.ReactElement {
           accent="warm"
         />
         <Stat
-          label={t({ zh: '总收�?, en: 'Total Received' })}
+          label={t({ zh: '总收到', en: 'Total Received' })}
           value={String(MOCK_CARDS.length)}
           icon={<Gift size={16} />}
         />
@@ -108,7 +108,7 @@ export default function GreetingInboxPage(): React.ReactElement {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-bold text-white">
-                      {card.sender} �?{t({ zh: '�?, en: 'You' })}
+                      {card.sender} → {t({ zh: '你', en: 'You' })}
                     </h3>
                     {card.redeemed ? (
                       <Badge variant="subtle">{t({ zh: '已收', en: 'Claimed' })}</Badge>
@@ -126,7 +126,7 @@ export default function GreetingInboxPage(): React.ReactElement {
                     </span>
                     {card.redeemed ? (
                       <span className="text-xs font-medium text-agentrix-fog">
-                        +{card.axpAwarded} AXP {t({ zh: '已领�?, en: 'claimed' })}
+                        +{card.axpAwarded} AXP {t({ zh: '已领取', en: 'claimed' })}
                       </span>
                     ) : (
                       <button className="rounded-full bg-agentrix-solar px-4 py-1.5 text-xs font-bold text-agentrix-ink transition-transform hover:-translate-y-0.5">
@@ -145,8 +145,8 @@ export default function GreetingInboxPage(): React.ReactElement {
       {/* Footer hint */}
       <div className="mt-8 rounded-xl border border-dashed border-agentrix-inkLine bg-agentrix-inkSoft/50 p-5 text-center text-xs text-agentrix-mist">
         {t({
-          zh: '💡 想给朋友发贺卡？在移动端 Plaza �?贺卡 发送。Web 端撰写器即将推出�?,
-          en: '💡 Want to send a card to a friend? Use mobile Plaza �?Greeting. Web composer coming soon.',
+          zh: '💡 想给朋友发贺卡？在移动端 Plaza → 贺卡 发送。Web 端撰写器即将推出。',
+          en: '💡 Want to send a card to a friend? Use mobile Plaza → Greeting. Web composer coming soon.',
         })}
       </div>
     </ConsoleLayout>
