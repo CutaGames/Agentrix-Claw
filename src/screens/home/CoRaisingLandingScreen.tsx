@@ -87,8 +87,15 @@ export function CoRaisingLandingScreen() {
   if (!token) {
     return (
       <View style={styles.center}>
+        <Text style={styles.emoji}>🤝</Text>
+        <Text style={styles.title}>
+          {t({ en: 'Co-Raising', zh: '共养' })}
+        </Text>
         <Text style={styles.body}>
-          {t({ en: 'Invalid invite link.', zh: '无效的邀请链接。' })}
+          {t({
+            en: 'Open a co-raising invite link to feed a friend\'s pet and earn AXP together.',
+            zh: '打开共养邀请链接，帮朋友喂宠，一起赚 AXP。',
+          })}
         </Text>
       </View>
     );

@@ -48,7 +48,8 @@
         "NSHealthShareUsageDescription": "Agentrix reads heart rate, blood oxygen and HRV to keep your AI pet's emotions accurate and to power L2 wrist-tap signing.",
         "NSHealthUpdateUsageDescription": "Agentrix never writes back to Apple Health.",
         "NSMotionUsageDescription": "Used to detect raise-wrist gestures for approving requests securely.",
-        "NSFaceIDUsageDescription": "Face ID is used to sign payments and approvals triggered from your watch."
+        "NSFaceIDUsageDescription": "Face ID is used to sign payments and approvals triggered from your watch.",
+        "NFCReaderUsageDescription": "Agentrix uses NFC to redeem blind box cards and pair toy devices."
       }
     },
     "android": {
@@ -60,6 +61,7 @@
       "permissions": [
         "BLUETOOTH_CONNECT",
         "BLUETOOTH_SCAN",
+        "NFC_TAG_DISCOVERED",
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
@@ -146,6 +148,12 @@
         }
       ],
       [
+        "react-native-nfc-manager",
+        {
+          "nfcPermission": "Agentrix uses NFC to redeem blind box cards and pair toy devices."
+        }
+      ],
+      [
         "./plugins/withLlamaRN",
         {
           "enableEntitlements": true,
@@ -154,7 +162,9 @@
           "enableOpenCL": true
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      "rive-react-native",
+      "expo-gl"
     ],
     "extra": {
       "wakeWord": {

@@ -12,13 +12,16 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  TouchableOpacity,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { listMyCoRaisingInvites, CoRaisingInviteView } from '../../services/coraising.api';
 
 export function CoRaisingActivityScreen() {
+  const navigation = useNavigation<any>();
   const { t } = useI18n();
   const invitesQ = useQuery({
     queryKey: ['coraising-invites'],
@@ -44,12 +47,29 @@ export function CoRaisingActivityScreen() {
       {invitesQ.isLoading && items.length === 0 ? (
         <ActivityIndicator color={colors.accent} style={{ marginTop: 20 }} />
       ) : items.length === 0 ? (
-        <Text style={styles.empty}>
-          {t({
-            en: 'No co-raising invites yet. Create one to start seeing activity here.',
-            zh: '还没有共养邀请。创建一个开始看数据。',
-          })}
-        </Text>
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyEmoji}>📋</Text>
+          <Text style={styles.emptyTitle}>
+            {t({
+              en: 'No activity yet',
+              zh: '暂无活动',
+            })}
+          </Text>
+          <Text style={styles.emptyBody}>
+            {t({
+              en: 'Once friends start feeding your pet through co-raising invites, their activity will appear here.',
+              zh: '当朋友通过共养邀请开始喂养你的宠物后，活动记录会显示在这里。',
+            })}
+          </Text>
+          <TouchableOpacity
+            style={styles.emptyCta}
+            onPress={() => navigation.navigate('CoRaisingInvite')}
+          >
+            <Text style={styles.emptyCtaText}>
+              {t({ en: 'Create an invite', zh: '创建邀请' })}
+            </Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         items.map((inv) => <Row key={inv.id} invite={inv} t={t} />)
       )}
@@ -87,14 +107,33 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 40 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary, marginBottom: 16 },
-  empty: {
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  emptyEmoji: { fontSize: 56, marginBottom: 12 },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyBody: {
     fontSize: 13,
     color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 20,
-    marginTop: 40,
-    paddingHorizontal: 20,
+    marginBottom: 16,
   },
+  emptyCta: {
+    backgroundColor: colors.accent,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  emptyCtaText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   row: {
     backgroundColor: colors.bgCard,
     borderRadius: 12,

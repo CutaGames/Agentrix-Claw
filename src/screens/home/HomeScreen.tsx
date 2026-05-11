@@ -24,7 +24,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Pressable,
-  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -36,6 +35,7 @@ import { colors } from '../../theme/colors';
 import { fetchAxpBalance } from '../../services/axp.api';
 import { fetchMyQuota } from '../../services/subscription.api';
 import { CheckinCard } from './CheckinCard';
+import { PetRenderer, type PetClan } from '../../components/pet/PetRiveRenderer';
 import type { HomeStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<HomeStackParamList, 'HomeRoot'>;
@@ -76,6 +76,7 @@ export function HomeScreen() {
   const petXpNext = 100;
   const petEmotion = 'calm';
   const petEnergy = 50;
+  const petClan: PetClan = (activeInstance as any)?.clan || 'A';
 
   // Sprint C: live AXP balance glance
   const axpBalanceQ = useQuery({
@@ -136,11 +137,15 @@ export function HomeScreen() {
         </View>
       </View>
 
-      {/* ── Pet hero (status + 3D placeholder) ─────────────────── */}
+      {/* ── Pet hero (status + Rive renderer) ─────────────────── */}
       <Pressable style={styles.hero} onPress={() => navigation.navigate('PetCompanion')}>
         <View style={styles.petVisual}>
-          <Text style={styles.petEmojiLarge}>🐾</Text>
-          <Text style={styles.petSubLabel}>{t({ en: 'Tap to view', zh: '点击查看详情' })}</Text>
+          <PetRenderer
+            clan={petClan}
+            emotion={petEmotion}
+            width={120}
+            height={120}
+          />
         </View>
         <View style={styles.petStatusRow}>
           <Text style={styles.petMoodBadge}>😊 {petEmotion}</Text>
@@ -360,8 +365,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 12,
   },
-  petEmojiLarge: { fontSize: 72, marginBottom: 4 },
-  petSubLabel: { fontSize: 11, color: colors.textMuted },
   petStatusRow: {
     flexDirection: 'row',
     gap: 8,

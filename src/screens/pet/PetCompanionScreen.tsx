@@ -7,11 +7,12 @@
  * Live2D / Skia heavy renderer is not yet bundled (待 license)，先用纯 React
  * Native 的颜色 + 缓动模拟 6+ 表情，保持视觉一致。
  */
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Animated, Easing, Pressable } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { apiFetch } from '../../services/api';
 import { colors } from '../../theme/colors';
+import { PetRenderer, type PetClan } from '../../components/pet/PetRiveRenderer';
 
 type PetEmotion =
   | 'calm' | 'happy' | 'excited' | 'focused'
@@ -24,25 +25,12 @@ interface PetState {
   intimacy_xp: number;
   primary_agent_id?: string;
   updated_at?: number;
+  clan?: PetClan;
 }
-
-const EMOTION_PALETTE: Record<PetEmotion, { body: string; cheek: string; mood: string }> = {
-  calm:      { body: '#a78bfa', cheek: '#fda4af', mood: '😌' },
-  happy:     { body: '#34d399', cheek: '#fda4af', mood: '😄' },
-  excited:   { body: '#fbbf24', cheek: '#fb7185', mood: '🤩' },
-  focused:   { body: '#818cf8', cheek: '#a5b4fc', mood: '🧐' },
-  concerned: { body: '#f87171', cheek: '#fecaca', mood: '😟' },
-  tired:     { body: '#94a3b8', cheek: '#cbd5e1', mood: '😪' },
-  love:      { body: '#f472b6', cheek: '#fda4af', mood: '🥰' },
-  sad:       { body: '#60a5fa', cheek: '#bae6fd', mood: '😢' },
-  angry:     { body: '#ef4444', cheek: '#fca5a5', mood: '😠' },
-  sleepy:    { body: '#64748b', cheek: '#94a3b8', mood: '😴' },
-};
 
 export function PetCompanionScreen() {
   const navigation = useNavigation<any>();
   const [pet, setPet] = useState<PetState | null>(null);
-  const scale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     let cancelled = false;
@@ -60,18 +48,6 @@ export function PetCompanionScreen() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  // breathing animation
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(scale, { toValue: 1.05, duration: 1800, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(scale, { toValue: 1.0, duration: 1800, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [scale]);
-
   const triggerInteraction = async (kind: 'double_click' | 'tap' | 'voice_greet') => {
     try {
       const xpMap: Record<string, number> = { double_click: 5, tap: 1, voice_greet: 1 };
@@ -85,10 +61,10 @@ export function PetCompanionScreen() {
   };
 
   const emotion = pet?.emotion ?? 'calm';
-  const palette = EMOTION_PALETTE[emotion];
   const lv = pet?.intimacy_level ?? 0;
   const xp = pet?.intimacy_xp ?? 0;
   const intensity = pet?.emotion_intensity ?? 0;
+  const clan: PetClan = pet?.clan ?? 'A';
 
   return (
     <View style={styles.container}>
@@ -100,20 +76,12 @@ export function PetCompanionScreen() {
         onLongPress={() => triggerInteraction('double_click')}
         style={({ pressed }) => [styles.petWrap, pressed && { opacity: 0.85 }]}
       >
-        <Animated.View
-          style={[
-            styles.petBody,
-            {
-              backgroundColor: palette.body,
-              transform: [{ scale }],
-              shadowColor: palette.body,
-              shadowOpacity: 0.35 + intensity * 0.15,
-              shadowRadius: 18 + intensity * 6,
-            },
-          ]}
-        >
-          <Text style={styles.petMood}>{palette.mood}</Text>
-        </Animated.View>
+        <PetRenderer
+          clan={clan}
+          emotion={emotion}
+          width={180}
+          height={180}
+        />
       </Pressable>
 
       <View style={styles.intimacyCard}>
@@ -165,13 +133,6 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 22, fontWeight: '700', marginBottom: 4 },
   subtitle: { color: colors.textSecondary, fontSize: 13, marginBottom: 32, textTransform: 'capitalize' },
   petWrap: { marginBottom: 32 },
-  petBody: {
-    width: 180, height: 180, borderRadius: 90,
-    alignItems: 'center', justifyContent: 'center',
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 12,
-  },
-  petMood: { fontSize: 80 },
   intimacyCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: 'rgba(255,255,255,0.05)',

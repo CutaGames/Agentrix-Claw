@@ -22,9 +22,14 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useQuery } from '@tanstack/react-query';
 import { useI18n } from '../../stores/i18nStore';
 import { useNotificationStore } from '../../stores/notificationStore';
+import { useAuthStore } from '../../stores/authStore';
 import { colors } from '../../theme/colors';
+import { fetchAxpBalance } from '../../services/axp.api';
+import { FeaturedSkinsCarousel } from '../../components/plaza/FeaturedSkinsCarousel';
+import { PlazaSearchModal } from '../../components/plaza/PlazaSearchModal';
 import type { PlazaStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<PlazaStackParamList, 'PlazaRoot'>;
@@ -43,26 +48,52 @@ export function PlazaScreen() {
   const { t } = useI18n();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const approvalCount = useNotificationStore((s) => s.approvalCount);
+  const isAuthenticated = useAuthStore((s) => !!s.token);
   const [active, setActive] = useState<Segment>('feed');
+  const [searchVisible, setSearchVisible] = useState(false);
+
+  // AXP balance (Task 3.6)
+  const { data: axpData } = useQuery({
+    queryKey: ['axp-balance'],
+    queryFn: fetchAxpBalance,
+    enabled: isAuthenticated,
+    staleTime: 60_000,
+  });
 
   const openInbox = useCallback(() => {
     (navigation as any).getParent?.()?.getParent?.()?.navigate('Inbox');
   }, [navigation]);
 
-  const openScan = useCallback(() => {
-    (navigation as any).getParent?.()?.getParent?.()?.navigate('Scan');
+  const openSearch = useCallback(() => {
+    setSearchVisible(true);
+  }, []);
+
+  const openAxpCenter = useCallback(() => {
+    (navigation as any).getParent?.()?.getParent?.()?.navigate('Me', { screen: 'AxpCenter' });
   }, [navigation]);
 
   const combinedUnread = unreadCount + approvalCount;
+  const showAxpBalance = isAuthenticated && axpData && axpData.balance > 0;
 
   return (
     <View style={styles.container}>
+      {/* Unified Search Modal (Task 3.7) */}
+      <PlazaSearchModal visible={searchVisible} onClose={() => setSearchVisible(false)} />
+
       {/* Top bar */}
       <View style={styles.topBar}>
         <Text style={styles.topBarTitle}>🎪 {t({ en: 'Plaza', zh: '集市' })}</Text>
         <View style={styles.topBarActions}>
-          <TouchableOpacity style={styles.iconBtn} onPress={openScan}>
-            <Text style={styles.iconBtnText}>📷</Text>
+          {/* AXP Balance pill (Task 3.6) */}
+          {showAxpBalance && (
+            <TouchableOpacity style={styles.axpPill} onPress={openAxpCenter}>
+              <Text style={styles.axpPillText}>
+                💎 {axpData.balance.toLocaleString()}
+              </Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.iconBtn} onPress={openSearch}>
+            <Text style={styles.iconBtnText}>🔍</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.iconBtn} onPress={openInbox}>
             <Text style={styles.iconBtnText}>🔔</Text>
@@ -198,6 +229,9 @@ function TasksPreview({ navigation, t }: { navigation: Nav; t: any }) {
 function PetsPreview({ navigation, t }: { navigation: Nav; t: any }) {
   return (
     <>
+      {/* Featured Skins Carousel (Sprint 3 Task 3.2) */}
+      <FeaturedSkinsCarousel />
+
       <SectionCard
         emoji="🎨"
         title={t({ en: 'Skin Auction (Phase 1 MVP)', zh: '皮肤拍卖（Phase 1）' })}
@@ -270,6 +304,18 @@ const styles = StyleSheet.create({
   },
   topBarTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary },
   topBarActions: { flexDirection: 'row', gap: 8 },
+  axpPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EAB30818',
+    borderWidth: 1,
+    borderColor: '#EAB30840',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    height: 32,
+  },
+  axpPillText: { fontSize: 12, fontWeight: '700', color: '#EAB308' },
   iconBtn: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: colors.bgCard,

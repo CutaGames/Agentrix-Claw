@@ -16,6 +16,7 @@ import { SoulPickerScreen } from '../screens/pet/SoulPickerScreen';
 import { BreedScreen } from '../screens/pet/BreedScreen';
 import { SkinMarketplaceScreen } from '../screens/pet/SkinMarketplaceScreen';
 import { PetTeamScreen } from '../screens/pet/PetTeamScreen';
+import { NfcRedeemScreen } from '../screens/pet/NfcRedeemScreen';
 
 export type PetStackParamList = {
   PetHub: undefined;
@@ -26,6 +27,7 @@ export type PetStackParamList = {
   Breed: undefined;
   SkinMarketplace: undefined;
   PetTeam: undefined;
+  NfcRedeem: undefined;
 };
 
 const Stack = createNativeStackNavigator<PetStackParamList>();
@@ -80,6 +82,11 @@ export function PetStackNavigator() {
         name="PetTeam"
         component={PetTeamScreen}
         options={{ title: t({ en: 'Pet Team', zh: '萌宠团队' }) }}
+      />
+      <Stack.Screen
+        name="NfcRedeem"
+        component={NfcRedeemScreen}
+        options={{ title: t({ en: 'NFC Blind Box', zh: 'NFC 盲盒' }) }}
       />
     </Stack.Navigator>
   );

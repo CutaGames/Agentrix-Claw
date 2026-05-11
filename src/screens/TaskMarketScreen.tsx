@@ -401,6 +401,12 @@ export default function TaskMarketScreen() {
             <Text style={styles.budgetLabel}>{tr('Bounty', '悬赏')}</Text>
             <Text style={styles.budgetValue}>{formatBudget(item.budget, item.currency)}</Text>
           </View>
+          {/* AXP Bonus badge (Sprint 3 Task 3.5) */}
+          {(item as any).axpBonus != null && (item as any).axpBonus > 0 && (
+            <View style={styles.axpBonusBadge}>
+              <Text style={styles.axpBonusText}>+{(item as any).axpBonus} AXP</Text>
+            </View>
+          )}
           {daysLeft !== null && (
             <View style={styles.deadlineBox}>
               <Text style={styles.deadlineLabel}>{tr('Due', '截止')}</Text>
@@ -730,6 +736,16 @@ const styles = StyleSheet.create({
   budgetBox: {},
   budgetLabel: { fontSize: 10, color: colors.muted, marginBottom: 2 },
   budgetValue: { fontSize: 18, fontWeight: '800', color: colors.success },
+  axpBonusBadge: {
+    backgroundColor: '#EAB30818',
+    borderWidth: 1,
+    borderColor: '#EAB30840',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignSelf: 'flex-end',
+  },
+  axpBonusText: { fontSize: 11, fontWeight: '700', color: '#EAB308' },
   deadlineBox: {},
   deadlineLabel: { fontSize: 10, color: colors.muted, marginBottom: 2 },
   deadlineValue: { fontSize: 14, fontWeight: '600', color: colors.text },

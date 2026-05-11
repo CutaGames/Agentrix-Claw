@@ -46,6 +46,9 @@ import { ShareCardScreen } from '../screens/ShareCardScreen';
 import { CoRaisingInviteScreen } from '../screens/home/CoRaisingInviteScreen';
 import { CoRaisingLandingScreen } from '../screens/home/CoRaisingLandingScreen';
 
+// G1 Photo Mimic Game
+import { PhotoMimicSeasonScreen } from '../screens/plaza/PhotoMimicSeasonScreen';
+
 import type { PlazaStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<PlazaStackParamList>();
@@ -183,6 +186,13 @@ export function PlazaStackNavigator() {
         name="Predict"
         component={PredictScreen}
         options={{ title: t({ en: 'Predict', zh: '预测' }) }}
+      />
+
+      {/* G1 Photo Mimic Game (docs/G1_PHOTO_MIMIC_GAME_2026-05) */}
+      <Stack.Screen
+        name="PhotoMimic"
+        component={PhotoMimicSeasonScreen}
+        options={{ title: t({ en: 'Photo Mimic', zh: '宠物模仿秀' }) }}
       />
 
       {/* Co-Raising from Plaza entry ───────────────────────── */}

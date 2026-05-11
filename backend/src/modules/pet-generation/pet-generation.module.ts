@@ -15,6 +15,7 @@ import { DesktopSyncModule } from '../desktop-sync/desktop-sync.module';
 import { PetSkinModule } from '../pet-skin/pet-skin.module';
 import { AgentSession } from '../../entities/agent-session.entity';
 import { AgentMessage } from '../../entities/agent-message.entity';
+import { ScanModule } from './scan/scan.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AgentMessage } from '../../entities/agent-message.entity';
     DesktopSyncModule,
     PetSkinModule,
     TierRouterModule,
+    ScanModule,
   ],
   controllers: [PetGenerationController, PetBreedController, PetAssetProxyController],
   providers: [PetGenerationService, MeshyProvider, Hunyuan3DProvider, VrmAutoRigProvider],

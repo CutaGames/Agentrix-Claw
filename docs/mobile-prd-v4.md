@@ -225,7 +225,124 @@ V3 §10 的 iOS App Intents / Android App Actions / 小艺 / 鸿蒙意图全部�
 
 ---
 
-## 11. 与 V3 引用
+## 11. Marketplace Ecosystem Integration (V4.1 增量)
+
+> Source: Marketplace Ecosystem spec (`.kiro/specs/marketplace-ecosystem/design.md`) + Mobile Refactor whitepaper.
+
+### 11.1 Official Platform Pet Skins (官方预制皮肤)
+
+18 official platform skins covering all 6 Clans (3 per clan):
+
+| Property | Value |
+|----------|-------|
+| Total skins | 18 (3 × 6 clans) |
+| Pricing | 500–3000 AXP (equivalent to $0.50–$3.00) |
+| Payment | AXP points (partial or full) |
+| Source | `platform` |
+| Visibility | `public` |
+| Moderation status | `approved` |
+| Featured | Highlighted in showcase carousel |
+
+Purpose: demonstrate AXP point value to users and seed the marketplace with high-quality content.
+
+### 11.2 Web-Mobile Transaction Architecture (跨端交易架构)
+
+| Dimension | Web | Mobile |
+|-----------|-----|--------|
+| Role | Complete transaction loop | Hub (companion + moderation + viral sharing + can also transact) |
+| Checkout | Cart → Checkout → SmartCheckout (hybrid payment) → Order | In-app checkout (Stripe/Crypto via WebBrowser) or redirect to web |
+| Marketplace | Full browse + purchase + list | Browse + purchase + equip + simplified listing |
+| Backend | NestJS + PostgreSQL (shared) | Same backend (shared) |
+| Deep Link | Generates `agentrix://` links for mobile handoff | Receives and resolves deep links |
+
+Key principles:
+- Web = 完整交易闭环（购物车 → Checkout → SmartCheckout 混合支付 → 订单）
+- Mobile = 中枢（陪伴 + 审核 + 分享裂变 + 也可完成交易）
+- 两端共享同一后台（NestJS + PostgreSQL）
+- Deep Link 从 Web 到 Mobile 是辅助入口，不是唯一路径
+
+**Mobile Deep Link format:**
+
+```
+agentrix://{action}?resourceId={id}&userId={uid}&token={tok}
+```
+
+Supported actions:
+- `agentrix://buy?resourceId={skinId}` — jump to skin purchase
+- `agentrix://bid?resourceId={auctionId}` — jump to auction bid
+- `agentrix://install_skill?resourceId={skillId}` — jump to skill install
+- `agentrix://accept_task?resourceId={taskId}` — jump to task acceptance
+
+### 11.3 New Backend APIs (新增后端 API)
+
+| Endpoint | Purpose | Auth | Notes |
+|----------|---------|------|-------|
+| `GET /api/v1/market/skins` | Skin browsing (sort/clan/cursor pagination) | Public (no auth) | Aggregates `pet_skins` + `marketplace_pet_listings` |
+| `GET /api/v1/market/search` | Unified cross-table search (skins + skills + tasks) | Public | Returns grouped results with counts |
+
+Database extension — `pet_skins` table new fields:
+
+```sql
+ALTER TABLE pet_skins ADD COLUMN clan VARCHAR(2) DEFAULT NULL;
+ALTER TABLE pet_skins ADD COLUMN like_count INTEGER DEFAULT 0;
+ALTER TABLE pet_skins ADD COLUMN view_count INTEGER DEFAULT 0;
+ALTER TABLE pet_skins ADD COLUMN remix_count INTEGER DEFAULT 0;
+ALTER TABLE pet_skins ADD COLUMN featured BOOLEAN DEFAULT FALSE;
+```
+
+### 11.4 AXP Integration in Marketplace (AXP 积分市场集成)
+
+| Feature | Behavior |
+|---------|----------|
+| Skin purchase | Supports AXP partial/full payment (`axpAccepted` flag + `axpDiscountPercent`) |
+| Skill listing | Shows AXP earning estimate per invocation |
+| Task listing | Shows AXP bonus rewards |
+| Navigation | AXP balance displayed for authenticated users (Home card + Me profile) |
+| Exchange rate | 1 AXP = $0.001 |
+| Official skin pricing | 500–3000 AXP |
+
+### 11.5 4-Tab Mobile IA (Whitepaper Alignment)
+
+Confirmed canonical tab structure:
+
+| Tab | Content |
+|-----|---------|
+| 🏠 Home | Pet companion + pet drawer + AXP glance + check-in |
+| 🔮 Summon | Voice chat + agent conversation |
+| 🎪 Plaza | GMV engine with 5 segments |
+| 👤 Me | Profile + subscription + wallet + settings |
+
+**Plaza = GMV engine** with 5 segments:
+
+| Segment | Content | Key Screen |
+|---------|---------|------------|
+| Feed | Social feed + messaging + greeting cards | `FeedScreen` |
+| Skills | Skill marketplace (browse/buy/install) | `ClawMarketplaceScreen` |
+| Tasks | Task market (browse/post/accept) | `TaskMarketScreen` |
+| Pets | Skin auction + pet auction + toy custom | `SkinAuctionScreen` |
+| Play | Photo Mimic + Predict + Co-Raising + Greeting inbox | `PhotoMimicSeasonScreen` |
+
+Plaza · Pets segment handles skin auction, browsing, and purchase. Mobile marketplace uses the same backend APIs as web.
+
+### 11.6 Subscription & Quota (订阅与配额)
+
+| Tier | Price | AXP Cashback | Skin Listing Quota | Auction Fee |
+|------|-------|-------------|-------------------|-------------|
+| Free | $0 | 0% | 1 | 10% |
+| Lite | $4.99/mo | 5% | 3 | 8% |
+| Plus | $14.99/mo | 10% | 10 | 5% |
+| Pro | $29.99/mo | 15% | ∞ | 2% |
+| Elite | $69/mo | 20% | ∞ | 0% |
+
+Additional tier benefits:
+- Auto-Earn parallel slots scale with tier
+- L3 co-sign available at Pro+
+- Pet SDK beta access at Elite
+- Family seats at Plus+
+
+---
+
+## 12. 与 V3 引用
 
 | V4 主题 | V3 引用 |
 |--------|--------|

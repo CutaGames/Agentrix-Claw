@@ -178,12 +178,21 @@ export function CoRaisingInviteScreen() {
       {invitesQ.isLoading && invites.length === 0 ? (
         <ActivityIndicator color={colors.accent} style={{ marginTop: 20 }} />
       ) : invites.length === 0 ? (
-        <Text style={styles.empty}>
-          {t({
-            en: 'No invites yet. Create one above and share it on socials or with friends.',
-            zh: '暂无邀请。创建一个然后分享给朋友吧。',
-          })}
-        </Text>
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyEmoji}>🌱</Text>
+          <Text style={styles.emptyTitle}>
+            {t({
+              en: 'No invites yet',
+              zh: '还没有邀请',
+            })}
+          </Text>
+          <Text style={styles.emptyBody}>
+            {t({
+              en: 'Create your first invite above and share it on socials or with friends. They feed your pet, you both earn AXP!',
+              zh: '在上方创建你的第一个邀请，分享给朋友。他们帮你喂宠，双方都能赚 AXP！',
+            })}
+          </Text>
+        </View>
       ) : (
         invites.map((invite) => (
           <InviteRow
@@ -341,11 +350,23 @@ const styles = StyleSheet.create({
   },
   rowBtnDanger: {},
   rowBtnText: { fontSize: 12, fontWeight: '600', color: colors.textPrimary },
-  empty: {
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 20,
+  },
+  emptyEmoji: { fontSize: 56, marginBottom: 12 },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyBody: {
     fontSize: 13,
     color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 20,
-    paddingVertical: 20,
   },
 });

@@ -135,6 +135,8 @@ export type MeStackParamList = {
   Subscribe: undefined;
   AxpCenter: undefined;
   AxpRewardShop: undefined;
+  // Sprint 4: Toy Binding
+  ToyBinding: undefined;
 };
 
 export type DiscoverStackParamList = {
@@ -256,6 +258,8 @@ export type PlazaStackParamList = {
   // Play (Predict + multiplayer + mini-games)
   Play: undefined;
   Predict: undefined;
+  // G1 Photo Mimic Game (docs/G1_PHOTO_MIMIC_GAME_2026-05)
+  PhotoMimic: undefined;
   // Co-Raising entry from Plaza
   CoRaisingInvite: undefined;
   CoRaisingLanding: { token?: string };

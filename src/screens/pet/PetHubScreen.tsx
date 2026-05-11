@@ -32,6 +32,7 @@ const TILES: Tile[] = [
   { key: 'market',    emoji: '🛒', title: '萌宠市场', desc: '浏览 / 购买 / 上架皮肤',   route: 'SkinMarketplace', accent: '#fbbf24' },
   { key: 'team',      emoji: '👥', title: '萌宠团队', desc: 'Lv.5+ 多宠协作分担任务',  route: 'PetTeam',       accent: '#60a5fa' },
   { key: 'playground', emoji: '🎮', title: '成长 · 游戏 · 繁育', desc: '亲密度 / 成就 / 相册 / 迷你游戏 / 社交繁育', route: 'PetPlayground', accent: '#f97316' },
+  { key: 'nfc',       emoji: '📱', title: 'NFC 盲盒', desc: '碰触 NFC 卡牌解锁限定皮肤', route: 'NfcRedeem',    accent: '#06b6d4' },
 ];
 
 export function PetHubScreen() {
@@ -63,9 +64,7 @@ export function PetHubScreen() {
       <View style={styles.notice}>
         <Text style={styles.noticeTitle}>📱 即将上线</Text>
         <Text style={styles.noticeText}>
-          · 摄像头扫描真实物体 → 3D 萌宠（V5）{'\n'}
-          · NFC 盲盒 / 卡牌一碰解锁皮肤{'\n'}
-          · ClawCore Toy 配对中心
+          · 摄像头扫描真实物体 → 3D 萌宠（V5）
         </Text>
       </View>
     </ScrollView>

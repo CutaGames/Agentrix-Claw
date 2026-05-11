@@ -14,6 +14,7 @@ import { colors } from '../../theme/colors';
 import { showAxpToast } from '../../stores/axpToastStore';
 import { useCapableDevices } from '../../hooks/useCapableDevices';
 import type { ExecutionPreference } from '../../services/compute.api';
+import { useI18n } from '../../stores/i18nStore';
 
 type Mode = 'text' | 'image';
 type Tier = 'free' | 'budget' | 'standard' | 'premium';
@@ -133,6 +134,101 @@ const stepperStyles = StyleSheet.create({
   status: { marginTop: 10, fontSize: 12, color: '#cbd5e1', textAlign: 'center' },
 });
 
+// ── Quota Progress Bar ─────────────────────────────────────────────────────
+
+interface QuotaInfo {
+  used: number;
+  limit: number;
+}
+
+function QuotaProgressBar() {
+  const { t } = useI18n();
+  const [quota, setQuota] = useState<QuotaInfo | null>(null);
+
+  useEffect(() => {
+    apiFetch<{ pet_generation_used?: number; pet_generation_limit?: number }>('/v1/me/quota')
+      .then((data) => {
+        if (data) {
+          setQuota({
+            used: data.pet_generation_used ?? 0,
+            limit: data.pet_generation_limit ?? 3,
+          });
+        }
+      })
+      .catch(() => setQuota({ used: 0, limit: 3 }));
+  }, []);
+
+  if (!quota) return null;
+
+  const pct = Math.min(100, Math.round((quota.used / quota.limit) * 100));
+  const exhausted = quota.used >= quota.limit;
+
+  return (
+    <View style={quotaStyles.container}>
+      <View style={quotaStyles.headerRow}>
+        <Text style={quotaStyles.label}>
+          {t({ en: `This month: ${quota.used}/${quota.limit} used`, zh: `本月已用 ${quota.used}/${quota.limit} 次` })}
+        </Text>
+        {exhausted && (
+          <Text style={quotaStyles.upgrade}>
+            {t({ en: 'Upgrade to unlock more', zh: '升级解锁更多' })} →
+          </Text>
+        )}
+      </View>
+      <View style={quotaStyles.barBg}>
+        <View
+          style={[
+            quotaStyles.barFill,
+            { width: `${pct}%` },
+            exhausted && quotaStyles.barExhausted,
+          ]}
+        />
+      </View>
+    </View>
+  );
+}
+
+const quotaStyles = StyleSheet.create({
+  container: {
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  label: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  upgrade: {
+    color: '#fbbf24',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  barBg: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: '#22d3ee',
+  },
+  barExhausted: {
+    backgroundColor: '#f87171',
+  },
+});
+
 export function PetCreatorScreen() {
   const [mode, setMode] = useState<Mode>('text');
   const [provider, setProvider] = useState<string>('meshy');
@@ -212,6 +308,9 @@ export function PetCreatorScreen() {
     <ScrollView style={styles.container} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
       <Text style={styles.title}>✨ 生成专属萌宠</Text>
       <Text style={styles.sub}>文字或图片 → 3D 模型 · 完成后可设为主宠</Text>
+
+      {/* Quota progress bar (Sprint 2 · Task 2.7) */}
+      <QuotaProgressBar />
 
       {/* Mode */}
       <View style={styles.section}>

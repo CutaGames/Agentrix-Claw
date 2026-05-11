@@ -21,6 +21,7 @@ import { WearableHubScreen } from '../screens/agent/WearableHubScreen';
 import { SubscribePlanScreen } from '../screens/me/SubscribePlanScreen';
 import { AxpCenterScreen } from '../screens/me/AxpCenterScreen';
 import { AxpRewardShopScreen } from '../screens/me/AxpRewardShopScreen';
+import { ToyBindingScreen } from '../screens/me/ToyBindingScreen';
 import { useI18n } from '../stores/i18nStore';
 
 const Stack = createNativeStackNavigator<MeStackParamList>();
@@ -56,6 +57,7 @@ export function MeStackNavigator() {
       <Stack.Screen name="Subscribe" component={SubscribePlanScreen} options={{ title: t({ en: 'Subscribe', zh: '订阅' }) }} />
       <Stack.Screen name="AxpCenter" component={AxpCenterScreen} options={{ title: t({ en: 'AXP Center', zh: 'AXP 中心' }) }} />
       <Stack.Screen name="AxpRewardShop" component={AxpRewardShopScreen} options={{ title: t({ en: 'Redeem Shop', zh: '兑换中心' }) }} />
+      <Stack.Screen name="ToyBinding" component={ToyBindingScreen} options={{ title: t({ en: 'Devices', zh: '设备管理' }) }} />
     </Stack.Navigator>
   );
 }

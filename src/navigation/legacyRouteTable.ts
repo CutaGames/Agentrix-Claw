@@ -146,6 +146,17 @@ export const LEGACY_ROUTE_MAP: Record<string, string> = {
   'agentrix://airdrop': 'agentrix://plaza/feed',
   'agentrix://alliance': 'agentrix://me/advanced/alliance',
 
+  // ========== Marketplace Action Deep Links (Web → Mobile) ==========
+  // Web frontend generates these action-style deep links with query params:
+  //   agentrix://buy?resourceId={skinId}
+  //   agentrix://bid?resourceId={auctionId}
+  //   agentrix://install_skill?resourceId={skillId}
+  //   agentrix://accept_task?resourceId={taskId}
+  'agentrix://buy': 'agentrix://plaza/pets/skins',
+  'agentrix://bid': 'agentrix://plaza/pets/skins',
+  'agentrix://install_skill': 'agentrix://plaza/skills',
+  'agentrix://accept_task': 'agentrix://plaza/tasks',
+
   // ========== Special deep links — unchanged ==========
   'agentrix://connect': 'agentrix://me/devices/local-connect', // desktop QR pairing
   'agentrix://auth/callback': 'agentrix://auth/callback',
@@ -213,12 +224,52 @@ export function resolveLegacyRoute(rawUrl: string): string {
 }
 
 /**
+ * Marketplace action deep links use query params (?resourceId=xxx) rather
+ * than path segments. This map defines how to translate the action + query
+ * params into a canonical path with route params that React Navigation can
+ * parse.
+ *
+ * The resolved path includes the resourceId as a path segment so it matches
+ * the linking config's `:auctionId`, `:skillId`, `:taskId` patterns.
+ */
+const MARKETPLACE_ACTION_MAP: Record<string, (params: URLSearchParams) => string> = {
+  buy: (p) => `plaza/pets/skins/${p.get('resourceId') || ''}`,
+  bid: (p) => `plaza/pets/skins/${p.get('resourceId') || ''}`,
+  install_skill: (p) => `plaza/skills/install/${p.get('resourceId') || ''}`,
+  accept_task: (p) => `plaza/tasks/${p.get('resourceId') || ''}`,
+};
+
+/**
  * Hook-style helper for integrating with React Navigation's `linking.getStateFromPath`.
  * The linking config passes `path` (no scheme), so we re-prepend scheme, resolve,
  * then strip scheme again for getStateFromPath to parse.
+ *
+ * Also handles marketplace action deep links with query params:
+ *   buy?resourceId=xxx → plaza/pets/skins/xxx
+ *   bid?resourceId=xxx → plaza/pets/skins/xxx
+ *   install_skill?resourceId=xxx → plaza/skills/install/xxx
+ *   accept_task?resourceId=xxx → plaza/tasks/xxx
  */
 export function resolveLegacyPath(path: string): string {
-  const withScheme = `agentrix://${path.replace(/^\//, '')}`;
+  // Handle action-style deep links with query params (e.g. "buy?resourceId=abc123")
+  const cleanPath = path.replace(/^\//, '');
+  const qIdx = cleanPath.indexOf('?');
+  if (qIdx !== -1) {
+    const action = cleanPath.slice(0, qIdx);
+    const resolver = MARKETPLACE_ACTION_MAP[action];
+    if (resolver) {
+      const params = new URLSearchParams(cleanPath.slice(qIdx + 1));
+      return resolver(params);
+    }
+  } else {
+    // Check if the path itself (no query) is a marketplace action
+    const resolver = MARKETPLACE_ACTION_MAP[cleanPath];
+    if (resolver) {
+      return resolver(new URLSearchParams());
+    }
+  }
+
+  const withScheme = `agentrix://${cleanPath}`;
   const resolved = resolveLegacyRoute(withScheme);
   return resolved.replace(/^agentrix:\/\//, '');
 }

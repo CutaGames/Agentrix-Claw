@@ -127,6 +127,10 @@ function OpenClawSkillsTab() {
               <Text style={styles.skillIcon}>{skill.icon || '⚡'}</Text>
               <Text style={styles.skillName} numberOfLines={2}>{skill.name}</Text>
               <Text style={styles.skillDesc} numberOfLines={2}>{skill.description}</Text>
+              {/* AXP earning estimate (Sprint 3 Task 3.4) */}
+              {skill.axpEarningEstimate != null && skill.axpEarningEstimate > 0 && (
+                <Text style={styles.axpEarning}>⚡ ~{skill.axpEarningEstimate} AXP/{t({ en: 'use', zh: '次' })}</Text>
+              )}
               <View style={styles.skillFooter}>
                 <Text style={styles.skillPrice}>
                   {skill.tokenCost != null && skill.tokenCost > 0 ? `${skill.tokenCost} tokens` : 'Free'}
@@ -364,6 +368,7 @@ const styles = StyleSheet.create({
   skillIcon: { fontSize: 28 },
   skillName: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
   skillDesc: { fontSize: 12, color: colors.textSecondary, lineHeight: 17 },
+  axpEarning: { fontSize: 11, fontWeight: '700', color: '#EAB308', marginTop: 2 },
   skillFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
   skillPrice: { fontSize: 13, fontWeight: '700', color: colors.accent },
   ratingText: { fontSize: 12, color: colors.textMuted },

@@ -1,11 +1,12 @@
 /**
- * SkinAuctionScreen — Sprint E5 Phase 1 MVP.
+ * SkinAuctionScreen — Sprint 1 (跨端链路打通).
  *
- * Plaza · Pets · Skins. Lists platform + generated + remixed skins from
- * `/pet-skin/marketplace` with sort/filter. Tap a skin → detail screen
- * (future: Sprint E5b). Install button wires to `POST /pet-skin/...install`.
+ * Plaza · Pets · Skins. Lists skins from the new unified endpoint
+ * `GET /api/v1/market/skins` with sort, clan filter, and cursor-based
+ * pagination. Tap a skin → detail screen (future). Install button wires
+ * to `POST /pet-skin/...install`.
  *
- * Spec: MOBILE_REFACTOR_AND_ECOSYSTEM_PLAN_2026-05 §5.3 Loop 3 + §6.
+ * Spec: MOBILE_V4_COMPLETION_PLAN §Sprint 1 Task 1.4
  */
 import React, { useCallback, useState } from 'react';
 import {
@@ -19,60 +20,82 @@ import {
   Alert,
   Image,
   Pressable,
+  ScrollView,
 } from 'react-native';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
+import { installSkin } from '../../services/petSkinMarketplace.api';
 import {
-  fetchSkinMarketplace,
-  installSkin,
-  SkinDto,
-  SkinSort,
-} from '../../services/petSkinMarketplace.api';
+  fetchMarketSkins,
+  SkinListItem,
+  SkinSortV2,
+  SkinClan,
+} from '../../services/marketSkins.api';
 
 const PAGE_SIZE = 20;
-const SORTS: SkinSort[] = ['newest', 'price_asc', 'price_desc', 'name_asc'];
-const SORT_LABEL_EN: Record<SkinSort, string> = {
+
+// ── Sort options ─────────────────────────────────────────────
+const SORTS: SkinSortV2[] = ['featured', 'newest', 'popular'];
+const SORT_LABEL_EN: Record<SkinSortV2, string> = {
+  featured: 'Featured',
   newest: 'Newest',
-  oldest: 'Oldest',
-  price_asc: 'Price ↑',
-  price_desc: 'Price ↓',
-  name_asc: 'Name',
+  popular: 'Popular',
 };
-const SORT_LABEL_ZH: Record<SkinSort, string> = {
+const SORT_LABEL_ZH: Record<SkinSortV2, string> = {
+  featured: '推荐',
   newest: '最新',
-  oldest: '最早',
-  price_asc: '价 ↑',
-  price_desc: '价 ↓',
-  name_asc: '名字',
+  popular: '热门',
 };
 
-function formatPrice(cents: number | null | undefined): string {
-  if (cents == null) return '—';
-  if (cents === 0) return 'Free';
-  return `$${(cents / 100).toFixed(cents < 100 ? 2 : 0)}`;
+// ── Clan filter options ──────────────────────────────────────
+const CLANS: (SkinClan | 'ALL')[] = ['ALL', 'A', 'B', 'C', 'D', 'E', 'F'];
+const CLAN_COLORS: Record<SkinClan, string> = {
+  A: '#FF6B6B',
+  B: '#4ECDC4',
+  C: '#45B7D1',
+  D: '#96CEB4',
+  E: '#FFEAA7',
+  F: '#DDA0DD',
+};
+
+function formatPrice(usd: number | null | undefined): string {
+  if (usd == null) return '—';
+  if (usd === 0) return 'Free';
+  return `$${usd.toFixed(2)}`;
+}
+
+function formatAxpPrice(item: SkinListItem): string | null {
+  if (!item.axpAccepted || item.priceUsd == null) return null;
+  // AXP price = USD price * 100 (1 AXP ≈ $0.01), minus discount
+  const baseAxp = Math.round(item.priceUsd * 100);
+  const discounted = Math.round(baseAxp * (1 - item.axpDiscountPercent / 100));
+  return `${discounted} AXP`;
 }
 
 export function SkinAuctionScreen() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const [sort, setSort] = useState<SkinSort>('newest');
+  const [sort, setSort] = useState<SkinSortV2>('featured');
+  const [clan, setClan] = useState<SkinClan | 'ALL'>('ALL');
 
   const query = useInfiniteQuery({
-    queryKey: ['skin-marketplace', sort],
-    queryFn: ({ pageParam = 0 }) =>
-      fetchSkinMarketplace({ limit: PAGE_SIZE, offset: pageParam, sort }),
-    initialPageParam: 0,
-    getNextPageParam: (lastPage, pages) => {
-      const loaded = pages.reduce((s, p) => s + p.items.length, 0);
-      return loaded < lastPage.total ? loaded : undefined;
-    },
+    queryKey: ['market-skins', sort, clan],
+    queryFn: ({ pageParam }) =>
+      fetchMarketSkins({
+        limit: PAGE_SIZE,
+        sort,
+        clan: clan === 'ALL' ? undefined : clan,
+        cursor: pageParam ?? undefined,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
     retry: 1,
     staleTime: 30_000,
   });
 
   const installMut = useMutation({
-    mutationFn: (skin: SkinDto) => installSkin(skin.id),
+    mutationFn: (skin: SkinListItem) => installSkin(skin.id),
     onSuccess: (r, skin) => {
       if (r.ok === false) {
         Alert.alert(t({ en: 'Install failed', zh: '安装失败' }), r.error ?? 'unknown');
@@ -80,7 +103,7 @@ export function SkinAuctionScreen() {
       }
       Alert.alert(
         t({ en: 'Installed', zh: '已安装' }),
-        t({ en: `${skin.name} is now equipped on your pet.`, zh: `${skin.name} 已装配到主宠` }),
+        t({ en: `${skin.displayName} is now equipped on your pet.`, zh: `${skin.displayName} 已装配到主宠` }),
       );
       queryClient.invalidateQueries({ queryKey: ['me-quota'] });
       queryClient.invalidateQueries({ queryKey: ['axp-balance'] });
@@ -123,6 +146,34 @@ export function SkinAuctionScreen() {
           </Pressable>
         ))}
       </View>
+
+      {/* Clan filter pills */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.clanRow}
+      >
+        {CLANS.map((c) => (
+          <Pressable
+            key={c}
+            style={[
+              styles.clanPill,
+              clan === c && styles.clanPillActive,
+              c !== 'ALL' && clan === c && { backgroundColor: CLAN_COLORS[c as SkinClan] },
+            ]}
+            onPress={() => setClan(c)}
+          >
+            <Text
+              style={[
+                styles.clanPillText,
+                clan === c && styles.clanPillTextActive,
+              ]}
+            >
+              {c === 'ALL' ? t({ en: 'All', zh: '全部' }) : `Clan ${c}`}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
 
       {query.isLoading && items.length === 0 ? (
         <ActivityIndicator color={colors.accent} style={styles.spinner} size="large" />
@@ -188,11 +239,13 @@ function SkinCard({
   installing,
   t,
 }: {
-  skin: SkinDto;
+  skin: SkinListItem;
   onInstall: () => void;
   installing: boolean;
   t: any;
 }) {
+  const axpPrice = formatAxpPrice(skin);
+
   return (
     <View style={styles.card}>
       <View style={styles.thumbWrap}>
@@ -203,19 +256,47 @@ function SkinCard({
             {skin.format === 'vrm' ? '🧍' : skin.format === 'rive' ? '🎞' : '🎨'}
           </Text>
         )}
+        {/* Source badge */}
         <View style={styles.sourcePill}>
           <Text style={styles.sourcePillText}>
             {skin.source === 'platform' ? '⭐' : skin.source === 'generated' ? '✨' : '🔄'}
           </Text>
         </View>
+        {/* Clan badge */}
+        <View style={[styles.clanBadge, { backgroundColor: CLAN_COLORS[skin.clan] }]}>
+          <Text style={styles.clanBadgeText}>{skin.clan}</Text>
+        </View>
+        {/* Featured badge */}
+        {skin.featured && (
+          <View style={styles.featuredBadge}>
+            <Text style={styles.featuredBadgeText}>🔥</Text>
+          </View>
+        )}
       </View>
       <View style={styles.cardBody}>
         <Text style={styles.cardName} numberOfLines={1}>
-          {skin.name}
+          {skin.displayName}
         </Text>
+        {/* Social stats row (Sprint 3 Task 3.3) */}
+        <View style={styles.socialStatsRow}>
+          <Text style={styles.socialStat}>❤️ {skin.likeCount}</Text>
+          <Text style={styles.socialStat}>👁 {skin.viewCount}</Text>
+          <Text style={styles.socialStat}>🔀 {skin.remixCount}</Text>
+        </View>
         <Text style={styles.cardMeta} numberOfLines={1}>
-          {skin.format.toUpperCase()} · {formatPrice(skin.priceCents)}
+          {skin.format.toUpperCase()} · {formatPrice(skin.priceUsd)}
         </Text>
+        {/* AXP pricing display (Task 1.6) */}
+        {axpPrice && (
+          <View style={styles.axpRow}>
+            <Text style={styles.axpPrice}>💎 {axpPrice}</Text>
+            {skin.axpDiscountPercent > 0 && (
+              <View style={styles.axpDiscountBadge}>
+                <Text style={styles.axpDiscountText}>-{skin.axpDiscountPercent}%</Text>
+              </View>
+            )}
+          </View>
+        )}
         <TouchableOpacity
           style={[styles.installBtn, installing && styles.installBtnDisabled]}
           onPress={onInstall}
@@ -225,9 +306,9 @@ function SkinCard({
             <ActivityIndicator color="#fff" size="small" />
           ) : (
             <Text style={styles.installBtnText}>
-              {skin.priceCents === 0
+              {skin.priceUsd === 0 || skin.priceUsd == null
                 ? t({ en: 'Equip', zh: '装配' })
-                : t({ en: 'Install', zh: '安装' })}
+                : t({ en: 'Buy', zh: '购买' })}
             </Text>
           )}
         </TouchableOpacity>
@@ -253,6 +334,18 @@ const styles = StyleSheet.create({
   sortPillActive: { backgroundColor: colors.accent, borderColor: colors.accent },
   sortPillText: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
   sortPillTextActive: { color: '#fff' },
+  clanRow: { paddingHorizontal: 16, paddingBottom: 10, gap: 8 },
+  clanPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  clanPillActive: { borderColor: 'transparent' },
+  clanPillText: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
+  clanPillTextActive: { color: '#fff', fontWeight: '700' },
   spinner: { marginTop: 60 },
   grid: { paddingHorizontal: 12, paddingBottom: 24, paddingTop: 4 },
   gridRow: { gap: 8, justifyContent: 'space-between', marginBottom: 8 },
@@ -285,15 +378,47 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
   sourcePillText: { fontSize: 10, color: '#fff' },
-  cardBody: { padding: 10, gap: 6 },
+  clanBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clanBadgeText: { fontSize: 10, fontWeight: '900', color: '#fff' },
+  featuredBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,107,107,0.85)',
+  },
+  featuredBadgeText: { fontSize: 10 },
+  cardBody: { padding: 10, gap: 4 },
   cardName: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+  socialStatsRow: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  socialStat: { fontSize: 10, color: colors.textMuted },
   cardMeta: { fontSize: 11, color: colors.textMuted },
+  axpRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  axpPrice: { fontSize: 11, fontWeight: '700', color: '#7C3AED' },
+  axpDiscountBadge: {
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+    backgroundColor: '#7C3AED',
+  },
+  axpDiscountText: { fontSize: 9, fontWeight: '700', color: '#fff' },
   installBtn: {
     backgroundColor: colors.accent,
     borderRadius: 8,
     paddingVertical: 8,
     alignItems: 'center',
-    marginTop: 2,
+    marginTop: 4,
   },
   installBtnDisabled: { opacity: 0.6 },
   installBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
