@@ -13,7 +13,9 @@
 
 **更根本的问题（2026-05-11 补充）**：桌面 main 窗口的默认载体是**抽象紫色球 FloatingBall**，宠物形态是可选的 `pet-companion` 次要窗口（需用户手动从菜单 toggle）。这意味着——**用户第一眼看到的、日常陪伴他的、所有动作的载体，都不是主宠，而是一个工具按钮**。这和"Pet-as-Agent Economy"的产品哲学冲突。
 
-这是第二次大对齐的开始。桌面端不是"抄移动端 UI"，而是"桌面该怎么呈现同一个生态"。**先修定位（Sprint D0），再补功能（Sprint DA-DE）**。
+**第三个根本问题（2026-05-11 补充 #2）**：**桌面端不是用户的家用 Agent 服务器**。现在 `pet-generation` / `video-generation` / `photo-mimic` 全部走"端→后端→云服务"路径，用户桌面的 GPU/CPU 闲置，平台付钱给 Meshy/Hunyuan3D/Fal 替用户跑。长期应该是 **Cross-Device Compute Mesh**：能本地则本地 · 能桌面则桌面 · 最后走云。这是桌面端的**第二个身份**（除了 Pro Mode 编码 + Living Agent 陪伴）。
+
+这是第二次大对齐的开始。桌面端不是"抄移动端 UI"，而是"桌面该怎么呈现同一个生态"。**先修定位（D0），再补功能（DA-DE），再落地算力（D-LOCAL/D-MESH）**。
 
 ---
 
@@ -70,6 +72,127 @@
 - ❌ 不做 Live2D 完整接入（P3 单独做，先用现有 Rive/VRM/fallback 三层）
 - ❌ 不做宠物物理碰撞 / 拖到桌面边缘回弹（保留现有 wandering 逻辑）
 - ❌ 不做多宠同时显示（Phase 2）
+
+---
+
+## Sprint D-MESH · Cross-Device Compute Mesh（算力协同架构，3 天）🔴
+
+### 背景
+
+**当前**：移动端 / 桌面端 / 网页端全部通过后端走云服务（Meshy/Hunyuan3D/Fal）。平台付钱，用户桌面 GPU 闲置。
+
+**期望**：`pet-generation` / `video-generation` / `photo-mimic` 等重算力任务，**如果用户桌面在线**，先尝试桌面本地执行；失败或不可用再走云。
+
+### 计算架构
+
+```
+用户在任意端触发重算力任务（拍照生成 3D / Photo Mimic / 视频）
+        │
+        ▼
+┌────────────────────────────────────────────────┐
+│  POST /v1/pet-generation/submit                │
+│  body { mode, prompt, imageUrl,                │
+│         execution_preference: 'auto'|'cloud'|  │
+│                              'local'|'desktop' │
+│       }                                        │
+└────────────────┬───────────────────────────────┘
+                 │
+                 ▼
+┌────────────────────────────────────────────────┐
+│  tier-router.service.ts                        │
+│  1. 查 desktop_device_presence 该用户设备列表   │
+│  2. 取 last_seen_at < 60s 的 desktop           │
+│  3. 检查 capability.gpu / capability.pet_gen   │
+│  4. 决策：                                     │
+│     a. preference=cloud → 云端                 │
+│     b. preference=desktop && desktop 在线 →   │
+│        推送 task 到桌面 sidecar                │
+│     c. preference=auto（默认）→ desktop 在线就走│
+│        desktop，否则云                         │
+└────────────────┬───────────────────────────────┘
+                 │
+     ┌───────────┼────────────────┐
+     ▼           ▼                ▼
+ [Cloud]    [Desktop Sidecar]   [Fallback Cloud]
+ Meshy/     ComfyUI + TripoSR   (任务超时 120s 或失败 → 自动转云)
+ Fal
+     │           │
+     └───┬───────┘
+         ▼
+ task.status=completed → push 回所有用户在线端
+ (desktop-sync socket.io + mobile push)
+```
+
+### D-MESH Phase 1（本 Sprint，3 天）：协议 + UI Hint
+
+此阶段**不做真本地生成**（等 Phase 2），只做**架构层通路**：tier-router 决策 + UI 显示"桌面在线"状态 + 移动端选择器。
+
+| # | 任务 | 工程量 |
+|--:|-----|-------:|
+| DM1-1 | 后端新建 `tier-router.service.ts`：查设备 presence + capability + 根据 `execution_preference` 决策 | 0.5d |
+| DM1-2 | `pet-generation.service.ts` 集成 tier-router（仅记录决策，实际仍走云） | 0.2d |
+| DM1-3 | `GET /v1/devices/online` public endpoint（复用现有 `desktop-sync/devices/online`）| 0.1d |
+| DM1-4 | 移动端 `PetCreatorScreen` 加 "🖥 桌面算力"开关（auto/cloud/desktop 三选一）| 0.5d |
+| DM1-5 | 移动端 `useDevicePresence` hook：每 30s 拉在线设备列表 | 0.3d |
+| DM1-6 | 移动端提交时附带 `execution_preference`；提交后显示"已排到 [你的桌面 Alienware]" | 0.3d |
+| DM1-7 | 桌面端 `DeviceCapabilityReporter`：启动时上报 capability `{ gpu: '4090', cpu_cores, pet_gen_ready: false }` | 0.3d |
+| DM1-8 | 桌面端显示 "🖥 我是算力节点" 状态栏 badge（在 Settings 可关闭，默认开）| 0.3d |
+| DM1-9 | `docs/tier-routing-guide.md` 同步实现进度 | 0.1d |
+
+**Phase 1 验收**：
+- ✅ 移动端提交 pet-generation 时可选 "auto/cloud/desktop"
+- ✅ 后端 tier-router 正确决策（写入日志 + metadata）
+- ✅ 实际执行路径仍是云（Phase 2 再接桌面 sidecar），但**接口契约全部到位**
+- ✅ 桌面端启动时上报能力，移动端能看到
+
+### D-MESH Phase 2（延后，5 天）：本地 3D 生成 sidecar
+
+| # | 任务 | 工程量 |
+|--:|-----|-------:|
+| DM2-1 | 桌面集成 ComfyUI / TripoSR 的 sidecar 下载（类似现有 `download_llama_server`） | 1d |
+| DM2-2 | 桌面 `services/localPetGeneration.ts`：监听后端推送的 task + 调本地 sidecar + 回传结果 | 1.5d |
+| DM2-3 | 后端 `pet-generation` 加 desktop-task push channel（复用 desktop-sync socket.io）| 0.5d |
+| DM2-4 | 失败超时（120s）自动降级到云 | 0.5d |
+| DM2-5 | 显存检查（< 8GB 显存自动 disable desktop 模式） | 0.3d |
+| DM2-6 | AXP 激励：每次成功本地生成 +10 AXP（奖励贡献算力的桌面用户）| 0.3d |
+| DM2-7 | L1 测试 + 回归 | 0.5d |
+| DM2-8 | 文档 + 真机冒烟 | 0.4d |
+
+**Phase 2 验收**：
+- ✅ RTX 3060+ 桌面能本地跑 3D 生成（约 20 秒 vs 云端 90 秒）
+- ✅ 平台省下每次 $0.30 的云服务费
+- ✅ 贡献算力的用户每次拿 10 AXP
+- ✅ 失败 3 次后该设备 24h 不再路由
+
+### D-MESH 商业价值
+
+| 维度 | 现状 | Mesh 后 |
+|------|------|--------|
+| 平台每次 3D 生成成本 | $0.30（Meshy）| $0（本地）/ $0.30（兜底）|
+| 10k MAU 月 3D 生成量（假设 500 次 × 30 天）| $4,500/月 | ~$450/月（10% 兜底率）|
+| 用户等待时间 | 60-90s（云）| 15-30s（本地）|
+| 用户流量 | 高（GLB 10-50MB 下行）| 无（桌面本地出文件，手机预览可选 thumbnail）|
+| 贡献者奖励 | 无 | 桌面主人 10 AXP/次（月均 $0.30 AXP 收入）|
+| 平台 margin 改善 | Plus 档 $5.99 → ~$9（3D 用量场景 +$3）| |
+
+**10k MAU 省 $48k/年 云服务费**。
+
+### D-MESH 非目标
+
+- ❌ 不做视频生成本地化（SVD 模型 10GB+，显存 24GB+，Phase 3 才考虑）
+- ❌ 不做跨用户算力租赁（用户 A 的桌面跑用户 B 的任务，Phase 3+ 商业化）
+- ❌ 不做移动端本地生成（移动 GPU 跑 SD 慢 + 热 + 耗电）
+- ❌ 不做 Windows/Mac 跨平台一致性（优先 Windows CUDA，Mac/Linux 次要）
+
+### D-MESH 风险
+
+| 风险 | 严重度 | 缓解 |
+|-----|-------|------|
+| ComfyUI sidecar 首次安装 5-8GB | 高 | 渐进式下载 + 用户 opt-in + 明确告知 |
+| 不同 GPU 显存差异导致不稳定 | 高 | Capability detect + 失败降级 + 黑名单 |
+| 本地生成质量不如云 | 中 | Phase 1 先打通通路，Phase 2 跑 benchmark，不行就只保留语音/LLM/图像 |
+| 用户电脑风扇吵 | 中 | Settings 里"贡献算力时段"（只在用户空闲时）|
+| 安全：sidecar 是外部二进制，供应链风险 | 中 | 固定版本 SHA + 签名校验（参考 llama-server 现有做法）|
 
 ---
 

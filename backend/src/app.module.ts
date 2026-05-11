@@ -198,6 +198,7 @@ import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { PetCoRaisingModule } from './modules/pet-coraising/pet-coraising.module';
 import { PetGreetingModule } from './modules/pet-greeting/pet-greeting.module';
 import { PhotoMimicModule } from './modules/photo-mimic/photo-mimic.module';
+import { TierRouterModule } from './modules/tier-router/tier-router.module';
 
 @Module({
   imports: [
@@ -418,6 +419,7 @@ import { PhotoMimicModule } from './modules/photo-mimic/photo-mimic.module';
     PetCoRaisingModule,
     PetGreetingModule,
     PhotoMimicModule,
+    TierRouterModule,
   ],
   controllers: [AppController],
   providers: [

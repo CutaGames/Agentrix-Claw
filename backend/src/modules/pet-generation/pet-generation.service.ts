@@ -14,6 +14,7 @@ import {
 } from '../desktop-sync/dto/desktop-sync.dto';
 import { MeshyProvider, type MeshyMode } from './meshy.provider';
 import { Hunyuan3DProvider } from './hunyuan3d.provider';
+import { TierRouterService, type ExecutionPreference } from '../tier-router/tier-router.service';
 import { AgentSession } from '../../entities/agent-session.entity';
 import { AgentMessage, MessageRole, MessageType } from '../../entities/agent-message.entity';
 import { emitAgentSyncEvent } from '../agent-intelligence/agent-sync.events';
@@ -45,6 +46,8 @@ export interface PetGenerateParams {
   scanImageUrls?: string[];
   enableAnimation?: boolean;
   targetPolycount?: number;
+  /** D-MESH Phase 1: user's execution preference (auto/cloud/desktop/local). */
+  executionPreference?: ExecutionPreference;
 }
 
 @Injectable()
@@ -64,6 +67,7 @@ export class PetGenerationService {
     private readonly desktopSyncService: DesktopSyncService,
     private readonly meshyProvider: MeshyProvider,
     private readonly hunyuanProvider: Hunyuan3DProvider,
+    private readonly tierRouter: TierRouterService,
   ) {}
 
   /**
@@ -154,6 +158,7 @@ export class PetGenerationService {
         source: context.metadata?.source,
         mode,
         provider,
+        routing: await this.routeForPhase1(userId, params),
       },
       startedAt: new Date(),
     });
@@ -565,7 +570,33 @@ export class PetGenerationService {
 
   private extractDeviceId(context: ExecutionContext): string | undefined {
     const v = context.metadata?.deviceId;
-    return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+    return typeof v === 'string' && v.trim() ? v.trim() : undefined;  }
+
+  /**
+   * D-MESH Phase 1: make the routing decision and stash it into task
+   * metadata. Phase 1 still executes everything on cloud; the recorded
+   * decision is what surfaces on the mobile UI as "routed to [your Alienware]".
+   * Phase 2 will read this field and actually dispatch to the desktop sidecar.
+   */
+  private async routeForPhase1(
+    userId: string,
+    params: PetGenerateParams,
+  ): Promise<Record<string, unknown>> {
+    try {
+      const pref = params.executionPreference ?? 'auto';
+      const decision = await this.tierRouter.route(userId, pref, 'pet_gen');
+      return {
+        preference: pref,
+        target: decision.target,
+        deviceId: decision.deviceId,
+        deviceName: decision.deviceName,
+        reason: decision.reason,
+        decidedAt: Date.now(),
+        actualExecutor: 'cloud', // Phase 1: always cloud
+      };
+    } catch (e: any) {
+      return { preference: params.executionPreference ?? 'auto', target: 'cloud', reason: 'router_error', error: e?.message };
+    }
   }
 
   private async resolveMeshyApiKey(userId: string): Promise<string | null> {

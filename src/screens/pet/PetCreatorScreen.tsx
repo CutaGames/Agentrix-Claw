@@ -12,6 +12,8 @@ import {
 import { apiFetch } from '../../services/api';
 import { colors } from '../../theme/colors';
 import { showAxpToast } from '../../stores/axpToastStore';
+import { useCapableDevices } from '../../hooks/useCapableDevices';
+import type { ExecutionPreference } from '../../services/compute.api';
 
 type Mode = 'text' | 'image';
 type Tier = 'free' | 'budget' | 'standard' | 'premium';
@@ -141,6 +143,10 @@ export function PetCreatorScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [task, setTask] = useState<PetTask | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [executionPreference, setExecutionPreference] = useState<ExecutionPreference>('auto');
+
+  // D-MESH: show "your desktop is online" hint
+  const { hasCapable: hasDesktop, topDevice } = useCapableDevices('pet_gen');
 
   // Load provider catalog
   useEffect(() => {
@@ -181,7 +187,7 @@ export function PetCreatorScreen() {
     if (mode === 'image' && !imageUrl.trim()) { setError('请填写参考图 URL'); return; }
     setSubmitting(true);
     try {
-      const body: any = { mode, provider };
+      const body: any = { mode, provider, executionPreference };
       if (mode === 'text') body.prompt = prompt.trim();
       else { body.referenceImageUrl = imageUrl.trim(); if (prompt.trim()) body.prompt = prompt.trim(); }
       const res = await apiFetch<PetTask>('/pet-generation/submit', {
@@ -290,6 +296,34 @@ export function PetCreatorScreen() {
       )}
 
       {error && <Text style={styles.err}>{error}</Text>}
+
+      {/* D-MESH: execution target */}
+      <View style={styles.section}>
+        <Text style={styles.label}>🖥 算力来源</Text>
+        <View style={styles.tabsRow}>
+          {(['auto', 'cloud', 'desktop'] as ExecutionPreference[]).map((p) => (
+            <Pressable
+              key={p}
+              onPress={() => setExecutionPreference(p)}
+              style={[styles.tab, executionPreference === p && styles.tabActive]}
+            >
+              <Text style={[styles.tabText, executionPreference === p && styles.tabTextActive]}>
+                {p === 'auto' ? '⚡ 自动' : p === 'cloud' ? '☁️ 云端' : '🖥 桌面'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {hasDesktop && topDevice ? (
+          <Text style={styles.deviceHint}>
+            ✅ 你的 <Text style={{ color: '#22d3ee', fontWeight: '700' }}>{topDevice.deviceName}</Text>
+            {topDevice.gpu ? ` (${topDevice.gpu})` : ''} 在线，可本地生成
+          </Text>
+        ) : (
+          <Text style={styles.deviceHintMuted}>
+            💡 桌面端在线时可本地生成（省流量 · 无等待 · 贡献桌面主人 +10 AXP）
+          </Text>
+        )}
+      </View>
 
       <Pressable
         onPress={submit}
@@ -402,6 +436,8 @@ const styles = StyleSheet.create({
   err: { color: '#f87171', marginTop: 12, fontSize: 13 },
   submitBtn: { marginTop: 20, backgroundColor: '#6C5CE7', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
   submitText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  deviceHint: { marginTop: 8, fontSize: 11, color: colors.textSecondary, lineHeight: 16 },
+  deviceHintMuted: { marginTop: 8, fontSize: 11, color: colors.textSecondary, opacity: 0.7, lineHeight: 16 },
   taskCard: { marginTop: 20, padding: 14, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
   taskTitle: { color: colors.text, fontSize: 14, fontWeight: '600' },
   taskUrl: { color: '#22d3ee', fontSize: 11, marginTop: 8 },

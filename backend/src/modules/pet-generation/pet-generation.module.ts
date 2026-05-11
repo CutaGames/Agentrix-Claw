@@ -9,6 +9,7 @@ import { PetAssetProxyController } from './pet-asset-proxy.controller';
 import { MeshyProvider } from './meshy.provider';
 import { Hunyuan3DProvider } from './hunyuan3d.provider';
 import { VrmAutoRigProvider } from './vrm-auto-rig.provider';
+import { TierRouterModule } from '../tier-router/tier-router.module';
 import { AiProviderModule } from '../ai-provider/ai-provider.module';
 import { DesktopSyncModule } from '../desktop-sync/desktop-sync.module';
 import { PetSkinModule } from '../pet-skin/pet-skin.module';
@@ -22,6 +23,7 @@ import { AgentMessage } from '../../entities/agent-message.entity';
     AiProviderModule,
     DesktopSyncModule,
     PetSkinModule,
+    TierRouterModule,
   ],
   controllers: [PetGenerationController, PetBreedController, PetAssetProxyController],
   providers: [PetGenerationService, MeshyProvider, Hunyuan3DProvider, VrmAutoRigProvider],
