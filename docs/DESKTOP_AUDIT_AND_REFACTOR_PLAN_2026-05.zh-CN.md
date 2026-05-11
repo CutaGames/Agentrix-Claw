@@ -11,7 +11,65 @@
 
 **桌面端是另一个次元**。它有高度成熟的 Pro Mode 编码/Pet Companion 双形态架构、完整的 Agent Economy Panel、Rive/VRM 渲染管线、本地 LLM、实时 SSE 成本追踪——但对移动端刚刚落地的 **AXP 积分体系、5 档订阅、签到、共养、贺卡、宠物模仿秀** 全部**零感知**。
 
-这是第二次大对齐的开始。桌面端不是"抄移动端 UI"，而是"桌面该怎么呈现同一个生态"。
+**更根本的问题（2026-05-11 补充）**：桌面 main 窗口的默认载体是**抽象紫色球 FloatingBall**，宠物形态是可选的 `pet-companion` 次要窗口（需用户手动从菜单 toggle）。这意味着——**用户第一眼看到的、日常陪伴他的、所有动作的载体，都不是主宠，而是一个工具按钮**。这和"Pet-as-Agent Economy"的产品哲学冲突。
+
+这是第二次大对齐的开始。桌面端不是"抄移动端 UI"，而是"桌面该怎么呈现同一个生态"。**先修定位（Sprint D0），再补功能（Sprint DA-DE）**。
+
+---
+
+## Sprint D0 · Pet-as-Floating-Ball（定位翻转，2 天）🔴
+
+### D0 目标
+
+**把 main 窗口的默认载体从抽象紫色球换成宠物形态**。用户第一眼看到的就是他的主宠，所有动作（语音/剪贴板/AXP/审批/通知）都通过宠物表达。
+
+### D0 核心交互重映射
+
+| 用户动作 | 之前（抽象球）| 之后（主宠形态）|
+|---|---|---|
+| 单击 | 打开语音 | 宠物点头 + 打开语音（瞳孔聚焦）|
+| 双击 | 打开 Pro Mode | 宠物跳起 + 打开 Pro Mode |
+| 长按 | 推到说话 | 宠物张嘴 + 举爪 |
+| 拖拽 | 移动球 | 宠物被"拎起" + 四肢蹬动 |
+| 空闲 30s | 淡出透明 | 宠物趴下睡觉（Zzz 表情）|
+| hover | 放大 | 宠物抬头 + 尾巴摇 |
+| 粘贴复制 | 旁边弹方框 | 宠物嘴里叼出来剪贴板气泡 |
+| **AXP 到账** | （无反馈）| **宠物头顶飘 +N AXP ☀️**（替代 AxpToastHost 的定位）|
+| Pro Mode 工作 | 球缩 | 宠物伏在 ChatPanel 右下角打盹 |
+| 长任务执行 | 色变 | 宠物盯屏 + 进度条从嘴里出 |
+| 审批 | 红点 | 宠物拽袖子（抖动 + 举爪 + 气泡）|
+| 通知 | 角标 | 宠物耳朵竖 + 小铃铛 |
+
+### D0 技术拆解
+
+| # | 任务 | 工程量 |
+|--:|-----|-------:|
+| D0-1 | `App.tsx` main 窗口分支：从 `<FloatingBall />` 切到 `<PetCompanionWindow />`（或新的 `PetFloatingBall` 组件，复用 PetRenderer）| 0.5d |
+| D0-2 | 把 `FloatingBall.tsx` 的全部交互逻辑（voice / clipboard / approval badge / session handoff）抽到 `hooks/useBallInteractions.ts`，让 pet 版本复用 | 0.5d |
+| D0-3 | 新建 `components/PetFloatingBall.tsx`：PetRenderer 作为视觉 + useBallInteractions 作为行为 | 0.5d |
+| D0-4 | 情绪驱动：根据当前 state（idle/recording/thinking/speaking）切换 `PetEmotion`，通过 `petSdk.setLocalEmotion` | 0.3d |
+| D0-5 | 粘贴板气泡：改 `PetProactiveBubble` 支持 "clipboard preview" 类型，从宠物嘴里方向出 | 0.3d |
+| D0-6 | 审批需要：宠物抖动动画 + "举爪"姿势，保留现有 `approvalBadge` 状态但通过 Rive motion 表达 | 0.3d |
+| D0-7 | Rust `pet_window.rs` 不再独立开窗——把逻辑合并到 main 窗口（单窗口容纳宠物 + chat panel）| 0.5d |
+| D0-8 | 保留 `FloatingBall.tsx` 作为 `src_deprecated/` 备份（Sprint DE 再删）| 0.1d |
+| D0-9 | 设置里加开关 "Use abstract ball"（给不习惯的老用户保留选项）| 0.2d |
+
+**总计 3.2d ≈ 2.5 天**
+
+### D0 验收
+
+- ✅ 全新安装用户打开桌面 → 第一眼看到宠物（不是紫球）
+- ✅ 所有交互（单击/双击/长按/拖拽/粘贴/空闲）都能通过宠物情绪/动画表达
+- ✅ AXP 到账通过宠物头顶飘字（不需要再做 Sprint DA 的 AxpToastHost）
+- ✅ Pro Mode 下宠物伏在右下角（不遮挡编码区）
+- ✅ Settings 里有"Use abstract ball"兜底开关
+- ✅ `lib.rs` 菜单项"🐾 Toggle Living Pet"改成"🟣 Use Abstract Ball"（反转默认）
+
+### D0 非目标
+
+- ❌ 不做 Live2D 完整接入（P3 单独做，先用现有 Rive/VRM/fallback 三层）
+- ❌ 不做宠物物理碰撞 / 拖到桌面边缘回弹（保留现有 wandering 逻辑）
+- ❌ 不做多宠同时显示（Phase 2）
 
 ---
 
@@ -74,20 +132,22 @@
 
 ## 2. 优化目标（与移动端 Sprint 同等优先级）
 
-目标：**桌面端 Sprint DA-DE（5 个 Sprint）**。每个 Sprint 2-3 天，覆盖 14 天连做。
+目标：**桌面端 Sprint D0 + DA-DE（6 个 Sprint）**。每个 Sprint 2-3 天，覆盖 14 天连做。
+
+**前置**：Sprint D0（见 §0 上方）必须最先做，因为它决定了后续 Sprint 的视觉载体——AXP 飘字是"从宠物嘴里吐出来"还是"屏幕右上角 pill"，取决于 D0 是否已落地。
 
 ### Sprint DA · 基础经济对齐（3 天） 🔴
 
-**目标**：桌面端用户能看到 AXP、做签到、收到奖励飘字。
+**目标**：桌面端用户能看到 AXP、做签到、收到奖励飘字。**前提**：D0 已落地，所以 AXP toast 的载体是"宠物头顶飘字"而不是独立 pill。
 
 | # | 任务 | 复用的移动端产出 | 工程量 |
 |--:|-----|---------------|-------:|
 | DA1 | `services/axp.ts`：AXP client（balance/history/checkin/status） | 复用 `src/services/axp.api.ts` 模式 | 0.3d |
-| DA2 | `components/AxpToastHost.tsx`（桌面版，用 framer-motion） | 镜像 `src/components/AxpToastHost.tsx` | 0.3d |
-| DA3 | `stores/axpToastStore.ts`（zustand，复用移动端 shape） | — | 0.2d |
+| DA2 | `components/PetHeadToast.tsx`：宠物头顶飘字容器（替代移动端 AxpToastHost）| 桌面独有 | 0.4d |
+| DA3 | `stores/axpToast.ts`（zustand，复用移动端 shape） | — | 0.2d |
 | DA4 | `components/AxpCornerIndicator.tsx`：屏幕右下角 "💎 N" 值 + 点击展开 | 桌面独有 | 0.5d |
-| DA5 | `components/CheckinCard.tsx`：**Living Agent 浮球长按 → Check-in 小窗** | 镜像 `src/screens/home/CheckinCard.tsx` | 0.5d |
-| DA6 | Chat 每 10 轮完成后前端主动调 `POST /v1/axp/earn {source:'chat_active'}` + toast | 同步移动端 P1-3（推迟项） | 0.2d |
+| DA5 | **右键菜单第一项加 "🌟 Check-in +N AXP"**（直接点按领取，不开新窗口）| 镜像 `src/screens/home/CheckinCard.tsx` | 0.4d |
+| DA6 | Chat 每 10 轮完成后前端主动调 `POST /v1/axp/earn {source:'chat_active'}` + 宠物头顶飘字 | 同步移动端 P1-3（推迟项） | 0.2d |
 
 ### Sprint DB · 订阅与配额（2 天） 🟡
 
