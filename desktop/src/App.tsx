@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { SuspendProvider } from "./components/SuspendContext";
 import FloatingBall from "./components/FloatingBall";
+import PetFloatingBall from "./components/PetFloatingBall";
 import PetEmotionOverlay from "./components/PetEmotionOverlay";
 import PetProactiveBubble from "./components/PetProactiveBubble";
 import ChatPanel from "./components/ChatPanel";
@@ -583,7 +584,7 @@ export default function App() {
         }}
       >
         <div style={{ position: "relative" }}>
-          <FloatingBall
+          <PetFloatingBall
             onTap={handleBallClick}
             onOpenPro={handleOpenPro}
           />
@@ -678,7 +679,7 @@ export default function App() {
             }}
           >
             <div style={{ position: "relative" }}>
-              <FloatingBall onTap={openCompactPanel} onOpenPro={openProPanel} />
+              <PetFloatingBall onTap={openCompactPanel} onOpenPro={openProPanel} />
               <PetEmotionOverlay />
             </div>
           </div>

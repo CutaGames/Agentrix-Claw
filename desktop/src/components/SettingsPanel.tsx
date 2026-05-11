@@ -662,6 +662,65 @@ function PetVrmSection() {
         Standard VRM expressions (happy / sad / angry / surprised / relaxed) drive the
         10 Agentrix emotions.
       </div>
+
+      <FloatingModeToggle />
+    </div>
+  );
+}
+
+function FloatingModeToggle() {
+  const [mode, setMode] = useState<"pet" | "abstract">(() => {
+    try {
+      return (localStorage.getItem("agentrix_floating_mode") as "pet" | "abstract") || "pet";
+    } catch {
+      return "pet";
+    }
+  });
+
+  const change = (next: "pet" | "abstract") => {
+    setMode(next);
+    try {
+      localStorage.setItem("agentrix_floating_mode", next);
+    } catch {}
+    window.dispatchEvent(new CustomEvent("agentrix:floating-mode-changed"));
+  };
+
+  return (
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+      <div style={{ fontSize: 12, color: "var(--text)", marginBottom: 6, fontWeight: 600 }}>
+        Floating Entry Style
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={() => change("pet")}
+          style={{
+            ...kbdStyle,
+            cursor: "pointer",
+            border: `1px solid ${mode === "pet" ? "var(--accent)" : "var(--border)"}`,
+            background: mode === "pet" ? "var(--accent)" : "transparent",
+            color: mode === "pet" ? "#fff" : "var(--text)",
+          }}
+        >
+          🐾 Living Pet
+        </button>
+        <button
+          onClick={() => change("abstract")}
+          style={{
+            ...kbdStyle,
+            cursor: "pointer",
+            border: `1px solid ${mode === "abstract" ? "var(--accent)" : "var(--border)"}`,
+            background: mode === "abstract" ? "var(--accent)" : "transparent",
+            color: mode === "abstract" ? "#fff" : "var(--text)",
+          }}
+        >
+          🟣 Abstract Ball
+        </button>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "6px 0 0", lineHeight: 1.5 }}>
+        {mode === "pet"
+          ? "Your main pet shows up as the floating entry and reacts to every action (voice / clipboard / AXP). Recommended."
+          : "Classic purple orb. Useful if your machine can't render VRM/Rive smoothly or you prefer minimal visuals."}
+      </div>
     </div>
   );
 }
