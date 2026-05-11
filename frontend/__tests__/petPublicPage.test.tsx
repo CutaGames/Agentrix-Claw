@@ -65,7 +65,12 @@ describe('WB-T1.1 getServerSideProps', () => {
 describe('WB-T1.3 page renders without auth', () => {
   it('renders pet name, intimacy stat, marketing hook (no auth required)', () => {
     const { container } = render(
-      <PetPublicPage pet={samplePet as any} soul={sampleSoul as any} />,
+      <PetPublicPage
+        pet={samplePet as any}
+        soul={sampleSoul as any}
+        activeSkin={null}
+        lineage={[]}
+      />,
     );
     expect(container.textContent).toContain('Aira');
     expect(container.textContent).toContain('Lv.1');
@@ -75,7 +80,9 @@ describe('WB-T1.3 page renders without auth', () => {
   });
 
   it('renders gracefully when soul is null (legacy pet)', () => {
-    const { container } = render(<PetPublicPage pet={samplePet as any} soul={null} />);
+    const { container } = render(
+      <PetPublicPage pet={samplePet as any} soul={null} activeSkin={null} lineage={[]} />,
+    );
     expect(container.textContent).toContain('Aira');
     expect(container.textContent).toContain('Lv.1');
   });
