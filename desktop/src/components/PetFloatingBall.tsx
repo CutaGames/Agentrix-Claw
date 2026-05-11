@@ -25,6 +25,9 @@ import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import PetRenderer from "./PetRenderer";
 import FloatingBall from "./FloatingBall";
+import PetHeadToast from "./PetHeadToast";
+import CheckinModal from "./CheckinModal";
+import SocialPanel from "./SocialPanel";
 import { setLocalEmotion } from "../services/petSdk";
 
 type BallState = "idle" | "recording" | "thinking" | "speaking";
@@ -65,6 +68,25 @@ export default function PetFloatingBall({ onTap, onOpenPro, state = "idle", forc
       return false;
     }
   });
+  const [checkinOpen, setCheckinOpen] = useState(false);
+  const [socialOpen, setSocialOpen] = useState(false);
+  const [socialTab, setSocialTab] = useState<"coraising" | "greeting" | "mimic">("mimic");
+
+  // Listen for global "open check-in" / "open social" events (from right-click menu)
+  useEffect(() => {
+    const openCheckin = () => setCheckinOpen(true);
+    const openSocial = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { tab?: "coraising" | "greeting" | "mimic" } | undefined;
+      if (detail?.tab) setSocialTab(detail.tab);
+      setSocialOpen(true);
+    };
+    window.addEventListener("agentrix:open-checkin", openCheckin);
+    window.addEventListener("agentrix:open-social", openSocial);
+    return () => {
+      window.removeEventListener("agentrix:open-checkin", openCheckin);
+      window.removeEventListener("agentrix:open-social", openSocial);
+    };
+  }, []);
 
   useEffect(() => {
     const onChange = () => {
@@ -87,7 +109,14 @@ export default function PetFloatingBall({ onTap, onOpenPro, state = "idle", forc
 
   // User opted out → show the classic abstract ball untouched.
   if (forceAbstractBall || abstractOverride) {
-    return <FloatingBall onTap={onTap} onOpenPro={onOpenPro} state={state} />;
+    return (
+      <>
+        <FloatingBall onTap={onTap} onOpenPro={onOpenPro} state={state} />
+        <PetHeadToast />
+        <CheckinModal visible={checkinOpen} onClose={() => setCheckinOpen(false)} />
+        <SocialPanel visible={socialOpen} initialTab={socialTab} onClose={() => setSocialOpen(false)} />
+      </>
+    );
   }
 
   const halo = STATE_HALO[state];
@@ -116,6 +145,15 @@ export default function PetFloatingBall({ onTap, onOpenPro, state = "idle", forc
       <div style={interactionLayerStyle}>
         <FloatingBall onTap={onTap} onOpenPro={onOpenPro} state={state} />
       </div>
+
+      {/* AXP drift-in toast, positioned above the pet's head. */}
+      <PetHeadToast />
+
+      {/* Daily check-in modal, opened via right-click menu entry. */}
+      <CheckinModal visible={checkinOpen} onClose={() => setCheckinOpen(false)} />
+
+      {/* Social panel: co-raising / greeting / photo mimic. */}
+      <SocialPanel visible={socialOpen} initialTab={socialTab} onClose={() => setSocialOpen(false)} />
     </div>
   );
 }

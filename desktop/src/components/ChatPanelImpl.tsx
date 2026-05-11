@@ -892,6 +892,19 @@ export default function ChatPanel({
 
       void persistSession(sessionId, retainedMessages).then(() => refreshHistory());
 
+      // DA6: count every round (user turn + assistant reply) and award AXP
+      // for every 10 rounds. Fire-and-forget; backend has a daily cap.
+      try {
+        const roundCount = retainedMessages.filter((m) => m.role === "user").length;
+        if (roundCount > 0 && roundCount % 10 === 0) {
+          window.dispatchEvent(
+            new CustomEvent("agentrix:chat-milestone", {
+              detail: { rounds: roundCount, sessionId },
+            }),
+          );
+        }
+      } catch {}
+
       const firstUser = retainedMessages.find((message) => message.role === "user");
       const title = firstUser?.content?.slice(0, 50) || "New Chat";
 

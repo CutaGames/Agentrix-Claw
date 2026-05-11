@@ -3,6 +3,11 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { SuspendProvider } from "./components/SuspendContext";
 import FloatingBall from "./components/FloatingBall";
 import PetFloatingBall from "./components/PetFloatingBall";
+import AxpCornerIndicator from "./components/AxpCornerIndicator";
+import SubscriptionBadge from "./components/SubscriptionBadge";
+import SocialPanel from "./components/SocialPanel";
+import CheckinModal from "./components/CheckinModal";
+import PetHeadToast from "./components/PetHeadToast";
 import PetEmotionOverlay from "./components/PetEmotionOverlay";
 import PetProactiveBubble from "./components/PetProactiveBubble";
 import ChatPanel from "./components/ChatPanel";
@@ -24,6 +29,7 @@ import { DesktopWakeWordService } from "./services/wakeWord";
 import { DESKTOP_WAKE_WORD_EVENT, readDesktopWakeWordConfig } from "./services/wakeWordConfig";
 import { bootPetSdk } from "./services/petSdk";
 import { bootPetAssets, destroyPetAssets } from "./services/petAssets";
+import { startChatMilestoneWatcher, stopChatMilestoneWatcher } from "./services/chatMilestones";
 import { startVisionPerception, stopVisionPerception, isVisionPerceptionEnabled } from "./services/visionPerception";
 import "./services/suspend"; // Register __agentrix_suspend / __agentrix_resume on window
 
@@ -284,6 +290,7 @@ export default function App() {
     // (PetCanvas) is always available regardless.
     bootPetSdk();
     bootPetAssets();
+    startChatMilestoneWatcher();
     if (isVisionPerceptionEnabled()) {
       startVisionPerception();
     }
@@ -298,6 +305,7 @@ export default function App() {
       stopDesktopAgentSync();
       stopVisionPerception();
       destroyPetAssets();
+      stopChatMilestoneWatcher();
     };
   }, [isServiceHostWindow, loggedIn, openProPanel, token, windowLabel]);
 
@@ -621,18 +629,29 @@ export default function App() {
       );
     }
     return (
-      <ChatPanel
-        onClose={async () => {
-          try {
-            const { invoke } = await import("@tauri-apps/api/core");
-            await invoke("desktop_bridge_close_chat_panel");
-          } catch {
-            setPanelOpen(false);
+      <>
+        <ChatPanel
+          onClose={async () => {
+            try {
+              const { invoke } = await import("@tauri-apps/api/core");
+              await invoke("desktop_bridge_close_chat_panel");
+            } catch {
+              setPanelOpen(false);
+            }
+          }}
+          networkStatus={networkStatus}
+          restorePersistedTabs={false}
+        />
+        <AxpCornerIndicator
+          onOpenCheckin={() =>
+            window.dispatchEvent(new CustomEvent("agentrix:open-checkin"))
           }
-        }}
-        networkStatus={networkStatus}
-        restorePersistedTabs={false}
-      />
+        />
+        <div style={{ position: "fixed", top: 12, right: 16, zIndex: 9500 }}>
+          <SubscriptionBadge />
+        </div>
+        <ChatPanelAxpHost />
+      </>
     );
   }
 
@@ -687,5 +706,40 @@ export default function App() {
       </div>
       </SuspendProvider>
     </ErrorBoundary>
+  );
+}
+
+/**
+ * ChatPanelAxpHost — mounts <PetHeadToast /> and the global CheckinModal
+ * inside the chat-panel window. The chat-panel window doesn't host the
+ * PetFloatingBall (that lives in main/dev window), so it needs its own
+ * toast renderer + check-in listener.
+ */
+function ChatPanelAxpHost() {
+  const [checkinOpen, setCheckinOpen] = useState(false);
+  const [socialOpen, setSocialOpen] = useState(false);
+  const [socialTab, setSocialTab] = useState<"coraising" | "greeting" | "mimic">("mimic");
+
+  useEffect(() => {
+    const openCheckin = () => setCheckinOpen(true);
+    const openSocial = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { tab?: "coraising" | "greeting" | "mimic" } | undefined;
+      if (detail?.tab) setSocialTab(detail.tab);
+      setSocialOpen(true);
+    };
+    window.addEventListener("agentrix:open-checkin", openCheckin);
+    window.addEventListener("agentrix:open-social", openSocial);
+    return () => {
+      window.removeEventListener("agentrix:open-checkin", openCheckin);
+      window.removeEventListener("agentrix:open-social", openSocial);
+    };
+  }, []);
+
+  return (
+    <>
+      <PetHeadToast />
+      <CheckinModal visible={checkinOpen} onClose={() => setCheckinOpen(false)} />
+      <SocialPanel visible={socialOpen} initialTab={socialTab} onClose={() => setSocialOpen(false)} />
+    </>
   );
 }

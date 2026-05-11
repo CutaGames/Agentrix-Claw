@@ -141,6 +141,27 @@ async function showNativeBallMenu(
     const menu = await Menu.new({
       items: [
         {
+          id: "ball-checkin",
+          text: "☀️ 每日签到 Check-in",
+          action: () => { window.dispatchEvent(new CustomEvent("agentrix:open-checkin")); },
+        },
+        {
+          id: "ball-photo-mimic",
+          text: "📸 宠物模仿秀",
+          action: () => { window.dispatchEvent(new CustomEvent("agentrix:open-social", { detail: { tab: "mimic" } })); },
+        },
+        {
+          id: "ball-coraising",
+          text: "🌱 共养邀请",
+          action: () => { window.dispatchEvent(new CustomEvent("agentrix:open-social", { detail: { tab: "coraising" } })); },
+        },
+        {
+          id: "ball-greeting",
+          text: "🎁 贺卡",
+          action: () => { window.dispatchEvent(new CustomEvent("agentrix:open-social", { detail: { tab: "greeting" } })); },
+        },
+        { item: "Separator" } as any,
+        {
           id: "ball-pro",
           text: "💬 Open Pro Mode",
           action: () => { if (onOpenPro) onOpenPro(); else onTap(); },
