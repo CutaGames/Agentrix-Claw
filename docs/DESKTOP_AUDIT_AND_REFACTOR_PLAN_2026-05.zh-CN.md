@@ -145,24 +145,113 @@
 - ✅ 实际执行路径仍是云（Phase 2 再接桌面 sidecar），但**接口契约全部到位**
 - ✅ 桌面端启动时上报能力，移动端能看到
 
-### D-MESH Phase 2（延后，5 天）：本地 3D 生成 sidecar
+### D-MESH Phase 2（延后，7 天）：本地算力节点 Opt-In 引导 + 生成 sidecar
+
+**核心原则**：**完全 opt-in · 永不打扰**。用户可以一辈子不开本地算力，所有功能正常走云。本地算力只是给"有显卡、想加速、想赚 AXP"的用户的**自主选项**。
+
+#### Phase 2.A · 硬件探测 + 三档推荐（2 天）
+
+桌面启动时**不提示、不下载任何模型**，只在后台默默探测：
 
 | # | 任务 | 工程量 |
 |--:|-----|-------:|
-| DM2-1 | 桌面集成 ComfyUI / TripoSR 的 sidecar 下载（类似现有 `download_llama_server`） | 1d |
-| DM2-2 | 桌面 `services/localPetGeneration.ts`：监听后端推送的 task + 调本地 sidecar + 回传结果 | 1.5d |
-| DM2-3 | 后端 `pet-generation` 加 desktop-task push channel（复用 desktop-sync socket.io）| 0.5d |
-| DM2-4 | 失败超时（120s）自动降级到云 | 0.5d |
-| DM2-5 | 显存检查（< 8GB 显存自动 disable desktop 模式） | 0.3d |
-| DM2-6 | AXP 激励：每次成功本地生成 +10 AXP（奖励贡献算力的桌面用户）| 0.3d |
-| DM2-7 | L1 测试 + 回归 | 0.5d |
-| DM2-8 | 文档 + 真机冒烟 | 0.4d |
+| DM2A-1 | Rust `desktop_bridge_detect_hardware`：调 nvidia-smi / wmic / system_profiler 探测 GPU 型号 + VRAM + CPU cores + RAM + 可用磁盘 | 0.5d |
+| DM2A-2 | `services/hardwareProfile.ts`：启动时调 detect 1 次 + 缓存 7 天，推断 `HardwareTier: 'unsupported' \| 'light' \| 'standard' \| 'enthusiast'` | 0.3d |
+| DM2A-3 | 上报 capability 到后端（只报 tier + 可运行的模型列表，不报 GPU 型号原文避免指纹追踪）| 0.3d |
+| DM2A-4 | `components/HardwareProfileCard.tsx`：Settings · 算力节点区显示探测结果 + "我能做什么" 解释 | 0.5d |
+| DM2A-5 | 三档推荐逻辑（**以下皆为建议，用户可手动调整**）| 0.4d |
 
-**Phase 2 验收**：
-- ✅ RTX 3060+ 桌面能本地跑 3D 生成（约 20 秒 vs 云端 90 秒）
-- ✅ 平台省下每次 $0.30 的云服务费
-- ✅ 贡献算力的用户每次拿 10 AXP
-- ✅ 失败 3 次后该设备 24h 不再路由
+**硬件分档决策表**：
+
+| 档位 | 判定条件 | 推荐模型 | 磁盘占用 | 本地能力 | UI 态度 |
+|------|---------|---------|---------:|---------|---------|
+| **unsupported** | 无独显 + RAM < 8GB | 无 | 0 | 不推荐本地 | 不显示开启入口，不打扰 |
+| **light** | 集成显卡 / 独显 VRAM 4GB / M1-M2 基础 | 仅本地 LLM（Llama 3.2 1B/3B）+ 语音 | 1.5GB | 文本/语音，**不做 3D** | 温和提示"可选"，不强推 |
+| **standard** | 独显 VRAM 6-10GB（RTX 3060 / M2 Pro）| + 图像生成 SD 1.5 + TripoSR 基础版 | 4GB | 文本+语音+图像+基础 3D | 推荐 · 显示预估收益 |
+| **enthusiast** | 独显 VRAM 12GB+（RTX 4070+ / M3 Max）| + SDXL + Zero123 + ComfyUI 高级 | 8GB | 全部 + 视频片段 | 主推 · 显示 AXP 月收入预估 |
+
+**核心：绝不因为硬件低就"阻止"用户尝试，也不因为高就"强推"**。解释清楚利弊，用户自己决定。
+
+#### Phase 2.B · 分级下载 + 运行时（3 天）
+
+| # | 任务 | 工程量 |
+|--:|-----|-------:|
+| DM2B-1 | `SettingsPanel · 算力节点` 面板新增，结构：| 0.5d |
+
+```
+🖥 算力节点 (opt-in)
+
+你当前的硬件：RTX 4090 · 24GB VRAM · 32GB RAM · 850GB 可用
+推测档位：🔥 Enthusiast（可跑全部本地模型）
+
+📦 可下载的能力包（全部可选）:
+ ☐ 本地 LLM（Llama 3.2 3B + Qwen 2.5 7B）         1.5GB  [已安装 ✓]
+ ☐ 本地语音（Whisper-small + Piper TTS）            300MB  [下载]
+ ☐ 本地图像（SD 1.5 / FLUX.dev）                   2.5GB  [下载]
+ ☐ 本地 3D（TripoSR + Zero123）                    3.2GB  [下载]
+ ☐ 本地视频（SVD 片段生成，≤ 4s）                  10GB   [下载]
+
+这些都是可选的。不下载任何一个，平台全部功能依然正常 ——
+只是用云端服务（Meshy/Fal/Anthropic）跑，平台替你付费。
+
+你下载后：
+ · 每次本地生成省 0.10-0.30 美金的云服务费
+ · 平台回馈给你 10 AXP/次（≈ $0.01），月均 ~$2-5 AXP 收入
+ · 敏感内容（宠物照片、记忆）不离开你的设备
+ · 速度通常是云端的 2-5 倍（依你的 GPU）
+ · 风扇可能会响（我们有"安静模式"限制调度时段）
+
+[仅下载必要的（语音 300MB，推荐）]  [全部下载 16GB]  [不下载]
+```
+
+| # | 任务 | 工程量 |
+|--:|-----|-------:|
+| DM2B-2 | 复用现有 `otaModelDownload.service.ts` 做模型下载（已有进度条 + 校验 + 恢复）| 0.3d |
+| DM2B-3 | `services/comfyuiSidecar.ts`：Rust `desktop_bridge_start_comfyui` + health check + HTTP API wrapping | 1d |
+| DM2B-4 | 低配兜底：VRAM < 6GB 时选择 SD 1.5 + TripoSR-Lite；如内存不够直接 disable | 0.3d |
+| DM2B-5 | **"安静时段"设置**：默认只在 23:00-07:00 本地执行云端路由任务（用户主动触发的仍立即执行）| 0.3d |
+| DM2B-6 | **风扇健康保护**：GPU 温度 > 80°C 自动暂停本地执行 10 分钟 | 0.3d |
+
+#### Phase 2.C · 路由真实执行 + 降级（2 天）
+
+| # | 任务 | 工程量 |
+|--:|-----|-------:|
+| DM2C-1 | 桌面 `sidecarTaskWorker.ts`：订阅 `desktop-sync` socket `task:dispatch` 事件 | 0.5d |
+| DM2C-2 | 后端 `tier-router` 真正 push task 到桌面（升级 Phase 1 的"只决策不执行"到"决策 + 推送"）| 0.5d |
+| DM2C-3 | 120s 超时自动降级云端 + metrics（成功率 / 平均耗时 / 节省成本）| 0.3d |
+| DM2C-4 | 失败 3 次的设备进入 24h 黑名单（黑名单期内路由全走云）| 0.2d |
+| DM2C-5 | 桌面主人 AXP 奖励 `earn({source: 'compute_contribute', amount: 10})`（需后端 AXP_EARN_SOURCES 加新值）| 0.3d |
+| DM2C-6 | 移动端提交后显示 "✅ 你的 [Alienware 4090] 已接单 · ETA 20s" 实时状态 | 0.3d |
+| DM2C-7 | 用户看得见的"算力贡献统计"（Settings 内）：本月贡献 X 次 · 省下 Y 美金 · 获得 Z AXP | 0.4d |
+
+#### Phase 2 UX 准则
+
+1. **永不弹窗**：不在用户打开应用时主动弹"要不要下载 5GB"
+2. **默认不下载**：全新安装用户一个文件不占
+3. **从需要处反向引导**：用户在 PetCreator 选了 "desktop" 但没下 3D 模型时才第一次出现"解锁 3D 需要下载 3.2GB"
+4. **不贬低低配用户**：文案永远是"你的设备适合 X 档位"而不是"你配置太低"
+5. **可以一辈子不开**：平台业务完全不依赖本地算力，云端降级是永久兜底
+6. **可随时关闭**：Settings 一个开关关掉所有本地执行 + 一键卸载所有已下载模型（释放磁盘）
+7. **老用户迁移**：Phase 2 上线时，现有有 llama.cpp sidecar 的用户自动识别并"推荐继续使用"
+
+#### Phase 2 非目标
+
+- ❌ 不做 Web 端本地 WASM 生成（浏览器性能不够）
+- ❌ 不做 Mac 完全支持（M 系列优先 LLM + 语音，3D 等 Metal 适配 Phase 3）
+- ❌ 不做 Linux（用户基数太小）
+- ❌ 不做移动端本地生成（手机 GPU 不适合 + 耗电 + 发热）
+- ❌ 不做算力租赁给其他用户（Phase 3+ 商业化）
+- ❌ 不做显卡驱动自动升级（出问题责任太大）
+
+#### Phase 2 验收
+
+- ✅ 全新用户装桌面 → 0 模型下载 → 所有功能正常（走云）
+- ✅ Enthusiast 用户在 Settings 看到清晰分级选项，选择后精确下载
+- ✅ PetCreator 选 desktop 但未下 3D 时，引导"需要 3.2GB"而不是报错
+- ✅ 桌面完成生成后，移动端实时看到结果（< 5s 推送延迟）
+- ✅ 生成 3 次失败自动降级云端，用户体验无感
+- ✅ Settings 显示"本月贡献 12 次 · 省 $3.60 · 获 120 AXP"
+- ✅ 一键卸载所有本地模型按钮工作，释放磁盘
 
 ### D-MESH 商业价值
 
@@ -188,7 +277,6 @@
 
 | 风险 | 严重度 | 缓解 |
 |-----|-------|------|
-| ComfyUI sidecar 首次安装 5-8GB | 高 | 渐进式下载 + 用户 opt-in + 明确告知 |
 | 不同 GPU 显存差异导致不稳定 | 高 | Capability detect + 失败降级 + 黑名单 |
 | 本地生成质量不如云 | 中 | Phase 1 先打通通路，Phase 2 跑 benchmark，不行就只保留语音/LLM/图像 |
 | 用户电脑风扇吵 | 中 | Settings 里"贡献算力时段"（只在用户空闲时）|
