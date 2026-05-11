@@ -199,6 +199,8 @@ import { PetCoRaisingModule } from './modules/pet-coraising/pet-coraising.module
 import { PetGreetingModule } from './modules/pet-greeting/pet-greeting.module';
 import { PhotoMimicModule } from './modules/photo-mimic/photo-mimic.module';
 import { TierRouterModule } from './modules/tier-router/tier-router.module';
+// Marketplace Ecosystem: 统一市场 API (皮肤浏览 + 跨表搜索)
+import { MarketModule } from './modules/market/market.module';
 
 @Module({
   imports: [
@@ -420,6 +422,8 @@ import { TierRouterModule } from './modules/tier-router/tier-router.module';
     PetGreetingModule,
     PhotoMimicModule,
     TierRouterModule,
+    // Marketplace Ecosystem: public browsing API
+    MarketModule,
   ],
   controllers: [AppController],
   providers: [

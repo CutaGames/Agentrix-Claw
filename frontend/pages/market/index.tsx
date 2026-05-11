@@ -1,126 +1,365 @@
-import { useState } from 'react';
-import Link from 'next/link';
-import { MarketingLayout } from '../../components/marketing/MarketingLayout';
+/**
+ * /market — 皮肤交易发现页面 (Skin Trading Discovery)
+ *
+ * 三个 tab：Trending / New / Leaderboard
+ * 支持 Clan 过滤（跨所有 tab）
+ * 顶部 banner 说明交易在移动端完成
+ * 使用 MarketplaceLayout 包裹
+ *
+ * Requirements: 6.1, 6.4, 6.6, 8.1
+ */
+
+import { useState, useCallback } from 'react';
+import { GetServerSideProps, InferGetServerSidePropsType } from 'next';
+import { TrendingUp, Clock, Trophy, Smartphone, Loader2 } from 'lucide-react';
+import { MarketplaceLayout } from '../../components/marketplace/MarketplaceLayout';
+import { SkinCard } from '../../components/marketplace/SkinCard';
 import { buildSeo } from '../../lib/seo';
 import { useLocalization } from '../../contexts/LocalizationContext';
-import { TrendingUp, Sparkles, Trophy, Filter } from 'lucide-react';
+import { useCart } from '../../contexts/CartContext';
+import {
+  fetchMarketSkins,
+  MarketplaceSkinsParams,
+  MarketplaceSkinsResponse,
+  SkinListItem,
+} from '../../services/marketplaceApi';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 const TABS = ['trending', 'new', 'leaderboard'] as const;
-type Tab = typeof TABS[number];
+type Tab = (typeof TABS)[number];
 
-const CLANS = ['All', 'A', 'B', 'C', 'D', 'E', 'F'] as const;
+type ClanFilter = 'All' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+const CLANS: ClanFilter[] = ['All', 'A', 'B', 'C', 'D', 'E', 'F'];
 
-// Mock data — W2 real API: GET /api/v1/market/skins
-const MOCK_ITEMS = Array.from({ length: 16 }, (_, i) => ({
-  id: `skin-${i + 1}`,
-  title: `Pet Skin #${i + 1}`,
-  creator: `creator${(i % 5) + 1}`,
-  clan: (['A', 'B', 'C', 'D', 'E', 'F'] as const)[i % 6],
-  price: (Math.random() * 20 + 1).toFixed(2),
-  likes: Math.floor(Math.random() * 300) + 5,
-}));
+/** Map tab to API sort parameter */
+function tabToSort(tab: Tab): MarketplaceSkinsParams['sort'] {
+  switch (tab) {
+    case 'trending':
+      return 'popular';
+    case 'new':
+      return 'newest';
+    case 'leaderboard':
+      return 'popular';
+  }
+}
 
-export default function MarketplacePage() {
+// ---------------------------------------------------------------------------
+// SSR
+// ---------------------------------------------------------------------------
+
+interface MarketPageProps {
+  initialData: MarketplaceSkinsResponse;
+  initialTab: Tab;
+  initialClan: ClanFilter;
+}
+
+export const getServerSideProps: GetServerSideProps<MarketPageProps> = async (ctx) => {
+  const tabParam = (ctx.query.tab as string) || 'trending';
+  const clanParam = (ctx.query.clan as string) || 'All';
+
+  const tab: Tab = TABS.includes(tabParam as Tab) ? (tabParam as Tab) : 'trending';
+  const clan: ClanFilter = CLANS.includes(clanParam as ClanFilter)
+    ? (clanParam as ClanFilter)
+    : 'All';
+
+  let initialData: MarketplaceSkinsResponse = { items: [], total: 0, nextCursor: null };
+
+  try {
+    initialData = await fetchMarketSkins({
+      sort: tabToSort(tab),
+      ...(clan !== 'All' && { clan }),
+      limit: 24,
+    });
+  } catch {
+    // SSR 降级：返回空数据，客户端 hydration 后重新请求
+  }
+
+  return {
+    props: {
+      initialData,
+      initialTab: tab,
+      initialClan: clan,
+    },
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Skeleton Card
+// ---------------------------------------------------------------------------
+
+function SkinCardSkeleton() {
+  return (
+    <div className="flex flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-800 animate-pulse">
+      <div className="aspect-square w-full bg-gray-700" />
+      <div className="flex flex-col gap-2 p-3">
+        <div className="flex items-center gap-2">
+          <div className="h-4 w-12 rounded bg-gray-700" />
+          <div className="h-4 flex-1 rounded bg-gray-700" />
+        </div>
+        <div className="h-3 w-20 rounded bg-gray-700" />
+        <div className="flex gap-3">
+          <div className="h-3 w-10 rounded bg-gray-700" />
+          <div className="h-3 w-10 rounded bg-gray-700" />
+          <div className="h-3 w-10 rounded bg-gray-700" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export default function MarketPage({
+  initialData,
+  initialTab,
+  initialClan,
+}: InferGetServerSidePropsType<typeof getServerSideProps>) {
   const { t } = useLocalization();
-  const [tab, setTab] = useState<Tab>('trending');
-  const [clan, setClan] = useState<string>('All');
+  const { addItem } = useCart();
+
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const [clan, setClan] = useState<ClanFilter>(initialClan);
+  const [items, setItems] = useState<SkinListItem[]>(initialData.items);
+  const [nextCursor, setNextCursor] = useState<string | null>(initialData.nextCursor);
+  const [total, setTotal] = useState<number>(initialData.total);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // -------------------------------------------------------------------------
+  // Fetch helper
+  // -------------------------------------------------------------------------
+
+  const fetchSkins = useCallback(
+    async (newTab: Tab, newClan: ClanFilter) => {
+      setIsLoading(true);
+      try {
+        const res = await fetchMarketSkins({
+          sort: tabToSort(newTab),
+          ...(newClan !== 'All' && { clan: newClan }),
+          limit: 24,
+        });
+        setItems(res.items);
+        setNextCursor(res.nextCursor);
+        setTotal(res.total);
+      } catch {
+        // 保持当前数据，用户可重试
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [],
+  );
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || isLoadingMore) return;
+    setIsLoadingMore(true);
+    try {
+      const res = await fetchMarketSkins({
+        sort: tabToSort(tab),
+        ...(clan !== 'All' && { clan }),
+        limit: 24,
+        cursor: nextCursor,
+      });
+      setItems((prev) => [...prev, ...res.items]);
+      setNextCursor(res.nextCursor);
+      setTotal(res.total);
+    } catch {
+      // 静默失败
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [nextCursor, isLoadingMore, tab, clan]);
+
+  // -------------------------------------------------------------------------
+  // Tab / Clan change handlers
+  // -------------------------------------------------------------------------
+
+  const handleTabChange = (newTab: Tab) => {
+    if (newTab === tab) return;
+    setTab(newTab);
+    fetchSkins(newTab, clan);
+  };
+
+  const handleClanChange = (newClan: ClanFilter) => {
+    if (newClan === clan) return;
+    setClan(newClan);
+    fetchSkins(tab, newClan);
+  };
+
+  // -------------------------------------------------------------------------
+  // Add to Cart handler
+  // -------------------------------------------------------------------------
+
+  const handleAddToCart = useCallback(
+    (skin: SkinListItem) => {
+      const productId = skin.listingId || skin.id;
+      addItem(productId, 1, {
+        id: productId,
+        name: skin.displayName,
+        price: skin.priceUsd || 0,
+        currency: 'USD',
+        stock: 1,
+      });
+    },
+    [addItem],
+  );
+
+  // -------------------------------------------------------------------------
+  // SEO
+  // -------------------------------------------------------------------------
 
   const seo = buildSeo({
-    title: t({ zh: 'Marketplace · 宠物皮肤集市 · Agentrix', en: 'Marketplace · Pet Skin Market · Agentrix' }),
-    description: t({ zh: '浏览、购买、拍卖宠物皮肤。Remix 创作赚取分成。', en: 'Browse, buy, auction pet skins. Remix and earn revenue share.' }),
+    title: 'Agentrix Market - Pet Skin Trading',
+    description: t({
+      zh: '发现热门宠物皮肤，浏览最新上架和排行榜。在 Agentrix 移动端完成购买和拍卖。',
+      en: 'Discover trending pet skins, browse new listings and leaderboards. Complete purchases and auctions on the Agentrix mobile app.',
+    }),
     path: '/market',
   });
 
-  const filtered = clan === 'All' ? MOCK_ITEMS : MOCK_ITEMS.filter((s) => s.clan === clan);
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
 
   return (
-    <MarketingLayout seo={seo}>
-      <section className="bg-agentrix-ink pt-14 pb-6">
-        <div className="container mx-auto px-6">
-          <h1 className="text-3xl font-extrabold md:text-4xl">
-            {t({ zh: '🎪 Marketplace', en: '🎪 Marketplace' })}
-          </h1>
-          <p className="mt-2 text-agentrix-fog">
-            {t({ zh: '浏览 · 购买 · 拍卖 · Remix · 赚取分成', en: 'Browse · Buy · Auction · Remix · Earn' })}
+    <MarketplaceLayout seo={seo} activeSection="skins">
+      <div className="container mx-auto px-4 py-6 md:px-6">
+        {/* ─── Info Banner: Transactions on Mobile ─── */}
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10">
+            <Smartphone size={16} className="text-blue-400" />
+          </div>
+          <p className="text-sm text-gray-300">
+            {t({
+              zh: '下载 Agentrix App 获得 AI 宠物陪伴体验、审核管理和分享裂变功能。Web 端支持完整的浏览和购买流程。',
+              en: 'Download the Agentrix App for AI pet companion experience, approval management, and social sharing. Full browsing and purchasing available on web.',
+            })}
           </p>
+        </div>
 
-          {/* Tabs */}
-          <div className="mt-6 flex gap-2">
-            {TABS.map((t2) => (
+        {/* ─── Tabs ─── */}
+        <div className="flex gap-2">
+          {TABS.map((t2) => {
+            const isActive = tab === t2;
+            return (
               <button
                 key={t2}
                 type="button"
-                onClick={() => setTab(t2)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-colors ${
-                  tab === t2 ? 'bg-agentrix-electric text-agentrix-ink' : 'bg-white/10 text-agentrix-fog hover:text-white'
+                onClick={() => handleTabChange(t2)}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-gray-800 text-white'
+                    : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
                 }`}
+                aria-pressed={isActive}
               >
-                {t2 === 'trending' && <TrendingUp size={13} />}
-                {t2 === 'new' && <Sparkles size={13} />}
-                {t2 === 'leaderboard' && <Trophy size={13} />}
-                {t2 === 'trending' ? t({ zh: '热门', en: 'Trending' }) : t2 === 'new' ? t({ zh: '最新', en: 'New' }) : t({ zh: '排行榜', en: 'Leaderboard' })}
+                {t2 === 'trending' && <TrendingUp size={14} />}
+                {t2 === 'new' && <Clock size={14} />}
+                {t2 === 'leaderboard' && <Trophy size={14} />}
+                {t2 === 'trending'
+                  ? t({ zh: '热门', en: 'Trending' })
+                  : t2 === 'new'
+                    ? t({ zh: '最新', en: 'New' })
+                    : t({ zh: '排行榜', en: 'Leaderboard' })}
               </button>
-            ))}
-          </div>
+            );
+          })}
+        </div>
 
-          {/* Clan filter */}
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Filter size={13} className="text-agentrix-mist" />
-            {CLANS.map((c) => (
+        {/* ─── Clan Filter ─── */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {CLANS.map((c) => {
+            const isActive = clan === c;
+            return (
               <button
                 key={c}
                 type="button"
-                onClick={() => setClan(c)}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                  clan === c ? 'bg-agentrix-purpleSoft text-white' : 'bg-white/5 text-agentrix-fog hover:text-white'
+                onClick={() => handleClanChange(c)}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                  isActive
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
                 }`}
+                aria-pressed={isActive}
               >
                 {c === 'All' ? t({ zh: '全部', en: 'All' }) : `Clan ${c}`}
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
-      </section>
 
-      {/* Grid */}
-      <section className="bg-agentrix-ink pb-20">
-        <div className="container mx-auto px-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filtered.map((item) => (
-              <Link
-                key={item.id}
-                href={`/market/skin/${item.id}`}
-                className="group rounded-xl border border-agentrix-inkLine bg-agentrix-inkSoft overflow-hidden transition-all duration-300 hover:border-agentrix-electric/50 hover:-translate-y-1 hover:shadow-lg hover:shadow-agentrix-electric/10"
-              >
-                <div className="aspect-square relative overflow-hidden">
-                  <div className={`absolute inset-0 bg-gradient-to-br ${
-                    item.clan === 'A' ? 'from-purple-600/30 via-indigo-900/50 to-cyan-500/20' :
-                    item.clan === 'B' ? 'from-emerald-600/30 via-teal-900/50 to-blue-500/20' :
-                    item.clan === 'C' ? 'from-rose-600/30 via-pink-900/50 to-orange-500/20' :
-                    item.clan === 'D' ? 'from-amber-600/30 via-yellow-900/50 to-lime-500/20' :
-                    item.clan === 'E' ? 'from-sky-600/30 via-blue-900/50 to-violet-500/20' :
-                    'from-fuchsia-600/30 via-purple-900/50 to-pink-500/20'
-                  }`} />
-                  <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.08)_0%,transparent_70%)]" />
-                  <div className="absolute top-3 right-3 rounded-full bg-agentrix-solar/90 px-2 py-0.5 text-[10px] font-bold text-agentrix-ink">
-                    ${item.price}
+        {/* ─── Content Grid ─── */}
+        <div className="mt-6">
+          {isLoading ? (
+            // Skeleton loading
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <SkinCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : items.length === 0 ? (
+            // Empty state
+            <div className="flex flex-col items-center justify-center py-20">
+              <p className="text-gray-400">
+                {t({
+                  zh: '暂无皮肤数据',
+                  en: 'No skins found',
+                })}
+              </p>
+            </div>
+          ) : tab === 'leaderboard' ? (
+            // Leaderboard: numbered ranking display
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {items.map((skin, index) => (
+                <div key={skin.id} className="relative">
+                  {/* Rank badge */}
+                  <div className="absolute -left-1 -top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-yellow-500 text-xs font-bold text-black shadow-md">
+                    {index + 1}
                   </div>
-                  <div className="absolute bottom-3 left-3 rounded-full bg-black/50 backdrop-blur-sm px-2 py-0.5 text-[10px] text-white/80">
-                    Clan {item.clan}
-                  </div>
+                  <SkinCard skin={skin} onAddToCart={handleAddToCart} />
                 </div>
-                <div className="p-4">
-                  <h3 className="text-sm font-bold text-white group-hover:text-agentrix-electric transition-colors">{item.title}</h3>
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="text-xs text-agentrix-mist">@{item.creator}</span>
-                    <span className="text-xs text-agentrix-fog">♥ {item.likes}</span>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            // Trending / New: standard grid
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {items.map((skin) => (
+                <SkinCard key={skin.id} skin={skin} onAddToCart={handleAddToCart} />
+              ))}
+            </div>
+          )}
         </div>
-      </section>
-    </MarketingLayout>
+
+        {/* ─── Load More ─── */}
+        {nextCursor && !isLoading && (
+          <div className="mt-8 flex justify-center">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={isLoadingMore}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:border-gray-600 hover:bg-gray-700 disabled:opacity-50"
+            >
+              {isLoadingMore && <Loader2 size={14} className="animate-spin" />}
+              {t({ zh: '加载更多', en: 'Load More' })}
+            </button>
+          </div>
+        )}
+
+        {/* ─── Total count ─── */}
+        {!isLoading && total > 0 && (
+          <p className="mt-4 text-center text-xs text-gray-500">
+            {t({
+              zh: `共 ${total} 个皮肤`,
+              en: `${total} skins total`,
+            })}
+          </p>
+        )}
+      </div>
+    </MarketplaceLayout>
   );
 }

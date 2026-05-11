@@ -103,6 +103,26 @@ export class PetSkin {
   @Column({ type: 'integer', default: 0 })
   priceCents: number;
 
+  /** Marketplace Ecosystem — Clan 族群分类 (A-F) */
+  @Column({ type: 'varchar', length: 2, nullable: true })
+  clan: string | null;
+
+  /** Marketplace Ecosystem — 点赞数 */
+  @Column({ type: 'integer', default: 0 })
+  likeCount: number;
+
+  /** Marketplace Ecosystem — 浏览数 */
+  @Column({ type: 'integer', default: 0 })
+  viewCount: number;
+
+  /** Marketplace Ecosystem — 二创数 */
+  @Column({ type: 'integer', default: 0 })
+  remixCount: number;
+
+  /** Marketplace Ecosystem — 是否精选 */
+  @Column({ type: 'boolean', default: false })
+  featured: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 
