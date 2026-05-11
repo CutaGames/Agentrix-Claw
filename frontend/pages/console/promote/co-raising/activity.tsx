@@ -88,8 +88,8 @@ export default function CoRaisingActivityPage(): React.ReactElement {
 
       {loading ? (
         <div className="space-y-3">
-          <Skeleton height={120} />
-          <Skeleton height={120} />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
         </div>
       ) : error ? (
         <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-400">

@@ -243,8 +243,8 @@ export default function CoRaisingManagePage(): React.ReactElement {
 
       {loading ? (
         <div className="space-y-3">
-          <Skeleton height={96} />
-          <Skeleton height={96} />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
         </div>
       ) : error ? (
         <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-400">
