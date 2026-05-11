@@ -158,7 +158,7 @@ export function ConsoleLayout({ title, children }: ConsoleLayoutProps): React.Re
         <aside
           style={{
             width: 260,
-            background: T.bg.sidebar,
+            background: `linear-gradient(180deg, ${T.bg.sidebar} 0%, #0a0e16 100%)`,
             borderRight: `1px solid ${T.border.subtle}`,
             padding: '20px 12px',
             display: 'flex',
@@ -168,6 +168,7 @@ export function ConsoleLayout({ title, children }: ConsoleLayoutProps): React.Re
             position: 'sticky',
             top: 0,
             maxHeight: '100vh',
+            boxShadow: '4px 0 16px rgba(0,0,0,.3)',
           }}
         >
           <Link

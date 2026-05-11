@@ -20,8 +20,12 @@ export default function AuctionDetailPage() {
       <section className="bg-agentrix-ink py-12">
         <div className="container mx-auto px-6">
           <div className="grid gap-8 lg:grid-cols-2">
-            <div className="aspect-square rounded-2xl border border-agentrix-inkLine bg-gradient-to-br from-agentrix-purple/30 to-agentrix-electric/20 flex items-center justify-center">
-              <span className="text-6xl">🐾</span>
+            <div className="aspect-square rounded-2xl border border-agentrix-inkLine overflow-hidden relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-rose-600/30 via-purple-900/50 to-cyan-500/20" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_40%_30%,rgba(250,204,21,0.1)_0%,transparent_60%)]" />
+              <div className="absolute top-4 left-4 rounded-full bg-red-500/90 px-3 py-1 text-xs font-bold text-white animate-pulse">
+                LIVE
+              </div>
             </div>
             <div>
               <h1 className="text-3xl font-extrabold">{t({ zh: '拍卖大厅', en: 'Auction Hall' })} #{id}</h1>

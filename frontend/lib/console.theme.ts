@@ -30,8 +30,9 @@ export const T = {
   },
   radius: { sm: 6, md: 10, lg: 12, xl: 16 },
   shadow: {
-    card: '0 1px 2px rgba(0,0,0,.3)',
-    cardHover: '0 4px 12px rgba(34,211,255,.08)',
+    card: '0 2px 8px rgba(0,0,0,.4), 0 0 1px rgba(34,211,255,.05)',
+    cardHover: '0 8px 24px rgba(34,211,255,.12), 0 2px 8px rgba(0,0,0,.3)',
+    glow: '0 0 20px rgba(34,211,255,.15)',
   },
   font: {
     family:
@@ -49,10 +50,27 @@ export const T = {
 } as const;
 
 export const cardStyle: CSSProperties = {
-  background: T.bg.panel,
+  background: `linear-gradient(135deg, ${T.bg.panel} 0%, #1a2235 100%)`,
   border: `1px solid ${T.border.subtle}`,
   borderRadius: T.radius.lg,
   padding: 20,
+  boxShadow: T.shadow.card,
+  transition: 'border-color .2s, box-shadow .2s, transform .15s',
+};
+
+export const cardHoverProps = {
+  onMouseEnter: (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    el.style.borderColor = 'rgba(34,211,255,0.3)';
+    el.style.boxShadow = T.shadow.cardHover;
+    el.style.transform = 'translateY(-1px)';
+  },
+  onMouseLeave: (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    el.style.borderColor = T.border.subtle;
+    el.style.boxShadow = T.shadow.card;
+    el.style.transform = 'translateY(0)';
+  },
 };
 
 export const inputStyle: CSSProperties = {

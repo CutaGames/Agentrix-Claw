@@ -70,10 +70,13 @@ export default function GreetingLanding() {
       <div className="flex min-h-screen flex-col items-center justify-center bg-agentrix-ink px-6 py-12 text-white">
         <div className="w-full max-w-md overflow-hidden rounded-2xl border border-agentrix-inkLine bg-agentrix-inkSoft shadow-2xl">
           {/* Card visual */}
-          <div className="relative flex h-64 items-center justify-center bg-gradient-to-br from-agentrix-purple/40 via-agentrix-ink to-agentrix-electric/30">
-            <span className="text-7xl">{peek.petEmotion}</span>
-            <div className="absolute bottom-4 left-4 right-4 text-center">
-              <p className="text-lg font-bold text-white drop-shadow-lg">&ldquo;{peek.message}&rdquo;</p>
+          <div className="relative flex h-72 items-center justify-center overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-600/50 via-indigo-900/70 to-cyan-500/30" />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_30%,rgba(250,204,21,0.15)_0%,transparent_60%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_80%,rgba(34,211,255,0.1)_0%,transparent_40%)]" />
+            <span className="relative text-7xl drop-shadow-2xl">{peek.petEmotion}</span>
+            <div className="absolute bottom-6 left-6 right-6 text-center">
+              <p className="text-lg font-bold text-white drop-shadow-lg bg-black/20 backdrop-blur-sm rounded-xl px-4 py-2">&ldquo;{peek.message}&rdquo;</p>
             </div>
           </div>
 

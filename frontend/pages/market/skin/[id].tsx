@@ -21,11 +21,15 @@ export default function SkinDetailPage() {
       <section className="bg-agentrix-ink py-12">
         <div className="container mx-auto px-6">
           <div className="grid gap-8 lg:grid-cols-2">
-            {/* 3D Preview placeholder */}
-            <div className="aspect-square rounded-2xl border border-agentrix-inkLine bg-gradient-to-br from-agentrix-purple/20 to-agentrix-electric/10 flex items-center justify-center">
-              <div className="text-center">
-                <span className="text-6xl">🐾</span>
-                <p className="mt-4 text-sm text-agentrix-mist">{t({ zh: '3D / VRM 预览（W3 上线）', en: '3D / VRM preview (W3)' })}</p>
+            {/* 3D Preview — generative gradient art */}
+            <div className="aspect-square rounded-2xl border border-agentrix-inkLine overflow-hidden relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-600/40 via-indigo-900/60 to-cyan-500/30" />
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_20%,rgba(34,211,255,0.15)_0%,transparent_50%)]" />
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_80%,rgba(124,58,237,0.2)_0%,transparent_50%)]" />
+              <div className="absolute bottom-6 left-6 right-6 text-center">
+                <p className="text-xs text-white/60 bg-black/30 backdrop-blur-sm rounded-lg px-3 py-2">
+                  {t({ zh: '3D / VRM 实时预览（W3 集成 three-vrm）', en: '3D / VRM live preview (W3 three-vrm integration)' })}
+                </p>
               </div>
             </div>
 

@@ -74,8 +74,8 @@ export default function CoRaisingLanding() {
       <div className="flex min-h-screen flex-col items-center justify-center bg-agentrix-ink px-6 py-12 text-white">
         <div className="w-full max-w-md rounded-2xl border border-agentrix-inkLine bg-agentrix-inkSoft p-8 text-center shadow-2xl">
           {/* Pet visual */}
-          <div className="mx-auto mb-6 flex h-32 w-32 items-center justify-center rounded-full bg-gradient-to-br from-agentrix-purple/30 to-agentrix-electric/20">
-            <span className="text-5xl">{peek.petEmotion}</span>
+          <div className="mx-auto mb-6 flex h-36 w-36 items-center justify-center rounded-full bg-gradient-to-br from-purple-500/40 via-indigo-600/30 to-cyan-400/20 shadow-lg shadow-purple-500/20 ring-2 ring-agentrix-electric/20">
+            <span className="text-5xl drop-shadow-lg">{peek.petEmotion}</span>
           </div>
 
           <h1 className="text-2xl font-extrabold">

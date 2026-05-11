@@ -90,16 +90,29 @@ export default function MarketplacePage() {
               <Link
                 key={item.id}
                 href={`/market/skin/${item.id}`}
-                className="group rounded-xl border border-agentrix-inkLine bg-agentrix-inkSoft overflow-hidden transition-all hover:border-agentrix-electric/50"
+                className="group rounded-xl border border-agentrix-inkLine bg-agentrix-inkSoft overflow-hidden transition-all duration-300 hover:border-agentrix-electric/50 hover:-translate-y-1 hover:shadow-lg hover:shadow-agentrix-electric/10"
               >
-                <div className="aspect-square bg-gradient-to-br from-agentrix-purple/20 to-agentrix-electric/10 flex items-center justify-center">
-                  <span className="text-4xl opacity-40">🐾</span>
+                <div className="aspect-square relative overflow-hidden">
+                  <div className={`absolute inset-0 bg-gradient-to-br ${
+                    item.clan === 'A' ? 'from-purple-600/30 via-indigo-900/50 to-cyan-500/20' :
+                    item.clan === 'B' ? 'from-emerald-600/30 via-teal-900/50 to-blue-500/20' :
+                    item.clan === 'C' ? 'from-rose-600/30 via-pink-900/50 to-orange-500/20' :
+                    item.clan === 'D' ? 'from-amber-600/30 via-yellow-900/50 to-lime-500/20' :
+                    item.clan === 'E' ? 'from-sky-600/30 via-blue-900/50 to-violet-500/20' :
+                    'from-fuchsia-600/30 via-purple-900/50 to-pink-500/20'
+                  }`} />
+                  <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.08)_0%,transparent_70%)]" />
+                  <div className="absolute top-3 right-3 rounded-full bg-agentrix-solar/90 px-2 py-0.5 text-[10px] font-bold text-agentrix-ink">
+                    ${item.price}
+                  </div>
+                  <div className="absolute bottom-3 left-3 rounded-full bg-black/50 backdrop-blur-sm px-2 py-0.5 text-[10px] text-white/80">
+                    Clan {item.clan}
+                  </div>
                 </div>
                 <div className="p-4">
-                  <h3 className="text-sm font-bold text-white group-hover:text-agentrix-electric">{item.title}</h3>
-                  <p className="mt-1 text-xs text-agentrix-mist">@{item.creator} · Clan {item.clan}</p>
+                  <h3 className="text-sm font-bold text-white group-hover:text-agentrix-electric transition-colors">{item.title}</h3>
                   <div className="mt-2 flex items-center justify-between">
-                    <span className="text-sm font-bold text-agentrix-solar">${item.price}</span>
+                    <span className="text-xs text-agentrix-mist">@{item.creator}</span>
                     <span className="text-xs text-agentrix-fog">♥ {item.likes}</span>
                   </div>
                 </div>

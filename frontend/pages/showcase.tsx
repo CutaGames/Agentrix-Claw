@@ -81,21 +81,32 @@ export default function ShowcasePage() {
               <Link
                 key={skin.id}
                 href={`/market/skin/${skin.id}`}
-                className="group mb-5 block break-inside-avoid rounded-xl border border-agentrix-inkLine bg-agentrix-inkSoft overflow-hidden transition-all hover:border-agentrix-electric/50 hover:shadow-lg hover:shadow-agentrix-electric/10"
+                className="group mb-5 block break-inside-avoid rounded-xl border border-agentrix-inkLine bg-agentrix-inkSoft overflow-hidden transition-all duration-300 hover:border-agentrix-electric/50 hover:shadow-lg hover:shadow-agentrix-electric/10 hover:-translate-y-1"
               >
-                {/* Thumbnail placeholder */}
-                <div className="aspect-square bg-gradient-to-br from-agentrix-purple/20 to-agentrix-electric/20 flex items-center justify-center">
-                  <span className="text-4xl opacity-50">🐾</span>
+                {/* Thumbnail — generative gradient art */}
+                <div className="aspect-square relative overflow-hidden">
+                  <div className={`absolute inset-0 bg-gradient-to-br ${
+                    skin.clan === 'A' ? 'from-purple-600/40 via-indigo-900/60 to-cyan-500/30' :
+                    skin.clan === 'B' ? 'from-emerald-600/40 via-teal-900/60 to-blue-500/30' :
+                    skin.clan === 'C' ? 'from-rose-600/40 via-pink-900/60 to-orange-500/30' :
+                    skin.clan === 'D' ? 'from-amber-600/40 via-yellow-900/60 to-lime-500/30' :
+                    skin.clan === 'E' ? 'from-sky-600/40 via-blue-900/60 to-violet-500/30' :
+                    'from-fuchsia-600/40 via-purple-900/60 to-pink-500/30'
+                  }`} />
+                  <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_30%_40%,rgba(255,255,255,0.1)_0%,transparent_60%)]" />
+                  <div className="absolute bottom-3 right-3 rounded-full bg-black/40 backdrop-blur-sm px-2 py-1 text-[10px] font-bold text-white/80">
+                    Clan {skin.clan}
+                  </div>
                 </div>
                 <div className="p-4">
                   <h3 className="text-sm font-bold text-white group-hover:text-agentrix-electric transition-colors">
                     {skin.title}
                   </h3>
-                  <p className="mt-1 text-xs text-agentrix-mist">{skin.creator} · Clan {skin.clan}</p>
+                  <p className="mt-1 text-xs text-agentrix-mist">{skin.creator}</p>
                   <div className="mt-3 flex items-center gap-4 text-xs text-agentrix-fog">
-                    <span className="inline-flex items-center gap-1"><Heart size={12} /> {skin.likes}</span>
+                    <span className="inline-flex items-center gap-1"><Heart size={12} className="text-rose-400" /> {skin.likes}</span>
                     <span className="inline-flex items-center gap-1"><Eye size={12} /> {skin.views}</span>
-                    <span className="inline-flex items-center gap-1"><Shuffle size={12} /> {skin.remixes}</span>
+                    <span className="inline-flex items-center gap-1"><Shuffle size={12} className="text-agentrix-electric" /> {skin.remixes}</span>
                   </div>
                 </div>
               </Link>

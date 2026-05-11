@@ -35,14 +35,15 @@ export default function ClanFilterPage() {
               <Link
                 key={item.id}
                 href={`/market/skin/${item.id}`}
-                className="rounded-xl border border-agentrix-inkLine bg-agentrix-inkSoft overflow-hidden hover:border-agentrix-electric/50"
+                className="group rounded-xl border border-agentrix-inkLine bg-agentrix-inkSoft overflow-hidden transition-all duration-300 hover:border-agentrix-electric/50 hover:-translate-y-1 hover:shadow-lg hover:shadow-agentrix-electric/10"
               >
-                <div className="aspect-square bg-gradient-to-br from-agentrix-purple/20 to-agentrix-electric/10 flex items-center justify-center">
-                  <span className="text-3xl opacity-40">🐾</span>
+                <div className="aspect-square relative overflow-hidden">
+                  <div className={`absolute inset-0 bg-gradient-to-br from-purple-600/30 via-indigo-900/50 to-cyan-500/20`} />
+                  <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.08)_0%,transparent_70%)]" />
                 </div>
                 <div className="p-3">
-                  <p className="text-sm font-bold text-white">{item.title}</p>
-                  <p className="text-xs text-agentrix-solar">${item.price}</p>
+                  <p className="text-sm font-bold text-white group-hover:text-agentrix-electric transition-colors">{item.title}</p>
+                  <p className="mt-1 text-xs text-agentrix-solar font-semibold">${item.price}</p>
                 </div>
               </Link>
             ))}
