@@ -6,6 +6,7 @@ import PetFloatingBall from "./components/PetFloatingBall";
 import AxpCornerIndicator from "./components/AxpCornerIndicator";
 import SubscriptionBadge from "./components/SubscriptionBadge";
 import SocialPanel from "./components/SocialPanel";
+import CreatorStudioHub from "./components/CreatorStudioHub";
 import CheckinModal from "./components/CheckinModal";
 import PetHeadToast from "./components/PetHeadToast";
 import PetEmotionOverlay from "./components/PetEmotionOverlay";
@@ -30,6 +31,7 @@ import { DESKTOP_WAKE_WORD_EVENT, readDesktopWakeWordConfig } from "./services/w
 import { bootPetSdk } from "./services/petSdk";
 import { bootPetAssets, destroyPetAssets } from "./services/petAssets";
 import { startChatMilestoneWatcher, stopChatMilestoneWatcher } from "./services/chatMilestones";
+import { startAxpRemoteSync, stopAxpRemoteSync } from "./services/axpRemoteSync";
 import { startVisionPerception, stopVisionPerception, isVisionPerceptionEnabled } from "./services/visionPerception";
 import "./services/suspend"; // Register __agentrix_suspend / __agentrix_resume on window
 
@@ -291,6 +293,7 @@ export default function App() {
     bootPetSdk();
     bootPetAssets();
     startChatMilestoneWatcher();
+    startAxpRemoteSync();
     if (isVisionPerceptionEnabled()) {
       startVisionPerception();
     }
@@ -306,6 +309,7 @@ export default function App() {
       stopVisionPerception();
       destroyPetAssets();
       stopChatMilestoneWatcher();
+      stopAxpRemoteSync();
     };
   }, [isServiceHostWindow, loggedIn, openProPanel, token, windowLabel]);
 
@@ -719,6 +723,7 @@ function ChatPanelAxpHost() {
   const [checkinOpen, setCheckinOpen] = useState(false);
   const [socialOpen, setSocialOpen] = useState(false);
   const [socialTab, setSocialTab] = useState<"coraising" | "greeting" | "mimic">("mimic");
+  const [studioOpen, setStudioOpen] = useState(false);
 
   useEffect(() => {
     const openCheckin = () => setCheckinOpen(true);
@@ -727,11 +732,14 @@ function ChatPanelAxpHost() {
       if (detail?.tab) setSocialTab(detail.tab);
       setSocialOpen(true);
     };
+    const openStudio = () => setStudioOpen(true);
     window.addEventListener("agentrix:open-checkin", openCheckin);
     window.addEventListener("agentrix:open-social", openSocial);
+    window.addEventListener("agentrix:open-creator-studio", openStudio);
     return () => {
       window.removeEventListener("agentrix:open-checkin", openCheckin);
       window.removeEventListener("agentrix:open-social", openSocial);
+      window.removeEventListener("agentrix:open-creator-studio", openStudio);
     };
   }, []);
 
@@ -740,6 +748,7 @@ function ChatPanelAxpHost() {
       <PetHeadToast />
       <CheckinModal visible={checkinOpen} onClose={() => setCheckinOpen(false)} />
       <SocialPanel visible={socialOpen} initialTab={socialTab} onClose={() => setSocialOpen(false)} />
+      <CreatorStudioHub visible={studioOpen} onClose={() => setStudioOpen(false)} />
     </>
   );
 }

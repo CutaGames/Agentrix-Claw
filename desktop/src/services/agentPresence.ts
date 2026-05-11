@@ -222,6 +222,14 @@ function connectPresence(token: string) {
     window.dispatchEvent(new CustomEvent("agentrix:pet-breeding-hatched", { detail: data }));
   });
 
+  // DE1: Cross-device AXP earn events — when the user earns AXP on another
+  // device (mobile check-in, co-raising feed, task completion), the desktop
+  // pet shows a "+N AXP ☀️" head-bubble so the reward feels unified. Backend
+  // emits {amount, source, note, deviceHint?} payloads.
+  _presenceSocket.on("axp:earned", (data) => {
+    window.dispatchEvent(new CustomEvent("agentrix:axp-earned-remote", { detail: data }));
+  });
+
   // Forward all events to window for other components
   _presenceSocket.onAny((event, data) => {
     window.dispatchEvent(new CustomEvent("agentrix:presence-event", { detail: { event, data } }));

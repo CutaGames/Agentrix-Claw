@@ -28,6 +28,7 @@ import FloatingBall from "./FloatingBall";
 import PetHeadToast from "./PetHeadToast";
 import CheckinModal from "./CheckinModal";
 import SocialPanel from "./SocialPanel";
+import CreatorStudioHub from "./CreatorStudioHub";
 import { setLocalEmotion } from "../services/petSdk";
 
 type BallState = "idle" | "recording" | "thinking" | "speaking";
@@ -71,8 +72,9 @@ export default function PetFloatingBall({ onTap, onOpenPro, state = "idle", forc
   const [checkinOpen, setCheckinOpen] = useState(false);
   const [socialOpen, setSocialOpen] = useState(false);
   const [socialTab, setSocialTab] = useState<"coraising" | "greeting" | "mimic">("mimic");
+  const [studioOpen, setStudioOpen] = useState(false);
 
-  // Listen for global "open check-in" / "open social" events (from right-click menu)
+  // Listen for global "open check-in" / "open social" / "open studio" events (from right-click menu)
   useEffect(() => {
     const openCheckin = () => setCheckinOpen(true);
     const openSocial = (e: Event) => {
@@ -80,11 +82,14 @@ export default function PetFloatingBall({ onTap, onOpenPro, state = "idle", forc
       if (detail?.tab) setSocialTab(detail.tab);
       setSocialOpen(true);
     };
+    const openStudio = () => setStudioOpen(true);
     window.addEventListener("agentrix:open-checkin", openCheckin);
     window.addEventListener("agentrix:open-social", openSocial);
+    window.addEventListener("agentrix:open-creator-studio", openStudio);
     return () => {
       window.removeEventListener("agentrix:open-checkin", openCheckin);
       window.removeEventListener("agentrix:open-social", openSocial);
+      window.removeEventListener("agentrix:open-creator-studio", openStudio);
     };
   }, []);
 
@@ -115,6 +120,7 @@ export default function PetFloatingBall({ onTap, onOpenPro, state = "idle", forc
         <PetHeadToast />
         <CheckinModal visible={checkinOpen} onClose={() => setCheckinOpen(false)} />
         <SocialPanel visible={socialOpen} initialTab={socialTab} onClose={() => setSocialOpen(false)} />
+        <CreatorStudioHub visible={studioOpen} onClose={() => setStudioOpen(false)} />
       </>
     );
   }
@@ -154,6 +160,9 @@ export default function PetFloatingBall({ onTap, onOpenPro, state = "idle", forc
 
       {/* Social panel: co-raising / greeting / photo mimic. */}
       <SocialPanel visible={socialOpen} initialTab={socialTab} onClose={() => setSocialOpen(false)} />
+
+      {/* Creator Studio: unified pet / video / wardrobe / mimic workbench. */}
+      <CreatorStudioHub visible={studioOpen} onClose={() => setStudioOpen(false)} />
     </div>
   );
 }

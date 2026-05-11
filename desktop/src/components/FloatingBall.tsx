@@ -162,6 +162,12 @@ async function showNativeBallMenu(
         },
         { item: "Separator" } as any,
         {
+          id: "ball-creator-studio",
+          text: "🎨 Creator Studio",
+          action: () => { window.dispatchEvent(new CustomEvent("agentrix:open-creator-studio")); },
+        },
+        { item: "Separator" } as any,
+        {
           id: "ball-pro",
           text: "💬 Open Pro Mode",
           action: () => { if (onOpenPro) onOpenPro(); else onTap(); },

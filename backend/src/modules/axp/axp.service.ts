@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, LessThan } from 'typeorm';
 import { UserAxpLedger } from '../../entities/user-axp-ledger.entity';
 import { UserAxpBalance } from '../../entities/user-axp-balance.entity';
+import { emitDesktopSyncEvent } from '../desktop-sync/desktop-sync.events';
 import {
   AXP_AMOUNTS,
   AXP_DAILY_CAPS,
@@ -158,11 +159,24 @@ export class AxpService {
         expired: 0,
       });
       const bal = await manager.findOne(UserAxpBalance, { where: { userId: input.userId } });
-      return { ledger_id: row.id, balance: Number(bal?.balance ?? 0) };
+      const result = { ledger_id: row.id, balance: Number(bal?.balance ?? 0) };
+
+      // DE1: broadcast to all connected devices so the desktop/web can
+      // render a head-bubble "+N AXP" toast even if the earn was
+      // triggered from another device.
+      try {
+        emitDesktopSyncEvent(input.userId, 'axp:earned', {
+          amount: input.amount,
+          source: input.source,
+          note: input.note ?? null,
+          ref_id: input.refId ?? null,
+          balance: result.balance,
+        });
+      } catch {}
+
+      return result;
     });
   }
-
-  async spend(input: SpendInput): Promise<{ ledger_id: string; balance: number }> {
     if (!AXP_SPEND_SOURCES.has(input.source)) {
       throw new BadRequestException(`invalid spend source: ${input.source}`);
     }

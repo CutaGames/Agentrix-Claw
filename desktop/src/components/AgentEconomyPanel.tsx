@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react";
 import { apiFetch, API_BASE, useAuthStore } from "../services/store";
+import AxpEconomyTab from "./AxpEconomyTab";
 
 interface AgentAccountInfo {
   balance: number;
@@ -70,7 +71,7 @@ export default function AgentEconomyPanel({ open, onClose }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [skills, setSkills] = useState<InstalledSkill[]>([]);
   const [a2aEvents, setA2aEvents] = useState<A2AEvent[]>([]);
-  const [tab, setTab] = useState<"overview" | "transactions" | "a2a" | "skills">("overview");
+  const [tab, setTab] = useState<"overview" | "transactions" | "a2a" | "skills" | "axp">("overview");
   const [loading, setLoading] = useState(false);
   const animatedBalance = useAnimatedNumber(account?.balance ?? 0);
   const animatedEarned = useAnimatedNumber(account?.totalEarned ?? 0);
@@ -163,13 +164,13 @@ export default function AgentEconomyPanel({ open, onClose }: Props) {
 
         {/* Tabs */}
         <div style={tabBar}>
-          {(["overview", "transactions", "a2a", "skills"] as const).map((t) => (
+          {(["overview", "transactions", "a2a", "skills", "axp"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               style={{ ...tabBtn, ...(tab === t ? tabBtnActive : {}) }}
             >
-              {t === "overview" ? "📊" : t === "transactions" ? "📋" : t === "a2a" ? "🔗 A2A" : "🧩"}
+              {t === "overview" ? "📊" : t === "transactions" ? "📋" : t === "a2a" ? "🔗 A2A" : t === "skills" ? "🧩" : "💎 AXP"}
             </button>
           ))}
         </div>
@@ -275,6 +276,8 @@ export default function AgentEconomyPanel({ open, onClose }: Props) {
               )}
             </div>
           )}
+
+          {!loading && tab === "axp" && <AxpEconomyTab />}
 
           {!loading && tab === "skills" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
