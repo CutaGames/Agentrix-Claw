@@ -1,5 +1,5 @@
 /**
- * Co-Raising Activity — view who fed my pet, when, and cumulative AXP earned.
+ * Co-Raising Activity �?view who fed my pet, when, and cumulative AXP earned.
  *
  * Per docs/WEB_REFACTOR_PLAN_2026-05 §6 + docs/MOBILE_REFACTOR_AND_ECOSYSTEM_PLAN_2026-05 §6.1
  */
@@ -59,7 +59,7 @@ export default function CoRaisingActivityPage(): React.ReactElement {
 
       <p className="mb-6 text-sm text-agentrix-fog">
         {t({
-          zh: '追踪所有邀请链接的喂养活动、喂养者总数、累计赠出 AXP。',
+          zh: '追踪所有邀请链接的喂养活动、喂养者总数、累计赠�?AXP�?,
           en: 'Track feeding activity across all invite links, total feeders, and cumulative AXP shared.',
         })}
       </p>
@@ -100,11 +100,11 @@ export default function CoRaisingActivityPage(): React.ReactElement {
         <div className="rounded-xl border border-dashed border-agentrix-inkLine bg-agentrix-inkSoft/50 p-10 text-center">
           <Sprout size={48} className="mx-auto text-agentrix-electric/60" />
           <h3 className="mt-4 text-base font-bold">
-            {t({ zh: '还没有活动', en: 'No activity yet' })}
+            {t({ zh: '还没有活�?, en: 'No activity yet' })}
           </h3>
           <p className="mt-2 text-xs text-agentrix-mist">
             {t({
-              zh: '创建邀请链接后，好友的每次喂养都会显示在这里。',
+              zh: '创建邀请链接后，好友的每次喂养都会显示在这里�?,
               en: 'After creating invites, friends\' feeding activity will appear here.',
             })}
           </p>
@@ -112,7 +112,7 @@ export default function CoRaisingActivityPage(): React.ReactElement {
             href="/console/promote/co-raising"
             className="mt-4 inline-block rounded-full bg-agentrix-solar px-4 py-1.5 text-xs font-bold text-agentrix-ink"
           >
-            {t({ zh: '去创建邀请', en: 'Create invite' })}
+            {t({ zh: '去创建邀�?, en: 'Create invite' })}
           </Link>
         </div>
       ) : (
@@ -137,13 +137,13 @@ function ActivityRow({ invite }: { invite: CoRaisingInviteView }): React.ReactEl
     : '0';
 
   return (
-    <Card hover>
+    <Card>
       <CardBody>
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <code className="text-sm font-bold text-white font-mono">
-                {invite.token.slice(0, 10)}…
+                {invite.token.slice(0, 10)}�?
               </code>
               <Badge variant={statusVariant as any}>{invite.status}</Badge>
               <span className="text-xs text-agentrix-mist">{createdDate}</span>
@@ -151,13 +151,13 @@ function ActivityRow({ invite }: { invite: CoRaisingInviteView }): React.ReactEl
             <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-agentrix-mist">
-                  {t({ zh: '喂养者', en: 'Feeders' })}
+                  {t({ zh: '喂养�?, en: 'Feeders' })}
                 </p>
                 <p className="mt-0.5 text-lg font-bold text-white">{invite.feeders_count}</p>
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-agentrix-mist">
-                  {t({ zh: '总喂养', en: 'Total Feeds' })}
+                  {t({ zh: '总喂�?, en: 'Total Feeds' })}
                 </p>
                 <p className="mt-0.5 text-lg font-bold text-white">{invite.total_feeds}</p>
               </div>

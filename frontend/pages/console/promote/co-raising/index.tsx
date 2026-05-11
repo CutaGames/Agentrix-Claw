@@ -298,7 +298,7 @@ function InviteRow({
     invite.status === 'active' ? 'success' : invite.status === 'paused' ? 'warning' : 'subtle';
 
   return (
-    <Card hover>
+    <Card>
       <CardBody>
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
