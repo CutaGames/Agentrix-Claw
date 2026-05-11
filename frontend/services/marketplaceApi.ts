@@ -287,10 +287,26 @@ export async function fetchMarketTasks(
   });
 
   // 后端可能返回 { items, total, page, limit } 或 { tasks, total, page, limit }
-  const items: TaskListItem[] = data.items || data.tasks || [];
+  const rawItems: any[] = data.items || data.tasks || [];
   const total: number = data.total || 0;
   const page: number = data.page || 1;
   const limit: number = data.limit || params.limit || 20;
+
+  // 映射后端字段到前端 TaskListItem 接口
+  const items: TaskListItem[] = rawItems.map((item: any) => ({
+    id: item.id,
+    title: item.title || '',
+    description: item.description || '',
+    rewardAmount: parseFloat(item.budget) || item.rewardAmount || 0,
+    currency: item.currency || 'USD',
+    taskType: item.type || item.taskType || 'other',
+    requiredSkills: item.tags || item.requiredSkills || [],
+    deadline: item.requirements?.deadline || item.deadline || null,
+    status: item.status?.toUpperCase() || 'OPEN',
+    axpBonus: item.axpBonus || 0,
+    publisherName: item.publisherName || 'Anonymous',
+    createdAt: item.createdAt || new Date().toISOString(),
+  }));
 
   return {
     items,
