@@ -177,6 +177,8 @@ export class AxpService {
       return result;
     });
   }
+
+  async spend(input: SpendInput): Promise<{ ledger_id: string; balance: number }> {
     if (!AXP_SPEND_SOURCES.has(input.source)) {
       throw new BadRequestException(`invalid spend source: ${input.source}`);
     }
