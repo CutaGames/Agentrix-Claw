@@ -7,6 +7,7 @@ import { PetSkinService } from './pet-skin.service';
 import { PetSkinController } from './pet-skin.controller';
 import { MarketplacePetModule } from '../marketplace-pet/marketplace-pet.module';
 import { PetGenQuotaModule } from '../pet-gen-quota/pet-gen-quota.module';
+import { AxpModule } from '../axp/axp.module';
 
 /**
  * PetSkinModule — 用户皮肤资产 + 激活指针
@@ -21,6 +22,7 @@ import { PetGenQuotaModule } from '../pet-gen-quota/pet-gen-quota.module';
     TypeOrmModule.forFeature([PetSkin, PetActiveSkin, Order]),
     forwardRef(() => MarketplacePetModule),
     PetGenQuotaModule,
+    AxpModule,
   ],
   controllers: [PetSkinController],
   providers: [PetSkinService],
