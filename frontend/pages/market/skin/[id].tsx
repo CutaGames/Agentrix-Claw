@@ -413,6 +413,39 @@ export default function SkinDetailPage({
                     />
                   </div>
                 </>
+              ) : skin.priceAxp != null && skin.priceAxp > 0 ? (
+                <>
+                  {/* AXP-only price */}
+                  <div className="flex items-center gap-2 text-sm text-yellow-400">
+                    <Zap size={16} />
+                    <span>{t({ zh: 'AXP 积分购买', en: 'AXP Purchase' })}</span>
+                  </div>
+                  <div className="mt-3 flex items-end gap-2">
+                    <span className="text-2xl font-extrabold text-yellow-400">
+                      {skin.priceAxp.toLocaleString()} AXP
+                    </span>
+                  </div>
+                  {/* Primary CTA: Buy with AXP */}
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/market?axpBuy=${skin.id}`)}
+                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-yellow-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-yellow-500"
+                  >
+                    <Zap size={14} />
+                    {t({ zh: `用 ${skin.priceAxp} AXP 购买`, en: `Buy for ${skin.priceAxp} AXP` })}
+                  </button>
+                  {/* Secondary: Mobile Deep Link */}
+                  <div className="mt-3 rounded-lg border border-gray-700 bg-gray-900/50 p-3">
+                    <p className="mb-2 text-xs text-gray-500">
+                      {t({ zh: '也可在 App 中操作', en: 'Also available on mobile' })}
+                    </p>
+                    <MobileDeepLink
+                      action="buy"
+                      resourceId={skin.id}
+                      showQR={false}
+                    />
+                  </div>
+                </>
               ) : (
                 <div className="text-center text-sm text-gray-500">
                   {t({ zh: '该皮肤暂未上架出售', en: 'This skin is not listed for sale' })}
