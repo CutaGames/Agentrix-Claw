@@ -163,7 +163,6 @@
         }
       ],
       "expo-localization",
-      "rive-react-native",
       "expo-gl"
     ],
     "extra": {
