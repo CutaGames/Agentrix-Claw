@@ -168,7 +168,11 @@ export class MarketSkinsService {
       remixCount: skin.remixCount,
       listingId: listing?.id || null,
       listingMode: listing?.mode || null,
-      priceUsd: listing?.priceUsd ? parseFloat(listing.priceUsd) : null,
+      priceUsd: listing?.priceUsd
+        ? parseFloat(listing.priceUsd)
+        : skin.priceCents > 0
+          ? skin.priceCents / 100
+          : null,
       startingBidUsd: listing?.startingBidUsd
         ? parseFloat(listing.startingBidUsd)
         : null,

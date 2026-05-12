@@ -368,21 +368,32 @@ export default function SkinDetailPage({
                     <span className="text-2xl font-extrabold text-white">
                       ${skin.priceUsd!.toFixed(2)}
                     </span>
+                    {skin.priceAxp != null && skin.priceAxp > 0 && (
+                      <span className="ml-2 text-sm font-medium text-yellow-400">
+                        / {skin.priceAxp.toLocaleString()} AXP
+                      </span>
+                    )}
                   </div>
-                  {showAxp && (
-                    <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-400">
-                      <Zap size={12} />
-                      AXP {t({ zh: '可抵扣', en: 'accepted' })} (-{skin.axpDiscountPercent}%)
-                    </div>
-                  )}
-                  {/* Primary CTA: Buy Now */}
+                  {/* Primary CTA: Buy Now (Fiat/Crypto via SmartCheckout) */}
                   <button
                     type="button"
                     onClick={() => router.push(`/pay/checkout?productId=${skin.listingId || skin.id}`)}
                     className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-500"
                   >
-                    {t({ zh: '立即购买', en: 'Buy Now' })}
+                    <DollarSign size={14} />
+                    {t({ zh: `法币/Crypto 支付 $${skin.priceUsd!.toFixed(2)}`, en: `Pay $${skin.priceUsd!.toFixed(2)} (Fiat/Crypto)` })}
                   </button>
+                  {/* Alternative: Buy with AXP */}
+                  {skin.priceAxp != null && skin.priceAxp > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/market?axpBuy=${skin.id}`)}
+                      className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-yellow-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-yellow-500"
+                    >
+                      <Zap size={14} />
+                      {t({ zh: `用 ${skin.priceAxp.toLocaleString()} AXP 购买`, en: `Buy for ${skin.priceAxp.toLocaleString()} AXP` })}
+                    </button>
+                  )}
                   {/* Alternative: Add to Cart */}
                   <button
                     type="button"
