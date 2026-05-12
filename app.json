@@ -162,8 +162,7 @@
           "enableOpenCL": true
         }
       ],
-      "expo-localization",
-      "expo-gl"
+      "expo-localization"
     ],
     "extra": {
       "wakeWord": {
