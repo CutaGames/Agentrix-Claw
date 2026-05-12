@@ -564,7 +564,247 @@ priority = ['live2d', 'vrm', 'rive', 'fallback']
 
 ---
 
-## 13. 与现有 V3 PRD 的引用关系
+## 13. Marketplace Ecosystem + Pet Economy / AXP (V4.1 增量)
+
+> Source: Marketplace Ecosystem spec (`.kiro/specs/marketplace-ecosystem/design.md`) + Mobile Refactor & Ecosystem 白皮书 (`docs/MOBILE_REFACTOR_AND_ECOSYSTEM_PLAN_2026-05.zh-CN.md`)。
+>
+> 本节作为 V4.1 顿领增量，为各端 PRD 的 Marketplace / Economy 章节提供单一事实源。所有端的 AXP / 订阅 / Remix 分成 / Deep Link 数值以本节为准。
+
+### 13.1 一句话战略
+
+> **Agentrix = 以"宠物 Agent"为载体的跨端经济生态。每个用户是全能公民，既消费也创造，通过 AXP 积分串联留存与裂变。**
+
+"全能公民"取代 V3 的身份包：**一个账号，所有能力**（陪伴 / 发布技能 / 设计皮肤 / 开店 / IP 联名 / 做游戏 / 带公会），订阅档位决定量级而非身份。
+
+### 13.2 Web ↔ Mobile 分工（交易架构最终态）
+
+| 维度 | Web | Mobile |
+|------|-----|--------|
+| 角色 | **展示 + 发现 + 完整交易闭环** | **陪伴中枢 + 审核 + 分享裂变 + 也可完成交易** |
+| Marketplace 深度 | 主战场：浏览 / 上架 / 购买 / Remix 树 / 拍卖 / 租赁 / 创作者后台 / 排行榜 / Showcase | 浏览 / 购买 / 装备 / 简化上架 |
+| Checkout | 完整 Cart → Checkout → SmartCheckout（混合支付）→ Order | In-app checkout（Stripe / Crypto via WebBrowser）或跳 Web |
+| Deep Link 方向 | 生成 `agentrix://` 推 Mobile | 接收 + 解析 |
+| 后端 | 共享 NestJS + PostgreSQL | 同一后端 |
+| SEO | SSR + JSON-LD + Open Graph（TTFB < 200ms） | 不适用 |
+
+核心原则：**两端共享同一后台**，Deep Link 是跨端辅助入口不是唯一路径。
+
+### 13.3 18 只官方预制皮肤（Platform Seed）
+
+为向用户展示 AXP 价值 + seed Marketplace：
+
+| 属性 | 值 |
+|------|----|
+| 总数 | 18（6 族群 × 3 只） |
+| 价格 | 500–3000 AXP（约 $0.50–$3.00） |
+| 支付 | AXP 积分（部分或全额） |
+| 数据库标记 | `source='platform'` / `visibility='public'` / `moderation_status='approved'` / `featured=true` |
+| 曝光 | Web `/showcase` carousel 顶部 + `/market` Trending 前 6 + Mobile Plaza · Pets 精选位 |
+| 绑定 | 部分皮肤作为 NFC 盲盒 / L2 联名 SKU 的默认资产 |
+
+### 13.4 新增跨端后端 API（V4.1）
+
+| 端点 | 用途 | 认证 | 备注 |
+|------|------|------|------|
+| `GET /api/v1/market/skins` | 皮肤浏览（sort/clan/cursor 分页） | 公开 | 聚合 `pet_skins` + `marketplace_pet_listings` LEFT JOIN |
+| `GET /api/v1/market/search` | 跨表统一搜索（skins + skills + tasks） | 公开 | 返回分组结果与计数 |
+| `GET /api/v1/axp/balance` | AXP 余额 | 认证 | 导航栏实时余额展示 |
+| `GET /api/v1/axp/ledger` | AXP 流水（FIFO 过期追踪） | 认证 | `AxpCenterScreen` / `/console/axp` |
+
+查询参数（`/api/v1/market/skins`）：`sort=featured|newest|popular` / `clan=A-F` / `limit` / `cursor`。
+
+数据库扩展 — `pet_skins` 表新字段：
+
+```sql
+ALTER TABLE pet_skins ADD COLUMN clan VARCHAR(2) DEFAULT NULL;
+ALTER TABLE pet_skins ADD COLUMN like_count INTEGER DEFAULT 0;
+ALTER TABLE pet_skins ADD COLUMN view_count INTEGER DEFAULT 0;
+ALTER TABLE pet_skins ADD COLUMN remix_count INTEGER DEFAULT 0;
+ALTER TABLE pet_skins ADD COLUMN featured BOOLEAN DEFAULT FALSE;
+```
+
+### 13.5 Mobile Deep Link 统一协议
+
+```
+agentrix://{action}?resourceId={id}&userId={uid}&token={tok}
+```
+
+| Action | 目标 | 典型来源 |
+|--------|-----|---------|
+| `agentrix://buy?resourceId={skinId}` | 皮肤购买 | Web `/market/skin/[id]` / 第三方分享 |
+| `agentrix://bid?resourceId={auctionId}` | 拍卖出价 | Web `/market/auction/[id]` |
+| `agentrix://install_skill?resourceId={skillId}` | 技能安装 | Web `/market/skills/[id]` |
+| `agentrix://accept_task?resourceId={taskId}` | 任务接单 | Web `/market/tasks/[id]` |
+| `agentrix://co_raising?inviteToken={tok}` | 共养好友主宠落地 | Mobile 分享 → Web landing → 拉回 App |
+| `agentrix://greeting?cardToken={tok}` | 贺卡收件 | Mobile 分享 |
+
+已登录用户在 Web 生成 Deep Link 时自动注入 `userId + token`，避免移动端重新登录。未登录用户先走 Web landing（`/co-raising/[token]` 或 `/greeting/[token]`）作为裂变入口。
+
+### 13.6 AXP 积分体系（Phase 1 · off-chain）
+
+#### 13.6.1 两层结构
+
+| 层 | AXP（Agentrix Point） | AX（未来代币） |
+|---|---------------------|---------------|
+| 形式 | 软积分（off-chain 数据库） | ERC-20 + 治理代币 |
+| 锚定 | **1 AXP = $0.001** | 浮动 |
+| 合规 | 中国区友好（非证券） | 仅限非受限地区 |
+| 上线 | **Phase 1 ✅** | Phase 3+（合规就绪后，1 AX = 100 AXP 预留接口） |
+
+合约接口 Phase 1 部署但 `ADMIN_ONLY` 不开放（`contracts/AXPTokenBridge.sol`）。数据库从 Day 1 完整落库 `user_axp_ledger` / `user_axp_balance_snapshot` / `axp_earned_timestamp` 保证未来兑换可追溯。
+
+#### 13.6.2 六大发放来源（10k MAU 基线）
+
+| # | 来源 | AXP/次 | 月发放 |
+|--:|------|--------:|--------:|
+| 1 | 每日签到 | 20 avg | 2,000k |
+| 2 | 和宠聊 10 轮/日 | 20 | 1,600k |
+| 3 | 宠物 Lv↑ | 150 | 150k |
+| 4 | 共养好友喂食 | 5 | 135k |
+| 5 | 好友通过推广注册 | 500 | 250k |
+| 6 | 好友消费 GMV × 1% | 10 | 20k |
+| 7 | 集市发帖被赞 | 3 | 9k |
+| 8 | 完成任务（金额 × 10） | 5 | 25k |
+| 9 | 皮肤 / 商品售出 | 50 | 25k |
+| 10 | 游戏参与（共养 / 贺卡 / 大赛） | 30 | 900k |
+| 11 | 大赛冠军 | 30 | 159k |
+| 12 | 订阅消费返现 | 按档位 | 按消费 |
+
+**月发放 I_m ≈ 5.27M AXP（= $5,270 隐性负债 = $0.527 / MAU）**
+
+#### 13.6.3 五大消耗去处
+
+| # | 场景 | AXP/次 | 月销毁 |
+|--:|------|-------:|-------:|
+| A | 订阅续费抵扣（最多 20%） | 2000 | 1,280k |
+| B | 技能购买抵扣（最多 20%） | 100 | 800k |
+| C | 皮肤购买抵扣（最多 20%） | 200 | 400k |
+| D | 宠物创作额度（+5 次） | 300 | 300k |
+| E | A2A 任务优先匹配 | 500 | 150k |
+| F | 集市卡片置顶 24h | 200 | 200k |
+| G | 专属皮肤 / NFT 预售资格 | 2000 | 200k |
+| H | L3 协签手续费减免 | 1000 | 50k |
+| I | 抽奖（100 AXP/次） | 100 | 800k |
+| J | 限定皮肤 / 兑换 | 500 | 1,000k |
+| K | 过期销毁（12 个月未用） | auto | 500k |
+
+**月销毁 B_m ≈ 5.68M AXP** → B_m / I_m = **108%** → 季度流通池净变 **-1.23M AXP**（轻度通缩）。
+
+#### 13.6.4 消费返现（订阅核心黏性）
+
+| 用户档 | 买 $100 返 AXP | 返现率 |
+|-------|---------------:|------:|
+| Free | 0 | 0% |
+| Lite | 500 | 5% |
+| Plus | 1000 | 10% |
+| Pro | 1500 | 15% |
+| Elite | 2000 | 20% |
+
+订阅 = 解锁更多返现能力，而非买配额。
+
+#### 13.6.5 过期机制（FIFO）
+
+- AXP 发放后 **12 个月自动销毁**
+- 每笔 AXP 带时间戳，FIFO 消耗（最早获得的先消耗）
+- 过期前 30 天跨端推送提醒
+
+#### 13.6.6 动态调节器
+
+| 信号 | 响应 |
+|------|-----|
+| 流通池 S_m 月环比 +20% | 降低发放系数 10% |
+| S_m 月环比 -10% | 提高发放 10% / 开放限定兑换 |
+| 兑换商品连续 30 天售罄 | 上新品 / 涨价 |
+| 老用户季度零新获得 | 定向"老友回归"礼包 |
+| Free ARPU < $0.02 | 降低签到 AXP / 限频 |
+
+### 13.7 5 档 + Enterprise 订阅（V4.1 冻结）
+
+| 档位 | 月价 | 年价 | LLM 预算 | 宠数 | 技能上架 | 皮肤上架 | 拍卖费 | AXP Cashback |
+|-----|----:|----:|---------:|----:|---------:|---------:|------:|-------------:|
+| **Free** | $0 | – | $0.30 硬顶 | 2 | 1 | 1 | 2.5% | 0% |
+| **Lite** | $4.99 | $49 | $2.5 cloud | 5 | 3 | 3 | 1.8% | 5% |
+| **Plus** | $14.99 | $149 | $8 cloud | 15 | 10 | 10 | 1.0% | 10% |
+| **Pro** | $29.99 | $299 | $20 cloud | 40 | 30 | ∞ | 0.3% | 15% |
+| **Elite** | $69 | $690 | $50 cloud | ∞ | ∞ | ∞ | 0% | 20% |
+| **Enterprise** | 合同 | 合同 | 合同 | 合同 | 合同 | 合同 | 合同 | 合同 |
+
+额外权益（V4.1 确认）：
+- Auto-Earn 并行执行器槽位随档位扩展（Lite 1 / Plus 2 / Pro 3 / Elite ∞）
+- L3 多端协签在 Pro+ 开放
+- Pet SDK beta 在 Elite 开放
+- 家庭席位在 Plus+ 开放
+- Elite 专属季度限定皮肤 + Elite Creator 徽章 + 2h 专属客服 lane
+- 首页推荐权重（Free 1× / Lite 1.2× / Plus 1.5× / Pro 2× / Elite 3×）
+
+**超额策略（所有档位）**：AXP 抵扣（1 AXP = $0.001）/ 现金实扣（1.3–1.5× 防滥用）/ BYOK 自带 API key 三选一。
+
+### 13.8 Pet 经济三大闭环（V4.1）
+
+> 所有旧模块（Skill / Task / Predict / Referral / Breeding / NFT / Toy）都是这三个 loop 的组成部分。
+
+**Loop 1 · 陪伴 → 成长 → 亲密度 → 解锁**：
+聊天 / 拍照 / 语音 → 记忆 4 层入库 → XP+ → Lv↑ 解锁新技能槽 / 灵魂模板 / 皮肤 → Dreaming 夜间总结 → 晨报 → 回访。
+
+**Loop 2 · 技能 → 任务 → 赚钱 → 宠钱包 → 分账**：
+Plaza · 技能 → ⚡装到主宠 → A2A 匹配任务 / 用户手动接 → 主宠执行 → 结算入主宠 MPC 钱包 → Split Rule（User 70% / Creator 20% / Platform 10%） → 用户看到"主宠给我赚了 $X"。
+
+**Loop 3 · 宠物资产 → 设计/养成 → 拍卖/NFT/玩偶 → 裂变**：
+PetCreator / 繁育 / 换皮 → 灵魂×皮肤+血统+成就+赚钱记录 = 资产估值 → 拍卖 / 一口价 / 出租 → NFT mint 确权 → 买家获得完整宠物 → 或跳 L2 联名 Landing 定制实体玩偶 → 分享带 ref → 新用户引导 → AXP 返现闭环。
+
+### 13.9 Phase 1 多人游戏（裂变发动机）
+
+决策：**共养 + 贺卡**（零门槛 × 高互动 × 高裂变）。
+
+| 玩法 | 心智 | 裂变路径 | AXP 流动 |
+|------|-----|---------|---------|
+| **共养好友的宠** | 蚂蚁森林模式 | 分享链接 → Web landing → 未注册也可喂一次 → 注册拿 500 AXP | 喂食 +5 AXP；未来 Task 收益好友得 5% |
+| **宠物贺卡** | 节日 / 生日 / 搞笑 | 选模板 → 自定义 → 发给好友 → 收件人 App 收件 | 优质模板 500-2000 AXP 兑换（销毁闭环 J） |
+
+Phase 2 保留清单（不实现）：每日宠物大赛 / 宠物接龙剧场 / 组队 Polymarket / 协作任务分工 / PvP 拍卖 / 游戏工作室 SDK 作品。
+
+### 13.10 LLM 成本控制红线（经济模型的塌房保险）
+
+没有以下 5 条机制，整个经济模型失灵：
+
+1. **硬 Token Budget**：Free 每日 20 轮硬断；付费档预算耗尽弹升级提示
+2. **智能路由默认**：`llm-router` 默认最便宜能干活的模型；Opus / GPT-5 仅显式指定或需推理时启用
+3. **本地模型降级**：`llama.rn` / `whisper.rn` 常驻；Free 用户 60%+ 对话走本地推理
+4. **BYOK 鼓励**：Power user 用自己 API key 不吃平台 LLM 预算
+5. **Quota 可视化**：钱包 / AXP 中心显示"本月已用 $12.30 / $20"
+
+### 13.11 单位经济 P&L（10k MAU 成熟期）
+
+| 档位 | 占比 | 毛利/人 |
+|------|----:|-------:|
+| Free | 85% | -$0.37 |
+| Lite | 7% | +$2.10 |
+| Plus | 5% | +$5.99 |
+| Pro | 2% | +$8.08 |
+| Elite | 0.8% | +$15.93 |
+| Enterprise ($500 档) | 0.2% | +$200 |
+
+- 加权订阅毛利 / MAU = **+$0.82**
+- GMV 抽成（技能 / 皮肤 / 任务 / NFT fee） / MAU = **+$0.47**
+- **综合 / MAU = +$1.29 / 月**
+- 固定月成本 ~$999 → **Break-even ≈ 775 MAU**
+- 规模化：10k MAU → +$155k 年化；100k → +$1.5M；1M → **+$15M**
+
+### 13.12 各端 Marketplace / Economy 对齐
+
+| 维度 | Web | Mobile | Desktop | Watch | Glass | Toy |
+|------|:---:|:------:|:-------:|:-----:|:-----:|:---:|
+| Marketplace 深度 | 完整主战场 | 浏览+购买+装备+简化上架 | 浏览+购买+上架 | 仅推荐 | – | 不参与 |
+| /showcase 画廊 | ✅ 18 官方皮肤曝光主渠道 | Plaza · Pets 精选位 | 可访问 | – | – | – |
+| AXP 余额展示 | 导航栏（已登录） | Home + Me + AXP Center | Pet 浮球侧栏 | Tile 子项 | HUD 微通知 | – |
+| 订阅 CTA | `/pricing` | Me Tab 升级入口 | Agent Economy Panel | – | – | – |
+| Deep Link 生成端 | 主力 | 分享裂变 | 支持 | – | – | – |
+| Deep Link 接收端 | 不接收 | 唯一解析端 | – | – | – | – |
+| 共养 / 贺卡 | Landing + OG 分享预览 | 发起 + 收件主端 | – | – | – | – |
+
+---
+
+## 14. 与现有 V3 PRD 的引用关系
 
 | V4 主题 | V4 处理方式 | V3 引用位置 |
 |---------|-----------|------------|
@@ -575,10 +815,11 @@ priority = ['live2d', 'vrm', 'rive', 'fallback']
 | 5 端职责 | 沿用 + 第 6 端 Toy | V3 §1 |
 | Handoff / Approval / Wallet / Vitals / Memory | 沿用 + Toy 端追加列 | V3 §5 |
 | 家庭账号（P3） | 沿用 + 家庭宠纳入「灵魂×皮肤」框架 | V3 §3.9 |
+| **Marketplace / AXP / 订阅** | **§13 单一事实源** | V3 §9（AgentAccount 基础保留） |
 
 ---
 
-## 14. 文档地图
+## 15. 文档地图
 
 ```
 agentrix-cross-platform-prd-v4.md   ← 本文件（顿领）

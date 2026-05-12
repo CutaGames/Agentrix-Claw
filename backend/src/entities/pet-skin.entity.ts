@@ -103,6 +103,10 @@ export class PetSkin {
   @Column({ type: 'integer', default: 0 })
   priceCents: number;
 
+  /** P1-3 — Optional AXP price (NULL = not AXP-purchasable). */
+  @Column({ type: 'int', nullable: true })
+  priceAxp?: number | null;
+
   /** Marketplace Ecosystem — Clan 族群分类 (A-F) */
   @Column({ type: 'varchar', length: 2, nullable: true })
   clan: string | null;

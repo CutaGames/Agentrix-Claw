@@ -32,6 +32,7 @@ export interface SkinListItemDto {
   auctionEndsAt: string | null;
   axpAccepted: boolean;
   axpDiscountPercent: number;
+  priceAxp: number | null;
   featured: boolean;
   createdAt: string;
   parentSkinId: string | null;
@@ -175,7 +176,8 @@ export class MarketSkinsService {
       auctionEndsAt: listing?.auctionEndsAt
         ? listing.auctionEndsAt.toISOString()
         : null,
-      axpAccepted: false, // TODO: integrate AXP acceptance flag when available
+      priceAxp: skin.priceAxp ?? null,
+      axpAccepted: !!(skin.priceAxp && skin.priceAxp > 0),
       axpDiscountPercent: 0,
       featured: skin.featured,
       createdAt: skin.createdAt.toISOString(),

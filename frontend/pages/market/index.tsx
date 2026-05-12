@@ -13,7 +13,9 @@ import { useState, useCallback } from 'react';
 import { GetServerSideProps, InferGetServerSidePropsType } from 'next';
 import { TrendingUp, Clock, Trophy, Smartphone, Loader2 } from 'lucide-react';
 import { MarketplaceLayout } from '../../components/marketplace/MarketplaceLayout';
+import { FeaturedSkinsCarousel } from '../../components/marketplace/FeaturedSkinsCarousel';
 import { SkinCard } from '../../components/marketplace/SkinCard';
+import { AxpPurchaseModal } from '../../components/marketplace/AxpPurchaseModal';
 import { buildSeo } from '../../lib/seo';
 import { useLocalization } from '../../contexts/LocalizationContext';
 import { useCart } from '../../contexts/CartContext';
@@ -54,6 +56,7 @@ interface MarketPageProps {
   initialData: MarketplaceSkinsResponse;
   initialTab: Tab;
   initialClan: ClanFilter;
+  featuredSkins: SkinListItem[];
 }
 
 export const getServerSideProps: GetServerSideProps<MarketPageProps> = async (ctx) => {
@@ -66,13 +69,19 @@ export const getServerSideProps: GetServerSideProps<MarketPageProps> = async (ct
     : 'All';
 
   let initialData: MarketplaceSkinsResponse = { items: [], total: 0, nextCursor: null };
+  let featuredSkins: SkinListItem[] = [];
 
   try {
-    initialData = await fetchMarketSkins({
-      sort: tabToSort(tab),
-      ...(clan !== 'All' && { clan }),
-      limit: 24,
-    });
+    const [mainRes, featuredRes] = await Promise.all([
+      fetchMarketSkins({
+        sort: tabToSort(tab),
+        ...(clan !== 'All' && { clan }),
+        limit: 24,
+      }),
+      fetchMarketSkins({ sort: 'featured', limit: 8 }),
+    ]);
+    initialData = mainRes;
+    featuredSkins = featuredRes.items;
   } catch {
     // SSR 降级：返回空数据，客户端 hydration 后重新请求
   }
@@ -82,6 +91,7 @@ export const getServerSideProps: GetServerSideProps<MarketPageProps> = async (ct
       initialData,
       initialTab: tab,
       initialClan: clan,
+      featuredSkins,
     },
   };
 };
@@ -118,6 +128,7 @@ export default function MarketPage({
   initialData,
   initialTab,
   initialClan,
+  featuredSkins,
 }: InferGetServerSidePropsType<typeof getServerSideProps>) {
   const { t } = useLocalization();
   const { addItem } = useCart();
@@ -129,6 +140,7 @@ export default function MarketPage({
   const [total, setTotal] = useState<number>(initialData.total);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [axpPurchaseSkin, setAxpPurchaseSkin] = useState<SkinListItem | null>(null);
 
   // -------------------------------------------------------------------------
   // Fetch helper
@@ -229,6 +241,9 @@ export default function MarketPage({
   return (
     <MarketplaceLayout seo={seo} activeSection="skins">
       <div className="container mx-auto px-4 py-6 md:px-6">
+        {/* ─── Featured Skins Carousel ─── */}
+        <FeaturedSkinsCarousel skins={featuredSkins} />
+
         {/* ─── Info Banner: Transactions on Mobile ─── */}
         <div className="mb-6 flex items-center gap-3 rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10">
@@ -321,7 +336,7 @@ export default function MarketPage({
                   <div className="absolute -left-1 -top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-yellow-500 text-xs font-bold text-black shadow-md">
                     {index + 1}
                   </div>
-                  <SkinCard skin={skin} onAddToCart={handleAddToCart} />
+                  <SkinCard skin={skin} onAddToCart={handleAddToCart} onBuyWithAxp={(skin) => setAxpPurchaseSkin(skin)} />
                 </div>
               ))}
             </div>
@@ -329,7 +344,7 @@ export default function MarketPage({
             // Trending / New: standard grid
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {items.map((skin) => (
-                <SkinCard key={skin.id} skin={skin} onAddToCart={handleAddToCart} />
+                <SkinCard key={skin.id} skin={skin} onAddToCart={handleAddToCart} onBuyWithAxp={(skin) => setAxpPurchaseSkin(skin)} />
               ))}
             </div>
           )}
@@ -360,6 +375,13 @@ export default function MarketPage({
           </p>
         )}
       </div>
+
+      {/* AXP Purchase Modal */}
+      <AxpPurchaseModal
+        skin={axpPurchaseSkin}
+        open={!!axpPurchaseSkin}
+        onClose={() => setAxpPurchaseSkin(null)}
+      />
     </MarketplaceLayout>
   );
 }

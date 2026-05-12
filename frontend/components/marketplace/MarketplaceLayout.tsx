@@ -14,7 +14,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { Store, Zap, ListTodo, Sparkles, Search, Download, Smartphone, ShoppingCart as ShoppingCartIcon } from 'lucide-react';
+import { Store, Zap, ListTodo, Search, Download, Smartphone, ShoppingCart as ShoppingCartIcon } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
 import { useLocalization } from '../../contexts/LocalizationContext';
 import { useCartCount } from '../../contexts/CartContext';
@@ -27,7 +27,7 @@ import type { UnifiedSearchResponse } from '../../services/marketplaceApi';
 // Types
 // ---------------------------------------------------------------------------
 
-export type ActiveSection = 'skins' | 'skills' | 'tasks' | 'showcase';
+export type ActiveSection = 'skins' | 'skills' | 'tasks';
 
 export interface MarketplaceLayoutProps {
   children: ReactNode;
@@ -47,12 +47,10 @@ export interface MarketplaceLayoutProps {
  *  /market          → 'skins'
  *  /market/skills   → 'skills'
  *  /market/tasks    → 'tasks'
- *  /showcase        → 'showcase'
  *  /market/skin/[id]→ 'skins'  (detail page falls under skins)
  *  default          → 'skins'
  */
 export function getActiveSection(pathname: string): ActiveSection {
-  if (pathname === '/showcase') return 'showcase';
   if (pathname.startsWith('/market/skills')) return 'skills';
   if (pathname.startsWith('/market/tasks')) return 'tasks';
   // /market, /market/skin/[id], or any other /market/* route
@@ -75,7 +73,6 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'skins', href: '/market', labelZh: 'Skins', labelEn: 'Skins', icon: Store },
   { key: 'skills', href: '/market/skills', labelZh: 'Skills', labelEn: 'Skills', icon: Zap },
   { key: 'tasks', href: '/market/tasks', labelZh: 'Tasks', labelEn: 'Tasks', icon: ListTodo },
-  { key: 'showcase', href: '/showcase', labelZh: 'Showcase', labelEn: 'Showcase', icon: Sparkles },
 ];
 
 // ---------------------------------------------------------------------------

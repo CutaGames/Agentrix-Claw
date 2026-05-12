@@ -1,12 +1,13 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Repository, DataSource } from 'typeorm';
 import { PetSkin } from '../../entities/pet-skin.entity';
 import { PetActiveSkin } from '../../entities/pet-active-skin.entity';
 import { Order, OrderStatus } from '../../entities/order.entity';
 import { AncestorChainService } from '../marketplace-pet/ancestor-chain.service';
 import { splitRoyalty, RoyaltySplitResult } from '../marketplace-pet/royalty-splitter';
 import { UserPlanResolverService, PlanTier } from '../pet-gen-quota/user-plan-resolver.service';
+import { AxpService } from '../axp/axp.service';
 
 /** V4 §3.2 — platform commission (basis points) for skin sales. */
 const SKIN_PLATFORM_BPS = 500;
@@ -61,6 +62,8 @@ export class PetSkinService {
     private readonly orderRepo: Repository<Order>,
     private readonly ancestorChain: AncestorChainService,
     private readonly planResolver: UserPlanResolverService,
+    private readonly axpService: AxpService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -607,10 +610,70 @@ export class PetSkinService {
       visibility: skin.visibility,
       moderation_status: skin.moderationStatus,
       price_cents: skin.priceCents,
+      price_axp: skin.priceAxp ?? null,
       parent_skin_id: skin.parentSkinId,
       original_creator_user_id: skin.originalCreatorUserId,
       royalty_rate_bps: skin.royaltyRateBps,
       created_at: skin.createdAt ? skin.createdAt.getTime() : Date.now(),
     };
+  }
+
+  /**
+   * P1-3 — AXP-only purchase path. Bypasses Order/Stripe entirely.
+   * Atomic: spend AXP → clone skin in a single transaction.
+   */
+  async installWithAxp(userId: string, skinId: string): Promise<PetSkin> {
+    return this.dataSource.transaction(async (manager) => {
+      const skinRepo = manager.getRepository(PetSkin);
+      const src = await skinRepo.findOne({ where: { id: skinId } });
+      if (!src) throw new NotFoundException(`pet skin not found: ${skinId}`);
+      if (src.retired) throw new ForbiddenException('pet skin retired');
+      if (!src.priceAxp || src.priceAxp <= 0) {
+        throw new BadRequestException('Skin not AXP-purchasable');
+      }
+      if (src.ownerUserId === userId) {
+        throw new BadRequestException('Cannot purchase your own skin');
+      }
+
+      // Spend AXP (will throw if insufficient balance)
+      await this.axpService.spend({
+        userId,
+        source: 'redeem_skin',
+        amount: src.priceAxp,
+        refId: skinId,
+        metadata: { refType: 'pet_skin' },
+      });
+
+      // Clone skin to buyer
+      const clone = skinRepo.create({
+        ownerUserId: userId,
+        source: 'purchased',
+        displayName: src.displayName,
+        url: src.url,
+        thumbnailUrl: src.thumbnailUrl,
+        format: src.format,
+        manifest: {
+          ...(src.manifest || {}),
+          installedFrom: src.id,
+          purchaseMethod: 'axp',
+          axpPaid: src.priceAxp,
+          purchasedAt: new Date().toISOString(),
+        },
+        sourceRefId: src.id,
+        parentSkinId: src.id,
+        originalCreatorUserId: src.originalCreatorUserId ?? src.ownerUserId,
+        royaltyRateBps: src.royaltyRateBps ?? 0,
+        version: 1,
+        retired: false,
+        visibility: 'private',
+        moderationStatus: 'approved',
+        priceCents: 0,
+      });
+      const saved = await skinRepo.save(clone);
+      this.logger.log(
+        `PetSkin installed via AXP: ${saved.id} from=${src.id} user=${userId} axp=${src.priceAxp}`,
+      );
+      return saved;
+    });
   }
 }

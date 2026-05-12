@@ -116,6 +116,8 @@ export interface SkinListItem {
   // AXP
   axpAccepted: boolean;
   axpDiscountPercent: number;
+  /** AXP price (null = not AXP-purchasable) */
+  priceAxp: number | null;
 
   // 元数据
   featured: boolean;
@@ -224,6 +226,27 @@ export interface AxpBalanceResponse {
   balance: number;
   lifetime_earned: number;
   lifetime_spent: number;
+}
+
+/** 任务竞标提交 payload */
+export interface SubmitTaskBidPayload {
+  proposedBudget: number;
+  estimatedDays: number;
+  proposal: string;
+  currency?: string;
+}
+
+/** 任务竞标响应（后端返回 TaskBid 实体） */
+export interface SubmitTaskBidResponse {
+  id: string;
+  taskId: string;
+  bidderId: string;
+  proposedBudget: number;
+  currency: string;
+  estimatedDays: number;
+  proposal: string;
+  status: string;
+  createdAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -340,5 +363,31 @@ export async function fetchUnifiedSearch(
  */
 export async function fetchAxpBalance(): Promise<AxpBalanceResponse> {
   const { data } = await http.get<AxpBalanceResponse>('/v1/axp/balance');
+  return data;
+}
+
+/**
+ * 提交任务竞标
+ * POST /api/merchant-tasks/marketplace/tasks/:taskId/bid
+ * 需要 JWT 认证。未登录或 token 失效时后端返回 401。
+ *
+ * payload 字段与移动端 TaskDetailScreen 的 submitBid 保持一致：
+ *   - proposedBudget (number, > 0)
+ *   - estimatedDays (integer, >= 1)
+ *   - proposal (string, 最少 50 字符)
+ */
+export async function submitTaskBid(
+  taskId: string,
+  payload: SubmitTaskBidPayload,
+): Promise<SubmitTaskBidResponse> {
+  const { data } = await http.post<SubmitTaskBidResponse>(
+    `/merchant-tasks/marketplace/tasks/${encodeURIComponent(taskId)}/bid`,
+    {
+      proposedBudget: payload.proposedBudget,
+      estimatedDays: payload.estimatedDays,
+      proposal: payload.proposal,
+      ...(payload.currency ? { currency: payload.currency } : {}),
+    },
+  );
   return data;
 }

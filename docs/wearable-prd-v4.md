@@ -160,7 +160,93 @@ V4 追加：
 
 ---
 
-## 8. 与 V3 引用
+## 8. Marketplace Ecosystem + Economy Integration (V4.1 增量)
+
+> 权威口径以跨端顿领 `agentrix-cross-platform-prd-v4.md` §13 为准。本节只写可穿戴端（Watch / Glass / BLE）在跨端经济中的位置。
+
+### 8.1 可穿戴在 Marketplace 生态中的角色
+
+可穿戴端不参与 Marketplace 的浏览 / 上架 / 购买闭环（屏幕小 / 无钱包 / 交互弱），仅作为**被动反射 + 微通知 + Vitals 触发 AXP** 的 surface：
+
+| 维度 | Watch | Glass | BLE 外设 |
+|------|:-----:|:-----:|:-------:|
+| 浏览 Marketplace | Tile 仅看「今日推荐」 | HUD 不展示 | – |
+| 购买 / 上架 | 不参与 | 不参与 | 不参与 |
+| 皮肤切换反射 | Complication 缩略图 5s 同步 | HUD emoji 刷新 | – |
+| Skin GMV 通知 | 表盘 "+$2.10 — '蓝色独角兽'被买走了" | HUD 微通知 | – |
+| AXP 事件 | Tile 显示今日 AXP 增量 | HUD "+20 AXP 签到完成" | 触发源（Vitals → AXP） |
+
+### 8.2 Vitals → AXP 映射（V4.1 新增经济维度）
+
+V3 Vitals Bus 仅驱动主宠情绪；V4.1 在满足健康目标时发放 AXP，形成 Loop 1 的物理延伸：
+
+| Vital 触发 | AXP | 日上限 | 说明 |
+|-----------|----:|-------:|-----|
+| 完成每日 10k 步 | 20 | 1 | 对应跨端 §13.6.2 发放来源 2 的物理等价 |
+| 完成每日运动目标（Watch Activity Ring） | 30 | 1 | 激励健康闭环 |
+| 睡眠 ≥ 7h（昨晚） | 10 | 1 | 次日晨起触发 |
+| HRV 连续 7 天达标 | 100 | 1/周 | 鼓励长期健康投资 |
+| 佩戴戒指 / 手环 24h 连续 | 5 | 1 | 鼓励设备保持佩戴 |
+
+数据源：Vitals Bus → `/api/v1/axp/earn`（kind=`vitals`）。所有发放由 Mobile 代理签名，可穿戴本身不持账户。
+
+### 8.3 Watch Complication 对 AXP / GMV 展示
+
+V4.1 扩展 Watch Complication（V4 §2.2 的基础上增加经济家族）：
+
+| Complication 家族 | V4 内容 | V4.1 新增经济内容 |
+|-----------------|--------|-----------------|
+| Circular Small | 主宠 emoji + 亲密度 | – |
+| Modular Small | 同上 + 今日 Earn | 同上，Earn 含 Skin GMV |
+| Modular Large | + 当前 Skin 名称 | + 今日 AXP 增量 |
+| Graphic Circular | Skin 缩略 + 情绪进度环 | + AXP 签到环（7 天连击可视化） |
+| **新：AXP Progress（独立家族）** | – | 今日 AXP 余额 + 距下一兑换目标差值 |
+
+### 8.4 Glass HUD Marketplace 微通知
+
+Glass 只被动展示以下 3 类 Marketplace 相关微通知（每日上限 5 条，防打扰）：
+
+| 事件 | HUD 文案 | 持续时间 |
+|------|---------|---------|
+| 你的皮肤被购买 | "+$2.10 — '蓝色独角兽' sold" | 3s |
+| 你的技能被调用 | "+$0.05 — Smart Checkout 被 5 只宠调用" | 2s |
+| AXP 过期提醒（前 30 天） | "500 AXP 将于 6 天后过期" | 5s（可一眼 dismiss） |
+
+Glass 不展示任何需要交互的 Marketplace 元素（不做浏览 / 不做购买）。
+
+### 8.5 可穿戴订阅权益（跨端 §13.7 对应）
+
+| 档位 | 活跃设备数 | Watch Complication 家族 | Glass HUD 微通知 |
+|------|:----------:|:----------------------:|:--------------:|
+| Free | 1 | 基础 2 家族 | – |
+| Lite | 2 | 基础 2 家族 | 关闭 |
+| Plus | 4 | 5 家族全开 | 开启 |
+| Pro | 6 | 5 家族全开 + 自定义 | 开启 + 优先级配置 |
+| Elite | 10 | 全开 + 季度限定 Watch Face | 开启 + HUD 风格皮肤 |
+
+### 8.6 L1 审批 + 经济动作的 Trust 边界
+
+**强约束**（与跨端 §13 + V4 §5.5 一致）：
+
+- Watch 可执行 L1 审批（tap 通过小额 Marketplace 购买 ≤ $10）
+- Watch **不可** 执行 L2+ 审批（必须推回 Mobile）
+- Watch Complication 展示的 AXP / GMV 数值**不可** 作为授权凭证
+- Glass HUD 展示的数值仅通知，**不接受**语音确认大额交易
+- BLE 外设 Vitals 触发的 AXP 是平台单方面发放，**不经** 用户签名
+
+### 8.7 共养 / 贺卡在可穿戴的反映
+
+Phase 1 多人游戏（跨端 §13.9）的可穿戴反馈：
+
+| 事件 | Watch | Glass |
+|------|-------|-------|
+| 好友帮主宠喂食 | 震动 + Tile 一行 "Mike 喂了 Alfred +18 能量" | HUD 2s 微通知 |
+| 收到贺卡 | 震动 + 表盘显示贺卡缩略 | HUD "收到 @Lucy 的贺卡" |
+| 主宠 Lv↑ | 金色震动序列 + 表盘动画 | HUD 闪 2s + 灵魂族群 emoji 变更 |
+
+---
+
+## 9. 与 V3 引用
 
 | V4 主题 | V3 引用 |
 |--------|--------|

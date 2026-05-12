@@ -11,10 +11,10 @@
 import { useState, useMemo, useCallback } from 'react';
 import { GetServerSideProps, InferGetServerSidePropsType } from 'next';
 import Head from 'next/head';
-import { useRouter } from 'next/router';
 import { X, RefreshCw, AlertCircle } from 'lucide-react';
 import { MarketplaceLayout } from '../../components/marketplace/MarketplaceLayout';
 import { TaskCard } from '../../components/marketplace/TaskCard';
+import { TaskBidModal } from '../../components/marketplace/TaskBidModal';
 import { MobileDeepLink } from '../../components/marketplace/MobileDeepLink';
 import { buildSeo } from '../../lib/seo';
 import { useLocalization } from '../../contexts/LocalizationContext';
@@ -126,7 +126,6 @@ export default function TasksMarketplacePage({
   error: initialError,
 }: InferGetServerSidePropsType<typeof getServerSideProps>) {
   const { t } = useLocalization();
-  const router = useRouter();
 
   const [items, setItems] = useState<TaskListItem[]>(initialData.items);
   const [isLoading, setIsLoading] = useState(false);
@@ -134,6 +133,7 @@ export default function TasksMarketplacePage({
   const [selectedType, setSelectedType] = useState<string>('All');
   const [selectedSort, setSelectedSort] = useState<SortOption>('newest');
   const [selectedTask, setSelectedTask] = useState<TaskListItem | null>(null);
+  const [bidModalTask, setBidModalTask] = useState<TaskListItem | null>(null);
 
   // -------------------------------------------------------------------------
   // Derived: unique task types from data
@@ -461,7 +461,7 @@ export default function TasksMarketplacePage({
                   {/* Primary CTA: Accept Task */}
                   <button
                     type="button"
-                    onClick={() => router.push(`/pay/checkout?taskId=${selectedTask.id}`)}
+                    onClick={() => setBidModalTask(selectedTask)}
                     className="mb-3 flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-green-500"
                   >
                     {t({ zh: '接受任务', en: 'Accept Task' })}
@@ -494,6 +494,13 @@ export default function TasksMarketplacePage({
           </p>
         )}
       </div>
+
+      {/* Task Bid Modal */}
+      <TaskBidModal
+        task={bidModalTask}
+        open={!!bidModalTask}
+        onClose={() => setBidModalTask(null)}
+      />
     </MarketplaceLayout>
   );
 }

@@ -64,9 +64,10 @@ export interface SkinCardProps {
   skin: SkinListItem;
   onAddToCart?: (skin: SkinListItem) => void;
   onBid?: (skin: SkinListItem) => void;
+  onBuyWithAxp?: (skin: SkinListItem) => void;
 }
 
-export function SkinCard({ skin, onAddToCart, onBid }: SkinCardProps) {
+export function SkinCard({ skin, onAddToCart, onBid, onBuyWithAxp }: SkinCardProps) {
   const { t } = useLocalization();
   const {
     id,
@@ -80,6 +81,7 @@ export function SkinCard({ skin, onAddToCart, onBid }: SkinCardProps) {
     remixCount,
     listingMode,
     priceUsd,
+    priceAxp,
     currentBidUsd,
     auctionEndsAt,
     axpAccepted,
@@ -172,7 +174,7 @@ export function SkinCard({ skin, onAddToCart, onBid }: SkinCardProps) {
           </span>
         </div>
 
-        {/* Price / Auction / Add to Cart */}
+        {/* Price / Auction / Add to Cart / AXP Purchase */}
         {showAuction ? (
           <div className="mt-auto space-y-1.5">
             <div className="flex items-center justify-between rounded-lg bg-gray-900 px-2.5 py-1.5">
@@ -201,14 +203,35 @@ export function SkinCard({ skin, onAddToCart, onBid }: SkinCardProps) {
               </button>
             )}
           </div>
-        ) : showPrice ? (
+        ) : (priceAxp != null && priceAxp > 0) || showPrice ? (
           <div className="mt-auto space-y-1.5">
-            <div className="flex items-center justify-between rounded-lg bg-gray-900 px-2.5 py-1.5">
-              <span className="text-xs font-bold text-white">
-                ${priceUsd.toFixed(2)}
-              </span>
-            </div>
-            {onAddToCart && (
+            {/* Price display */}
+            {showPrice && (
+              <div className="flex items-center justify-between rounded-lg bg-gray-900 px-2.5 py-1.5">
+                <span className="text-xs font-bold text-white">
+                  ${priceUsd!.toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            {/* AXP purchase button */}
+            {priceAxp != null && priceAxp > 0 && onBuyWithAxp && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onBuyWithAxp?.(skin);
+                }}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-yellow-600 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-yellow-500"
+              >
+                <Zap size={12} />
+                {t({ zh: `用 ${skin.priceAxp} AXP 购买`, en: `Buy for ${skin.priceAxp} AXP` })}
+              </button>
+            )}
+
+            {/* Add to Cart button (only when priceUsd is set) */}
+            {showPrice && onAddToCart && (
               <button
                 type="button"
                 onClick={(e) => {

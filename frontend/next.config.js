@@ -40,6 +40,8 @@ const nextConfig = {
       { source: '/marketplace/skins', destination: '/market', permanent: true },
       { source: '/marketplace/skins/:id', destination: '/market/skin/:id', permanent: true },
       { source: '/marketplace/pets/:id', destination: '/p/:id', permanent: true },
+      // Showcase merged into Market (P2-5 navigation consolidation)
+      { source: '/showcase', destination: '/market', permanent: false },
       // Console promote merge
       { source: '/console/wallet/commission', destination: '/console/promote', permanent: false },
       { source: '/console/wallet/referral', destination: '/console/promote', permanent: false },

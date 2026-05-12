@@ -11,7 +11,8 @@ import { useState, useMemo, useCallback } from 'react';
 import { GetServerSideProps, InferGetServerSidePropsType } from 'next';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { X, RefreshCw, AlertCircle } from 'lucide-react';
+import axios from 'axios';
+import { X, RefreshCw, AlertCircle, Info } from 'lucide-react';
 import { MarketplaceLayout } from '../../components/marketplace/MarketplaceLayout';
 import { SkillCard } from '../../components/marketplace/SkillCard';
 import { MobileDeepLink } from '../../components/marketplace/MobileDeepLink';
@@ -30,6 +31,69 @@ import {
 interface SkillsPageProps {
   initialData: SkillListingsResponse;
   error: boolean;
+  /** true when data comes from OpenClaw Hub fallback instead of skill-listings */
+  isFallback: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// OpenClaw Hub Fallback
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the backend API base URL for SSR context.
+ */
+function getBackendBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    const envUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!envUrl.endsWith('/api')) {
+      return envUrl.endsWith('/') ? `${envUrl}api` : `${envUrl}/api`;
+    }
+    return envUrl;
+  }
+  if (process.env.BACKEND_URL) {
+    const backendUrl = process.env.BACKEND_URL;
+    return backendUrl.endsWith('/api') ? backendUrl : `${backendUrl.replace(/\/$/, '')}/api`;
+  }
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://api.agentrix.top/api';
+  }
+  return 'http://localhost:3001/api';
+}
+
+/**
+ * Fetch skills from OpenClaw Hub bridge as fallback data source.
+ * Maps the Hub response to SkillListItem shape.
+ */
+async function fetchOpenClawHubFallback(): Promise<SkillListingsResponse> {
+  const baseUrl = typeof window !== 'undefined'
+    ? '' // client-side: relative URL
+    : getBackendBaseUrl();
+
+  const { data } = await axios.get(`${baseUrl}/openclaw/bridge/skill-hub/search`, {
+    params: { limit: 50, sortBy: 'callCount' },
+    timeout: 10000,
+  });
+
+  const raw: any[] = data.items || data.skills || data.data || (Array.isArray(data) ? data : []);
+
+  const items: SkillListItem[] = raw.map((s: any, idx: number) => ({
+    id: s.id ?? s.key ?? `oc-${idx}`,
+    title: s.displayName ?? s.name ?? 'Unknown Skill',
+    description: s.description ?? '',
+    category: s.category ?? 'general',
+    price: s.price ?? 0,
+    currency: 'USD',
+    installCount: s.callCount ?? s.installCount ?? 0,
+    developerName: s.author ?? s.developerName ?? 'OpenClaw Community',
+    developerUserId: s.developerUserId ?? '',
+    rating: typeof s.rating === 'number' ? s.rating : parseFloat(s.rating) || 4.5,
+    tags: s.tags ?? [],
+    axpEarningEstimate: s.axpEarningEstimate ?? 0,
+    revenueSplit: s.revenueSplit ?? { developer: 70, platform: 30 },
+    createdAt: s.createdAt ?? new Date().toISOString(),
+  }));
+
+  return { items, total: items.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -39,17 +103,30 @@ interface SkillsPageProps {
 export const getServerSideProps: GetServerSideProps<SkillsPageProps> = async () => {
   let initialData: SkillListingsResponse = { items: [], total: 0 };
   let error = false;
+  let isFallback = false;
 
   try {
     initialData = await fetchSkillListings({ status: 'approved' });
   } catch {
-    error = true;
+    // Primary source failed (401 or network error)
+  }
+
+  // Fallback: if primary returned empty or failed, try OpenClaw Hub
+  if (initialData.items.length === 0) {
+    try {
+      initialData = await fetchOpenClawHubFallback();
+      isFallback = true;
+      error = false;
+    } catch {
+      error = true;
+    }
   }
 
   return {
     props: {
       initialData,
       error,
+      isFallback,
     },
   };
 };
@@ -108,6 +185,7 @@ function SkillCardSkeleton() {
 export default function SkillsMarketplacePage({
   initialData,
   error: initialError,
+  isFallback: initialIsFallback,
 }: InferGetServerSidePropsType<typeof getServerSideProps>) {
   const { t } = useLocalization();
   const router = useRouter();
@@ -115,6 +193,7 @@ export default function SkillsMarketplacePage({
   const [items, setItems] = useState<SkillListItem[]>(initialData.items);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(initialError);
+  const [isFallback, setIsFallback] = useState(initialIsFallback);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedSkill, setSelectedSkill] = useState<SkillListItem | null>(null);
 
@@ -146,11 +225,26 @@ export default function SkillsMarketplacePage({
   const handleRetry = useCallback(async () => {
     setIsLoading(true);
     setHasError(false);
+    setIsFallback(false);
     try {
       const res = await fetchSkillListings({ status: 'approved' });
-      setItems(res.items);
+      if (res.items.length > 0) {
+        setItems(res.items);
+      } else {
+        // Primary returned empty, try fallback
+        const fallback = await fetchOpenClawHubFallback();
+        setItems(fallback.items);
+        setIsFallback(true);
+      }
     } catch {
-      setHasError(true);
+      // Primary failed, try fallback
+      try {
+        const fallback = await fetchOpenClawHubFallback();
+        setItems(fallback.items);
+        setIsFallback(true);
+      } catch {
+        setHasError(true);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -213,6 +307,19 @@ export default function SkillsMarketplacePage({
             })}
           </p>
         </div>
+
+        {/* ─── Fallback Data Source Banner ─── */}
+        {isFallback && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2.5">
+            <Info size={16} className="shrink-0 text-blue-400" />
+            <span className="text-sm text-blue-300">
+              {t({
+                zh: '数据来源：OpenClaw Skill Hub Top 50',
+                en: 'Data source: OpenClaw Skill Hub Top 50',
+              })}
+            </span>
+          </div>
+        )}
 
         {/* ─── Category Filter (horizontal pill buttons) ─── */}
         <div className="mb-6 flex flex-wrap items-center gap-2">

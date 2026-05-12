@@ -91,6 +91,16 @@ export class PetSkinController {
     return { skin: this.service.toDto(installed) };
   }
 
+  @Post('marketplace/:skinId/install-with-axp')
+  async installWithAxp(
+    @Req() req: any,
+    @Param('skinId') skinId: string,
+  ) {
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    const skin = await this.service.installWithAxp(userId, skinId);
+    return { success: true, clonedSkinId: skin.id, skin: this.service.toDto(skin) };
+  }
+
   /**
    * Pet Phase 6 P0-6 — server-authoritative entitlements snapshot.
    * Frontend must consume this rather than hardcoding tier rules.

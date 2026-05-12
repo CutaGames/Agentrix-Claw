@@ -235,6 +235,90 @@
 - [x] 12. Final Checkpoint - 确保所有测试通过
   - Ensure all tests pass, ask the user if questions arise.
 
+- [x] 13. Post-launch Fixes: AXP 交易闭环 & 导览整合（E2E 反馈修复）
+  - [x] 13.1 P0-1：修复 Skills 页面 401 + 回退 OpenClaw Hub
+    - 编辑 `backend/src/modules/skill-listings/skill-listings.controller.ts`
+    - 移除类级别 `@UseGuards(JwtAuthGuard)`，将其下沉到仅写操作（create/update/delete/submitForReview/approve/reject）
+    - `GET /skill-listings` (`list`) 和 `GET /skill-listings/:id` (`get`) 必须可匿名 SSR 访问
+    - 编辑 `frontend/pages/market/skills.tsx`：
+      - 当 `fetchSkillListings` 返回空数组或 401 时，fallback 调用 `GET /api/openclaw/bridge/skill-hub/search?limit=50&sortBy=callCount`
+      - 将 OpenClaw Hub 返回的 skill 数据映射为前端 SkillListItem 形状（name/description/pricingModel/totalEarnings/totalCalls）
+      - 在页面顶部添加提示条：`数据来源：OpenClaw Skill Hub Top 50`
+    - 验证：匿名访问 `/market/skills` 不应返回 401，应渲染 ≥1 个 SkillCard
+    - _Requirements: 4.1, 4.2, 7.1_
+
+  - [x] 13.2 P0-2：修复 Task 接单流程（内嵌 TaskBidModal，移除错误的 checkout 跳转）
+    - 创建 `frontend/components/marketplace/TaskBidModal.tsx`：
+      - 参考 `src/screens/TaskDetailScreen.tsx` 中移动端 bid 表单实现
+      - 字段：`proposedBudget` (number)、`estimatedDays` (number)、`proposal` (textarea, 最少 50 字符)
+      - Submit 时调用 `POST /api/merchant-tasks/marketplace/tasks/:id/bid`
+      - 提交成功后显示 Toast 并关闭 modal，不再跳转到 `/pay/checkout`
+      - 未登录用户点击 "接单" 时引导去 `/login?redirect=/market/tasks`
+    - 编辑 `frontend/pages/market/tasks.tsx`：
+      - 替换现有 `router.push('/pay/checkout?taskId=...')` 调用为 `openBidModal(task)`
+      - 使用 useState 管理 `selectedTask` + modal open 状态
+    - 验证：从 `/market/tasks` 点击 "接单" 不应跳转 `/pay/checkout`，应弹出内嵌表单；提交 POST `/bid` 应返回 200/201
+    - _Requirements: 5.1, 5.2, 5.3_
+
+  - [x] 13.3 P1-3：后端 AXP 独立交易路径（migration + entity + service + controller）
+    - 验证/完成 migration `backend/src/migrations/1790000000000-AddPriceAxpToPetSkins.ts`：
+      - `ALTER TABLE pet_skins ADD COLUMN price_axp INTEGER NULL`
+      - `up()` 和 `down()` 成对实现
+    - 编辑 `backend/src/entities/pet-skin.entity.ts`：添加 `@Column({ type: 'int', nullable: true }) priceAxp?: number | null`（依赖 SnakeNamingStrategy 自动映射到 `price_axp`）
+    - 编辑 `backend/src/modules/pet-skin/pet-skin.service.ts`：
+      - 在 `toDto()` / `toSkinDto()` 中透传 `priceAxp`
+      - 新增方法 `installWithAxp(userId: string, skinId: string): Promise<{ clonedSkinId: string }>`：
+        * 使用 `this.dataSource.transaction` 开启事务
+        * 读取 skin 的 `priceAxp`，若为空或 ≤0 抛 `BadRequestException('Skin not AXP-purchasable')`
+        * 调用 `AxpService.spend({ userId, source: 'redeem_skin', amount: priceAxp, refId: skinId, refType: 'pet_skin' })`（验证 `backend/src/modules/axp/axp.constants.ts` 中 `redeem_skin` 为合法 source）
+        * 克隆 skin row 到目标用户（复用 `installFromMarketplace` 的克隆逻辑，跳过 Order 要求）
+        * 返回克隆后 skin id
+    - 编辑 `backend/src/modules/market/market-skins.service.ts`：在响应 DTO 中透传 `priceAxp`
+    - 编辑 `backend/src/modules/pet-skin/pet-skin.controller.ts`：新增 `POST /pet-skin/marketplace/:skinId/install-with-axp`（JWT 保护），调用 `installWithAxp(req.user.id, skinId)`
+    - 验证：`npx tsc --noEmit` 通过；手动 curl 带 JWT 的 POST 应扣 AXP 并返回 clonedSkinId
+    - _Requirements: 2.1, 10.1, 10.4_
+
+  - [x] 13.4 P1-4：Web AXP 购买弹窗 + SkinCard 双路径路由
+    - 创建 `frontend/components/marketplace/AxpPurchaseModal.tsx`：
+      - Props: `{ skin: SkinListItem, open: boolean, onClose: () => void, onSuccess: (clonedSkinId: string) => void }`
+      - 展示皮肤缩略图、名称、`priceAxp`、用户当前 AXP 余额（从 `GET /api/v1/axp/balance`）
+      - 余额不足时禁用 Confirm 按钮并提示 "余额不足，前往充值"
+      - Confirm 调用 `POST /api/v1/pet-skin/marketplace/:skinId/install-with-axp`
+      - 成功后 Toast + onSuccess 回调
+    - 编辑 `frontend/components/marketplace/SkinCard.tsx`：
+      - 路由决策逻辑：
+        * 若 `priceAxp > 0` 且 `priceUsd == null` → 仅显示 "用 AXP 购买"（打开 AxpPurchaseModal）
+        * 若 `priceUsd != null` 且 `priceAxp == null` → 沿用现有 "加入购物车" / "立即购买" (→ /pay/checkout)
+        * 若两者都存在 → 并列展示两种按钮
+      - 未登录时点击 "用 AXP 购买" 引导去 `/login?redirect=<当前路径>`
+    - SQL：在 prod `pet_skins` 表中更新 6 个 VRM 3D skin 的 `price_axp` 为 3000-5000（按层级）
+    - 验证：匿名访问 /market 的 AXP 皮肤卡片应显示 "用 AXP 购买"；登录后点击应弹窗；Confirm 应扣减 AXP
+    - _Requirements: 2.1, 10.1, 10.4_
+
+  - [x] 13.5 P2-5：导航整合（合并 /showcase 到 /market）
+    - 编辑 `frontend/pages/market/index.tsx`：
+      - 在页面顶部添加 `FeaturedSkinsCarousel` 组件（复用 `frontend/components/marketplace/FeaturedSkinsCarousel.tsx`，数据源 `fetchMarketSkins({ sort: 'featured', limit: 8 })`）
+      - Carousel 下方保留现有 Skins 列表（sort/filter/grid）
+    - 编辑 `frontend/components/marketplace/MarketplaceLayout.tsx`：
+      - 将 Showcase tab 降级为锚点 `#featured` 或直接移除（保留 Skins / Skills / Tasks 三 tab）
+    - 添加 redirect：在 `frontend/next.config.js` 的 `redirects()` 中添加 `{ source: '/showcase', destination: '/market#featured', permanent: false }`
+    - 验证：访问 `/showcase` 自动 307 重定向到 `/market#featured`；`/market` 顶部显示 Featured 轮播
+    - _Requirements: 1.1, 8.1, 8.2_
+
+- [ ] 14. Post-Fix Deploy Checkpoint
+  - `npx tsc --noEmit`（backend + frontend）全部通过
+  - `git add -A && git commit -m "fix(marketplace): P0 Skills 401 + Tasks bid flow; P1 AXP independent tx; P2 nav merge"`
+  - `git push origin <branch>`；若涉及移动端 APK 同步，additionally push to `public_claw`
+  - SSH deploy 至 `47.130.176.148`：`cd /home/ubuntu/Agentrix/backend && git pull && npm run build && npx typeorm migration:run -d dist/config/data-source.js && pm2 restart agentrix-backend`
+  - SSH 上通过 `psql` 在 `pet_skins` 表里把 6 个 VRM 3D skin 的 `price_axp` 按等级填为 3000/4000/5000
+  - 前端重新构建并 `pm2 restart agentrix-frontend`
+  - E2E 验证：
+    * `/market/skills` 匿名访问返回 200 且渲染 ≥1 个 SkillCard
+    * `/market/tasks` 点击 "接单" 弹出 TaskBidModal（不跳 /pay/checkout）
+    * `/market` AXP 皮肤卡片显示 "用 AXP 购买" 按钮，点击弹出 AxpPurchaseModal
+    * `/showcase` 重定向到 `/market#featured`
+  - 向用户报告 E2E 结果
+
 ## Notes
 
 - 标记 `*` 的子任务为可选测试任务，可跳过以加速 MVP 交付
@@ -258,7 +342,10 @@
     { "id": 4, "tasks": ["5.2", "5.3", "5.4", "6.2", "8.1"] },
     { "id": 5, "tasks": ["6.3", "8.2", "8.3", "8.4", "9.1"] },
     { "id": 6, "tasks": ["9.2", "10.1", "10.3"] },
-    { "id": 7, "tasks": ["10.2", "11.1", "11.2"] }
+    { "id": 7, "tasks": ["10.2", "11.1", "11.2"] },
+    { "id": 8, "tasks": ["13.1", "13.2", "13.3", "13.5"] },
+    { "id": 9, "tasks": ["13.4"] },
+    { "id": 10, "tasks": ["14"] }
   ]
 }
 ```
