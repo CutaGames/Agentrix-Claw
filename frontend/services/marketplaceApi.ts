@@ -280,7 +280,7 @@ export async function fetchMarketSkins(
 export async function fetchSkillListings(
   params: SkillListingsParams = {},
 ): Promise<SkillListingsResponse> {
-  const { data } = await http.get<SkillListingsResponse>('/v1/skill-listings', {
+  const { data } = await http.get('/v1/skill-listings', {
     params: {
       ...(params.status && { status: params.status }),
       ...(params.category && { category: params.category }),
@@ -288,7 +288,15 @@ export async function fetchSkillListings(
       ...(params.offset !== undefined && { offset: params.offset }),
     },
   });
-  return data;
+
+  // Backend may return a raw array [] or { items, total } shape
+  if (Array.isArray(data)) {
+    return { items: data, total: data.length };
+  }
+  return {
+    items: data?.items ?? [],
+    total: data?.total ?? (data?.items?.length ?? 0),
+  };
 }
 
 /**
