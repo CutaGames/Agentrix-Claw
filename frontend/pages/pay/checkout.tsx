@@ -116,7 +116,7 @@ function skillToProduct(skill: SkillData): ProductInfo {
 export default function CheckoutPage() {
   const router = useRouter()
   // mobileToken: from Agentrix Mobile app for session sharing
-  const { productId, skillId, mobileToken, mobile } = router.query
+  const { productId, skillId, skinId, mobileToken, mobile } = router.query
   const { isAuthenticated, user, login } = useUser()
   const [product, setProduct] = useState<ProductInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -160,10 +160,12 @@ export default function CheckoutPage() {
       loadProduct(productId)
     } else if (skillId && typeof skillId === 'string') {
       loadSkill(skillId)
+    } else if (skinId && typeof skinId === 'string') {
+      loadSkin(skinId)
     } else {
       setLoading(false)
     }
-  }, [router.isReady, tokenReady, productId, skillId])
+  }, [router.isReady, tokenReady, productId, skillId, skinId])
 
   const loadProduct = async (id: string) => {
     try {
@@ -188,6 +190,46 @@ export default function CheckoutPage() {
       setLoading(false)
     } catch (error) {
       console.error('加载 Skill 失败:', error)
+      setLoading(false)
+    }
+  }
+
+  const loadSkin = async (id: string) => {
+    try {
+      setLoading(true)
+      // Try fetching skin from market skins API
+      const res = await fetch(`/api/v1/market/skins?limit=100`)
+      if (!res.ok) throw new Error('Failed to fetch skins')
+      const data = await res.json()
+      const skins = data.items || []
+      const skin = skins.find((s: any) => s.id === id)
+      if (!skin) throw new Error('Skin not found')
+
+      // Convert skin to ProductInfo shape for SmartCheckout
+      const priceUsd = skin.priceUsd || (skin.priceCents ? skin.priceCents / 100 : 0)
+      setProduct({
+        id: skin.listingId || skin.id,
+        name: skin.displayName,
+        description: `${skin.clan ? `Clan ${skin.clan} · ` : ''}${skin.format?.toUpperCase() || 'VRM'} 3D Pet Skin`,
+        price: priceUsd,
+        stock: 999,
+        category: 'pet_skin',
+        merchantId: skin.creatorUserId || '',
+        commissionRate: 0,
+        status: 'active',
+        metadata: {
+          currency: 'USD',
+          image: skin.thumbnailUrl,
+          assetType: 'virtual',
+          productType: 'pet_skin',
+          skinId: skin.id,
+          clan: skin.clan,
+          format: skin.format,
+        },
+      })
+      setLoading(false)
+    } catch (error) {
+      console.error('加载皮肤失败:', error)
       setLoading(false)
     }
   }

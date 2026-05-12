@@ -340,7 +340,7 @@ export default function SkinDetailPage({
                   {/* Primary CTA: Place Bid */}
                   <button
                     type="button"
-                    onClick={() => router.push(`/pay/checkout?productId=${skin.listingId || skin.id}&mode=auction`)}
+                    onClick={() => router.push(`/pay/checkout?skinId=${skin.id}&mode=auction`)}
                     className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-orange-500"
                   >
                     {t({ zh: '出价', en: 'Place Bid' })}
@@ -377,7 +377,7 @@ export default function SkinDetailPage({
                   {/* Primary CTA: Buy Now (Fiat/Crypto via SmartCheckout) */}
                   <button
                     type="button"
-                    onClick={() => router.push(`/pay/checkout?productId=${skin.listingId || skin.id}`)}
+                    onClick={() => router.push(`/pay/checkout?skinId=${skin.id}`)}
                     className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-500"
                   >
                     <DollarSign size={14} />
