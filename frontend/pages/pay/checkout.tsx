@@ -282,7 +282,8 @@ export default function CheckoutPage() {
 
       // 创建订单 — Skill 购买时 productId 可能为 null
       const isSkill = productData.metadata?.productType === 'skill';
-      const realProductId = isSkill
+      const isSkin = productData.metadata?.productType === 'pet_skin';
+      const realProductId = (isSkill || isSkin)
         ? (productData.metadata?.realProductId || undefined)
         : productData.id;
       
@@ -297,6 +298,7 @@ export default function CheckoutPage() {
           productType: productData.metadata?.productType,
           paymentMethod: productData.metadata?.paymentMethod,
           skillId: productData.metadata?.skillId,
+          skinId: isSkin ? productData.metadata?.skinId : undefined,
         },
       } as any)
 
