@@ -8,8 +8,8 @@
  * 4. On error: shows error message with retry button
  * 5. Navigation: accessible from PetHub "NFC 盲盒" tile
  */
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Animated, Easing } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
@@ -24,6 +24,36 @@ import {
 } from '../../services/nfc.service';
 
 type ScreenState = 'checking' | 'scanning' | 'redeeming' | 'success' | 'error' | 'unsupported';
+
+/** Animated celebration sparkles for NFC redeem success (Sprint F). */
+function SuccessCelebration() {
+  const scale = useRef(new Animated.Value(0)).current;
+  const rotate = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scale, { toValue: 1, friction: 4, tension: 60, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.loop(
+        Animated.timing(rotate, {
+          toValue: 1,
+          duration: 3000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ),
+    ]).start();
+  }, [scale, rotate, opacity]);
+
+  const spin = rotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
+  return (
+    <Animated.View style={{ transform: [{ scale }, { rotate: spin }], opacity, marginBottom: 16 }}>
+      <Text style={{ fontSize: 72 }}>✨</Text>
+    </Animated.View>
+  );
+}
 
 export function NfcRedeemScreen() {
   const navigation = useNavigation<any>();
@@ -145,7 +175,7 @@ export function NfcRedeemScreen() {
 
         {state === 'success' && item && (
           <>
-            <Text style={styles.bigIcon}>✨</Text>
+            <SuccessCelebration />
             <Text style={styles.successTitle}>
               {t({ en: `Unlocked: ${item.name}!`, zh: `解锁了：${item.name}！` })}
             </Text>
@@ -166,6 +196,9 @@ export function NfcRedeemScreen() {
                     : t({ en: 'Item', zh: '物品' })}
               </Text>
             </View>
+            <Text style={styles.moodHint}>
+              {t({ en: 'Your pet is excited! 🤩', zh: '主宠超开心！🤩' })}
+            </Text>
           </>
         )}
 
@@ -307,6 +340,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
     lineHeight: 22,
+  },
+  moodHint: {
+    color: colors.accent,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 16,
+    opacity: 0.8,
   },
   actions: {
     width: '100%',

@@ -27,11 +27,11 @@ import { colors } from '../../theme/colors';
 
 const CLANS: Array<{ id: PetClan; label: string; emoji: string; locked?: boolean }> = [
   { id: 'A_office', label: '效率派', emoji: '🦾' },
-  { id: 'B_life', label: '生活家', emoji: '🍳', locked: true },
-  { id: 'C_learn', label: '学习圈', emoji: '📚', locked: true },
-  { id: 'D_play', label: '娱乐部', emoji: '🎮', locked: true },
-  { id: 'E_web3', label: 'Web3', emoji: '💎', locked: true },
-  { id: 'F_family', label: '家有萌宠', emoji: '🏡', locked: true },
+  { id: 'B_life', label: '生活家', emoji: '🍳' },
+  { id: 'C_learn', label: '学习圈', emoji: '📚' },
+  { id: 'D_play', label: '娱乐部', emoji: '🎮' },
+  { id: 'E_web3', label: 'Web3', emoji: '💎' },
+  { id: 'F_family', label: '家有萌宠', emoji: '🏡' },
 ];
 
 const SOUL_EMOJI: Record<string, string> = {

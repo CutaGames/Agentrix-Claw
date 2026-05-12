@@ -15,6 +15,7 @@ import { colors } from '../theme/colors';
 import { useI18n } from '../stores/i18nStore';
 import { AgentChatScreen } from '../screens/agent/AgentChatScreen';
 import { VoiceChatScreen } from '../screens/agent/VoiceChatScreen';
+import { LlmBudgetBar } from '../components/summon/LlmBudgetBar';
 import type { SummonStackParamList } from './types';
 
 // Lightweight error boundary kept identical to the existing one in
@@ -58,9 +59,12 @@ const ebStyles = RNStyleSheet.create({
 
 function SummonChatRoot() {
   return (
-    <ChatScreenErrorBoundary>
-      <AgentChatScreen />
-    </ChatScreenErrorBoundary>
+    <View style={{ flex: 1 }}>
+      <ChatScreenErrorBoundary>
+        <AgentChatScreen />
+      </ChatScreenErrorBoundary>
+      <LlmBudgetBar />
+    </View>
   );
 }
 

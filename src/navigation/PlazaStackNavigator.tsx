@@ -12,9 +12,10 @@ import { useI18n } from '../stores/i18nStore';
 import { PlazaScreen } from '../screens/plaza/PlazaScreen';
 import {
   PlazaToyCustomStub,
-  PlazaPetsStub,
   PlazaPlayStub,
 } from '../screens/plaza/PlazaPlaceholderScreens';
+import { PetAuctionScreen } from '../screens/plaza/PetAuctionScreen';
+import { ToyCustomInquiryScreen } from '../screens/plaza/ToyCustomInquiryScreen';
 import { GreetingCardComposeScreen } from '../screens/plaza/GreetingCardComposeScreen';
 import { GreetingCardInboxScreen } from '../screens/plaza/GreetingCardInboxScreen';
 import { SkinAuctionScreen } from '../screens/plaza/SkinAuctionScreen';
@@ -157,8 +158,8 @@ export function PlazaStackNavigator() {
       {/* Pets market ───────────────────────────────────────── */}
       <Stack.Screen
         name="Pets"
-        component={PlazaPetsStub}
-        options={{ title: t({ en: 'Pet Market', zh: '宠物市场' }) }}
+        component={PetAuctionScreen}
+        options={{ title: t({ en: 'Pet Auction', zh: '主宠拍卖' }) }}
       />
       <Stack.Screen
         name="PetsSkins"
@@ -172,7 +173,7 @@ export function PlazaStackNavigator() {
       />
       <Stack.Screen
         name="PetAuctionDetail"
-        component={PlazaPetsStub}
+        component={PetAuctionScreen}
         options={{ title: t({ en: 'Pet', zh: '主宠' }) }}
       />
 
@@ -234,7 +235,7 @@ export function PlazaStackNavigator() {
       {/* Toy custom ────────────────────────────────────────── */}
       <Stack.Screen
         name="ToyCustom"
-        component={PlazaToyCustomStub}
+        component={ToyCustomInquiryScreen}
         options={{ title: t({ en: 'Toy Custom', zh: '实体玩偶' }) }}
       />
     </Stack.Navigator>

@@ -46,6 +46,8 @@ import { SoulPickerScreen } from '../screens/pet/SoulPickerScreen';
 import { BreedScreen } from '../screens/pet/BreedScreen';
 import { PetTeamScreen } from '../screens/pet/PetTeamScreen';
 import { PetPlaygroundScreen } from '../screens/pet/PetPlaygroundScreen';
+import { CameraScanScreen } from '../screens/pet/CameraScanScreen';
+import { NftMintScreen } from '../screens/pet/NftMintScreen';
 
 import { AgentAccountScreen } from '../screens/agent/AgentAccountScreen';
 import { AgentBalanceScreen } from '../screens/agent/AgentBalanceScreen';
@@ -181,6 +183,16 @@ export function HomeStackNavigator() {
       />
 
       {/* Co-Raising (Sprint A placeholder, Sprint C real impl) ── */}
+      <Stack.Screen
+        name="CameraScan"
+        component={CameraScanScreen}
+        options={{ title: t({ en: 'Scan Object', zh: '扫描物体' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="NftMint"
+        component={NftMintScreen}
+        options={{ title: t({ en: 'NFT Mint', zh: 'NFT 铸造' }) }}
+      />
       <Stack.Screen
         name="CoRaisingInvite"
         component={CoRaisingInviteScreen}

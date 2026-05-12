@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  shortcuts.xml — Sprint H #19
+  
+  Android App Actions for V4 system assistant integration.
+  Per mobile-prd-v4 §8, 4 new actions:
+    1. CreatePetIntent — "Hey Google, create a pet in Agentrix"
+    2. SwitchSkinIntent — "Hey Google, switch skin in Agentrix"
+    3. PetMoodIntent — "Hey Google, how is my pet in Agentrix"
+    4. MarketSearchIntent — "Hey Google, search Agentrix marketplace"
+    
+  These map to Built-In Intents (BII) where possible, or custom intents.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- CreatePetIntent → CREATE_ITEM_LIST BII -->
+    <capability android:name="actions.intent.CREATE_ITEM_LIST">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.agentrix.claw"
+            android:targetClass="com.agentrix.claw.MainActivity">
+            <parameter
+                android:name="itemList.name"
+                android:key="prompt" />
+            <url-template android:value="agentrix://home/pet/creator?prompt={prompt}" />
+        </intent>
+    </capability>
+
+    <!-- SwitchSkinIntent → UPDATE_ITEM BII -->
+    <capability android:name="actions.intent.UPDATE_ITEM">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.agentrix.claw"
+            android:targetClass="com.agentrix.claw.MainActivity">
+            <parameter
+                android:name="item.name"
+                android:key="skinName" />
+            <url-template android:value="agentrix://home/pet/wardrobe?search={skinName}" />
+        </intent>
+    </capability>
+
+    <!-- PetMoodIntent → GET_THING BII -->
+    <capability android:name="actions.intent.GET_THING">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.agentrix.claw"
+            android:targetClass="com.agentrix.claw.MainActivity">
+            <url-template android:value="agentrix://home" />
+        </intent>
+    </capability>
+
+    <!-- MarketSearchIntent → SEARCH_FOR BII -->
+    <capability android:name="actions.intent.SEARCH_FOR">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.agentrix.claw"
+            android:targetClass="com.agentrix.claw.MainActivity">
+            <parameter
+                android:name="thing.name"
+                android:key="query" />
+            <url-template android:value="agentrix://plaza/pets/skins?search={query}" />
+        </intent>
+    </capability>
+
+    <!-- Static shortcuts for quick access -->
+    <shortcut
+        android:shortcutId="create_pet"
+        android:enabled="true"
+        android:icon="@drawable/ic_sparkles"
+        android:shortcutShortLabel="@string/shortcut_create_pet"
+        android:shortcutLongLabel="@string/shortcut_create_pet_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="agentrix://home/pet/creator" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="pet_mood"
+        android:enabled="true"
+        android:icon="@drawable/ic_heart"
+        android:shortcutShortLabel="@string/shortcut_pet_mood"
+        android:shortcutLongLabel="@string/shortcut_pet_mood_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="agentrix://home" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="marketplace"
+        android:enabled="true"
+        android:icon="@drawable/ic_search"
+        android:shortcutShortLabel="@string/shortcut_marketplace"
+        android:shortcutLongLabel="@string/shortcut_marketplace_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="agentrix://plaza" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+</shortcuts>

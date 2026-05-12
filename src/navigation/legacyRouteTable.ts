@@ -157,6 +157,21 @@ export const LEGACY_ROUTE_MAP: Record<string, string> = {
   'agentrix://install_skill': 'agentrix://plaza/skills',
   'agentrix://accept_task': 'agentrix://plaza/tasks',
 
+  // ========== Co-Raising & Greeting Deep Links (Sprint E) ==========
+  // Mobile share → Web landing → universal link back to App
+  //   agentrix://co_raising?inviteToken={tok}
+  //   agentrix://greeting?cardToken={tok}
+  'agentrix://co_raising': 'agentrix://home/co-raising/landing',
+  'agentrix://co-raising': 'agentrix://home/co-raising/landing',
+  'agentrix://co-raising/*': 'agentrix://home/co-raising/landing/*',
+  'agentrix://greeting': 'agentrix://plaza/greeting-inbox',
+  'agentrix://greeting/*': 'agentrix://plaza/greeting-inbox/*',
+
+  // ========== Toy activation (NFC / QR on packaging) ==========
+  'agentrix://toy/activate': 'agentrix://me/devices/toy',
+  'agentrix://nfc': 'agentrix://pet/nfc-redeem',
+  'agentrix://nfc/*': 'agentrix://pet/nfc-redeem/*',
+
   // ========== Special deep links — unchanged ==========
   'agentrix://connect': 'agentrix://me/devices/local-connect', // desktop QR pairing
   'agentrix://auth/callback': 'agentrix://auth/callback',
@@ -237,6 +252,9 @@ const MARKETPLACE_ACTION_MAP: Record<string, (params: URLSearchParams) => string
   bid: (p) => `plaza/pets/skins/${p.get('resourceId') || ''}`,
   install_skill: (p) => `plaza/skills/install/${p.get('resourceId') || ''}`,
   accept_task: (p) => `plaza/tasks/${p.get('resourceId') || ''}`,
+  co_raising: (p) => `home/co-raising/landing?token=${p.get('inviteToken') || p.get('token') || ''}`,
+  'co-raising': (p) => `home/co-raising/landing?token=${p.get('inviteToken') || p.get('token') || ''}`,
+  greeting: (p) => `plaza/greeting-inbox?token=${p.get('cardToken') || p.get('token') || ''}`,
 };
 
 /**

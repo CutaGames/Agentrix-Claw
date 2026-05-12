@@ -1,550 +1,421 @@
 /**
- * CameraScanScreen — Sprint 5 · Task 5.5
+ * CameraScanScreen — Sprint I #23
  *
- * Multi-angle photo capture screen for 3D pet generation.
- * Users take 8-12 photos of a real object from different angles,
- * which are uploaded to the backend for NeRF/SfM 3D reconstruction.
+ * Multi-angle camera scan to generate a 3D pet from a real-world object.
+ * Per mobile-prd-v4 §4.3:
+ *   1. User taps "Scan"
+ *   2. AR guide ring shows orbit path (ARKit / ARCore)
+ *   3. Auto-capture 8-12 frames as user orbits
+ *   4. Upload to backend pet-generation/scan
+ *   5. Server runs NeRF / multi-view SfM → .glb → auto-rig → .vrm
+ *   6. Push back to Mobile + any online Desktop
+ *   7. Mobile shows "✨ Set as my pet"
  *
- * Simplified AR flow (no native ARKit/ARCore required):
- *   1. Show camera preview (expo-camera)
- *   2. Overlay: circular guide + rotation instructions
- *   3. Progress: "3/12 photos captured"
- *   4. Manual capture button
- *   5. Upload all photos → poll for result
- *   6. Show generated VRM preview + "Set as my pet" button
+ * V5 P5 feature — this is the mobile-exclusive creation mode.
  */
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   Alert,
   ActivityIndicator,
   Dimensions,
-  Platform,
 } from 'react-native';
-import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
-import { submitScanPhotos, getScanTaskStatus } from '../../services/petScan.service';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as FileSystem from 'expo-file-system';
+import { useNavigation } from '@react-navigation/native';
+import { colors } from '../../theme/colors';
+import { useI18n } from '../../stores/i18nStore';
+import { apiFetch } from '../../services/api';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const MIN_PHOTOS = 8;
-const MAX_PHOTOS = 12;
-const POLL_INTERVAL_MS = 3000;
-const MAX_POLL_ATTEMPTS = 60; // 3 minutes max
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const MIN_FRAMES = 8;
+const MAX_FRAMES = 12;
+const CAPTURE_INTERVAL_MS = 1500; // auto-capture every 1.5s
 
-type ScanPhase = 'capture' | 'uploading' | 'processing' | 'result' | 'error';
+// ── Types ────────────────────────────────────────────────────
 
-export default function CameraScanScreen({ navigation }: any) {
-  const [phase, setPhase] = useState<ScanPhase>('capture');
-  const [photos, setPhotos] = useState<string[]>([]);
-  const [cameraReady, setCameraReady] = useState(false);
-  const [resultVrmUrl, setResultVrmUrl] = useState<string | null>(null);
-  const [resultThumbnail, setResultThumbnail] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+interface ScanSubmitResponse {
+  task_id: string;
+  status: 'queued' | 'processing';
+  estimated_seconds: number;
+}
+
+type ScanState = 'permission' | 'ready' | 'scanning' | 'uploading' | 'processing' | 'done' | 'error';
+
+// ── API ──────────────────────────────────────────────────────
+
+async function submitScanFrames(frameUris: string[]): Promise<ScanSubmitResponse> {
+  // Upload frames as base64 array
+  const frames: string[] = [];
+  for (const uri of frameUris) {
+    const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+    frames.push(`data:image/jpeg;base64,${base64}`);
+  }
+
+  return apiFetch<ScanSubmitResponse>('/v1/pet-generation/scan', {
+    method: 'POST',
+    body: JSON.stringify({
+      mode: 'camera_scan',
+      frames,
+      provider: 'hunyuan3d', // default provider for scan
+      resultFormat: 'GLB',
+      enablePBR: true,
+    }),
+  });
+}
+
+// ── Component ────────────────────────────────────────────────
+
+export function CameraScanScreen() {
+  const { t } = useI18n();
+  const navigation = useNavigation<any>();
+  const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<any>(null);
 
-  // Lazy-load expo-camera to avoid crashes on unsupported platforms
-  const [CameraView, setCameraView] = useState<any>(null);
-  const [cameraPermission, setCameraPermission] = useState<boolean | null>(null);
+  const [state, setState] = useState<ScanState>('permission');
+  const [frames, setFrames] = useState<string[]>([]);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [error, setError] = useState<string>('');
+  const captureTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  React.useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const cameraModule = require('expo-camera');
-        const Camera = cameraModule.CameraView || cameraModule.Camera;
-        if (mounted) setCameraView(() => Camera);
-
-        // Request permission
-        const { status } = await (
-          cameraModule.useCameraPermissions
-            ? cameraModule.requestCameraPermissionsAsync?.()
-            : cameraModule.Camera?.requestCameraPermissionsAsync?.()
-        ) || { status: 'undetermined' };
-        if (mounted) setCameraPermission(status === 'granted');
-      } catch {
-        if (mounted) setCameraPermission(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
-
-  // Take a photo
-  const handleCapture = useCallback(async () => {
-    if (!cameraRef.current || photos.length >= MAX_PHOTOS) return;
-
-    try {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.8,
-        skipProcessing: Platform.OS === 'android',
-      });
-      if (photo?.uri) {
-        setPhotos((prev) => [...prev, photo.uri]);
-      }
-    } catch (err: any) {
-      console.warn('[CameraScan] capture failed:', err?.message);
+  // Check permission on mount
+  useEffect(() => {
+    if (permission?.granted) {
+      setState('ready');
     }
-  }, [photos.length]);
+  }, [permission]);
 
-  // Remove a photo
-  const handleRemovePhoto = useCallback((index: number) => {
-    setPhotos((prev) => prev.filter((_, i) => i !== index));
+  const handleRequestPermission = useCallback(async () => {
+    const result = await requestPermission();
+    if (result.granted) {
+      setState('ready');
+    } else {
+      setError(t({ en: 'Camera permission is required for scanning.', zh: '扫描需要相机权限。' }));
+      setState('error');
+    }
+  }, [requestPermission, t]);
+
+  // Start auto-capture
+  const startScanning = useCallback(() => {
+    setState('scanning');
+    setFrames([]);
+    setError('');
+
+    captureTimerRef.current = setInterval(async () => {
+      if (!cameraRef.current) return;
+
+      try {
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.7,
+          skipProcessing: true,
+        });
+        setFrames((prev) => {
+          const next = [...prev, photo.uri];
+          if (next.length >= MAX_FRAMES) {
+            // Auto-stop when max frames reached
+            stopScanning(next);
+          }
+          return next;
+        });
+      } catch {
+        // Silently skip failed captures
+      }
+    }, CAPTURE_INTERVAL_MS);
   }, []);
 
-  // Submit photos for 3D reconstruction
-  const handleSubmit = useCallback(async () => {
-    if (photos.length < MIN_PHOTOS) {
+  const stopScanning = useCallback((capturedFrames?: string[]) => {
+    if (captureTimerRef.current) {
+      clearInterval(captureTimerRef.current);
+      captureTimerRef.current = null;
+    }
+
+    const finalFrames = capturedFrames || frames;
+    if (finalFrames.length < MIN_FRAMES) {
       Alert.alert(
-        '需要更多照片',
-        `请至少拍摄 ${MIN_PHOTOS} 张不同角度的照片（当前 ${photos.length} 张）`,
+        t({ en: 'Not enough frames', zh: '帧数不足' }),
+        t({
+          en: `Need at least ${MIN_FRAMES} frames. You captured ${finalFrames.length}. Try again.`,
+          zh: `至少需要 ${MIN_FRAMES} 帧，当前 ${finalFrames.length} 帧。请重试。`,
+        }),
       );
+      setState('ready');
+      setFrames([]);
       return;
     }
 
-    setPhase('uploading');
+    // Upload
+    uploadFrames(finalFrames);
+  }, [frames, t]);
 
+  const uploadFrames = useCallback(async (frameUris: string[]) => {
+    setState('uploading');
     try {
-      const result = await submitScanPhotos(photos);
+      const response = await submitScanFrames(frameUris);
+      setTaskId(response.task_id);
+      setState('processing');
 
-      if (!result?.taskId) {
-        throw new Error('未获取到任务 ID');
+      // Clean up temp files
+      for (const uri of frameUris) {
+        FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
       }
-
-      setPhase('processing');
-
-      // Poll for completion
-      let attempts = 0;
-      const poll = async (): Promise<void> => {
-        if (attempts >= MAX_POLL_ATTEMPTS) {
-          setPhase('error');
-          setErrorMessage('处理超时，请稍后在"我的宠物"中查看结果');
-          return;
-        }
-
-        attempts++;
-        const status = await getScanTaskStatus(result.taskId);
-
-        if (status.status === 'completed' && status.vrmUrl) {
-          setResultVrmUrl(status.vrmUrl);
-          setResultThumbnail(status.thumbnailUrl || null);
-          setPhase('result');
-          return;
-        }
-
-        if (status.status === 'failed') {
-          setPhase('error');
-          setErrorMessage(status.error || '3D 重建失败，请重试');
-          return;
-        }
-
-        // Continue polling
-        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-        return poll();
-      };
-
-      await poll();
     } catch (err: any) {
-      setPhase('error');
-      setErrorMessage(err?.message || '上传失败，请检查网络后重试');
+      setError(err?.message || t({ en: 'Upload failed', zh: '上传失败' }));
+      setState('error');
     }
-  }, [photos]);
+  }, [t]);
 
-  // Set generated VRM as active pet
-  const handleSetAsPet = useCallback(() => {
-    if (resultVrmUrl) {
-      // Navigate back with the VRM URL as result
-      navigation.navigate('PetCompanion', { vrmUrl: resultVrmUrl });
+  const handleManualStop = useCallback(() => {
+    if (captureTimerRef.current) {
+      clearInterval(captureTimerRef.current);
+      captureTimerRef.current = null;
     }
-  }, [resultVrmUrl, navigation]);
+    stopScanning(frames);
+  }, [frames, stopScanning]);
 
-  // Retry from error state
-  const handleRetry = useCallback(() => {
-    setPhase('capture');
-    setPhotos([]);
-    setErrorMessage(null);
-    setResultVrmUrl(null);
-    setResultThumbnail(null);
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (captureTimerRef.current) {
+        clearInterval(captureTimerRef.current);
+      }
+    };
   }, []);
 
-  // ── Render: No camera permission ────────────────────────────────────────
+  // ── Render states ──────────────────────────────────────────
 
-  if (cameraPermission === false) {
+  if (state === 'permission' || !permission?.granted) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorTitle}>📷 需要相机权限</Text>
-        <Text style={styles.errorText}>
-          请在系统设置中允许 Agentrix 访问相机
+      <View style={styles.center}>
+        <Text style={styles.bigIcon}>📷</Text>
+        <Text style={styles.title}>{t({ en: 'Camera Access', zh: '相机权限' })}</Text>
+        <Text style={styles.subtitle}>
+          {t({
+            en: 'We need camera access to scan objects and create 3D pets.',
+            zh: '需要相机权限来扫描物体并生成 3D 宠物。',
+          })}
         </Text>
-      </View>
-    );
-  }
-
-  // ── Render: Processing / Uploading ──────────────────────────────────────
-
-  if (phase === 'uploading' || phase === 'processing') {
-    return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#6366f1" />
-        <Text style={styles.processingTitle}>
-          {phase === 'uploading' ? '正在上传照片...' : '正在生成 3D 模型...'}
-        </Text>
-        <Text style={styles.processingSubtitle}>
-          {phase === 'processing'
-            ? '这可能需要 1-3 分钟，请耐心等待'
-            : `${photos.length} 张照片`}
-        </Text>
-      </View>
-    );
-  }
-
-  // ── Render: Result ──────────────────────────────────────────────────────
-
-  if (phase === 'result') {
-    return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.resultTitle}>✨ 3D 宠物生成完成</Text>
-        {resultThumbnail && (
-          <Image
-            source={{ uri: resultThumbnail }}
-            style={styles.resultThumbnail}
-            contentFit="cover"
-          />
-        )}
-        <TouchableOpacity style={styles.primaryButton} onPress={handleSetAsPet}>
-          <Text style={styles.primaryButtonText}>设为我的宠物</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.secondaryButton} onPress={handleRetry}>
-          <Text style={styles.secondaryButtonText}>重新扫描</Text>
+        <TouchableOpacity style={styles.primaryBtn} onPress={handleRequestPermission}>
+          <Text style={styles.primaryBtnText}>{t({ en: 'Grant Permission', zh: '授权相机' })}</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // ── Render: Error ───────────────────────────────────────────────────────
-
-  if (phase === 'error') {
+  if (state === 'uploading') {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorTitle}>❌ 生成失败</Text>
-        <Text style={styles.errorText}>{errorMessage}</Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={handleRetry}>
-          <Text style={styles.primaryButtonText}>重试</Text>
+      <View style={styles.center}>
+        <ActivityIndicator color={colors.accent} size="large" />
+        <Text style={styles.title}>{t({ en: 'Uploading frames...', zh: '上传中...' })}</Text>
+        <Text style={styles.subtitle}>
+          {t({ en: `${frames.length} frames captured`, zh: `已捕获 ${frames.length} 帧` })}
+        </Text>
+      </View>
+    );
+  }
+
+  if (state === 'processing') {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.bigIcon}>🧬</Text>
+        <Text style={styles.title}>{t({ en: 'Generating 3D model...', zh: '生成 3D 模型中...' })}</Text>
+        <Text style={styles.subtitle}>
+          {t({
+            en: 'This may take 60-120 seconds. You can leave this screen.',
+            zh: '大约需要 60-120 秒，你可以离开此页面。',
+          })}
+        </Text>
+        {taskId && <Text style={styles.taskId}>Task: {taskId}</Text>}
+        <TouchableOpacity
+          style={styles.secondaryBtn}
+          onPress={() => navigation.navigate('PetWardrobe')}
+        >
+          <Text style={styles.secondaryBtnText}>{t({ en: 'Go to Wardrobe', zh: '去衣柜等待' })}</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // ── Render: Capture phase ───────────────────────────────────────────────
+  if (state === 'error') {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.bigIcon}>❌</Text>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.primaryBtn} onPress={() => setState('ready')}>
+          <Text style={styles.primaryBtnText}>{t({ en: 'Try Again', zh: '重试' })}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
+  // Ready or Scanning — show camera
   return (
     <View style={styles.container}>
-      {/* Camera preview */}
-      <View style={styles.cameraContainer}>
-        {CameraView && cameraPermission ? (
-          <CameraView
-            ref={cameraRef}
-            style={styles.camera}
-            facing="back"
-            onCameraReady={() => setCameraReady(true)}
-          />
+      <CameraView
+        ref={cameraRef}
+        style={styles.camera}
+        facing="back"
+      >
+        {/* AR guide overlay */}
+        <View style={styles.overlay}>
+          {/* Orbit guide ring */}
+          <View style={styles.guideRing}>
+            <View style={styles.guideRingInner} />
+          </View>
+
+          {/* Frame counter */}
+          <View style={styles.frameCounter}>
+            <Text style={styles.frameCounterText}>
+              {frames.length} / {MAX_FRAMES}
+            </Text>
+          </View>
+
+          {/* Instructions */}
+          <View style={styles.instructionBox}>
+            <Text style={styles.instructionText}>
+              {state === 'ready'
+                ? t({ en: 'Point at object and tap Start', zh: '对准物体后点击开始' })
+                : t({ en: 'Slowly orbit around the object', zh: '缓慢绕物体一周' })}
+            </Text>
+          </View>
+
+          {/* Progress dots */}
+          {state === 'scanning' && (
+            <View style={styles.dotsRow}>
+              {Array.from({ length: MAX_FRAMES }).map((_, i) => (
+                <View
+                  key={i}
+                  style={[styles.dot, i < frames.length && styles.dotFilled]}
+                />
+              ))}
+            </View>
+          )}
+        </View>
+      </CameraView>
+
+      {/* Bottom controls */}
+      <View style={styles.controls}>
+        {state === 'ready' ? (
+          <TouchableOpacity style={styles.startBtn} onPress={startScanning}>
+            <Text style={styles.startBtnText}>
+              {t({ en: '🔄 Start Scan', zh: '🔄 开始扫描' })}
+            </Text>
+          </TouchableOpacity>
         ) : (
-          <View style={[styles.camera, styles.cameraPlaceholder]}>
-            <ActivityIndicator size="small" color="#6366f1" />
+          <View style={styles.scanningControls}>
+            <TouchableOpacity style={styles.stopBtn} onPress={handleManualStop}>
+              <Text style={styles.stopBtnText}>
+                {frames.length >= MIN_FRAMES
+                  ? t({ en: '✓ Done', zh: '✓ 完成' })
+                  : t({ en: `Need ${MIN_FRAMES - frames.length} more`, zh: `还需 ${MIN_FRAMES - frames.length} 帧` })}
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
-
-        {/* Circular guide overlay */}
-        <View style={styles.guideOverlay} pointerEvents="none">
-          <View style={styles.guideCircle} />
-          <Text style={styles.guideText}>
-            绕物体缓慢旋转拍摄
-          </Text>
-        </View>
-
-        {/* Progress indicator */}
-        <View style={styles.progressBadge}>
-          <Text style={styles.progressText}>
-            {photos.length}/{MAX_PHOTOS} 张
-          </Text>
-        </View>
-      </View>
-
-      {/* Photo strip */}
-      {photos.length > 0 && (
-        <ScrollView
-          horizontal
-          style={styles.photoStrip}
-          contentContainerStyle={styles.photoStripContent}
-          showsHorizontalScrollIndicator={false}
-        >
-          {photos.map((uri, index) => (
-            <TouchableOpacity
-              key={`photo-${index}`}
-              onLongPress={() => handleRemovePhoto(index)}
-              style={styles.photoThumb}
-            >
-              <Image source={{ uri }} style={styles.photoThumbImage} contentFit="cover" />
-              <View style={styles.photoIndex}>
-                <Text style={styles.photoIndexText}>{index + 1}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-
-      {/* Controls */}
-      <View style={styles.controls}>
-        {/* Capture button */}
-        <TouchableOpacity
-          style={[
-            styles.captureButton,
-            (!cameraReady || photos.length >= MAX_PHOTOS) && styles.captureButtonDisabled,
-          ]}
-          onPress={handleCapture}
-          disabled={!cameraReady || photos.length >= MAX_PHOTOS}
-        >
-          <View style={styles.captureButtonInner} />
-        </TouchableOpacity>
-
-        {/* Submit button */}
-        {photos.length >= MIN_PHOTOS && (
-          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-            <LinearGradient
-              colors={['#6366f1', '#8b5cf6']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.submitButtonGradient}
-            >
-              <Text style={styles.submitButtonText}>
-                生成 3D 宠物 →
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Instructions */}
-      <View style={styles.instructions}>
-        <Text style={styles.instructionText}>
-          💡 拍摄 {MIN_PHOTOS}-{MAX_PHOTOS} 张不同角度的照片，长按可删除
-        </Text>
       </View>
     </View>
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────
+// ── Styles ───────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1, backgroundColor: '#000' },
+  center: {
     flex: 1,
-    backgroundColor: '#0b1220',
-  },
-  centerContainer: {
-    flex: 1,
-    backgroundColor: '#0b1220',
-    alignItems: 'center',
+    backgroundColor: colors.bgPrimary,
     justifyContent: 'center',
-    padding: 32,
-  },
-  cameraContainer: {
-    flex: 1,
-    position: 'relative',
-  },
-  camera: {
-    flex: 1,
-  },
-  cameraPlaceholder: {
-    backgroundColor: '#1e293b',
     alignItems: 'center',
-    justifyContent: 'center',
+    padding: 24,
   },
-  guideOverlay: {
+  camera: { flex: 1 },
+  overlay: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  guideCircle: {
-    width: SCREEN_WIDTH * 0.6,
-    height: SCREEN_WIDTH * 0.6,
-    borderRadius: SCREEN_WIDTH * 0.3,
+  guideRing: {
+    width: SCREEN_W * 0.7,
+    height: SCREEN_W * 0.7,
+    borderRadius: SCREEN_W * 0.35,
     borderWidth: 2,
-    borderColor: 'rgba(99, 102, 241, 0.6)',
+    borderColor: 'rgba(0,212,255,0.5)',
     borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  guideText: {
-    color: '#ffffff',
-    fontSize: 14,
-    marginTop: 12,
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+  guideRingInner: {
+    width: SCREEN_W * 0.3,
+    height: SCREEN_W * 0.3,
+    borderRadius: SCREEN_W * 0.15,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
-  progressBadge: {
+  frameCounter: {
     position: 'absolute',
-    top: 16,
-    right: 16,
+    top: 60,
+    right: 20,
     backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 16,
   },
-  progressText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  photoStrip: {
-    maxHeight: 80,
-    backgroundColor: '#1e293b',
-  },
-  photoStripContent: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  photoThumb: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  photoThumbImage: {
-    width: 60,
-    height: 60,
-  },
-  photoIndex: {
+  frameCounterText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  instructionBox: {
     position: 'absolute',
-    bottom: 2,
-    right: 2,
+    bottom: 120,
     backgroundColor: 'rgba(0,0,0,0.7)',
-    borderRadius: 8,
-    width: 16,
-    height: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
-  photoIndexText: {
-    color: '#ffffff',
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  controls: {
+  instructionText: { color: '#fff', fontSize: 14, textAlign: 'center' },
+  dotsRow: {
+    position: 'absolute',
+    bottom: 90,
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    backgroundColor: '#0f172a',
-    gap: 20,
+    gap: 6,
   },
-  captureButton: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 4,
-    borderColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.3)',
   },
-  captureButtonDisabled: {
-    borderColor: '#475569',
-    opacity: 0.5,
+  dotFilled: { backgroundColor: colors.accent },
+  controls: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 24,
+    paddingBottom: 40,
   },
-  captureButtonInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#ffffff',
-  },
-  submitButton: {
-    flex: 1,
-    maxWidth: 200,
-  },
-  submitButtonGradient: {
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 24,
-    alignItems: 'center',
-  },
-  submitButtonText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  instructions: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    backgroundColor: '#0f172a',
-  },
-  instructionText: {
-    color: '#94a3b8',
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  // Processing states
-  processingTitle: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 20,
-  },
-  processingSubtitle: {
-    color: '#94a3b8',
-    fontSize: 14,
-    marginTop: 8,
-  },
-  // Result state
-  resultTitle: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 20,
-  },
-  resultThumbnail: {
-    width: 200,
-    height: 200,
+  startBtn: {
+    backgroundColor: colors.accent,
     borderRadius: 16,
-    marginBottom: 24,
+    paddingVertical: 16,
+    alignItems: 'center',
   },
-  primaryButton: {
-    backgroundColor: '#6366f1',
+  startBtnText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  scanningControls: { alignItems: 'center' },
+  stopBtn: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 32,
-    borderRadius: 24,
-    marginBottom: 12,
-    minWidth: 200,
-    alignItems: 'center',
   },
-  primaryButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-  },
-  secondaryButtonText: {
-    color: '#94a3b8',
-    fontSize: 14,
-  },
-  // Error state
-  errorTitle: {
-    color: '#ffffff',
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  errorText: {
-    color: '#94a3b8',
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 20,
-  },
+  stopBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  // Center states
+  bigIcon: { fontSize: 64, marginBottom: 16 },
+  title: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, marginBottom: 8, textAlign: 'center' },
+  subtitle: { fontSize: 14, color: colors.textMuted, textAlign: 'center', marginBottom: 20 },
+  taskId: { fontSize: 11, color: colors.textMuted, marginTop: 8 },
+  errorText: { fontSize: 16, color: '#ef4444', textAlign: 'center', marginBottom: 20 },
+  primaryBtn: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 32 },
+  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  secondaryBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 32, marginTop: 12 },
+  secondaryBtnText: { color: colors.textMuted, fontWeight: '600', fontSize: 14 },
 });
