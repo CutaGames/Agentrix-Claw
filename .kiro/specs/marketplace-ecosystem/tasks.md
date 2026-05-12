@@ -305,7 +305,7 @@
     - 验证：访问 `/showcase` 自动 307 重定向到 `/market#featured`；`/market` 顶部显示 Featured 轮播
     - _Requirements: 1.1, 8.1, 8.2_
 
-- [ ] 14. Post-Fix Deploy Checkpoint
+- [x] 14. Post-Fix Deploy Checkpoint
   - `npx tsc --noEmit`（backend + frontend）全部通过
   - `git add -A && git commit -m "fix(marketplace): P0 Skills 401 + Tasks bid flow; P1 AXP independent tx; P2 nav merge"`
   - `git push origin <branch>`；若涉及移动端 APK 同步，additionally push to `public_claw`
