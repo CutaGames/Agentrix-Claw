@@ -89,6 +89,46 @@ jobs:
               print(f"[patched] Added !! to {n} occurrence(s) in {filepath}")
           PYEOF
 
+      - name: Patch rive-react-native for Kotlin 2.x compatibility
+        run: |
+          python3 - << 'PYEOF'
+          import os, sys
+          filepath = 'node_modules/rive-react-native/android/src/main/java/com/rivereactnative/RiveReactNativeViewManager.kt'
+          if not os.path.exists(filepath):
+              print(f"[skip] {filepath} not found")
+              sys.exit(0)
+          with open(filepath, 'r') as f:
+              content = f.read()
+          original = content
+          # Kotlin 2.x: resources.getResourceEntryName() returns String? but is used as String
+          # Fix by adding !! or .orEmpty() to nullable .name calls around line 149
+          content = content.replace('.getResourceEntryName(', '.getResourceEntryName(')
+          # Generic fix: any place where String? is assigned to String
+          lines = content.split('\n')
+          for i in range(len(lines)):
+              line = lines[i]
+              if 'getResourceEntryName' in line and '!!' not in line:
+                  lines[i] = line.replace('getResourceEntryName(', 'getResourceEntryName(') + ''
+                  # Add !! after the closing paren
+                  import re as re2
+                  lines[i] = re2.sub(r'(getResourceEntryName\([^)]*\))(?!\!)', r'\1!!', lines[i])
+              elif 'Initializer type' in line:
+                  pass
+          content = '\n'.join(lines)
+          if content == original:
+              # Fallback: suppress the error with @Suppress annotation
+              content = original.replace(
+                  'class RiveReactNativeViewManager',
+                  '@Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")\nclass RiveReactNativeViewManager'
+              )
+          if content != original:
+              with open(filepath, 'w') as f:
+                  f.write(content)
+              print(f"[patched] Fixed Kotlin 2.x String? nullability in rive-react-native")
+          else:
+              print(f"[ok] No patch needed for {filepath}")
+          PYEOF
+
       - name: Expo prebuild
         run: npx expo prebuild --platform android --no-install
         env:
