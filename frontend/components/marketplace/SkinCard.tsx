@@ -84,8 +84,6 @@ export function SkinCard({ skin, onAddToCart, onBid, onBuyWithAxp }: SkinCardPro
     priceAxp,
     currentBidUsd,
     auctionEndsAt,
-    axpAccepted,
-    axpDiscountPercent,
     featured,
   } = skin;
 
@@ -94,7 +92,6 @@ export function SkinCard({ skin, onAddToCart, onBid, onBuyWithAxp }: SkinCardPro
   const showCreator = source !== 'platform';
   const showPrice = priceUsd !== null;
   const showAuction = listingMode === 'auction' && auctionEndsAt;
-  const showAxp = axpAccepted === true;
 
   return (
     <Link
@@ -130,11 +127,11 @@ export function SkinCard({ skin, onAddToCart, onBid, onBuyWithAxp }: SkinCardPro
           </div>
         )}
 
-        {/* AXP Accepted badge (overlay on image) */}
-        {showAxp && (
+        {/* AXP price badge (overlay on image) */}
+        {priceAxp != null && priceAxp > 0 && (
           <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-md bg-yellow-500/90 px-1.5 py-0.5 text-[10px] font-bold text-black">
             <Zap size={10} />
-            AXP -{axpDiscountPercent}%
+            {priceAxp} AXP
           </div>
         )}
       </div>

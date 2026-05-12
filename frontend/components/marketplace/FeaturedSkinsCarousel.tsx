@@ -152,6 +152,11 @@ export function FeaturedSkinsCarousel({ skins }: FeaturedSkinsCarouselProps) {
               <p className="mt-0.5 text-xs text-gray-400">
                 {skin.creatorUsername}
               </p>
+              {skin.priceAxp != null && skin.priceAxp > 0 && (
+                <p className="mt-1 text-sm font-semibold text-yellow-400">
+                  ⚡ {skin.priceAxp} AXP
+                </p>
+              )}
               {skin.priceUsd !== null && (
                 <p className="mt-1 text-sm font-semibold text-green-400">
                   ${skin.priceUsd.toFixed(2)}

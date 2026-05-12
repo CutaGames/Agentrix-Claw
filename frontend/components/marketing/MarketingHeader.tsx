@@ -27,16 +27,15 @@ const PRODUCT_GROUP: NavItem[] = [
 ];
 
 const MARKET_GROUP: NavItem[] = [
-  { href: '/market', label: { zh: 'Marketplace 主页', en: 'Marketplace Home' }, disabled: true },
-  { href: '/showcase', label: { zh: 'Showcase 精选', en: 'Showcase' } },
-  { href: '/skills', label: { zh: 'Skills 市场', en: 'Skills Market' } },
+  { href: '/market', label: { zh: '皮肤市场', en: 'Skin Marketplace' } },
+  { href: '/market/skills', label: { zh: 'Skills 市场', en: 'Skills Market' } },
+  { href: '/market/tasks', label: { zh: '任务市场', en: 'Task Market' } },
   { href: '/market/auction', label: { zh: '拍卖大厅', en: 'Auction Hall' }, disabled: true },
   { href: '/market/leaderboard', label: { zh: '创作者排行', en: 'Creator Leaderboard' }, disabled: true },
 ];
 
 const PRIMARY_NAV: NavItem[] = [
   { href: '/pricing', label: { zh: '定价', en: 'Pricing' } },
-  { href: '/showcase', label: { zh: 'Showcase', en: 'Showcase' } },
   { href: '/developers', label: { zh: '开发者', en: 'Developers' } },
   { href: '/enterprise', label: { zh: '企业', en: 'Enterprise' } },
   { href: '/family', label: { zh: '家庭', en: 'Family' } },
