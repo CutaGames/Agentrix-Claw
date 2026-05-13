@@ -41,6 +41,7 @@ import { CoRaisingActivityScreen } from '../screens/home/CoRaisingActivityScreen
 
 import { PetCompanionScreen } from '../screens/pet/PetCompanionScreen';
 import { PetCreatorScreen } from '../screens/pet/PetCreatorScreen';
+import { CameraScanScreen } from '../screens/pet/CameraScanScreen';
 import { WardrobeScreen } from '../screens/pet/WardrobeScreen';
 import { SoulPickerScreen } from '../screens/pet/SoulPickerScreen';
 import { BreedScreen } from '../screens/pet/BreedScreen';
@@ -154,7 +155,12 @@ export function HomeStackNavigator() {
       <Stack.Screen
         name="PetCreator"
         component={PetCreatorScreen}
-        options={{ title: t({ en: 'Create Pet', zh: '生成主宠' }) }}
+        options={{ title: t({ en: 'Create Pet', zh: '文字创生' }) }}
+      />
+      <Stack.Screen
+        name="PetCameraScan"
+        component={CameraScanScreen}
+        options={{ title: t({ en: 'Photo → 3D Pet', zh: '📷 拍照创生' }) }}
       />
       <Stack.Screen
         name="PetPermissions"
