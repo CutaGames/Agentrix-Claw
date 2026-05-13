@@ -41,7 +41,7 @@ import type { HomeStackParamList } from '../../navigation/types';
 type Nav = NativeStackNavigationProp<HomeStackParamList, 'HomeRoot'>;
 
 interface DrawerTile {
-  key: keyof HomeStackParamList | 'Skills';
+  key: keyof HomeStackParamList | 'Skills' | 'PetCameraScan';
   emoji: string;
   label: { en: string; zh: string };
   route: keyof HomeStackParamList;
@@ -58,7 +58,8 @@ const PET_DRAWER_TILES: DrawerTile[] = [
   { key: 'PetSoul', emoji: '💫', label: { en: 'Soul', zh: '灵魂' }, route: 'PetSoul', accent: '#e879f9' },
   { key: 'PetBreed', emoji: '🧬', label: { en: 'Breed', zh: '繁育' }, route: 'PetBreed', accent: '#fb7185' },
   { key: 'PetIdentity', emoji: '🆔', label: { en: 'Identity', zh: '身份' }, route: 'PetIdentity', accent: '#facc15' },
-  { key: 'PetCreator', emoji: '✨', label: { en: 'Create', zh: '创生' }, route: 'PetCreator', accent: '#f97316' },
+  { key: 'PetCreator', emoji: '✨', label: { en: 'Create', zh: '文字创生' }, route: 'PetCreator', accent: '#f97316' },
+  { key: 'PetCameraScan', emoji: '📷', label: { en: 'Photo→3D', zh: '拍照创生' }, route: 'PetCameraScan', accent: '#06b6d4' },
 ];
 
 export function HomeScreen() {
