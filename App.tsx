@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { View, ActivityIndicator, Text, AppState, AppStateStatus, Platform } from 'react-native';
@@ -577,24 +578,26 @@ const linking = {
 
 export default function App() {
   return (
-    <AppErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <NavigationContainer linking={linking as any}>
-          <StatusBar style="light" />
-          <AppNavigator />
-          {/* Global AXP toast — surfaces +N AXP when earns happen anywhere. */}
-          <AxpToastHost />
-          {/*
-            VoiceQuickFab (mobile-prd-v3 §3.2) removed 2026-05-10:
-            the always-on mic bubble was orphaned — `handleTap` only flipped
-            mobileFormStore and dispatched a globalThis event with no
-            listener, so users saw a floating ball that did nothing except
-            occlude content on Plaza/Play/Home. Voice entry now lives
-            inside Summon/AgentChatScreen where the actual STT pipeline
-            exists. Restore on a per-screen basis once Voice Quick ships.
-          */}
-        </NavigationContainer>
-      </QueryClientProvider>
-    </AppErrorBoundary>
+    <SafeAreaProvider>
+      <AppErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <NavigationContainer linking={linking as any}>
+            <StatusBar style="light" />
+            <AppNavigator />
+            {/* Global AXP toast — surfaces +N AXP when earns happen anywhere. */}
+            <AxpToastHost />
+            {/*
+              VoiceQuickFab (mobile-prd-v3 §3.2) removed 2026-05-10:
+              the always-on mic bubble was orphaned — `handleTap` only flipped
+              mobileFormStore and dispatched a globalThis event with no
+              listener, so users saw a floating ball that did nothing except
+              occlude content on Plaza/Play/Home. Voice entry now lives
+              inside Summon/AgentChatScreen where the actual STT pipeline
+              exists. Restore on a per-screen basis once Voice Quick ships.
+            */}
+          </NavigationContainer>
+        </QueryClientProvider>
+      </AppErrorBoundary>
+    </SafeAreaProvider>
   );
 }
