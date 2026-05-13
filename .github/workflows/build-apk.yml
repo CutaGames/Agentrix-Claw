@@ -89,46 +89,6 @@ jobs:
               print(f"[patched] Added !! to {n} occurrence(s) in {filepath}")
           PYEOF
 
-      - name: Patch rive-react-native for Kotlin 2.x compatibility
-        run: |
-          RIVE_FILE='node_modules/rive-react-native/android/src/main/java/com/rivereactnative/RiveReactNativeViewManager.kt'
-          if [ ! -f "$RIVE_FILE" ]; then
-            echo "[skip] $RIVE_FILE not found"
-            exit 0
-          fi
-          # Kotlin 2.x strict null-safety: String? cannot be assigned to String
-          # Errors at lines 108, 139, 140, 149, 150, 151
-          # Fix: use sed to append !! to all .getResourceEntryName() and .getResourceTypeName() calls
-          # and add .orEmpty() to any .getString() that returns nullable
-          python3 - << 'PYEOF'
-          import re, os
-          filepath = os.environ.get('RIVE_FILE', 'node_modules/rive-react-native/android/src/main/java/com/rivereactnative/RiveReactNativeViewManager.kt')
-          if not os.path.exists(filepath):
-              print(f"[skip] {filepath} not found")
-              exit(0)
-          with open(filepath) as f:
-              content = f.read()
-          original = content
-          # Fix 1: getResourceEntryName(...) returns String? — add !!
-          content = re.sub(r'(getResourceEntryName\([^)]*\))(?!\!)', r'\1!!', content)
-          # Fix 2: getResourceTypeName(...) returns String? — add !!
-          content = re.sub(r'(getResourceTypeName\([^)]*\))(?!\!)', r'\1!!', content)
-          # Fix 3: getResourcePackageName(...) returns String? — add !!
-          content = re.sub(r'(getResourcePackageName\([^)]*\))(?!\!)', r'\1!!', content)
-          # Fix 4: getString(...) on ReadableMap returns String? — add !!
-          content = re.sub(r'(\.getString\([^)]*\))(?!\!)', r'\1!!', content)
-          # Fix 5: Any remaining val x: String = nullable pattern
-          # Add @file:Suppress as ultimate fallback
-          if '@file:Suppress' not in content:
-              content = '@file:Suppress("UNCHECKED_CAST", "USELESS_CAST")\n' + content
-          if content != original:
-              with open(filepath, 'w') as f:
-                  f.write(content)
-              print(f"[patched] Fixed {content.count('!!')} nullable expressions in rive-react-native")
-          else:
-              print("[ok] Already patched")
-          PYEOF
-
       - name: Expo prebuild
         run: npx expo prebuild --platform android --no-install
         env:
