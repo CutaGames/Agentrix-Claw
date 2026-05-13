@@ -202,6 +202,7 @@ export type HomeStackParamList = {
   PetBreed: undefined;
   PetIdentity: undefined;
   PetCreator: undefined;
+  PetCameraScan: undefined;
   PetPermissions: { agentAccountId?: string } | undefined;
   PetSpace: { spaceId: string; spaceName: string };
   PetTeam: undefined;
