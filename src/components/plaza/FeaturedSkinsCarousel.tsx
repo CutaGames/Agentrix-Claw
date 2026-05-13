@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    opacity: 0.6,
+    opacity: 0.15,
   },
   placeholderEmoji: { fontSize: 40, opacity: 0.8 },
   featuredBadge: {
