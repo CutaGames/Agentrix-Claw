@@ -111,6 +111,7 @@ export function PlazaScreen() {
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.segmentRow}
+        style={styles.segmentScroll}
       >
         {SEGMENTS.map((seg) => {
           const isActive = seg.key === active;
@@ -331,10 +332,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   badgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  segmentScroll: { flexGrow: 0, flexShrink: 0, maxHeight: 56 },
   segmentRow: {
     paddingHorizontal: 12,
     paddingBottom: 10,
     gap: 8,
+    alignItems: 'center',
   },
   segment: {
     paddingHorizontal: 14,
@@ -343,6 +346,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgCard,
     borderWidth: 1,
     borderColor: colors.border,
+    alignSelf: 'flex-start',
   },
   segmentActive: { backgroundColor: colors.accent, borderColor: colors.accent },
   segmentText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
