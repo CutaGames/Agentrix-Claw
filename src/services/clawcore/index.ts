@@ -16,7 +16,8 @@
  * This module wraps react-native-ble-plx for BLE and socket.io for MQTT relay.
  */
 export { ClawCoreManager } from './ClawCoreManager';
-export { ClawCoreFrame, encodeFrame, decodeFrame, verifyFrame } from './protocol';
+export { ClawCoreFrame, encodeFrame, encodeFrameAsync, decodeFrame, verifyFrame, verifyFrameAsync } from './protocol';
+export { isMqttDevice, pushPetStateViaMqtt, sendTtsViaMqtt, onMqttUplink, listMqttDevices } from './mqttTransport';
 export type {
   ClawCoreDevice,
   ClawCoreDeviceState,

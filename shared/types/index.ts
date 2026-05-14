@@ -19,5 +19,6 @@ export {
 
 // Canonical exports for the richer pet-presence schema
 export * from './pet-presence';
+export * from './pet-skin-variant';
 export * from './tier-routing';
 export * from './computer-use';

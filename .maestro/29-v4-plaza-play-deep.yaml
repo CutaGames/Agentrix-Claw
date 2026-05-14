@@ -1,0 +1,118 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 29: V4 Plaza Play Sub-entries + Modals
+# Covers: MPL-1~4 (模仿秀/预测/共养/贺卡) + MO-1~6 (弹窗)
+# Based on: UI_ELEMENT_AUDIT_MOBILE_2026-05.zh-CN.md §4.2 + §7
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+
+- tapOn: "Plaza"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot: "29-plaza-tab"
+
+# ── Navigate to Play segment ────────────────────────────
+- tapOn:
+    text: "Play"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "29-plaza-play-segment"
+
+# ── MPL-1: 模仿秀 (Photo Mimic) ────────────────────────
+- tapOn:
+    text: "模仿秀"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "29-play-mimic"
+
+- back
+
+# ── MPL-2: 预测 (Predict) ───────────────────────────────
+- tapOn:
+    text: "预测"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "29-play-predict"
+
+- back
+
+# ── MPL-3: 共养 (Co-Raising) ────────────────────────────
+- tapOn:
+    text: "共养"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "29-play-coraising"
+
+- back
+
+# ── MPL-4: 贺卡 (Greeting Card) ────────────────────────
+- tapOn:
+    text: "贺卡"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "29-play-greeting"
+
+- back
+
+# ── Navigate to Pets segment (Auction) ──────────────────
+- tapOn:
+    text: "Pets"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "29-plaza-pets-auction"
+
+# ── Navigate to Tasks segment ───────────────────────────
+- tapOn:
+    text: "Tasks"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "29-plaza-tasks"
+
+# ── Navigate to Skills segment ──────────────────────────
+- tapOn:
+    text: "Skills"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "29-plaza-skills"
+
+# ── Navigate to Feed segment ────────────────────────────
+- tapOn:
+    text: "Feed"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "29-plaza-feed"
+
+# Scroll feed
+- scrollDown
+
+- takeScreenshot: "29-plaza-feed-scrolled"

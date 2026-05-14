@@ -172,11 +172,101 @@ export function startComplicationSync(): void {
   syncInterval = setInterval(() => {
     syncAxpComplication();
   }, 5 * 60 * 1000);
+
+  // Sprint WA #3: Listen for skin sale events and push to watch
+  window.addEventListener('agentrix:skin-sold', handleSkinSoldForWatch as EventListener);
 }
 
 export function stopComplicationSync(): void {
   if (syncInterval) {
     clearInterval(syncInterval);
     syncInterval = null;
+  }
+  window.removeEventListener('agentrix:skin-sold', handleSkinSoldForWatch as EventListener);
+}
+
+/**
+ * Sprint WA #3: Push skin sale notification to watch.
+ * Per wearable-prd-v4 §2.5: "+$2.10 — 你的'蓝色独角兽'皮肤被买走了"
+ */
+async function handleSkinSoldForWatch(e: Event): Promise<void> {
+  if (!WatchDataLayerService.isAvailable()) return;
+
+  const detail = (e as CustomEvent).detail as {
+    skin_name?: string;
+    amount_cents?: number;
+    type?: string;
+  } | undefined;
+
+  if (!detail) return;
+
+  const amount = detail.amount_cents ? (detail.amount_cents / 100).toFixed(2) : '0.00';
+  const skinName = detail.skin_name || 'Skin';
+  const isRemix = detail.type === 'skin_remix_earned';
+
+  const message = isRemix
+    ? `💎 Remix +$${amount} — "${skinName}"`
+    : `🎉 +$${amount} — "${skinName}" sold`;
+
+  // Send as a high-priority message to watch
+  await WatchDataLayerService.broadcastMessage('/agentrix/agent/text', {
+    text: message,
+    isFinal: true,
+    type: 'skin_gmv_notification',
+  });
+
+  // Also refresh the earn complication data
+  await syncEarnComplication({
+    today_earn_usd_cents: detail.amount_cents || 0,
+    today_gmv_usd_cents: detail.amount_cents || 0,
+    auto_earn_active: true,
+    auto_earn_tasks_running: 0,
+  });
+}
+
+// ── Sprint WA #3: Watch Skin GMV + AXP Notification ──────────
+
+/**
+ * Push a skin sale notification to the watch.
+ * Per wearable-prd-v4 §2.5: "+$2.10 — 你的'蓝色独角兽'皮肤被买走了"
+ */
+export async function notifyWatchSkinSold(event: {
+  skin_name: string;
+  amount_cents: number;
+  buyer_name: string;
+}): Promise<void> {
+  if (!WatchDataLayerService.isAvailable()) return;
+
+  try {
+    await WatchDataLayerService.broadcastMessage('/agentrix/agent/text' as any, {
+      text: `+$${(event.amount_cents / 100).toFixed(2)} — "${event.skin_name}" sold to @${event.buyer_name}`,
+      isFinal: true,
+      type: 'skin_gmv',
+    });
+    // Refresh AXP complication data
+    await syncAxpComplication();
+  } catch {
+    // Silently fail
+  }
+}
+
+/**
+ * Push an AXP earn notification to the watch (vitals reward).
+ * Per wearable-prd-v4 §8.2: Vitals → AXP reward notification.
+ */
+export async function notifyWatchAxpEarned(event: {
+  amount: number;
+  reason: string;
+}): Promise<void> {
+  if (!WatchDataLayerService.isAvailable()) return;
+
+  try {
+    await WatchDataLayerService.broadcastMessage('/agentrix/agent/text' as any, {
+      text: `+${event.amount} AXP · ${event.reason}`,
+      isFinal: true,
+      type: 'axp_earn',
+    });
+  } catch {
+    // Silently fail
   }
 }
