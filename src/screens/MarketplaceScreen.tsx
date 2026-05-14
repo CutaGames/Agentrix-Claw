@@ -199,7 +199,7 @@ export function MarketplaceScreen({ navigation }: Props) {
       </View>
 
       {/* 四分类 Tab — Resources / Skills / OpenClaw Skills / Tasks */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabsRow}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabsRow} style={styles.categoryTabsScroll}>
         {([{
           id: 'resources', label: `📦 ${t({ en: 'Resources', zh: '资源' })}`, test: true,
         }, {
@@ -339,10 +339,12 @@ const styles = StyleSheet.create({
   bannerDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.2)' },
   bannerDotActive: { backgroundColor: colors.primary, width: 16 },
   // Category tabs
-  categoryTabsRow: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6, gap: 8 },
+  categoryTabsScroll: { flexGrow: 0, flexShrink: 0, maxHeight: 56 },
+  categoryTabsRow: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6, gap: 8, alignItems: 'center' },
   categoryTab: {
     paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
     backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+    alignSelf: 'flex-start',
   },
   categoryTabActive: { borderColor: colors.primary, backgroundColor: colors.primary + '15' },
   categoryTabText: { fontSize: 13, color: colors.muted, fontWeight: '600' },
