@@ -113,7 +113,7 @@ appId: app.agentrix.claw
 - back
 
 # ── MM-8: 登出确认 (Logout) ─────────────────────────────
-- scrollDown
+- scroll
 
 - tapOn:
     text: "登出"
