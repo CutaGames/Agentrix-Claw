@@ -172,18 +172,18 @@ export function HomeScreen() {
       {/* ── Create Pet CTA (P0-5: was buried in drawer) ─────── */}
       <TouchableOpacity
         style={styles.createPetCta}
-        onPress={() => navigation.navigate('PetCreator')}
+        onPress={() => navigation.navigate('PetCameraScan')}
         activeOpacity={0.85}
       >
-        <Text style={styles.createPetEmoji}>✨</Text>
+        <Text style={styles.createPetEmoji}>📷</Text>
         <View style={{ flex: 1 }}>
           <Text style={styles.createPetTitle}>
             {t({ en: 'Photo → 3D Pet', zh: '拍照生成专属萌宠' })}
           </Text>
           <Text style={styles.createPetSub}>
             {t({
-              en: 'Snap a photo · text prompt · AI builds your pet in ~90s',
-              zh: '拍照 / 文字描述 · AI 约 90 秒造一只新宠',
+              en: 'Snap 8-12 angles · AI builds your pet in ~90s',
+              zh: '环绕拍 8-12 张 · AI 约 90 秒造出你的专属 3D 宠物',
             })}
           </Text>
         </View>
