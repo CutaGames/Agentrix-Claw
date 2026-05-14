@@ -113,6 +113,6 @@ appId: app.agentrix.claw
 - takeScreenshot: "29-plaza-feed"
 
 # Scroll feed
-- scrollDown
+- scroll
 
 - takeScreenshot: "29-plaza-feed-scrolled"
