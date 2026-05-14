@@ -58,7 +58,7 @@ export function PetPlaygroundScreen(): React.ReactElement {
   const [tab, setTab] = React.useState<Tab>('growth');
   return (
     <View style={styles.container}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabBar}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabBar} style={styles.tabBarScroll}>
         {TABS.map((t) => (
           <Pressable
             key={t.key}
@@ -821,12 +821,14 @@ function ErrorText({ msg }: { msg: string }): React.ReactElement {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  tabBar: { gap: 6, paddingHorizontal: 12, paddingVertical: 8 },
+  tabBarScroll: { flexGrow: 0, flexShrink: 0, maxHeight: 56 },
+  tabBar: { gap: 6, paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center' },
   tabBtn: {
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.06)',
+    alignSelf: 'flex-start',
   },
   tabBtnActive: { backgroundColor: colors.primary },
   tabBtnText: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
