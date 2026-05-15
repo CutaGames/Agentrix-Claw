@@ -95,7 +95,7 @@ export function FeaturedSkinsCarousel() {
             <View
               style={[
                 styles.thumbWrap,
-                { backgroundColor: CLAN_GRADIENTS[skin.clan][0] + '30' },
+                { backgroundColor: (CLAN_GRADIENTS[skin.clan]?.[0] || '#6B7280') + '30' },
               ]}
             >
               {skin.thumbnailUrl ? (
@@ -108,7 +108,7 @@ export function FeaturedSkinsCarousel() {
                 <View
                   style={[
                     styles.gradientPlaceholder,
-                    { backgroundColor: CLAN_GRADIENTS[skin.clan][0] },
+                    { backgroundColor: CLAN_GRADIENTS[skin.clan]?.[0] || '#6B7280' },
                   ]}
                 >
                   <Text style={styles.placeholderEmoji}>🎨</Text>
@@ -124,7 +124,7 @@ export function FeaturedSkinsCarousel() {
               <View
                 style={[
                   styles.clanBadge,
-                  { backgroundColor: CLAN_GRADIENTS[skin.clan][0] },
+                  { backgroundColor: CLAN_GRADIENTS[skin.clan]?.[0] || '#6B7280' },
                 ]}
               >
                 <Text style={styles.clanBadgeText}>{skin.clan}</Text>
