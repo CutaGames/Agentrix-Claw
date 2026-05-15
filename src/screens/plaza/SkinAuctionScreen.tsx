@@ -263,8 +263,8 @@ function SkinCard({
           </Text>
         </View>
         {/* Clan badge */}
-        <View style={[styles.clanBadge, { backgroundColor: CLAN_COLORS[skin.clan] }]}>
-          <Text style={styles.clanBadgeText}>{skin.clan}</Text>
+        <View style={[styles.clanBadge, { backgroundColor: CLAN_COLORS[skin.clan] || '#6B7280' }]}>
+          <Text style={styles.clanBadgeText}>{skin.clan || '?'}</Text>
         </View>
         {/* Featured badge */}
         {skin.featured && (
@@ -279,18 +279,18 @@ function SkinCard({
         </Text>
         {/* Social stats row (Sprint 3 Task 3.3) */}
         <View style={styles.socialStatsRow}>
-          <Text style={styles.socialStat}>❤️ {skin.likeCount}</Text>
-          <Text style={styles.socialStat}>👁 {skin.viewCount}</Text>
-          <Text style={styles.socialStat}>🔀 {skin.remixCount}</Text>
+          <Text style={styles.socialStat}>❤️ {skin.likeCount ?? 0}</Text>
+          <Text style={styles.socialStat}>👁 {skin.viewCount ?? 0}</Text>
+          <Text style={styles.socialStat}>🔀 {skin.remixCount ?? 0}</Text>
         </View>
         <Text style={styles.cardMeta} numberOfLines={1}>
-          {skin.format.toUpperCase()} · {formatPrice(skin.priceUsd)}
+          {(skin.format || 'vrm').toUpperCase()} · {formatPrice(skin.priceUsd)}
         </Text>
         {/* AXP pricing display (Task 1.6) */}
         {axpPrice && (
           <View style={styles.axpRow}>
             <Text style={styles.axpPrice}>💎 {axpPrice}</Text>
-            {skin.axpDiscountPercent > 0 && (
+            {(skin.axpDiscountPercent ?? 0) > 0 && (
               <View style={styles.axpDiscountBadge}>
                 <Text style={styles.axpDiscountText}>-{skin.axpDiscountPercent}%</Text>
               </View>
