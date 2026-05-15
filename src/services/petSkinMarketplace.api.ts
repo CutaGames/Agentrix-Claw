@@ -52,7 +52,7 @@ export async function fetchSkinMarketplace(opts: {
   if (opts.sort) qs.set('sort', opts.sort);
   if (opts.minPriceCents != null) qs.set('minPriceCents', String(opts.minPriceCents));
   if (opts.maxPriceCents != null) qs.set('maxPriceCents', String(opts.maxPriceCents));
-  return apiFetch<MarketplaceResponse>(`/pet-skin/marketplace?${qs.toString()}`);
+  return apiFetch<MarketplaceResponse>(`/v1/pet/skins/marketplace?${qs.toString()}`);
 }
 
 export async function fetchSkinPreview(skinId: string): Promise<{
@@ -62,7 +62,7 @@ export async function fetchSkinPreview(skinId: string): Promise<{
   expires_at?: number;
   error?: string;
 }> {
-  return apiFetch(`/pet-skin/preview/${skinId}`);
+  return apiFetch(`/v1/pet/skins/preview/${skinId}`);
 }
 
 export async function installSkin(skinId: string, body: Record<string, unknown> = {}): Promise<{
@@ -72,7 +72,7 @@ export async function installSkin(skinId: string, body: Record<string, unknown> 
   tx_id?: string;
   price_cents?: number;
 }> {
-  return apiFetch(`/pet-skin/marketplace/${skinId}/install`, {
+  return apiFetch(`/v1/pet/skins/marketplace/${skinId}/install`, {
     method: 'POST',
     body: JSON.stringify(body),
   });
