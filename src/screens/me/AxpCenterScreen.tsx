@@ -132,6 +132,12 @@ export function AxpCenterScreen() {
           zh: '1 AXP = $0.001 · 获得后 12 个月过期。',
         })}
       </Text>
+      <Text style={styles.disclaimer}>
+        {t({
+          en: 'AXP is a platform-internal reward. It is NOT a currency, NOT a security, and CANNOT be exchanged for fiat or transferred between accounts. Redemption is at Agentrix discretion.',
+          zh: 'AXP 是平台内部积分，不是货币、不是证券，不能与法币双向兑换，也不能在账户之间转账。兑换权益由 Agentrix 最终解释。',
+        })}
+      </Text>
     </ScrollView>
   );
 }
@@ -260,5 +266,14 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 20,
     opacity: 0.6,
+  },
+  disclaimer: {
+    textAlign: 'center',
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    lineHeight: 14,
+    opacity: 0.55,
   },
 });

@@ -1,7 +1,0 @@
-﻿{
-    "id":  "fatal",
-    "title":  "Fatal test runner error",
-    "status":  "failed",
-    "notes":  "No online Android device found. adb devices output: List of devices attached | ",
-    "snapshot":  ""
-}

@@ -1,21 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  P0-W3-3 — Android App Actions 6 core (PRD mobile-prd-v3 §4.5)
+  Android App Actions — mobile-prd-v3 §10.3 (V3 core 6) + mobile-prd-v4 §8 (V4 +3)
 
-  Equivalent to iOS App Intents (AgentrixAppIntents.swift). Surfaces six built-in
-  intents to Google Assistant / Search via the App Actions framework.
+  Surfaces 9 intents to Google Assistant / Search via the App Actions framework.
+  Equivalent to iOS App Intents (`ios/AgentrixIntents/*.swift`).
 
-  To enable:
-    1. Add `<meta-data android:name="com.google.android.actions" android:resource="@xml/actions" />`
-       to <application> in AndroidManifest.xml.
-    2. Implement `AgentrixIntentBridgeModule` (RN native module) to receive the
-       deep-link parameters and dispatch into JS.
-    3. Build the App Actions test tool to verify each intent.
+  How it works
+  ------------
+  Each <action> declares:
+    1. `intentName` — built-in Google intent (`actions.intent.*`) or custom.
+    2. `urlTemplate` — `agentrix://intent/<name>{?...}` deep link.
+    3. `parameter-mapping` — links semantic slots from the intent to URL params.
+  At runtime Google Assistant fires the deep link, `handleDeepLink` parses it,
+  and `dispatchIntent` routes to the right JS handler in `defaultIntentHandlers.ts`.
+
+  Wiring requirements
+  -------------------
+    1. AndroidManifest.xml `<application>` already has:
+         <meta-data android:name="com.google.android.actions"
+                    android:resource="@xml/actions" />
+    2. App.tsx calls `attachLinkingListener()` at boot (see App.tsx).
+    3. `installDefaultIntentHandlers(navigationRef)` installs JS handlers.
 
   Built-in intents docs:
     https://developer.android.com/guide/app-actions/built-in-intents
+
+  Vendor portals (国内厂商 — same deep-link contract reused):
+    https://xiaoai.mi.com/dev                 — 小米 Xiao AI
+    https://developer.huawei.com/consumer     — 华为小艺 / 鸿蒙意图
+    https://open.oppomobile.com/              — OPPO 小布
+    https://dev.vivo.com.cn/                  — vivo Jovi
 -->
 <actions>
+
+  <!-- ========================================================== -->
+  <!-- V3 Core 6 (P0 shipped 2026-05-04)                          -->
+  <!-- ========================================================== -->
 
   <!-- 1. Ask Aira (general Q&A) -->
   <action intentName="actions.intent.GET_THING">
@@ -59,6 +79,30 @@
   <!-- 6. Pet mood (custom) -->
   <action intentName="custom.actions.intent.PET_MOOD">
     <fulfillment urlTemplate="agentrix://intent/pet-mood" />
+  </action>
+
+  <!-- ========================================================== -->
+  <!-- V4 Additions (mobile-prd-v4 §8 — shipped 2026-05-18)        -->
+  <!-- ========================================================== -->
+
+  <!-- 7. Create Pet — "Hey Google, create a pet with Agentrix" -->
+  <action intentName="custom.actions.intent.CREATE_PET">
+    <fulfillment urlTemplate="agentrix://intent/create-pet{?prompt}" />
+    <parameter name="prompt" type="https://schema.org/Text" />
+  </action>
+
+  <!-- 8. Switch Skin — "Hey Google, switch skin to Cat Girl" -->
+  <action intentName="custom.actions.intent.SWITCH_SKIN">
+    <fulfillment urlTemplate="agentrix://intent/switch-skin{?skinName,skinId}" />
+    <parameter name="skinName" type="https://schema.org/Text" />
+    <parameter name="skinId" type="https://schema.org/Text" />
+  </action>
+
+  <!-- 9. Marketplace search — "Hey Google, search Agentrix marketplace for Christmas skins" -->
+  <action intentName="custom.actions.intent.MARKET_SEARCH">
+    <fulfillment urlTemplate="agentrix://intent/market-search{?query,category}" />
+    <parameter name="query" type="https://schema.org/Text" required="true" />
+    <parameter name="category" type="https://schema.org/Text" />
   </action>
 
 </actions>

@@ -55,6 +55,8 @@
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="5000"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="https://u.expo.dev/96a641e0-ce03-45ff-9de7-2cd89c488236"/>
+    <!-- Google Assistant App Actions (mobile-prd-v3 §4.5; actions.xml lists 6 BIIs) -->
+    <meta-data android:name="com.google.android.actions" android:resource="@xml/actions"/>
     <service
       android:name=".AndroidBackgroundWakeWordService"
       android:enabled="true"
@@ -72,7 +74,7 @@
         <data android:scheme="agentrix"/>
         <data android:scheme="exp+agentrix-mobile"/>
       </intent-filter>
-      <intent-filter data-generated="true">
+      <intent-filter data-generated="true" android:autoVerify="true">
         <action android:name="android.intent.action.VIEW"/>
         <data android:scheme="agentrix"/>
         <data android:scheme="https" android:host="agentrix.top"/>

@@ -1,1 +1,0 @@
-{"success":true,"modelId":"llama-3.3-70b","model":{"id":"llama-3.3-70b","label":"Llama 3.3 70B","provider":"Groq","icon":"🦙","badge":"Free","availability":"available","costTier":"free_trial"},"pushed":false,"message":"Switched to Llama 3.3 70B. Will take effect on next chat (instance config saved)."}

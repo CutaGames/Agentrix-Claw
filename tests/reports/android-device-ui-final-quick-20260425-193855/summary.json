@@ -1,7 +1,0 @@
-﻿{
-    "id":  "fatal",
-    "title":  "Fatal test runner error",
-    "status":  "failed",
-    "notes":  "adb devices -l failed with exit code : List of devices attached MDX0220309000133       device product:ELS-AN00 model:ELS_AN00 device:HWELS transport_id:8 ",
-    "snapshot":  ""
-}

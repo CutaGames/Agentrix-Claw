@@ -14,7 +14,7 @@
  *   E (Web3):   #EC4899 → #F43F5E
  *   F (Family): #14B8A6 → #0EA5E9
  */
-import React, { useEffect, useRef, useState, lazy, Suspense, type ReactNode } from 'react';
+import React, { useEffect, useMemo, useRef, useState, lazy, Suspense, type ReactNode } from 'react';
 import { View, Text, StyleSheet, Animated, Easing, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getRecommendedRenderer, type RendererType } from '../../utils/deviceCapability';
@@ -114,22 +114,43 @@ function GradientFallback({
   height: number;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
+  const rotate = useRef(new Animated.Value(0)).current;
   const emoji = EMOTION_EMOJI[emotion] || EMOTION_EMOJI.neutral;
   const gradient = CLAN_GRADIENTS[clan] || CLAN_GRADIENTS.A;
 
+  // Emotion-driven breathing speed
+  const breathDuration = useMemo(() => {
+    const map: Record<string, number> = {
+      sleepy: 4000,
+      tired: 3500,
+      sad: 3000,
+      calm: 2000,
+      neutral: 2000,
+      thinking: 2500,
+      focused: 2200,
+      concerned: 1800,
+      happy: 1400,
+      excited: 900,
+      love: 1200,
+      angry: 800,
+    };
+    return map[emotion] ?? 2000;
+  }, [emotion]);
+
   // Breathing animation
   useEffect(() => {
+    const breathScale = emotion === 'excited' || emotion === 'happy' ? 1.12 : 1.06;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(scale, {
-          toValue: 1.06,
-          duration: 2000,
+          toValue: breathScale,
+          duration: breathDuration / 2,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
         Animated.timing(scale, {
           toValue: 1.0,
-          duration: 2000,
+          duration: breathDuration / 2,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
@@ -137,13 +158,50 @@ function GradientFallback({
     );
     loop.start();
     return () => loop.stop();
-  }, [scale]);
+  }, [scale, breathDuration, emotion]);
+
+  // Occasional micro-actions: gentle wiggle every 8-15 seconds
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const scheduleNext = () => {
+      const delay = 8000 + Math.random() * 7000;
+      timer = setTimeout(() => {
+        Animated.sequence([
+          Animated.timing(rotate, {
+            toValue: 1,
+            duration: 200,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(rotate, {
+            toValue: -1,
+            duration: 400,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(rotate, {
+            toValue: 0,
+            duration: 200,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]).start(scheduleNext);
+      }, delay);
+    };
+    scheduleNext();
+    return () => clearTimeout(timer);
+  }, [rotate]);
+
+  const rotateInterp = rotate.interpolate({
+    inputRange: [-1, 1],
+    outputRange: ['-6deg', '6deg'],
+  });
 
   const borderRadius = Math.min(width, height) / 2;
   const emojiSize = Math.max(24, Math.round(width * 0.4));
 
   return (
-    <Animated.View style={{ transform: [{ scale }] }}>
+    <Animated.View style={{ transform: [{ scale }, { rotate: rotateInterp }] }}>
       <LinearGradient
         colors={gradient}
         start={{ x: 0, y: 0 }}

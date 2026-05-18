@@ -148,13 +148,18 @@ async function verifyEd25519Signature(
 
     const key = await crypto.subtle.importKey(
       'raw',
-      pubkeyBytes,
+      pubkeyBytes as unknown as BufferSource,
       { name: 'Ed25519' },
       false,
       ['verify'],
     );
 
-    return await crypto.subtle.verify('Ed25519', key, sigBytes, msgBytes);
+    return await crypto.subtle.verify(
+      'Ed25519',
+      key,
+      sigBytes as unknown as BufferSource,
+      msgBytes as unknown as BufferSource,
+    );
   } catch {
     // Ed25519 not available in this environment — log and accept
     // (device-side verification is the authoritative check)

@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system';
 import { API_BASE } from '../config/env';
 import { apiFetch, getApiConfig } from './api';
+import { readUriAsBase64 } from '../utils/readBase64';
 
 export type PetMode = 'scan';
 export type PetProvider = 'meshy' | 'hunyuan3d';
@@ -67,12 +68,11 @@ async function normalizeUploadPayload(file: {
   }
 
   try {
-    // 2026-05-10: expo-file-system@19 (SDK 54) removed the top-level
-    // `EncodingType` export. Use the plain string form, which is the
-    // supported public contract for both legacy and new APIs.
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: 'base64' as any,
-    });
+    // Cross-SDK reader handles SDK 54 (File API) and the legacy fallback;
+    // the old `FileSystem.readAsStringAsync` was removed in
+    // expo-file-system@19, which crashed with
+    // "Cannot read property 'Base64' of undefined".
+    const base64 = await readUriAsBase64(uri);
     return {
       uri: `data:${file.type || 'image/jpeg'};base64,${base64}`,
       name: file.name,

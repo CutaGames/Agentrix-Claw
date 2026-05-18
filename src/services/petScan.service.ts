@@ -9,9 +9,9 @@
  *   POST /api/v1/pet-generation/scan   — submit photos for 3D reconstruction
  *   GET  /api/v1/pet-generation/scan/:taskId — poll task status
  */
-import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
 import { apiFetch } from './api';
+import { readUriAsDataUrl, uriRequiresInlining } from '../utils/readBase64';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -57,15 +57,13 @@ export async function submitScanPhotos(photos: string[]): Promise<ScanSubmitResp
     const uri = photos[i];
     const fileName = `scan_angle_${i + 1}.jpg`;
 
-    // Handle content:// and ph:// URIs on Android/iOS
+    // Handle content:// and ph:// URIs on Android/iOS — Network upload code
+    // can't follow these schemes; we have to inline as a data URL first.
     let payload: any;
-    if (uri.startsWith('content://') || uri.startsWith('ph://')) {
+    if (uriRequiresInlining(uri)) {
       try {
-        const base64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: 'base64' as any,
-        });
         payload = {
-          uri: `data:image/jpeg;base64,${base64}`,
+          uri: await readUriAsDataUrl(uri, 'image/jpeg'),
           name: fileName,
           type: 'image/jpeg',
         };

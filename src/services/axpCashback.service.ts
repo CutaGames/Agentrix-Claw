@@ -35,12 +35,16 @@ export function handleCashbackEvent(
   queryClient: QueryClient,
 ): void {
   // Show AXP toast
-  const { showToast } = useAxpToastStore.getState();
+  const { push } = useAxpToastStore.getState();
   const ratePct = (event.cashback_rate_bps / 100).toFixed(0);
-  showToast({
+  push({
     amount: event.amount,
-    source: event.source,
-    message: `+${event.amount} AXP (${ratePct}% cashback)`,
+    reason: {
+      en: `+${event.amount} AXP (${ratePct}% cashback)`,
+      zh: `+${event.amount} AXP（${ratePct}% 返现）`,
+    },
+    emoji: '💸',
+    direction: 'earn',
   });
 
   // Invalidate balance cache so UI updates

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -28,14 +28,36 @@ import {
   syncAndroidBackgroundWakeWordConfig,
 } from './src/services/androidBackgroundWakeWord.service';
 import { initLlamaBridge } from './src/services/llamaRnBridge';
+import { initCrashReport, setUser as setCrashUser } from './src/services/crashReport';
+import { initIap, setUser as setIapUser } from './src/services/iap.service';
+import {
+  initAnalytics,
+  trackEvent,
+  setUser as setAnalyticsUser,
+} from './src/services/analytics.service';
 import { OtaModelDownloadService } from './src/services/otaModelDownload.service';
 import { WatchDataLayerService } from './src/services/wearables/watchDataLayerBridge.service';
 import { AxpToastHost } from './src/components/AxpToastHost';
+import { MobilePetProactiveBanner } from './src/components/pet/MobilePetProactiveBanner';
 import { resolveLegacyPath } from './src/navigation/legacyRouteTable';
 import { getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
+import { attachLinkingListener } from './src/services/intents/intentBridge';
+import { installDefaultIntentHandlers } from './src/services/intents/defaultIntentHandlers';
 
 // Register llama.rn bridge for on-device LLM inference
 initLlamaBridge();
+
+// Initialize Sentry crash reporting (no-op if SENTRY_DSN unset)
+initCrashReport();
+
+// Initialize mobile analytics (no-op if user has not opted in)
+initAnalytics();
+trackEvent('mobile_launch', { platform: Platform.OS });
+
+// Singleton ref so the system-assistant intent handlers can navigate the
+// React Navigation root without prop drilling. Created here (module scope)
+// so it survives any re-mount of <NavigationContainer>.
+const navigationRef = createNavigationContainerRef<Record<string, object | undefined>>();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -199,6 +221,22 @@ function AppNavigator() {
     return () => sub.remove();
   }, []);
 
+  // ── System assistant intents (Siri / Google Assistant / 小爱 / 小艺 / 鸿蒙) ──
+  // Boots the cross-vendor intent dispatcher exactly once. It listens for
+  // `agentrix://intent/<name>?...` deep links and routes them through the
+  // handler set wired in `defaultIntentHandlers.ts`. Without this, V4 PRD
+  // §8 intents (create-pet / switch-skin / market-search / pet-mood) reach
+  // the JS bundle but no handler answers, so Siri/Assistant get a silent
+  // "I couldn't do that".
+  useEffect(() => {
+    const detachHandlers = installDefaultIntentHandlers(() => navigationRef.current as any);
+    const detachLinking = attachLinkingListener();
+    return () => {
+      try { detachLinking(); } catch { /* ignore */ }
+      try { detachHandlers(); } catch { /* ignore */ }
+    };
+  }, []);
+
   useEffect(() => {
     if (isPetSoulE2E && applyPetSoulE2EBootstrap()) {
       setInitialized(true);
@@ -339,6 +377,21 @@ function AppNavigator() {
       void WatchDataLayerService.stopListening().catch(() => {});
     };
   }, [isAuthenticated, skipStartupIntegrations, token]);
+
+  // Bind the current user to Sentry so subsequent crash reports are
+  // scoped to them. We only send the opaque user id, never email or
+  // wallet — see crashReport.ts beforeSend sanitization.
+  useEffect(() => {
+    if (skipStartupIntegrations) return;
+    const userId = isAuthenticated ? useAuthStore.getState().user?.id ?? null : null;
+    setCrashUser(userId);
+    setAnalyticsUser(userId);
+    if (userId) {
+      trackEvent('mobile_login');
+    }
+    // Also rebind RevenueCat so subsequent purchases attach to this account.
+    void initIap(userId).then(() => setIapUser(userId));
+  }, [isAuthenticated, skipStartupIntegrations]);
 
   useEffect(() => {
     if (skipStartupIntegrations) {
@@ -581,11 +634,14 @@ export default function App() {
     <SafeAreaProvider>
       <AppErrorBoundary>
         <QueryClientProvider client={queryClient}>
-          <NavigationContainer linking={linking as any}>
+          <NavigationContainer ref={navigationRef as any} linking={linking as any}>
             <StatusBar style="light" />
             <AppNavigator />
             {/* Global AXP toast — surfaces +N AXP when earns happen anywhere. */}
             <AxpToastHost />
+            {/* Pet companion proactive bubble — surfaces pet greetings/
+                suggestions globally (Phase C). Same backend channel as desktop. */}
+            <MobilePetProactiveBanner />
             {/*
               VoiceQuickFab (mobile-prd-v3 §3.2) removed 2026-05-10:
               the always-on mic bubble was orphaned — `handleTap` only flipped

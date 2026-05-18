@@ -1,5 +1,5 @@
 /**
- * Chinese assistants intent bridge (PRD mobile-prd-v3 §6 / P2-5).
+ * Chinese assistants intent bridge (PRD mobile-prd-v3 §6 / mobile-prd-v4 §8).
  *
  * Three target ecosystems wire `agentrix://intent/<name>?...` deep links into
  * the same `intentBridge.handleDeepLink()` that powers iOS App Intents and
@@ -7,7 +7,8 @@
  * land on one dispatcher.
  *
  * This file ships:
- *   1. Stable `INTENT_MANIFEST` describing the 6 cross-vendor intents.
+ *   1. Stable `INTENT_MANIFEST` describing the 9 cross-vendor intents
+ *      (V3 core 6 + V4 additions 3, plus the gesture alias `draft_message`).
  *   2. Helpers that build the per-vendor deep-link URL or Manifest JSON snippet
  *      developers can paste into HUAWEI/Xiaomi/小艺 dev portals.
  *
@@ -16,12 +17,17 @@
  */
 
 export type AgentrixIntentName =
+  // V3 core
   | 'ask_aira'
   | 'pet_mood'
   | 'approve_request'
   | 'wallet_status'
   | 'invoke_agent'
-  | 'draft_message';
+  | 'draft_message'
+  // V4 additions
+  | 'create_pet'
+  | 'switch_skin'
+  | 'market_search';
 
 export interface IntentSpec {
   name: AgentrixIntentName;
@@ -76,6 +82,37 @@ export const INTENT_MANIFEST: IntentSpec[] = [
     enTitle: 'Draft Message',
     utterances: { zh: ['给 ${recipient} 写一条 ${topic}'], en: ['Draft a message to ${recipient} about ${topic}'] },
     params: { recipient: '收件人', topic: '主题' },
+  },
+  // ── V4 additions (mobile-prd-v4 §8) ────────────────────────────────────
+  {
+    name: 'create_pet',
+    zhTitle: '生成萌宠',
+    enTitle: 'Create Pet',
+    utterances: {
+      zh: ['让 Aira 生成一只 ${prompt}', '帮我做一只 ${prompt} 萌宠', '创建萌宠'],
+      en: ['Create a pet that is ${prompt}', 'Generate a new pet'],
+    },
+    params: { prompt: '宠物外观描述,如"蓝色独角兽"' },
+  },
+  {
+    name: 'switch_skin',
+    zhTitle: '切换皮肤',
+    enTitle: 'Switch Skin',
+    utterances: {
+      zh: ['换上 ${skinName} 皮肤', '给 Aira 换装 ${skinName}', '切换皮肤'],
+      en: ['Switch to ${skinName} skin', 'Equip ${skinName}'],
+    },
+    params: { skinName: '皮肤名字片段', skinId: '皮肤 id (优先匹配)' },
+  },
+  {
+    name: 'market_search',
+    zhTitle: '市场搜索',
+    enTitle: 'Marketplace Search',
+    utterances: {
+      zh: ['在市场找 ${query}', '搜 ${query} 皮肤', '${query} 任务'],
+      en: ['Search marketplace for ${query}', 'Find ${query} skin'],
+    },
+    params: { query: '搜索关键字', category: 'skin / skill / task,默认 skin' },
   },
 ];
 

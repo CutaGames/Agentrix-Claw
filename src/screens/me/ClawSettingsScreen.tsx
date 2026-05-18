@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput, Share, Platform, ActivityIndicator, AppState } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput, Share, Platform, ActivityIndicator, AppState, Linking as RNLinking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
@@ -27,6 +27,7 @@ import {
   thresholdFromSensitivity,
   type WakeWordEngine,
 } from '../../services/localWakeWord.service';
+import { isAnalyticsOptedIn, setOptIn as setAnalyticsOptIn } from '../../services/analytics.service';
 
 export function ClawSettingsScreen() {
   const navigation = useNavigation();
@@ -39,6 +40,7 @@ export function ClawSettingsScreen() {
   const setWakeWordConfig = useSettingsStore((s) => s.setWakeWordConfig);
   const resetWakeWordConfig = useSettingsStore((s) => s.resetWakeWordConfig);
   const { language, setLanguage, t } = useI18n();
+  const [telemetryOptIn, setTelemetryOptIn] = useState(isAnalyticsOptedIn());
   const localAiEnabled = useSettingsStore((s) => s.localAiEnabled);
   const localAiStatus = useSettingsStore((s) => s.localAiStatus);
   const localAiProgress = useSettingsStore((s) => s.localAiProgress);
@@ -336,8 +338,11 @@ export function ClawSettingsScreen() {
       title: t({ en: 'About', zh: '关于' }),
       items: [
         { id: 'version', icon: 'ℹ️', label: t({ en: 'App Version', zh: '应用版本' }), value: '1.0.0' },
+        { id: 'telemetry', icon: '📊', label: t({ en: 'Anonymous Telemetry', zh: '匿名遥测' }), value: telemetryOptIn ? t({ en: 'On', zh: '已开启' }) : t({ en: 'Off', zh: '已关闭' }) },
         { id: 'terms', icon: '📜', label: t({ en: 'Terms of Service', zh: '服务条款' }), value: '' },
         { id: 'privacy', icon: '🔒', label: t({ en: 'Privacy Policy', zh: '隐私政策' }), value: '' },
+        { id: 'export-data', icon: '📤', label: t({ en: 'Export My Data', zh: '导出我的数据' }), value: '' },
+        { id: 'delete-account', icon: '🗑️', label: t({ en: 'Delete Account', zh: '删除账号' }), value: '' },
       ],
     },
   ];
@@ -632,6 +637,75 @@ export function ClawSettingsScreen() {
                         { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
                       ],
                     );
+                  }
+                  if (item.id === 'terms') {
+                    void RNLinking.openURL('https://agentrix.top/terms');
+                    return;
+                  }
+                  if (item.id === 'telemetry') {
+                    const next = !telemetryOptIn;
+                    setAnalyticsOptIn(next);
+                    setTelemetryOptIn(next);
+                    Alert.alert(
+                      t({ en: 'Telemetry', zh: '匿名遥测' }),
+                      next
+                        ? t({
+                            en: 'Anonymous usage events will be sent every 5 minutes (no chat content, no PII). You can turn this off any time.',
+                            zh: '匿名使用事件每 5 分钟批量上报，不包含对话内容和个人身份信息。可以随时关闭。',
+                          })
+                        : t({
+                            en: 'Telemetry disabled. Crash reports are still captured to help us fix bugs.',
+                            zh: '遥测已关闭。崩溃报告仍会上报以帮助修复 bug。',
+                          }),
+                    );
+                    return;
+                  }
+                  if (item.id === 'privacy') {
+                    void RNLinking.openURL('https://agentrix.top/privacy');
+                    return;
+                  }
+                  if (item.id === 'export-data') {
+                    Alert.alert(
+                      t({ en: 'Export My Data', zh: '导出我的数据' }),
+                      t({
+                        en: 'We will email a JSON archive of your account, conversations, and AXP history within 30 days, per GDPR Article 20. Send the request to privacy@agentrix.top from your registered email.',
+                        zh: '我们会在 30 天内通过邮件发送一份 JSON 数据归档（账户/对话/AXP 历史），符合 GDPR 第 20 条。请从你注册的邮箱发邮件到 privacy@agentrix.top。',
+                      }),
+                      [
+                        {
+                          text: t({ en: 'Open Mail', zh: '打开邮件' }),
+                          onPress: () => {
+                            void RNLinking.openURL(
+                              'mailto:privacy@agentrix.top?subject=Data Export Request',
+                            );
+                          },
+                        },
+                        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+                      ],
+                    );
+                    return;
+                  }
+                  if (item.id === 'delete-account') {
+                    Alert.alert(
+                      t({ en: 'Delete Account', zh: '删除账号' }),
+                      t({
+                        en: 'Account deletion is permanent. After confirmation we will email you a verification link; once clicked, your account, conversations, and AXP balance will be removed within 7 days. Pending Marketplace listings will be cancelled. This action cannot be undone.',
+                        zh: '删除账号是不可逆操作。确认后我们会发送验证邮件，点击链接后我们将在 7 天内删除你的账号、对话历史和 AXP 余额。挂牌中的 Marketplace 商品会被取消。删除后无法恢复。',
+                      }),
+                      [
+                        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+                        {
+                          text: t({ en: 'Continue', zh: '继续' }),
+                          style: 'destructive',
+                          onPress: () => {
+                            void RNLinking.openURL(
+                              'mailto:privacy@agentrix.top?subject=Account Deletion Request&body=Please delete my account.',
+                            );
+                          },
+                        },
+                      ],
+                    );
+                    return;
                   }
                 }}
               >

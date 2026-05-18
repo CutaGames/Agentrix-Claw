@@ -34,6 +34,7 @@ import { useI18n } from '../../stores/i18nStore';
 import { colors } from '../../theme/colors';
 import { fetchAxpBalance } from '../../services/axp.api';
 import { fetchMyQuota } from '../../services/subscription.api';
+import { getPetState } from '../../services/mobilePetSdk';
 import { CheckinCard } from './CheckinCard';
 import { PetRenderer, type PetClan } from '../../components/pet/PetRiveRenderer';
 import type { HomeStackParamList } from '../../navigation/types';
@@ -70,14 +71,23 @@ export function HomeScreen() {
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const approvalCount = useNotificationStore((s) => s.approvalCount);
 
-  // Sprint A stub — real Living Pet state comes from `livingPet` store in B.
-  const petName = activeInstance?.name || t({ en: 'Your Pet', zh: '你的主宠' });
-  const petLevel = 1;
-  const petXp = 0;
-  const petXpNext = 100;
-  const petEmotion = 'calm';
-  const petEnergy = 50;
-  const petClan: PetClan = (activeInstance as any)?.clan || 'A';
+  // Sprint C wire-up: real Living Pet state from backend (replaces Sprint A stub).
+  const petStateQ = useQuery({
+    queryKey: ['pet-state'],
+    queryFn: getPetState,
+    staleTime: 30_000,
+    refetchInterval: 30_000, // poll every 30s for emotion/XP updates
+    retry: 1,
+  });
+  const petState = petStateQ.data;
+  const petName = petState?.name || activeInstance?.name || t({ en: 'Your Pet', zh: '你的主宠' });
+  const petLevel = petState?.intimacy_level ?? 1;
+  const petXp = petState?.intimacy_xp ?? 0;
+  // Exponential XP curve: each level needs 100 * (1.5 ^ level) XP
+  const petXpNext = Math.round(100 * Math.pow(1.5, petLevel));
+  const petEmotion = (petState?.emotion as string) || 'calm';
+  const petEnergy = petState?.energy ?? 50;
+  const petClan: PetClan = (petState?.clan as PetClan) || (activeInstance as any)?.clan || 'A';
 
   // Sprint C: live AXP balance glance
   const axpBalanceQ = useQuery({

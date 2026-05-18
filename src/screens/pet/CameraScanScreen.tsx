@@ -32,12 +32,12 @@ import {
   Image,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
+import { readUriAsBase64 } from '../../utils/readBase64';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const MIN_FRAMES = 8;
@@ -68,7 +68,13 @@ type ScanState =
 async function submitScanFrames(frameUris: string[]): Promise<ScanSubmitResponse> {
   const frames: string[] = [];
   for (const uri of frameUris) {
-    const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+    // SDK 54 changed expo-file-system's API: the old
+    // `FileSystem.readAsStringAsync({encoding: EncodingType.Base64})` path
+    // crashes with "Cannot read property 'Base64' of undefined" because
+    // `EncodingType` is no longer exported. `readUriAsBase64` wraps the
+    // new `File(uri).base64()` API and falls back to `expo-file-system/legacy`
+    // when needed.
+    const base64 = await readUriAsBase64(uri);
     frames.push(`data:image/jpeg;base64,${base64}`);
   }
   return apiFetch<ScanSubmitResponse>('/v1/pet-generation/scan', {
@@ -199,12 +205,20 @@ export function CameraScanScreen() {
       const response = await submitScanFrames(frames);
       setTaskId(response.task_id);
       setState('processing');
-      // Best-effort cleanup of camera-temp files (skip gallery uris)
-      for (const uri of frames) {
-        if (uri.includes('Camera/')) {
-          FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+      // Best-effort cleanup of camera-temp files (skip gallery uris).
+      // SDK 54 file-system replaced FileSystem.deleteAsync with File.delete().
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+        const { File: ExpoFile } = require('expo-file-system');
+        for (const uri of frames) {
+          if (uri.includes('Camera/')) {
+            try {
+              const f = new ExpoFile(uri);
+              f.delete?.();
+            } catch { /* ignore */ }
+          }
         }
-      }
+      } catch { /* ignore */ }
       pollResult(response.task_id);
     } catch (err: any) {
       setError(err?.message || t({ en: 'Upload failed', zh: '上传失败' }));

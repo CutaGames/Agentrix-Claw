@@ -91,12 +91,18 @@ export async function startNfcScan(): Promise<string> {
     const record = tag.ndefMessage[0];
     let uri: string | null = null;
 
+    // The NDEF library expects Uint8Array; coerce in case the native module
+    // hands us a plain number[] / array-like buffer.
+    const payload = record.payload instanceof Uint8Array
+      ? record.payload
+      : new Uint8Array(record.payload as unknown as number[]);
+
     try {
-      uri = Ndef.uri.decodePayload(record.payload as unknown as number[]);
+      uri = Ndef.uri.decodePayload(payload);
     } catch {
       // Fallback: try text decode
       try {
-        uri = Ndef.text.decodePayload(record.payload as unknown as number[]);
+        uri = Ndef.text.decodePayload(payload);
       } catch {
         throw new NfcError('invalid_uri', 'Could not decode NDEF record.');
       }

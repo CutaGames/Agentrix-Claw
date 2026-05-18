@@ -209,6 +209,8 @@ export async function breedPet(input: {
   parentSkinIdB: string;
   prompt?: string;
   style?: string;
+  /** 0..1 weighting; 0.5 = neutral, 1.0 = lean fully toward parent A */
+  biasTowardA?: number;
 }): Promise<PetBreedResult> {
   return apiFetch<PetBreedResult>('/v1/pet/breed', {
     method: 'POST',
