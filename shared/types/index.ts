@@ -22,3 +22,5 @@ export * from './pet-presence';
 export * from './pet-skin-variant';
 export * from './tier-routing';
 export * from './computer-use';
+export * from './world-engine';
+export * from './world-engine-api';
