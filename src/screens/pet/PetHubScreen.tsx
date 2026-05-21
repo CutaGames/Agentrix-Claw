@@ -31,6 +31,8 @@ const TILES: Tile[] = [
   { key: 'breed',     emoji: '🧬', title: '双图繁殖', desc: '两只皮肤融合出新形态',     route: 'Breed',         accent: '#f472b6' },
   { key: 'market',    emoji: '🛒', title: '萌宠市场', desc: '浏览 / 购买 / 上架皮肤',   route: 'SkinMarketplace', accent: '#fbbf24' },
   { key: 'team',      emoji: '👥', title: '萌宠团队', desc: 'Lv.5+ 多宠协作分担任务',  route: 'PetTeam',       accent: '#60a5fa' },
+  { key: 'worldscan', emoji: '🌍', title: '世界扫描', desc: '扫描真实物体 → 游戏角色',  route: 'WorldEngineScanner', accent: '#10b981' },
+  { key: 'worldassets', emoji: '🎒', title: '世界资产', desc: '我的角色 / 战斗 / 副本',  route: 'WorldAssetInventory', accent: '#06b6d4' },
   { key: 'playground', emoji: '🎮', title: '成长 · 游戏 · 繁育', desc: '亲密度 / 成就 / 相册 / 迷你游戏 / 社交繁育', route: 'PetPlayground', accent: '#f97316' },
   { key: 'nfc',       emoji: '📱', title: 'NFC 盲盒', desc: '碰触 NFC 卡牌解锁限定皮肤', route: 'NfcRedeem',    accent: '#06b6d4' },
 ];

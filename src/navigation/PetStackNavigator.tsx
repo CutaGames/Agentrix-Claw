@@ -17,6 +17,11 @@ import { BreedScreen } from '../screens/pet/BreedScreen';
 import { SkinMarketplaceScreen } from '../screens/pet/SkinMarketplaceScreen';
 import { PetTeamScreen } from '../screens/pet/PetTeamScreen';
 import { NfcRedeemScreen } from '../screens/pet/NfcRedeemScreen';
+// World Engine V5 screens
+import WorldEngineScannerScreen from '../screens/WorldEngineScannerScreen';
+import WorldAssetInventoryScreen from '../screens/WorldAssetInventoryScreen';
+import WorldBattleArenaScreen from '../screens/WorldBattleArenaScreen';
+import WorldDungeonExplorerScreen from '../screens/WorldDungeonExplorerScreen';
 
 export type PetStackParamList = {
   PetHub: undefined;
@@ -28,6 +33,11 @@ export type PetStackParamList = {
   SkinMarketplace: undefined;
   PetTeam: undefined;
   NfcRedeem: undefined;
+  // World Engine V5
+  WorldEngineScanner: undefined;
+  WorldAssetInventory: undefined;
+  WorldBattleArena: { challengerAssetId?: string; defenderAssetId?: string } | undefined;
+  WorldDungeonExplorer: { shareCode?: string } | undefined;
 };
 
 const Stack = createNativeStackNavigator<PetStackParamList>();
@@ -87,6 +97,27 @@ export function PetStackNavigator() {
         name="NfcRedeem"
         component={NfcRedeemScreen}
         options={{ title: t({ en: 'NFC Blind Box', zh: 'NFC 盲盒' }) }}
+      />
+      {/* World Engine V5 screens */}
+      <Stack.Screen
+        name="WorldEngineScanner"
+        component={WorldEngineScannerScreen}
+        options={{ title: t({ en: 'World Scanner', zh: '世界扫描' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldAssetInventory"
+        component={WorldAssetInventoryScreen}
+        options={{ title: t({ en: 'World Assets', zh: '世界资产' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldBattleArena"
+        component={WorldBattleArenaScreen}
+        options={{ title: t({ en: 'Battle Arena', zh: '战斗竞技场' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldDungeonExplorer"
+        component={WorldDungeonExplorerScreen}
+        options={{ title: t({ en: 'Dungeon', zh: '副本探索' }), headerShown: false }}
       />
     </Stack.Navigator>
   );
