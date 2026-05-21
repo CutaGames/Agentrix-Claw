@@ -157,6 +157,7 @@ export function PetSpriteAnimator({
       height: size,
       overflow: 'hidden' as const,
       opacity,
+      backgroundColor: 'transparent' as const,
       transform: facing === 'left' ? [{ scaleX: -1 as -1 }] : undefined,
     }),
     [size, opacity, facing],

@@ -272,6 +272,7 @@ const styles = StyleSheet.create({
     height: 200,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
   intimacyCard: {
     flexDirection: 'row',
