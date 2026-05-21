@@ -61,6 +61,9 @@ const PET_DRAWER_TILES: DrawerTile[] = [
   { key: 'PetIdentity', emoji: '🆔', label: { en: 'Identity', zh: '身份' }, route: 'PetIdentity', accent: '#facc15' },
   { key: 'PetCreator', emoji: '✨', label: { en: 'Create', zh: '文字创生' }, route: 'PetCreator', accent: '#f97316' },
   { key: 'PetCameraScan', emoji: '📷', label: { en: 'Photo→3D', zh: '拍照创生' }, route: 'PetCameraScan', accent: '#06b6d4' },
+  // World Engine V5
+  { key: 'WorldScan', emoji: '🌍', label: { en: 'World Scan', zh: '世界扫描' }, route: 'WorldEngineScanner', accent: '#10b981' },
+  { key: 'WorldAssets', emoji: '⚔️', label: { en: 'World Assets', zh: '世界资产' }, route: 'WorldAssetInventory', accent: '#8b5cf6' },
 ];
 
 export function HomeScreen() {

@@ -48,6 +48,11 @@ import { BreedScreen } from '../screens/pet/BreedScreen';
 import { PetTeamScreen } from '../screens/pet/PetTeamScreen';
 import { PetPlaygroundScreen } from '../screens/pet/PetPlaygroundScreen';
 import { NftMintScreen } from '../screens/pet/NftMintScreen';
+// World Engine V5 screens
+import WorldEngineScannerScreen from '../screens/WorldEngineScannerScreen';
+import WorldAssetInventoryScreen from '../screens/WorldAssetInventoryScreen';
+import WorldBattleArenaScreen from '../screens/WorldBattleArenaScreen';
+import WorldDungeonExplorerScreen from '../screens/WorldDungeonExplorerScreen';
 
 import { AgentAccountScreen } from '../screens/agent/AgentAccountScreen';
 import { AgentBalanceScreen } from '../screens/agent/AgentBalanceScreen';
@@ -214,6 +219,28 @@ export function HomeStackNavigator() {
         name="PlanApproval"
         component={PlanApprovalScreen}
         options={{ title: t({ en: 'Approvals', zh: '待审批' }) }}
+      />
+
+      {/* World Engine V5 ─────────────────────────────────────── */}
+      <Stack.Screen
+        name="WorldEngineScanner"
+        component={WorldEngineScannerScreen}
+        options={{ title: t({ en: 'World Scanner', zh: '世界扫描' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldAssetInventory"
+        component={WorldAssetInventoryScreen}
+        options={{ title: t({ en: 'World Assets', zh: '世界资产' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldBattleArena"
+        component={WorldBattleArenaScreen}
+        options={{ title: t({ en: 'Battle', zh: '战斗竞技场' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldDungeonExplorer"
+        component={WorldDungeonExplorerScreen}
+        options={{ title: t({ en: 'Dungeon', zh: '副本探索' }), headerShown: false }}
       />
     </Stack.Navigator>
   );
