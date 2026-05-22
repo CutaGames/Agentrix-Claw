@@ -128,8 +128,7 @@ export function HomeScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bgPrimary }}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      {/* ── Top bar ────────────────────────────────────────────── */}
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>      {/* ── Top bar ────────────────────────────────────────────── */}
       <View style={styles.topBar}>
         <Pressable style={styles.petSwitcher} onPress={switchPet}>
           <Text style={styles.petSwitcherEmoji}>🐾</Text>
@@ -322,8 +321,20 @@ export function HomeScreen() {
         INSIDE the Home stack screen so `useNavigation()` resolves the
         Home stack's navigator. Mounting at the NavigationContainer
         sibling level crashed v0.4.5 with "Couldn't get the navigation
-        state". */}
-    <GlobalFloatingBall />
+        state".
+
+        v0.4.7 hotfix: wrap the ball in a `pointerEvents="box-none"`
+        absolute fullscreen overlay so its PanResponder gets touches
+        instead of the ScrollView swallowing them on Android. Without
+        `box-none` the ball renders but is undraggable / unclickable
+        because the wrapper View captures the touch first. */}
+    <View
+      style={StyleSheet.absoluteFillObject}
+      pointerEvents="box-none"
+      collapsable={false}
+    >
+      <GlobalFloatingBall />
+    </View>
     </View>
   );
 }
