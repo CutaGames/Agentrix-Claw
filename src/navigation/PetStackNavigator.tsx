@@ -20,6 +20,7 @@ import { NfcRedeemScreen } from '../screens/pet/NfcRedeemScreen';
 // World Engine V5 screens
 import WorldEngineScannerScreen from '../screens/WorldEngineScannerScreen';
 import WorldAssetInventoryScreen from '../screens/WorldAssetInventoryScreen';
+import ReconstructionProgressScreen from '../screens/ReconstructionProgressScreen';
 import WorldBattleArenaScreen from '../screens/WorldBattleArenaScreen';
 import WorldDungeonExplorerScreen from '../screens/WorldDungeonExplorerScreen';
 
@@ -38,6 +39,12 @@ export type PetStackParamList = {
   WorldAssetInventory: undefined;
   WorldBattleArena: { challengerAssetId?: string; defenderAssetId?: string } | undefined;
   WorldDungeonExplorer: { shareCode?: string } | undefined;
+  // Sprint P-8 (2026-05-22): reconstruction progress screen
+  ReconstructionProgress: {
+    jobId: string;
+    estimatedSeconds?: number;
+    scanMode?: 'quick' | 'detail' | 'room';
+  };
 };
 
 const Stack = createNativeStackNavigator<PetStackParamList>();
@@ -118,6 +125,12 @@ export function PetStackNavigator() {
         name="WorldDungeonExplorer"
         component={WorldDungeonExplorerScreen}
         options={{ title: t({ en: 'Dungeon', zh: '副本探索' }), headerShown: false }}
+      />
+      {/* Sprint P-8 (2026-05-22) */}
+      <Stack.Screen
+        name="ReconstructionProgress"
+        component={ReconstructionProgressScreen}
+        options={{ title: t({ en: 'Generating', zh: '生成中' }), headerShown: false }}
       />
     </Stack.Navigator>
   );

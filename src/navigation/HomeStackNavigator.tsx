@@ -51,6 +51,7 @@ import { NftMintScreen } from '../screens/pet/NftMintScreen';
 // World Engine V5 screens
 import WorldEngineScannerScreen from '../screens/WorldEngineScannerScreen';
 import WorldAssetInventoryScreen from '../screens/WorldAssetInventoryScreen';
+import ReconstructionProgressScreen from '../screens/ReconstructionProgressScreen';
 import WorldBattleArenaScreen from '../screens/WorldBattleArenaScreen';
 import WorldDungeonExplorerScreen from '../screens/WorldDungeonExplorerScreen';
 
@@ -241,6 +242,13 @@ export function HomeStackNavigator() {
         name="WorldDungeonExplorer"
         component={WorldDungeonExplorerScreen}
         options={{ title: t({ en: 'Dungeon', zh: '副本探索' }), headerShown: false }}
+      />
+      {/* Sprint P-8 (2026-05-22): reconstruction progress screen polled
+        * after the scanner submits frames. */}
+      <Stack.Screen
+        name={'ReconstructionProgress' as any}
+        component={ReconstructionProgressScreen}
+        options={{ title: t({ en: 'Generating', zh: '生成中' }), headerShown: false }}
       />
     </Stack.Navigator>
   );

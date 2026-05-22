@@ -13,7 +13,7 @@
  * Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -26,9 +26,20 @@ import {
   Alert,
   Platform,
   Dimensions,
+  Modal,
+  TextInput,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
+import {
+  listWorldAssets,
+  deleteWorldAsset,
+  updateWorldAsset,
+  bindAgentToAsset,
+  unbindAgentFromAsset,
+  regenerateWorldAssetAttribute,
+  type WorldAssetSummary as ApiWorldAssetSummary,
+} from '../services/worldEngineApi';
 
 // ============================================================
 // Types
@@ -76,29 +87,46 @@ export default function WorldAssetInventoryScreen() {
   const [filterCategory, setFilterCategory] = useState<FilterCategory>('all');
   const [filterSource, setFilterSource] = useState<FilterSource>('all');
 
+  // Sprint P-8: rename modal state
+  const [renameAsset, setRenameAsset] = useState<WorldAssetSummary | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+
   // ─── Data fetching ───────────────────────────────────────────────────
 
   const fetchAssets = useCallback(async () => {
     setIsLoading(true);
     try {
-      // TODO: Call GET /api/v1/world-engine/assets with filters
-      // const response = await api.get('/v1/world-engine/assets', {
-      //   params: {
-      //     category: filterCategory !== 'all' ? filterCategory : undefined,
-      //     source: filterSource !== 'all' ? filterSource : undefined,
-      //     sort: sortBy,
-      //   },
-      // });
-      // setAssets(response.data.items);
-
-      // Phase 1: Empty state (no assets yet)
-      setAssets([]);
-    } catch (error) {
+      // Sprint P-8 (2026-05-22): real backend call replaces the
+      // empty-state stub. The backend handles filtering and sorting
+      // server-side; we still apply local sort for instant feedback
+      // when the chip changes between fetches.
+      const response = await listWorldAssets({
+        category: filterCategory !== 'all' ? filterCategory : undefined,
+        source: filterSource !== 'all' ? filterSource : undefined,
+        sort: sortBy,
+        limit: 100,
+      });
+      const items = (response.items ?? []) as unknown as WorldAssetSummary[];
+      setAssets(items);
+    } catch (error: any) {
       console.error('Failed to fetch assets:', error);
+      // Don't blow up the UI; just show empty state.
+      setAssets([]);
     } finally {
       setIsLoading(false);
     }
   }, [sortBy, filterCategory, filterSource]);
+
+  // Refetch on focus + when filters change.
+  useEffect(() => {
+    void fetchAssets();
+  }, [fetchAssets]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void fetchAssets();
+    }, [fetchAssets]),
+  );
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -166,47 +194,120 @@ export default function WorldAssetInventoryScreen() {
   // ─── Action handlers ─────────────────────────────────────────────────
 
   const handleRename = (asset: WorldAssetSummary) => {
-    // TODO: Show rename dialog, call PATCH /api/v1/world-engine/assets/:id
-    Alert.alert('重命名', '功能开发中');
+    // Sprint P-8: open the rename modal (defined below in the render tree).
+    setRenameAsset(asset);
+    setRenameDraft(asset.name);
   };
+
+  const submitRename = useCallback(async () => {
+    if (!renameAsset) return;
+    const trimmed = renameDraft.trim();
+    if (trimmed.length === 0) {
+      Alert.alert('请输入名称', '名称不能为空');
+      return;
+    }
+    if (trimmed.length > 30) {
+      Alert.alert('名称过长', '名称不能超过 30 个字符');
+      return;
+    }
+    try {
+      await updateWorldAsset(renameAsset.id, { name: trimmed });
+      setRenameAsset(null);
+      setRenameDraft('');
+      void fetchAssets();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: any) {
+      Alert.alert('重命名失败', e?.message || '请稍后再试');
+    }
+  }, [renameAsset, renameDraft, fetchAssets]);
 
   const handleRegenerate = (asset: WorldAssetSummary) => {
-    // TODO: Navigate to regeneration screen
-    Alert.alert('重新生成', '功能开发中');
+    Alert.alert(
+      '重新生成',
+      '选择要重新生成的部分:',
+      [
+        { text: '名称', onPress: () => doRegenerate(asset, 'name') },
+        { text: '属性', onPress: () => doRegenerate(asset, 'stats') },
+        { text: '技能', onPress: () => doRegenerate(asset, 'skills') },
+        { text: '性格', onPress: () => doRegenerate(asset, 'personality') },
+        { text: '背景', onPress: () => doRegenerate(asset, 'backstory') },
+        { text: '取消', style: 'cancel' },
+      ],
+    );
   };
 
-  const handleBindAgent = (asset: WorldAssetSummary) => {
-    // TODO: Call POST /api/v1/world-engine/assets/:id/bind-agent
-    Alert.alert('绑定 Agent', '功能开发中');
-  };
+  const doRegenerate = useCallback(
+    async (
+      asset: WorldAssetSummary,
+      target: 'stats' | 'skills' | 'personality' | 'backstory' | 'name',
+    ) => {
+      try {
+        await regenerateWorldAssetAttribute(asset.id, target);
+        void fetchAssets();
+        Alert.alert('已重新生成', '请稍后刷新查看效果');
+      } catch (e: any) {
+        Alert.alert('重新生成失败', e?.message || '请稍后再试');
+      }
+    },
+    [fetchAssets],
+  );
 
-  const handleUnbindAgent = (asset: WorldAssetSummary) => {
-    // TODO: Call DELETE /api/v1/world-engine/assets/:id/unbind-agent
-    Alert.alert('解绑 Agent', '功能开发中');
-  };
+  const handleBindAgent = useCallback(
+    async (asset: WorldAssetSummary) => {
+      try {
+        await bindAgentToAsset(asset.id);
+        void fetchAssets();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('已绑定 Agent', `${asset.name} 现在由 Agent 驱动`);
+      } catch (e: any) {
+        Alert.alert('绑定失败', e?.message || '请稍后再试');
+      }
+    },
+    [fetchAssets],
+  );
+
+  const handleUnbindAgent = useCallback(
+    async (asset: WorldAssetSummary) => {
+      try {
+        await unbindAgentFromAsset(asset.id);
+        void fetchAssets();
+        Alert.alert('已解绑 Agent', `${asset.name} 解除 Agent 绑定`);
+      } catch (e: any) {
+        Alert.alert('解绑失败', e?.message || '请稍后再试');
+      }
+    },
+    [fetchAssets],
+  );
 
   const handleListForSale = (asset: WorldAssetSummary) => {
-    // TODO: Navigate to listing creation screen
-    Alert.alert('上架出售', '功能开发中');
+    // P1+: marketplace listing screen will land in a follow-up sprint.
+    Alert.alert('上架出售', '上架功能尚未上线,后续版本会开放');
   };
 
   const handleGift = (asset: WorldAssetSummary) => {
-    // TODO: Navigate to gift flow
-    Alert.alert('赠送', '功能开发中');
+    // P1+: gift flow ditto.
+    Alert.alert('赠送', '赠送功能尚未上线,后续版本会开放');
   };
 
   const handleDelete = (asset: WorldAssetSummary) => {
     Alert.alert(
       '确认删除',
-      `确定要删除 "${asset.name}" 吗？此操作不可撤销。`,
+      `确定要删除 "${asset.name}" 吗?此操作不可撤销。`,
       [
         { text: '取消', style: 'cancel' },
         {
           text: '删除',
           style: 'destructive',
           onPress: async () => {
-            // TODO: Call DELETE /api/v1/world-engine/assets/:id
-            Alert.alert('已删除', `${asset.name} 已被删除`);
+            try {
+              await deleteWorldAsset(asset.id);
+              void fetchAssets();
+              Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Success,
+              );
+            } catch (e: any) {
+              Alert.alert('删除失败', e?.message || '请稍后再试');
+            }
           },
         },
       ],
@@ -357,6 +458,43 @@ export default function WorldAssetInventoryScreen() {
         }
         showsVerticalScrollIndicator={false}
       />
+
+      {/* Sprint P-8: rename modal */}
+      <Modal
+        visible={renameAsset !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRenameAsset(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>重命名</Text>
+            <TextInput
+              value={renameDraft}
+              onChangeText={setRenameDraft}
+              placeholder="新名称(最多 30 字符)"
+              placeholderTextColor="#666"
+              maxLength={30}
+              style={styles.modalInput}
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setRenameAsset(null)}
+              >
+                <Text style={styles.modalCancelText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalConfirmBtn}
+                onPress={submitRename}
+              >
+                <Text style={styles.modalConfirmText}>保存</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -526,6 +664,65 @@ const styles = StyleSheet.create({
   scanButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  // Sprint P-8: rename modal styles
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: '#1a1a2e',
+    borderRadius: 14,
+    padding: 20,
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  modalInput: {
+    backgroundColor: '#0a0a0a',
+    color: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#333',
+    marginBottom: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#333',
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    color: '#aaa',
+    fontSize: 14,
+  },
+  modalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#6c5ce7',
+    alignItems: 'center',
+  },
+  modalConfirmText: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '600',
   },
 });

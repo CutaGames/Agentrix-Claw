@@ -41,6 +41,7 @@ import { OtaModelDownloadService } from './src/services/otaModelDownload.service
 import { WatchDataLayerService } from './src/services/wearables/watchDataLayerBridge.service';
 import { AxpToastHost } from './src/components/AxpToastHost';
 import { MobilePetProactiveBanner } from './src/components/pet/MobilePetProactiveBanner';
+import { GlobalFloatingBall } from './src/components/GlobalFloatingBall';
 import { resolveLegacyPath } from './src/navigation/legacyRouteTable';
 import { getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
 import { attachLinkingListener } from './src/services/intents/intentBridge';
@@ -85,6 +86,19 @@ function SplashScreen() {
       <Text style={{ color: colors.textMuted, marginTop: 16, fontSize: 14 }}>Agentrix</Text>
     </View>
   );
+}
+
+/**
+ * Sprint P-8 (2026-05-22) — gates the GlobalFloatingBall on auth state.
+ * Lives outside `<AppNavigator>` so it sits as a sibling overlay on top
+ * of every screen (the floating-ball component handles per-screen
+ * blacklisting internally via `useNavigationState`). Without this
+ * mount the entire P-6 sprint was dead code.
+ */
+function AuthenticatedFloatingBall() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  if (!isAuthenticated) return null;
+  return <GlobalFloatingBall />;
 }
 
 async function registerForPushNotifications(): Promise<string | null> {
@@ -685,6 +699,12 @@ export default function App() {
             {/* Pet companion proactive bubble — surfaces pet greetings/
                 suggestions globally (Phase C). Same backend channel as desktop. */}
             <MobilePetProactiveBanner />
+            {/* Sprint P-8 (2026-05-22): the GlobalFloatingBall ships the
+                13-form pet sprite system on mobile. It hides itself on chat
+                screens internally (`shouldHide` blacklist), so safe to mount
+                at the root globally. Without this, the entire P-6 sprint was
+                dead code in production. */}
+            <AuthenticatedFloatingBall />
             {/*
               VoiceQuickFab (mobile-prd-v3 §3.2) removed 2026-05-10:
               the always-on mic bubble was orphaned — `handleTap` only flipped

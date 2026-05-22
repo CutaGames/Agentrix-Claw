@@ -24,6 +24,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
+import { getDungeonByCode, attemptDungeon } from '../services/worldEngineApi';
 
 // ============================================================
 // Types
@@ -62,18 +63,47 @@ export default function WorldDungeonExplorerScreen() {
       return;
     }
 
-    // TODO: Call GET /api/v1/world-engine/dungeons/:code
-    // Then POST /api/v1/world-engine/dungeons/:code/attempt
-    Alert.alert('进入副本', `正在加载副本 ${shareCode}...`);
-    setIsExploring(true);
+    // Sprint P-8 (2026-05-22): real backend dungeon load + attempt.
+    try {
+      const dungeon = await getDungeonByCode(shareCode.trim().toUpperCase());
+      await attemptDungeon(shareCode.trim().toUpperCase());
+      setIsExploring(true);
 
-    // Mock dungeon rooms
-    setRooms([
-      { id: 'r1', x: 0, y: 0, width: 3, height: 3, theme: 'fire', explored: true, hasBoss: false, hasLoot: true, enemies: 4 },
-      { id: 'r2', x: 3, y: 0, width: 2, height: 2, theme: 'neutral', explored: false, hasBoss: false, hasLoot: false, enemies: 3 },
-      { id: 'r3', x: 5, y: 0, width: 4, height: 4, theme: 'data', explored: false, hasBoss: true, hasLoot: true, enemies: 6 },
-    ]);
-    setCurrentRoom('r1');
+      // Convert backend layout to local room format. The backend may
+      // return either a structured `layout.rooms` array or a stub —
+      // gracefully handle both by mapping known fields and falling
+      // back to a 1-room demo if the layout is unrecognizable.
+      const layoutRooms = (dungeon.layout?.rooms ?? []) as any[];
+      if (layoutRooms.length > 0) {
+        setRooms(
+          layoutRooms.map((r, idx) => ({
+            id: r.id ?? `r${idx}`,
+            x: r.x ?? idx * 3,
+            y: r.y ?? 0,
+            width: r.width ?? 3,
+            height: r.height ?? 3,
+            theme: r.theme ?? 'neutral',
+            explored: idx === 0,
+            hasBoss: !!r.hasBoss,
+            hasLoot: !!r.hasLoot,
+            enemies: r.enemies ?? 3,
+          })),
+        );
+        setCurrentRoom(layoutRooms[0].id ?? 'r0');
+      } else {
+        // Fallback: single placeholder room.
+        setRooms([
+          {
+            id: 'r0', x: 0, y: 0, width: 3, height: 3, theme: 'neutral',
+            explored: true, hasBoss: false, hasLoot: false, enemies: 3,
+          },
+        ]);
+        setCurrentRoom('r0');
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err: any) {
+      Alert.alert('副本加载失败', err?.message || '请确认代码是否正确');
+    }
   }, [shareCode]);
 
   // ─── Room exploration ────────────────────────────────────────────────
@@ -89,9 +119,12 @@ export default function WorldDungeonExplorerScreen() {
   // ─── Generate from scan ──────────────────────────────────────────────
 
   const handleGenerateFromScan = useCallback(() => {
-    // TODO: Navigate to scanner in room mode
-    Alert.alert('房间扫描', '请使用房间扫描模式扫描您的房间来生成副本');
-  }, []);
+    // Sprint P-8: navigate to room scan mode. The dungeon is generated
+    // from the resulting scan session via /dungeons/generate (the
+    // scanner doesn't auto-call this; the inventory list shows the
+    // generated dungeon after scan completion).
+    (navigation as any).navigate('WorldEngineScanner');
+  }, [navigation]);
 
   // ─── Render ──────────────────────────────────────────────────────────
 
