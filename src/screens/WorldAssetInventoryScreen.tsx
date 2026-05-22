@@ -280,13 +280,21 @@ export default function WorldAssetInventoryScreen() {
   );
 
   const handleListForSale = (asset: WorldAssetSummary) => {
-    // P1+: marketplace listing screen will land in a follow-up sprint.
-    Alert.alert('上架出售', '上架功能尚未上线,后续版本会开放');
+    // Sprint P-8 P2 (2026-05-22): real listing flow.
+    (navigation as any).navigate('WorldAssetListing', {
+      assetId: asset.id,
+      assetName: asset.name,
+    });
   };
 
   const handleGift = (asset: WorldAssetSummary) => {
-    // P1+: gift flow ditto.
-    Alert.alert('赠送', '赠送功能尚未上线,后续版本会开放');
+    // Backend has no dedicated `/gift` endpoint yet. We keep the
+    // entry visible with honest copy until backend ships transfer
+    // routes — avoids the false-positive "功能开发中" pattern.
+    Alert.alert(
+      '赠送',
+      '赠送功能后端尚未开放。如果想转手,可以先「上架出售」并把链接给好友。',
+    );
   };
 
   const handleDelete = (asset: WorldAssetSummary) => {
@@ -407,9 +415,22 @@ export default function WorldAssetInventoryScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>世界资产</Text>
-        <TouchableOpacity style={styles.scanFab} onPress={handleOpenScanner}>
-          <Text style={styles.scanFabText}>+</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity
+            style={styles.battleFab}
+            onPress={() => (navigation as any).navigate('WorldBattlePicker')}
+            testID="world-asset-inventory-battle"
+          >
+            <Text style={styles.scanFabText}>⚔</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.scanFab}
+            onPress={handleOpenScanner}
+            testID="world-asset-inventory-scan"
+          >
+            <Text style={styles.scanFabText}>+</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Filters */}
@@ -526,6 +547,14 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     backgroundColor: '#6c5ce7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  battleFab: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#22c55e',
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -21,6 +21,8 @@ import { NfcRedeemScreen } from '../screens/pet/NfcRedeemScreen';
 import WorldEngineScannerScreen from '../screens/WorldEngineScannerScreen';
 import WorldAssetInventoryScreen from '../screens/WorldAssetInventoryScreen';
 import ReconstructionProgressScreen from '../screens/ReconstructionProgressScreen';
+import WorldAssetListingScreen from '../screens/WorldAssetListingScreen';
+import WorldBattlePickerScreen from '../screens/WorldBattlePickerScreen';
 import WorldBattleArenaScreen from '../screens/WorldBattleArenaScreen';
 import WorldDungeonExplorerScreen from '../screens/WorldDungeonExplorerScreen';
 
@@ -45,6 +47,8 @@ export type PetStackParamList = {
     estimatedSeconds?: number;
     scanMode?: 'quick' | 'detail' | 'room';
   };
+  WorldAssetListing: { assetId: string; assetName?: string };
+  WorldBattlePicker: undefined;
 };
 
 const Stack = createNativeStackNavigator<PetStackParamList>();
@@ -131,6 +135,16 @@ export function PetStackNavigator() {
         name="ReconstructionProgress"
         component={ReconstructionProgressScreen}
         options={{ title: t({ en: 'Generating', zh: '生成中' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldAssetListing"
+        component={WorldAssetListingScreen}
+        options={{ title: t({ en: 'List for Sale', zh: '上架出售' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldBattlePicker"
+        component={WorldBattlePickerScreen}
+        options={{ title: t({ en: 'Battle Picker', zh: '选择对战' }), headerShown: false }}
       />
     </Stack.Navigator>
   );

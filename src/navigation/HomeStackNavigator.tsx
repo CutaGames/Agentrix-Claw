@@ -52,6 +52,8 @@ import { NftMintScreen } from '../screens/pet/NftMintScreen';
 import WorldEngineScannerScreen from '../screens/WorldEngineScannerScreen';
 import WorldAssetInventoryScreen from '../screens/WorldAssetInventoryScreen';
 import ReconstructionProgressScreen from '../screens/ReconstructionProgressScreen';
+import WorldAssetListingScreen from '../screens/WorldAssetListingScreen';
+import WorldBattlePickerScreen from '../screens/WorldBattlePickerScreen';
 import WorldBattleArenaScreen from '../screens/WorldBattleArenaScreen';
 import WorldDungeonExplorerScreen from '../screens/WorldDungeonExplorerScreen';
 
@@ -249,6 +251,16 @@ export function HomeStackNavigator() {
         name={'ReconstructionProgress' as any}
         component={ReconstructionProgressScreen}
         options={{ title: t({ en: 'Generating', zh: '生成中' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name={'WorldAssetListing' as any}
+        component={WorldAssetListingScreen}
+        options={{ title: t({ en: 'List for Sale', zh: '上架出售' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name={'WorldBattlePicker' as any}
+        component={WorldBattlePickerScreen}
+        options={{ title: t({ en: 'Battle Picker', zh: '选择对战' }), headerShown: false }}
       />
     </Stack.Navigator>
   );

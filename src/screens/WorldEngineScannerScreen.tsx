@@ -336,10 +336,13 @@ export default function WorldEngineScannerScreen() {
 
       // Hand off to the progress screen which polls /jobs/:id/status.
       // Use replace so the user can't swipe back to the scanner mid-flight.
+      // Sprint P-8 P2 (2026-05-22): also pass sessionId so the progress
+      // screen can auto-trigger /dungeons/generate when scanMode === 'room'.
       (navigation as any).replace('ReconstructionProgress', {
         jobId,
         estimatedSeconds,
         scanMode,
+        scanSessionId: sessionId,
       });
     } catch (error: any) {
       const msg = error?.message || '网络错误,请检查后重试。';

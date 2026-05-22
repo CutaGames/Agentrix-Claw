@@ -36,6 +36,10 @@ import {
   generateDungeon,
   getDungeonByCode,
   attemptDungeon,
+  createMarketplaceListing,
+  getSuggestedPrice,
+  browseMarketplaceListings,
+  purchaseMarketplaceListing,
 } from '../worldEngineApi';
 
 describe('worldEngineApi — scan flow', () => {
@@ -231,5 +235,67 @@ describe('worldEngineApi — dungeon', () => {
       '/v1/world-engine/dungeons/AB12CD/attempt',
       expect.objectContaining({ method: 'POST' }),
     );
+  });
+});
+
+
+describe('worldEngineApi — marketplace (P-8 P2)', () => {
+  beforeEach(() => apiFetch.mockReset());
+
+  it('createMarketplaceListing posts /v1/marketplace/world-assets/listing', async () => {
+    apiFetch.mockResolvedValueOnce({ listingId: 'l1' });
+    await createMarketplaceListing({
+      assetId: 'a1',
+      price: 12.5,
+      currency: 'USD',
+    });
+    const [path, opts] = apiFetch.mock.calls[0];
+    expect(path).toBe('/v1/marketplace/world-assets/listing');
+    expect((opts as RequestInit).method).toBe('POST');
+    expect(JSON.parse((opts as RequestInit).body as string)).toEqual({
+      assetId: 'a1',
+      price: 12.5,
+      currency: 'USD',
+    });
+  });
+
+  it('getSuggestedPrice GETs /v1/marketplace/world-assets/:id/suggested-price', async () => {
+    apiFetch.mockResolvedValueOnce({
+      suggestedPrice: 9.99,
+      currency: 'USD',
+      reasoning: 'level 3 + 2 wins',
+    });
+    const r = await getSuggestedPrice('a1');
+    expect(r.suggestedPrice).toBe(9.99);
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/v1/marketplace/world-assets/a1/suggested-price',
+      undefined,
+    );
+  });
+
+  it('browseMarketplaceListings serializes filters', async () => {
+    apiFetch.mockResolvedValueOnce({ items: [], total: 0 });
+    await browseMarketplaceListings({
+      category: 'character',
+      minPrice: 1,
+      maxPrice: 100,
+      sort: 'price_asc',
+    });
+    const [path] = apiFetch.mock.calls[0];
+    expect(path).toContain('/v1/marketplace/world-assets');
+    expect(path).toContain('category=character');
+    expect(path).toContain('minPrice=1');
+    expect(path).toContain('maxPrice=100');
+    expect(path).toContain('sort=price_asc');
+  });
+
+  it('purchaseMarketplaceListing posts /:id/purchase with paymentId', async () => {
+    apiFetch.mockResolvedValueOnce({ transactionId: 't1', status: 'completed' });
+    await purchaseMarketplaceListing('l1', { paymentId: 'pi_xyz' });
+    const [path, opts] = apiFetch.mock.calls[0];
+    expect(path).toBe('/v1/marketplace/world-assets/l1/purchase');
+    expect(JSON.parse((opts as RequestInit).body as string)).toEqual({
+      paymentId: 'pi_xyz',
+    });
   });
 });

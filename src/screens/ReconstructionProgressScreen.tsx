@@ -27,6 +27,7 @@ import {
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import {
   getJobStatus,
+  generateDungeon,
   type ReconstructionJobStatus,
 } from '../services/worldEngineApi';
 
@@ -34,6 +35,9 @@ interface RouteParams {
   jobId: string;
   estimatedSeconds?: number;
   scanMode?: 'quick' | 'detail' | 'room';
+  /** When scanMode === 'room', the screen auto-calls /dungeons/generate
+   *  on completion using this sessionId. */
+  scanSessionId?: string;
 }
 
 const POLL_INTERVAL_MS = 3000;
@@ -51,7 +55,7 @@ const STAGE_LABEL_ZH: Record<ReconstructionJobStatus, string> = {
 export default function ReconstructionProgressScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<{ p: RouteParams }, 'p'>>();
-  const { jobId, estimatedSeconds = 30 } = route.params ?? ({} as RouteParams);
+  const { jobId, estimatedSeconds = 30, scanMode, scanSessionId } = route.params ?? ({} as RouteParams);
 
   const [status, setStatus] = useState<ReconstructionJobStatus>('queued');
   const [progress, setProgress] = useState(0);
@@ -59,6 +63,9 @@ export default function ReconstructionProgressScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [resultAssetId, setResultAssetId] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number>(estimatedSeconds);
+  // Sprint P-8 P2: auto-generated dungeon code (room scan path).
+  const [dungeonCode, setDungeonCode] = useState<string | null>(null);
+  const [dungeonGenerating, setDungeonGenerating] = useState(false);
 
   const startTsRef = useRef<number>(Date.now());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -82,6 +89,21 @@ export default function ReconstructionProgressScreen() {
       if (result.status === 'completed' && result.resultAssetId) {
         setResultAssetId(result.resultAssetId);
         stopPolling();
+        // Sprint P-8 P2 (2026-05-22): auto-generate a dungeon if the
+        // scan was a room scan. We don't block the success state on
+        // this — the user sees "completed" immediately, and the
+        // dungeon code shows up below the action button when ready.
+        if (scanMode === 'room' && scanSessionId && !dungeonGenerating && !dungeonCode) {
+          setDungeonGenerating(true);
+          try {
+            const dungeon = await generateDungeon({ scanSessionId });
+            setDungeonCode(dungeon.shareCode);
+          } catch (genErr: any) {
+            console.warn('[ReconstructionProgress] dungeon auto-gen failed:', genErr);
+          } finally {
+            setDungeonGenerating(false);
+          }
+        }
       } else if (result.status === 'failed') {
         setErrorMessage(result.error || '生成失败,未知错误');
         stopPolling();
@@ -90,7 +112,7 @@ export default function ReconstructionProgressScreen() {
       // Network blip — keep polling, don't kill the screen.
       console.warn('[ReconstructionProgress] poll error:', err);
     }
-  }, [jobId, stopPolling]);
+  }, [jobId, stopPolling, scanMode, scanSessionId, dungeonGenerating, dungeonCode]);
 
   useEffect(() => {
     if (!jobId) {
@@ -154,6 +176,36 @@ export default function ReconstructionProgressScreen() {
         <TouchableOpacity style={styles.primaryButton} onPress={handleViewInventory} testID="reconstruction-view-inventory">
           <Text style={styles.primaryButtonText}>📦 打开资产库</Text>
         </TouchableOpacity>
+
+        {/* Sprint P-8 P2: auto-dungeon flow visible only for room scans. */}
+        {scanMode === 'room' && (
+          <View style={styles.dungeonBox}>
+            {dungeonGenerating ? (
+              <>
+                <ActivityIndicator size="small" color="#22c55e" />
+                <Text style={styles.dungeonHint}>正在用扫描数据生成副本…</Text>
+              </>
+            ) : dungeonCode ? (
+              <>
+                <Text style={styles.dungeonLabel}>🏰 副本已生成</Text>
+                <Text style={styles.dungeonCode} testID="reconstruction-dungeon-code">{dungeonCode}</Text>
+                <Text style={styles.dungeonHint}>分享这个代码给好友来挑战你的副本</Text>
+                <TouchableOpacity
+                  style={styles.dungeonButton}
+                  onPress={() =>
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'WorldDungeonExplorer', params: { shareCode: dungeonCode } }],
+                    })
+                  }
+                  testID="reconstruction-open-dungeon"
+                >
+                  <Text style={styles.dungeonButtonText}>进入副本 →</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
+          </View>
+        )}
       </View>
     );
   }
@@ -260,5 +312,50 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 12,
+  },
+  // Sprint P-8 P2: dungeon auto-trigger UI on room-scan completion.
+  dungeonBox: {
+    marginTop: 32,
+    width: '100%',
+    backgroundColor: '#0f1610',
+    borderColor: '#22c55e44',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+  },
+  dungeonLabel: {
+    color: '#22c55e',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  dungeonCode: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 2,
+    marginVertical: 6,
+  },
+  dungeonHint: {
+    color: '#888',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  dungeonButton: {
+    marginTop: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#22c55e22',
+    borderWidth: 1,
+    borderColor: '#22c55e',
+  },
+  dungeonButtonText: {
+    color: '#22c55e',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

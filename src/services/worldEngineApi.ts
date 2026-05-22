@@ -384,3 +384,83 @@ export function attemptDungeon(code: string): Promise<DungeonAttempt> {
     { method: 'POST' },
   );
 }
+
+
+// ============================================================
+// Marketplace (Sprint P-8 P2)
+// ============================================================
+
+export interface MarketplaceListing {
+  id: string;
+  assetId: string;
+  sellerId: string;
+  price: number;
+  currency: 'USD' | 'AXP';
+  asset?: WorldAssetSummary;
+  status: 'active' | 'sold' | 'cancelled' | 'expired';
+  createdAt: string;
+}
+
+export interface BrowseListingsQuery {
+  category?: 'character' | 'dungeon' | 'weapon';
+  minPrice?: number;
+  maxPrice?: number;
+  sort?: 'newest' | 'price_asc' | 'price_desc';
+  page?: number;
+}
+
+export interface BrowseListingsResponse {
+  items: MarketplaceListing[];
+  total: number;
+}
+
+export interface SuggestedPriceResponse {
+  suggestedPrice: number;
+  currency: 'USD';
+  reasoning: string;
+  comparable?: { id: string; price: number }[];
+}
+
+export function createMarketplaceListing(body: {
+  assetId: string;
+  price: number;
+  currency: 'USD' | 'AXP';
+}): Promise<{ listingId: string }> {
+  return apiFetch<{ listingId: string }>(
+    '/v1/marketplace/world-assets/listing',
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+}
+
+export function getSuggestedPrice(
+  assetId: string,
+): Promise<SuggestedPriceResponse> {
+  return apiFetch<SuggestedPriceResponse>(
+    `/v1/marketplace/world-assets/${assetId}/suggested-price`,
+  );
+}
+
+export function browseMarketplaceListings(
+  query: BrowseListingsQuery = {},
+): Promise<BrowseListingsResponse> {
+  const params = new URLSearchParams();
+  if (query.category) params.set('category', query.category);
+  if (typeof query.minPrice === 'number') params.set('minPrice', String(query.minPrice));
+  if (typeof query.maxPrice === 'number') params.set('maxPrice', String(query.maxPrice));
+  if (query.sort) params.set('sort', query.sort);
+  if (typeof query.page === 'number') params.set('page', String(query.page));
+  const qs = params.toString();
+  return apiFetch<BrowseListingsResponse>(
+    `/v1/marketplace/world-assets${qs ? `?${qs}` : ''}`,
+  );
+}
+
+export function purchaseMarketplaceListing(
+  listingId: string,
+  body?: { paymentId?: string },
+): Promise<{ transactionId: string; status: 'completed' | 'failed' }> {
+  return apiFetch<{ transactionId: string; status: 'completed' | 'failed' }>(
+    `/v1/marketplace/world-assets/${listingId}/purchase`,
+    { method: 'POST', body: JSON.stringify(body ?? {}) },
+  );
+}
