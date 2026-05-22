@@ -37,6 +37,7 @@ import { fetchMyQuota } from '../../services/subscription.api';
 import { getPetState } from '../../services/mobilePetSdk';
 import { CheckinCard } from './CheckinCard';
 import { PetRenderer, type PetClan } from '../../components/pet/PetRiveRenderer';
+import { GlobalFloatingBall } from '../../components/GlobalFloatingBall';
 import type { HomeStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<HomeStackParamList, 'HomeRoot'>;
@@ -126,7 +127,8 @@ export function HomeScreen() {
   const combinedUnread = unreadCount + approvalCount;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <View style={{ flex: 1, backgroundColor: colors.bgPrimary }}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       {/* ── Top bar ────────────────────────────────────────────── */}
       <View style={styles.topBar}>
         <Pressable style={styles.petSwitcher} onPress={switchPet}>
@@ -316,6 +318,13 @@ export function HomeScreen() {
         <Text style={styles.cardArrow}>›</Text>
       </Pressable>
     </ScrollView>
+    {/* Sprint P-8 v0.4.6 hotfix (2026-05-22): mount GlobalFloatingBall
+        INSIDE the Home stack screen so `useNavigation()` resolves the
+        Home stack's navigator. Mounting at the NavigationContainer
+        sibling level crashed v0.4.5 with "Couldn't get the navigation
+        state". */}
+    <GlobalFloatingBall />
+    </View>
   );
 }
 

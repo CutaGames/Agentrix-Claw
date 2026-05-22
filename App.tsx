@@ -41,7 +41,6 @@ import { OtaModelDownloadService } from './src/services/otaModelDownload.service
 import { WatchDataLayerService } from './src/services/wearables/watchDataLayerBridge.service';
 import { AxpToastHost } from './src/components/AxpToastHost';
 import { MobilePetProactiveBanner } from './src/components/pet/MobilePetProactiveBanner';
-import { GlobalFloatingBall } from './src/components/GlobalFloatingBall';
 import { resolveLegacyPath } from './src/navigation/legacyRouteTable';
 import { getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
 import { attachLinkingListener } from './src/services/intents/intentBridge';
@@ -89,16 +88,16 @@ function SplashScreen() {
 }
 
 /**
- * Sprint P-8 (2026-05-22) — gates the GlobalFloatingBall on auth state.
- * Lives outside `<AppNavigator>` so it sits as a sibling overlay on top
- * of every screen (the floating-ball component handles per-screen
- * blacklisting internally via `useNavigationState`). Without this
- * mount the entire P-6 sprint was dead code.
+ * Sprint P-8 v0.4.6 (2026-05-22) — kept here as a no-op shim. The
+ * earlier root-level mount of `<GlobalFloatingBall />` as a
+ * NavigationContainer sibling crashed cold launch with "Couldn't get
+ * the navigation state" because `useNavigation()` requires an
+ * enclosing navigator screen. The ball is now mounted directly inside
+ * `HomeScreen` (and any other screen that wants it) where the
+ * navigation context resolves correctly.
  */
 function AuthenticatedFloatingBall() {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  if (!isAuthenticated) return null;
-  return <GlobalFloatingBall />;
+  return null;
 }
 
 async function registerForPushNotifications(): Promise<string | null> {
@@ -699,12 +698,16 @@ export default function App() {
             {/* Pet companion proactive bubble — surfaces pet greetings/
                 suggestions globally (Phase C). Same backend channel as desktop. */}
             <MobilePetProactiveBanner />
-            {/* Sprint P-8 (2026-05-22): the GlobalFloatingBall ships the
-                13-form pet sprite system on mobile. It hides itself on chat
-                screens internally (`shouldHide` blacklist), so safe to mount
-                at the root globally. Without this, the entire P-6 sprint was
-                dead code in production. */}
-            <AuthenticatedFloatingBall />
+            {/* Sprint P-8 (2026-05-22): GlobalFloatingBall mount was here
+                but caused a "Couldn't get the navigation state" crash on
+                cold launch — `useNavigation()`/`useNavigationState()`
+                require an *enclosing navigator screen*, and a sibling of
+                `<AppNavigator>` doesn't qualify. v0.4.6 hotfix: ball is
+                now rendered inside HomeScreen / PlazaScreen / MeScreen
+                (which ARE inside their respective stack navigators), so
+                `useNavigation()` resolves correctly. App boots cleanly
+                again.
+            */}
             {/*
               VoiceQuickFab (mobile-prd-v3 §3.2) removed 2026-05-10:
               the always-on mic bubble was orphaned — `handleTap` only flipped
