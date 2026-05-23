@@ -25,6 +25,13 @@
  * Future (wave 6+):
  *   - <SkillInstallCard />     (T15)
  *   - <AmbientPresenceBridge /> (T12 + T13)
+ *
+ * Wave 17 v3 (2026-05-23) — wraps the entire subtree in a local
+ * ErrorBoundary that renders null on failure. Even if some descendant
+ * accidentally calls a navigator-only hook (or anything else throws on
+ * mount), the rest of the app keeps working. Companion is enhancement,
+ * not a blocker — the user should never see "Reset App State" because
+ * of a Companion bug.
  */
 import React from 'react';
 import { CompanionBall } from './CompanionBall';
@@ -48,7 +55,56 @@ interface CompanionLayerProps {
   navigationRef?: any;
 }
 
+/**
+ * Local ErrorBoundary scoped to the Companion subtree. We deliberately
+ * silence-then-recover so a Companion render error never propagates to
+ * the global AppErrorBoundary and shows the "Reset App State" screen.
+ *
+ * Examples of errors this catches:
+ *   - "Couldn't get the navigation state. Is your component inside a
+ *     navigator?" — if any descendant calls a navigator-only hook from
+ *     a position outside any Navigator subtree.
+ *   - Reanimated worklet errors triggered during initial mount.
+ *   - Missing pet sprite errors.
+ */
+class CompanionErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { failed: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { failed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    // Surface to console so test environments can still spot it but the
+    // user just loses the floating ball — they keep the rest of the app.
+    console.warn(
+      '[CompanionLayer] swallowed render error to keep app alive:',
+      error?.message,
+      info?.componentStack?.split('\n').slice(0, 4).join(' / '),
+    );
+  }
+
+  render() {
+    if (this.state.failed) return null;
+    return this.props.children;
+  }
+}
+
 export function CompanionLayer(props: CompanionLayerProps) {
+  return (
+    <CompanionErrorBoundary>
+      <CompanionLayerContent navigationRef={props.navigationRef} />
+    </CompanionErrorBoundary>
+  );
+}
+
+function CompanionLayerContent(props: CompanionLayerProps) {
   return (
     <>
       {/* Floating ball — single-tap delegates to ConversationBubble.present(),
