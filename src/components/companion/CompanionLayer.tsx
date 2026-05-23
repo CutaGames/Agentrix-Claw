@@ -1,9 +1,17 @@
 /**
  * CompanionLayer — global mount point for the P-9 Companion experience.
  *
- * Mounts INSIDE NavigationContainer (so children can call useNavigation /
- * useNavigationState), but OUTSIDE all tab navigators (so it persists
- * across tab switches with shared state). Spec design.md §Components §1.
+ * Mounts INSIDE NavigationContainer (so children can call useNavigation),
+ * but OUTSIDE all tab navigators. Note: useNavigationState is NOT safe
+ * here — its NavigationStateListenerContext is provided by individual
+ * Navigators (Stack/Tab), not NavigationContainer, so any direct usage
+ * inside this layer crashes cold launch with "Couldn't get the navigation
+ * state. Is your component inside a navigator?". CompanionBall +
+ * GlobalFloatingBall both read root state via the navigationRef (wave 17
+ * hotfix) to bypass that requirement entirely.
+ *
+ * The layer persists across tab switches with shared state. Spec
+ * design.md §Components §1.
  *
  * Phase 1 wave 4+5 children:
  *   - <CompanionBall />         — the floating pet (T3 wrapper)

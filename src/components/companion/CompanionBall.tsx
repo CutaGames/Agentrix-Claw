@@ -205,6 +205,7 @@ export function CompanionBall(props: CompanionBallProps) {
         onVoiceActivate={props.onSingleTap}
         onSingleTapOverride={props.onSingleTap}
         onLongPressOverride={props.onLongPress}
+        navigationRef={props.navigationRef}
       />
 
       {/* P-9 signing lock — transparent overlay that absorbs touches when

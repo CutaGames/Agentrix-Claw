@@ -760,15 +760,24 @@ export default function App() {
 
                 {/* P-9 Companion Redesign T4: global ball + bottom-sheet
                     layer. Mounts INSIDE NavigationContainer so children can
-                    call useNavigation()/useNavigationState(), but OUTSIDE
-                    the tab navigator so it persists across tab switches.
-                    Wave 17 fix: gate by isInitialized so SplashScreen ≠
-                    "navigator state not ready" crash (the bug a tester hit
-                    showing "Couldn't get the navigation state. Is your
-                    component inside a navigator?"). The CompanionBall
-                    inside CompanionLayer reads useNavigationState which
-                    requires a mounted Navigator subtree — we mount it only
-                    after AppNavigator returns RootNavigator. */}
+                    call useNavigation(), but OUTSIDE the tab navigator so
+                    it persists across tab switches.
+
+                    Wave 17 hotfix v1: gate by isInitialized to prevent the
+                    SplashScreen ≠ "navigator state not ready" crash.
+
+                    Wave 17 hotfix v2 (2026-05-23): even with the gate,
+                    useNavigationState is unsafe here because its
+                    NavigationStateListenerContext is provided by
+                    individual Navigators (Stack/Tab), NOT by
+                    NavigationContainer. CompanionLayer is a sibling of
+                    AppNavigator, so no listener context exists and the
+                    hook throws "Couldn't get the navigation state. Is
+                    your component inside a navigator?" on cold launch.
+                    CompanionBall + GlobalFloatingBall now read root
+                    state via the module-scope navigationRef instead, so
+                    they no longer depend on a navigator subtree being
+                    in scope. */}
                 <CompanionLayerGate />
               </NavigationContainer>
             </BottomSheetModalProvider>

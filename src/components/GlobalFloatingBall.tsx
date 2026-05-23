@@ -12,7 +12,7 @@ import {
   Linking,
   TextInput,
 } from 'react-native';
-import { useNavigation, useNavigationState } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Circle } from 'react-native-svg';
@@ -129,12 +129,23 @@ interface Props {
    * prop so wave 6 polish can wire it without further refactors here.
    */
   onRightSwipeOverride?: () => void;
+  /**
+   * Wave 17 hotfix — module-scope NavigationContainerRef from App.tsx.
+   * Used to read root navigation state via `getRootState()` instead of
+   * `useNavigationState`, which throws "Couldn't get the navigation
+   * state. Is your component inside a navigator?" because the ball is
+   * mounted as a sibling of <AppNavigator/>, not inside any Navigator
+   * screen. The ref is safe — `current` may be null on cold launch
+   * (before NavigationContainer mounts), which we handle gracefully.
+   */
+  navigationRef?: any;
 }
 
 export function GlobalFloatingBall({
   onVoiceActivate, pillTranscript, onPillSend, pillVolume = 0,
   resultText, onResultAction,
   onSingleTapOverride, onLongPressOverride,
+  navigationRef,
 }: Props) {
   const navigation = useNavigation<any>();
   const { language } = useI18n();
@@ -142,17 +153,53 @@ export function GlobalFloatingBall({
   const { width: screenW, height: screenH } = Dimensions.get('window');
   const wakeWordConfig = useMemo(() => resolveMobileWakeWordConfig(wakeWordSettings), [wakeWordSettings]);
 
-  const currentRouteName = useNavigationState((state) => {
-    if (!state) return '';
-    let route = state.routes[state.index];
+  // Wave 17 hotfix — read current route via navigationRef instead of
+  // useNavigationState. The hook throws "Couldn't get the navigation
+  // state. Is your component inside a navigator?" because the ball
+  // mounts as a sibling of the Navigator subtree (under
+  // NavigationContainer but outside Stack/Tab navigators). The ref
+  // gives us the same root state without any context dependency.
+  //
+  // Resolution mirrors the legacy useNavigationState selector: walk
+  // up to 4 levels of nested route.state until we hit the leaf route.
+  const resolveLeafRouteName = useCallback((rootState: any): string => {
+    if (!rootState) return '';
+    let route = rootState.routes?.[rootState.index];
+    if (!route) return '';
     for (let depth = 0; depth < 4; depth++) {
-      if (!route.state) break;
-      const nested = route.state as any;
+      const nested = route?.state as any;
       if (!nested?.routes || nested.index == null) break;
       route = nested.routes[nested.index];
     }
-    return route.name || '';
+    return route?.name || '';
+  }, []);
+
+  const [currentRouteName, setCurrentRouteName] = useState<string>(() => {
+    try {
+      return resolveLeafRouteName(navigationRef?.current?.getRootState?.());
+    } catch {
+      return '';
+    }
   });
+
+  useEffect(() => {
+    const ref = navigationRef?.current;
+    if (!ref?.addListener) return;
+    const updateRoute = () => {
+      try {
+        setCurrentRouteName(resolveLeafRouteName(ref.getRootState()));
+      } catch {
+        /* ref unmounted between calls — ignore */
+      }
+    };
+    // Sync once on mount in case the ref existed but state arrived
+    // before the listener attached.
+    updateRoute();
+    const unsubscribe = ref.addListener('state', updateRoute);
+    return () => {
+      try { unsubscribe?.(); } catch { /* ignore */ }
+    };
+  }, [navigationRef, resolveLeafRouteName]);
 
   const hideOnScreens = ['AgentChat', 'VoiceChat', 'ClawSettings'];
   // Keep the ball (and wake-word listener) visible on the main tab routes.
