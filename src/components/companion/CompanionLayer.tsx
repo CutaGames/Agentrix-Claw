@@ -40,13 +40,18 @@ interface CompanionLayerProps {
   navigationRef?: any;
 }
 
-export function CompanionLayer(_props: CompanionLayerProps) {
+export function CompanionLayer(props: CompanionLayerProps) {
   return (
     <>
       {/* Floating ball — single-tap delegates to ConversationBubble.present(),
           long-press to PetDetailSheet.present() (handled internally by the
-          ball wrapper via companionSheets imperative refs). */}
+          ball wrapper via companionSheets imperative refs).
+
+          Wave 17 hotfix — pass navigationRef through so CompanionBall can
+          read state via the ref instead of useNavigationState (which
+          throws when no Navigator subtree exists yet, e.g. SplashScreen). */}
       <CompanionBall
+        navigationRef={props.navigationRef}
         onSingleTap={() => companionSheets.conversation.present({ autoActivateVoice: true })}
         onLongPress={() => companionSheets.petDetail.present()}
         onRightSwipe={() => companionSheets.conversation.present({ autoOpenCamera: true })}

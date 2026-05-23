@@ -25,7 +25,6 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Platform, View, StyleSheet } from 'react-native';
-import { useNavigationState } from '@react-navigation/native';
 import * as Battery from 'expo-battery';
 import { GlobalFloatingBall } from '../GlobalFloatingBall';
 import { useCompanionLayoutStore } from '../../stores/companionLayoutStore';
@@ -41,6 +40,14 @@ interface CompanionBallProps {
   onLongPress?: () => void;
   /** Optional callback invoked on right-swipe (default: open camera → Conversation). */
   onRightSwipe?: () => void;
+  /**
+   * Wave 17 hotfix — caller-provided NavigationContainerRef so we can
+   * read root state without `useNavigationState` (which throws when no
+   * Navigator is mounted, e.g. during SplashScreen or auth flip).
+   * The ref is created at App.tsx module scope so it survives any
+   * remount.
+   */
+  navigationRef?: any;
 }
 
 /**
@@ -83,7 +90,43 @@ const HIDE_ON_DEEP_ROUTES = new Set([
 ]);
 
 export function CompanionBall(props: CompanionBallProps) {
-  const navState = useNavigationState((state) => state);
+  // Wave 17 hotfix — read navigation state via the navigation ref instead
+  // of useNavigationState. The hook throws "Couldn't get the navigation
+  // state. Is your component inside a navigator?" when no Navigator is
+  // mounted yet (cold launch SplashScreen, auth flip, E2E surrogate
+  // apps). Reading the ref is safe — `current` may be null which we
+  // handle with the nullish-coalescing fallback below.
+  //
+  // We poll the ref via a state subscription set up in useEffect so the
+  // ball repaints on tab changes. The state listener is wired in
+  // App.tsx via navigationRef.addListener('state', ...).
+  const [navState, setNavState] = useState<any>(() => {
+    try {
+      return props.navigationRef?.current?.getRootState?.() ?? null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    const ref = props.navigationRef?.current;
+    if (!ref?.addListener) return;
+    const unsubscribe = ref.addListener('state', () => {
+      try {
+        setNavState(ref.getRootState());
+      } catch {
+        /* ignore — ref unmounted between calls */
+      }
+    });
+    return () => {
+      try {
+        unsubscribe?.();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [props.navigationRef]);
+
   const layoutStore = useCompanionLayoutStore();
   const activePet = useActivePet();
 

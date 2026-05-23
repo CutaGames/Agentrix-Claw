@@ -576,6 +576,31 @@ function AppNavigator() {
   return <RootNavigator />;
 }
 
+/**
+ * Wave 17 hotfix — gate CompanionLayer mount on isInitialized so we don't
+ * call useNavigationState before AppNavigator has had a chance to mount
+ * RootNavigator (the registered Navigator subtree). Without this gate,
+ * the SplashScreen render → CompanionBall mount → useNavigationState
+ * happens with no Navigator in the tree, throwing "Couldn't get the
+ * navigation state. Is your component inside a navigator?".
+ *
+ * Also waits for `isAuthenticated` because CompanionBall + sheets only
+ * make sense after login; the legacy floating ball does the same.
+ */
+function CompanionLayerGate() {
+  const isInitialized = useAuthStore((s) => s.isInitialized);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isPetSoulE2EOnce = isPetSoulE2EEnabled();
+  const isVoiceUiE2EOnce = isVoiceUiE2EEnabled();
+  if (!isInitialized) return null;
+  // Don't mount during the E2E surrogate apps either — they swap
+  // AppNavigator for a stripped-down PetSoulE2EApp / VoiceUiE2EApp that
+  // doesn't expose Main / World / Plaza routes.
+  if (isPetSoulE2EOnce || isVoiceUiE2EOnce) return null;
+  if (!isAuthenticated) return null;
+  return <CompanionLayer navigationRef={navigationRef} />;
+}
+
 // Deep link config
 //
 // MOBILE_REFACTOR_AND_ECOSYSTEM_PLAN_2026-05 Sprint A:
@@ -737,8 +762,14 @@ export default function App() {
                     layer. Mounts INSIDE NavigationContainer so children can
                     call useNavigation()/useNavigationState(), but OUTSIDE
                     the tab navigator so it persists across tab switches.
-                    See src/components/companion/CompanionLayer.tsx. */}
-                <CompanionLayer navigationRef={navigationRef} />
+                    Wave 17 fix: gate by isInitialized so SplashScreen ≠
+                    "navigator state not ready" crash (the bug a tester hit
+                    showing "Couldn't get the navigation state. Is your
+                    component inside a navigator?"). The CompanionBall
+                    inside CompanionLayer reads useNavigationState which
+                    requires a mounted Navigator subtree — we mount it only
+                    after AppNavigator returns RootNavigator. */}
+                <CompanionLayerGate />
               </NavigationContainer>
             </BottomSheetModalProvider>
           </QueryClientProvider>
