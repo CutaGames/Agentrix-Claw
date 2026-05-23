@@ -119,6 +119,7 @@ export type MeStackParamList = {
   Scan: undefined;
   ReferralDashboard: undefined;
   Settings: undefined;
+  CompanionSettings: undefined;
   ApiKeys: undefined;
   Account: undefined;
   MySkills: undefined;
@@ -275,24 +276,21 @@ export type PlazaStackParamList = {
   ToyCustom: undefined;
 };
 
-// ── Main Tab (new 4 visible + legacy hidden for back-compat) ──────────────
+// ── Main Tab (P-9 Companion Redesign T2.2: 4 visible only, no hidden legacies) ──
 
 export type MainTabParamList = {
-  // New canonical 4 tabs (visible)
-  Home: undefined;
+  // 🌍 World — World Engine + create digital character (default initial route)
+  World: undefined;
+  // 🔮 Summon — multi-session conversation surface
   Summon: undefined;
+  // 🎪 Plaza — feed / market / messaging / play
   Plaza: undefined;
+  // 👤 Me — user, wallet, settings, companion settings, etc.
   Me: undefined;
-  // Legacy tab names retained as hidden aliases so existing
-  // `navigate('Agent' / 'Discover' / ...)` call sites still work.
-  // They point to the same underlying stacks as the new tabs.
-  Today: undefined;      // → Home alias
-  Agent: undefined;      // → Summon alias (AgentStackNavigator still mounted)
-  Pet: undefined;        // → Home alias (PetStackNavigator kept for legacy)
-  Team: undefined;       // → Me alias (TeamStackNavigator reused inside Me)
-  Wallet: undefined;     // → Me alias (WalletStackNavigator reused inside Me)
-  Discover: undefined;   // → Plaza alias (DiscoverStackNavigator reused inside Plaza)
 };
+
+// Re-export WorldStackParamList from the navigator file for cross-tab nav typing.
+export type { WorldStackParamList } from './WorldStackNavigator';
 
 export type RootStackParamList = {
   Auth: undefined;

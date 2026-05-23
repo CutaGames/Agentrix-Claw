@@ -1,31 +1,32 @@
 /**
- * MainTabNavigator — Sprint A refactor.
+ * MainTabNavigator — P-9 Companion Redesign T2.2.
  *
- * Source spec: MOBILE_REFACTOR_AND_ECOSYSTEM_PLAN_2026-05 §2.
+ * Source spec: requirements.md R3 / R11.1-R11.6.
  *
- * Visible tabs: 🏠 Home · 🔮 Summon · 🎪 Plaza · 👤 Me
- * Hidden legacy tabs kept mounted as back-compat so call sites like
- * `navigate('Agent', ...)` / `navigate('Discover', ...)` keep working
- * during the transition. They will be removed in Sprint D after all
- * call sites are migrated.
+ * Visible tabs: 🌍 World · 🔮 Summon · 🎪 Plaza · 👤 Me
+ *   - Default initialRoute = 'World' (R3.1 / D5.A — kill the "Home" tab,
+ *     promote World Engine to tier-1 default).
+ *   - Pet/Wallet/Agent/Discover/Team/Today/Home legacy tabs are GONE
+ *     (R11.3, R11.10). The legacyRouteTable.ts redirects all old deep
+ *     links to the new IA before React Navigation parses them, so old
+ *     `agentrix://home/...` / `agentrix://pet/...` URLs still resolve.
+ *
+ * Notes:
+ *   - The companion floating ball is visible in World/Plaza/Me but NOT
+ *     in Summon (Summon = the conversation surface itself; the ball would
+ *     duplicate the destination). See CompanionLayer.tsx.
+ *   - All old Pet drawer screens (Wardrobe / SoulPicker / Breed / etc.)
+ *     are re-mounted under MeStack (T6.7) and reachable via PetDetailSheet
+ *     (T6.6) instead of a dedicated Pet tab.
  */
 import React from 'react';
 import { Text, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { MainTabParamList } from './types';
-import { HomeStackNavigator } from './HomeStackNavigator';
+import { WorldStackNavigator } from './WorldStackNavigator';
 import { SummonStackNavigator } from './SummonStackNavigator';
 import { PlazaStackNavigator } from './PlazaStackNavigator';
 import { MeStackNavigator } from './MeStackNavigator';
-
-// Legacy stacks kept mounted (hidden from tab bar) so existing
-// navigate('Agent' | 'Discover' | 'Team' | 'Pet' | 'Wallet', ...) calls
-// still reach the right Stack without crashing during migration.
-import { AgentStackNavigator } from './AgentStackNavigator';
-import { DiscoverStackNavigator } from './DiscoverStackNavigator';
-import { TeamStackNavigator } from './TeamStackNavigator';
-import { PetStackNavigator } from './PetStackNavigator';
-import { WalletStackNavigator } from './WalletStackNavigator';
 
 import { colors } from '../theme/colors';
 import { useNotificationStore } from '../stores/notificationStore';
@@ -56,11 +57,6 @@ function TabIcon({ emoji, focused, badge }: { emoji: string; focused: boolean; b
   );
 }
 
-const HIDDEN_TAB_OPTIONS = {
-  tabBarItemStyle: { display: 'none' as const },
-  tabBarButton: () => null,
-};
-
 export function MainTabNavigator() {
   const { t } = useI18n();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
@@ -69,7 +65,7 @@ export function MainTabNavigator() {
   return (
     <Tab.Navigator
       id={undefined}
-      initialRouteName="Home"
+      initialRouteName="World"
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
@@ -85,13 +81,12 @@ export function MainTabNavigator() {
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600', marginTop: 2 },
       }}
     >
-      {/* ── Canonical 4 tabs ─────────────────────────────────── */}
       <Tab.Screen
-        name="Home"
-        component={HomeStackNavigator}
+        name="World"
+        component={WorldStackNavigator}
         options={{
-          title: t({ en: 'Home', zh: '家' }),
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🏠" focused={focused} />,
+          title: t({ en: 'World', zh: '世界' }),
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🌍" focused={focused} />,
         }}
       />
       <Tab.Screen
@@ -119,38 +114,6 @@ export function MainTabNavigator() {
             <TabIcon emoji="👤" focused={focused} badge={unreadCount + approvalCount} />
           ),
         }}
-      />
-
-      {/* ── Hidden legacy tabs (back-compat) ─────────────────── */}
-      <Tab.Screen
-        name="Today"
-        component={HomeStackNavigator}
-        options={HIDDEN_TAB_OPTIONS}
-      />
-      <Tab.Screen
-        name="Agent"
-        component={AgentStackNavigator}
-        options={HIDDEN_TAB_OPTIONS}
-      />
-      <Tab.Screen
-        name="Pet"
-        component={PetStackNavigator}
-        options={HIDDEN_TAB_OPTIONS}
-      />
-      <Tab.Screen
-        name="Team"
-        component={TeamStackNavigator}
-        options={HIDDEN_TAB_OPTIONS}
-      />
-      <Tab.Screen
-        name="Wallet"
-        component={WalletStackNavigator}
-        options={HIDDEN_TAB_OPTIONS}
-      />
-      <Tab.Screen
-        name="Discover"
-        component={DiscoverStackNavigator}
-        options={HIDDEN_TAB_OPTIONS}
       />
     </Tab.Navigator>
   );

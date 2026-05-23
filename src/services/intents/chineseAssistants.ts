@@ -27,7 +27,13 @@ export type AgentrixIntentName =
   // V4 additions
   | 'create_pet'
   | 'switch_skin'
-  | 'market_search';
+  | 'market_search'
+  // P-9 wave 9 additions (mobile-pet-companion-redesign §9.4 / 9.5)
+  | 'start_world_scan'
+  | 'enter_dungeon'
+  | 'install_skill'
+  | 'remote_control'
+  | 'quiet_30';
 
 export interface IntentSpec {
   name: AgentrixIntentName;
@@ -113,6 +119,57 @@ export const INTENT_MANIFEST: IntentSpec[] = [
       en: ['Search marketplace for ${query}', 'Find ${query} skin'],
     },
     params: { query: '搜索关键字', category: 'skin / skill / task,默认 skin' },
+  },
+  // ── P-9 wave 9 additions (mobile-pet-companion-redesign §9.4 / 9.5) ───
+  {
+    name: 'start_world_scan',
+    zhTitle: '开始扫描',
+    enTitle: 'Start World Scan',
+    utterances: {
+      zh: ['打开扫描', '扫描物体', '快速扫描', '${mode} 扫描'],
+      en: ['Open World scan', 'Scan an object', 'Quick scan', '${mode} scan'],
+    },
+    params: { mode: 'quick / detail / room,默认 quick' },
+  },
+  {
+    name: 'enter_dungeon',
+    zhTitle: '进入副本',
+    enTitle: 'Enter Dungeon',
+    utterances: {
+      zh: ['用分享码 ${shareCode} 进副本', '进副本 ${shareCode}'],
+      en: ['Enter dungeon ${shareCode}', 'Join dungeon with code ${shareCode}'],
+    },
+    params: { shareCode: '副本分享码 / 房间号' },
+  },
+  {
+    name: 'install_skill',
+    zhTitle: '安装技能',
+    enTitle: 'Install Skill',
+    utterances: {
+      zh: ['给 Aira 装 ${name} 技能', '安装 ${name}'],
+      en: ['Install ${name} skill', 'Add ${name} to Aira'],
+    },
+    params: { name: '技能名字片段' },
+  },
+  {
+    name: 'remote_control',
+    zhTitle: '远程控制',
+    enTitle: 'Remote Control',
+    utterances: {
+      zh: ['让桌面 ${command}', '在音箱播报 ${command}', '执行 ${command}'],
+      en: ['Run ${command} on desktop', 'Have speaker ${command}'],
+    },
+    params: { command: '命令名(白名单中的 desktop.* / speaker.* / watch.*)' },
+  },
+  {
+    name: 'quiet_30',
+    zhTitle: '静音半小时',
+    enTitle: 'Quiet 30',
+    utterances: {
+      zh: ['让 Aira 安静 30 分钟', '别打扰我半小时', '静音半小时'],
+      en: ['Quiet for 30 minutes', "Don't disturb me for half an hour"],
+    },
+    params: {},
   },
 ];
 

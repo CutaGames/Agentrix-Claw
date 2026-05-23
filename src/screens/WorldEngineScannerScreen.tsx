@@ -39,6 +39,12 @@ import {
   getFaceRejectionMessage,
   type DetectedFace,
 } from '../utils/faceDetection';
+import {
+  startScan,
+  uploadScanFrame,
+  generateFromScan,
+  type ScanMode as ApiScanMode,
+} from '../services/worldEngineApi';
 
 // ============================================================
 // Types
@@ -294,19 +300,53 @@ export default function WorldEngineScannerScreen() {
     setIsSubmitting(true);
 
     try {
-      // TODO: Upload frames to backend via POST /api/v1/world-engine/scan/start
-      // then POST /scan/:sessionId/upload for each frame
-      // then POST /scan/:sessionId/generate
+      // Sprint P-8 (2026-05-22): real backend pipeline.
+      //   1) POST /scan/start            → sessionId
+      //   2) POST /scan/:id/upload (×N)  → per-frame quality score
+      //   3) POST /scan/:id/generate     → jobId + estimatedSeconds
+      //   4) navigate to ReconstructionProgress polling /jobs/:id/status
+      const { sessionId } = await startScan(scanMode as ApiScanMode);
 
-      // Phase 1: Navigate to a loading/progress screen
-      // In production, this would use the offline queue (up to 5 requests, 7-day retention)
-      Alert.alert(
-        '已提交',
-        `${capturedFrames.length} 张图片已提交生成。预计需要 ${scanMode === 'quick' ? '15' : '60'} 秒。`,
-        [{ text: '确定', onPress: () => navigation.goBack() }],
+      let uploadedCount = 0;
+      for (const frame of capturedFrames) {
+        try {
+          await uploadScanFrame(sessionId, {
+            uri: frame.uri,
+            mime: 'image/jpeg',
+            name: `frame_${uploadedCount}.jpg`,
+          });
+          uploadedCount += 1;
+        } catch (uploadErr) {
+          console.warn('[WorldEngineScanner] upload frame failed:', uploadErr);
+          // Continue uploading remaining frames; backend's minFrames
+          // check will surface a clear error if too many fail.
+        }
+      }
+
+      if (uploadedCount === 0) {
+        Alert.alert('上传失败', '所有帧上传失败,请检查网络后重试。');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const { jobId, estimatedSeconds } = await generateFromScan(
+        sessionId,
+        'cartoon',
       );
-    } catch (error) {
-      Alert.alert('提交失败', '网络错误，已保存到离线队列。将在恢复连接后自动重试。');
+
+      // Hand off to the progress screen which polls /jobs/:id/status.
+      // Use replace so the user can't swipe back to the scanner mid-flight.
+      // Sprint P-8 P2 (2026-05-22): also pass sessionId so the progress
+      // screen can auto-trigger /dungeons/generate when scanMode === 'room'.
+      (navigation as any).replace('ReconstructionProgress', {
+        jobId,
+        estimatedSeconds,
+        scanMode,
+        scanSessionId: sessionId,
+      });
+    } catch (error: any) {
+      const msg = error?.message || '网络错误,请检查后重试。';
+      Alert.alert('提交失败', msg);
     } finally {
       setIsSubmitting(false);
     }

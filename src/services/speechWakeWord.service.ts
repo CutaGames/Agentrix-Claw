@@ -1,5 +1,6 @@
 import { isLiveSpeechRecognitionAvailable, requestLiveSpeechPermissions, startLiveSpeechRecognition, type LiveSpeechController } from './liveSpeech.service';
 import { addVoiceDiagnostic } from './voiceDiagnostics';
+import { isWakeWordSuspended } from './wakeWordSuspend';
 
 export interface SpeechWakeWordConfig {
   phrases: string[];
@@ -170,6 +171,14 @@ export class SpeechWakeWordService {
           if (!matched) {
             return;
           }
+          // P-9 wave 11/15 — system wake-word suspend gate (R9.11). When
+          // a system assistant ("Hey Siri" / "小爱同学") just fired, the
+          // suspend window blocks our self wake-word for ~8s so the
+          // user only sees one assistant.
+          if (isWakeWordSuspended()) {
+            addVoiceDiagnostic('speech-wake', 'suspended-skip', { matched });
+            return;
+          }
           this.stoppedManually = true;
           this.controller?.abort();
           this.controller = null;
@@ -180,6 +189,10 @@ export class SpeechWakeWordService {
         onFinalResult: (transcript) => {
           const matched = findMatchedPhrase(transcript, phrases);
           if (!matched) {
+            return;
+          }
+          if (isWakeWordSuspended()) {
+            addVoiceDiagnostic('speech-wake', 'suspended-skip', { matched });
             return;
           }
           this.stoppedManually = true;

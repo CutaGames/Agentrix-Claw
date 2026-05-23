@@ -177,6 +177,59 @@ export const LEGACY_ROUTE_MAP: Record<string, string> = {
   'agentrix://auth/callback': 'agentrix://auth/callback',
   'agentrix://login': 'agentrix://login',
   'agentrix://invitation-gate': 'agentrix://invitation-gate',
+
+  // ========== P-9 Companion Redesign (T2.4): Home tab is GONE ==========
+  // The old `agentrix://home` and `agentrix://home/pet/*` routes were the
+  // canonical post-Sprint-A targets for many of the legacy mappings above.
+  // Phase 1 deletes the Home tab, so we add a second redirection layer
+  // that maps `agentrix://home/*` to the new IA (World / Me / etc).
+  //
+  // Order matters: more-specific patterns must come first so they win the
+  // longest-prefix match. The single bare `agentrix://home` falls back to
+  // the new default tab (World).
+  'agentrix://home': 'agentrix://world',
+  // Pet drawer entries — most go to PetDetailSheet (deep path under Me)
+  'agentrix://home/pet/companion': 'agentrix://me/companion',
+  'agentrix://home/pet/skills': 'agentrix://me/skills',
+  'agentrix://home/pet/tasks': 'agentrix://plaza/tasks',
+  'agentrix://home/pet/wallet': 'agentrix://me/wallet',
+  'agentrix://home/pet/wallet/balance': 'agentrix://me/wallet',
+  'agentrix://home/pet/memory': 'agentrix://me/companion/memory',
+  'agentrix://home/pet/memory/dreaming': 'agentrix://me/companion/memory/dreaming',
+  'agentrix://home/pet/memory/logs': 'agentrix://me/companion/memory/logs',
+  'agentrix://home/pet/play': 'agentrix://me/companion/play',
+  'agentrix://home/pet/wardrobe': 'agentrix://me/companion/wardrobe',
+  'agentrix://home/pet/soul': 'agentrix://me/companion/soul',
+  'agentrix://home/pet/breed': 'agentrix://me/companion/breed',
+  'agentrix://home/pet/identity': 'agentrix://me/companion/identity',
+  // Creator + camera-scan now live under World tab (T2.1)
+  'agentrix://home/pet/creator': 'agentrix://world/create/text',
+  'agentrix://home/pet/camera-scan': 'agentrix://world/create/photo',
+  'agentrix://home/pet/permissions': 'agentrix://me/companion/permissions',
+  'agentrix://home/pet/space': 'agentrix://me/companion/space',
+  'agentrix://home/pet/space/*': 'agentrix://me/companion/space/*',
+  'agentrix://home/pet/team': 'agentrix://me/companion/team',
+  'agentrix://home/pet/skills/workflow': 'agentrix://me/skills/workflow',
+  'agentrix://home/pet/skills/workflow/*': 'agentrix://me/skills/workflow/*',
+  // World Engine (already under WorldStack but legacy used home/pet/world-*)
+  'agentrix://home/pet/world-scan': 'agentrix://world/scan',
+  'agentrix://home/pet/world-assets': 'agentrix://world/inventory',
+  // Co-Raising → Me/companion entry (T6.8 wires)
+  'agentrix://home/co-raising': 'agentrix://me/companion/co-raising',
+  'agentrix://home/co-raising/landing': 'agentrix://me/companion/co-raising/landing',
+  'agentrix://home/co-raising/landing/*': 'agentrix://me/companion/co-raising/landing/*',
+  'agentrix://home/co-raising/invite': 'agentrix://me/companion/co-raising/invite',
+  'agentrix://home/co-raising/activity': 'agentrix://me/companion/co-raising/activity',
+  // Plan Approval reused via global Inbox modal
+  'agentrix://home/approvals': 'agentrix://inbox',
+  // NFT Mint → Me/companion
+  'agentrix://home/nft-mint': 'agentrix://me/companion/nft-mint',
+  // Catch-all for anything else under home/* (lowest specificity)
+  'agentrix://home/*': 'agentrix://world',
+
+  // ========== Wallet tab (隐藏) → Me/wallet ==========
+  'agentrix://wallet': 'agentrix://me/wallet',
+  'agentrix://wallet/*': 'agentrix://me/wallet/*',
 };
 
 /**

@@ -1,0 +1,502 @@
+/**
+ * ConversationBubble — BottomSheet that surfaces the companion conversation
+ * without leaving the current tab.
+ *
+ * Phase 1 strategy (T5):
+ *   - Snap points 65% and 100%. Pull to 100% jumps to Summon Tab so the
+ *     user keeps the same conversation in full-screen mode.
+ *   - Reuses AgentChatScreen as the chat surface. Phase 1 doesn't lift
+ *     useVoiceSession into a shared store yet; instead the bubble is a
+ *     **launcher / preview** that lets the user start a turn in 65% and
+ *     dump them into full Summon when more space is needed. This avoids
+ *     a 1500-line refactor of useVoiceSession before we ship 4-tab IA.
+ *   - When `autoOpenCamera` arrives we launch expo-image-picker first,
+ *     then jump straight to AgentChat with the photo attachment in the
+ *     route params (existing AgentChatScreen path supports this).
+ *
+ * Wave 4+ (T5.2 follow-up) will lift the streaming chat state into a
+ * shared `conversationStore` so 65% and full-screen render the same
+ * messages live without re-mounting AgentChatScreen.
+ *
+ * Spec: requirements.md R2.1 / R2.6 / R2.7, design.md §Components/Core 2.
+ */
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  Pressable,
+  ActivityIndicator,
+} from 'react-native';
+import {
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  BottomSheetView,
+} from '@gorhom/bottom-sheet';
+import * as ImagePicker from 'expo-image-picker';
+import { useNavigation } from '@react-navigation/native';
+import { colors } from '../../theme/colors';
+import { useActivePet } from '../../services/activePet.service';
+import { companionEvents } from '../../services/companionEvents.service';
+import {
+  conversationBubbleRef,
+  type ConversationBubbleHandle,
+  type ConversationBubblePresentOpts,
+} from './sheetRefRegistry';
+
+const SNAP_POINTS = ['65%', '100%'];
+
+export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
+  function ConversationBubble(_props, externalRef) {
+    const sheetRef = useRef<BottomSheetModal>(null);
+    const navigation = useNavigation<any>();
+    const pet = useActivePet();
+
+    const [draft, setDraft] = useState('');
+    const [pendingAttachments, setPendingAttachments] = useState<
+      Array<{ uri: string; kind: 'image' | 'audio' }>
+    >([]);
+    const [voiceActive, setVoiceActive] = useState(false);
+    const [busy, setBusy] = useState(false);
+
+    const reset = useCallback(() => {
+      setDraft('');
+      setPendingAttachments([]);
+      setVoiceActive(false);
+      setBusy(false);
+    }, []);
+
+    const present = useCallback(
+      (opts?: ConversationBubblePresentOpts) => {
+        reset();
+        if (opts?.initialPrompt) setDraft(opts.initialPrompt);
+        if (opts?.attachments?.length) setPendingAttachments(opts.attachments);
+        if (opts?.autoActivateVoice) setVoiceActive(true);
+        sheetRef.current?.present();
+
+        if (opts?.autoOpenCamera) {
+          // Fire-and-forget; user may dismiss while picker is open.
+          (async () => {
+            try {
+              const perm = await ImagePicker.requestCameraPermissionsAsync();
+              if (!perm.granted) return;
+              setBusy(true);
+              const res = await ImagePicker.launchCameraAsync({
+                allowsEditing: false,
+                quality: 0.85,
+                exif: false,
+              });
+              if (!res.canceled && res.assets?.[0]) {
+                setPendingAttachments((prev) => [
+                  ...prev,
+                  { uri: res.assets![0]!.uri, kind: 'image' as const },
+                ]);
+                if (!opts.initialPrompt) setDraft('这是什么?');
+              }
+            } catch (err) {
+              console.warn('[ConversationBubble] camera failed:', err);
+            } finally {
+              setBusy(false);
+            }
+          })();
+        }
+      },
+      [reset],
+    );
+
+    const dismiss = useCallback(() => {
+      sheetRef.current?.dismiss();
+      reset();
+    }, [reset]);
+
+    const expandToFull = useCallback(() => {
+      sheetRef.current?.snapToIndex(1);
+    }, []);
+
+    // Register the imperative handle into both the forwarded ref and the
+    // module-scope registry so non-React callers (deep-link handler,
+    // companion ball single-tap) can call present() too.
+    const handle = useMemo<ConversationBubbleHandle>(
+      () => ({ present, dismiss, expandToFull }),
+      [present, dismiss, expandToFull],
+    );
+
+    useImperativeHandle(externalRef, () => handle, [handle]);
+
+    useEffect(() => {
+      conversationBubbleRef.current = handle;
+      return () => {
+        conversationBubbleRef.current = null;
+      };
+    }, [handle]);
+
+    const renderBackdrop = useCallback(
+      (props: any) => (
+        <BottomSheetBackdrop
+          {...props}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          pressBehavior="close"
+          opacity={0.4}
+        />
+      ),
+      [],
+    );
+
+    const handleSendOrJump = useCallback(() => {
+      // Phase 1: bubble = launcher. Forward draft + attachments into
+      // AgentChatScreen for the actual streaming turn so we don't fork
+      // chat state across two surfaces. T5.2 will replace this with a
+      // shared conversationStore.
+      const params: any = {
+        autoVoice: voiceActive,
+        prefillText: draft || undefined,
+        attachments: pendingAttachments.length ? pendingAttachments : undefined,
+      };
+      sheetRef.current?.dismiss();
+      reset();
+      try {
+        navigation.navigate('Main', { screen: 'Summon', params: { screen: 'SummonRoot', params } });
+      } catch {
+        // Fallback for nested navigator differences in older builds
+        navigation.navigate('AgentChat', params);
+      }
+    }, [voiceActive, draft, pendingAttachments, navigation, reset]);
+
+    const handleSnapChange = useCallback(
+      (index: number) => {
+        if (index === 1) {
+          // 100% — escalate to full-screen Summon and dismiss bubble.
+          // Defer one frame so the snap animation can complete cleanly.
+          setTimeout(() => handleSendOrJump(), 200);
+        }
+      },
+      [handleSendOrJump],
+    );
+
+    const handleSheetDismiss = useCallback(() => {
+      reset();
+      // Phase 1: explicitly tell mode bus the user closed the bubble so
+      // the ball can fall back to companion mode if it had transitioned
+      // to whisper / listening for this turn.
+      companionEvents.emit({
+        type: 'mode-changed',
+        from: 'whisper',
+        to: 'companion',
+        source: 'bubble-dismissed',
+      });
+    }, [reset]);
+
+    return (
+      <BottomSheetModal
+        ref={sheetRef}
+        snapPoints={SNAP_POINTS}
+        index={0}
+        backdropComponent={renderBackdrop}
+        backgroundStyle={styles.sheetBg}
+        handleIndicatorStyle={styles.handleIndicator}
+        enableDismissOnClose
+        onChange={handleSnapChange}
+        onDismiss={handleSheetDismiss}
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+      >
+        <BottomSheetView style={styles.container}>
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.headerLeft}>
+              <Text style={styles.headerEmoji}>🐾</Text>
+              <View>
+                <Text style={styles.headerName}>{pet.name}</Text>
+                <Text style={styles.headerMode}>
+                  {voiceActive ? '在听…' : '准备好了'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.headerRight}>
+              <TouchableOpacity onPress={expandToFull} style={styles.iconBtn} accessibilityLabel="放大到全屏">
+                <Text style={styles.iconText}>⛶</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={dismiss} style={styles.iconBtn} accessibilityLabel="关闭">
+                <Text style={styles.iconText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Routing badge (top-right of body) — Phase 1 stub showing
+              "云端" / "本地" without yet wiring resolveLocalTurnExecution.
+              Wave 5 will read mobileLocalMultimodalRouting.service. */}
+          <View style={styles.routingBadgeRow}>
+            <View style={styles.routingBadge}>
+              <Text style={styles.routingBadgeText}>🌐 云端</Text>
+            </View>
+          </View>
+
+          {/* Body — Phase 1 launcher mode */}
+          <View style={styles.body}>
+            {pendingAttachments.length > 0 && (
+              <View style={styles.attachmentRow}>
+                {pendingAttachments.map((a, idx) => (
+                  <View key={idx} style={styles.attachmentChip}>
+                    <Text style={styles.attachmentChipText}>
+                      {a.kind === 'image' ? '🖼' : '🎙'} 已附 1 项
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {busy ? (
+              <View style={styles.busyRow}>
+                <ActivityIndicator color={colors.accent} />
+                <Text style={styles.busyText}>相机准备中…</Text>
+              </View>
+            ) : null}
+
+            <Text style={styles.bodyHint}>
+              直接说话或输入,我会接住。也可以先拍照,然后向我提问。
+            </Text>
+          </View>
+
+          {/* Composer */}
+          <View style={styles.composer}>
+            <TouchableOpacity
+              style={styles.composerIcon}
+              onPress={async () => {
+                try {
+                  const res = await ImagePicker.launchImageLibraryAsync({
+                    quality: 0.85,
+                    allowsMultipleSelection: false,
+                  });
+                  if (!res.canceled && res.assets?.[0]) {
+                    setPendingAttachments((prev) => [
+                      ...prev,
+                      { uri: res.assets![0]!.uri, kind: 'image' as const },
+                    ]);
+                  }
+                } catch {
+                  /* ignore */
+                }
+              }}
+              accessibilityLabel="相册"
+            >
+              <Text style={styles.composerIconText}>📁</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.composerIcon}
+              onPress={async () => {
+                try {
+                  const perm = await ImagePicker.requestCameraPermissionsAsync();
+                  if (!perm.granted) return;
+                  const res = await ImagePicker.launchCameraAsync({ quality: 0.85 });
+                  if (!res.canceled && res.assets?.[0]) {
+                    setPendingAttachments((prev) => [
+                      ...prev,
+                      { uri: res.assets![0]!.uri, kind: 'image' as const },
+                    ]);
+                    if (!draft) setDraft('这是什么?');
+                  }
+                } catch {
+                  /* ignore */
+                }
+              }}
+              accessibilityLabel="相机"
+            >
+              <Text style={styles.composerIconText}>📷</Text>
+            </TouchableOpacity>
+            <Pressable
+              style={[styles.composerIcon, voiceActive && styles.composerIconActive]}
+              onPress={() => setVoiceActive((v) => !v)}
+              accessibilityLabel="切换语音"
+            >
+              <Text style={styles.composerIconText}>🎤</Text>
+            </Pressable>
+
+            <TextInput
+              style={styles.input}
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="说点什么…"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              maxLength={500}
+            />
+
+            <TouchableOpacity
+              style={[
+                styles.sendBtn,
+                draft.trim().length === 0 && pendingAttachments.length === 0 && !voiceActive
+                  ? styles.sendBtnDisabled
+                  : null,
+              ]}
+              onPress={handleSendOrJump}
+              disabled={draft.trim().length === 0 && pendingAttachments.length === 0 && !voiceActive}
+              accessibilityLabel="发送"
+            >
+              <Text style={styles.sendBtnText}>▶</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.escapeHint}>↑ 上滑或点击 ⛶ 在 Summon 里继续完整对话</Text>
+        </BottomSheetView>
+      </BottomSheetModal>
+    );
+  },
+);
+
+const styles = StyleSheet.create({
+  sheetBg: {
+    backgroundColor: colors.bgCard,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+  },
+  handleIndicator: {
+    backgroundColor: colors.border,
+    width: 40,
+  },
+  container: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 6,
+    paddingBottom: 10,
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  headerEmoji: { fontSize: 28 },
+  headerName: { color: colors.textPrimary, fontWeight: '700', fontSize: 16 },
+  headerMode: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  headerRight: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  iconBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  iconText: { color: colors.textPrimary, fontSize: 16, fontWeight: '600' },
+  routingBadgeRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingTop: 10,
+  },
+  routingBadge: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: colors.bgPrimary,
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  routingBadgeText: { color: colors.textPrimary, fontSize: 11, fontWeight: '600' },
+  body: {
+    flex: 1,
+    paddingTop: 12,
+  },
+  attachmentRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  attachmentChip: {
+    backgroundColor: colors.bgPrimary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  attachmentChipText: { color: colors.textPrimary, fontSize: 12 },
+  busyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+  },
+  busyText: { color: colors.textMuted, fontSize: 12 },
+  bodyHint: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: 8,
+    lineHeight: 18,
+  },
+  composer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 10,
+    paddingBottom: 6,
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  composerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bgPrimary,
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  composerIconActive: {
+    backgroundColor: colors.accent + '33',
+    borderColor: colors.accent,
+  },
+  composerIconText: { fontSize: 18 },
+  input: {
+    flex: 1,
+    minHeight: 36,
+    maxHeight: 90,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: colors.bgPrimary,
+    borderColor: colors.border,
+    borderWidth: 1,
+    color: colors.textPrimary,
+    fontSize: 14,
+  },
+  sendBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent,
+  },
+  sendBtnDisabled: {
+    backgroundColor: colors.bgPrimary,
+  },
+  sendBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  escapeHint: {
+    color: colors.textMuted,
+    fontSize: 11,
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+});

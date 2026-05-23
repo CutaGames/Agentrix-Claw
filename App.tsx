@@ -29,6 +29,11 @@ import {
 } from './src/services/androidBackgroundWakeWord.service';
 import { initLlamaBridge } from './src/services/llamaRnBridge';
 import { initCrashReport, setUser as setCrashUser } from './src/services/crashReport';
+import { bootPetModeBus } from './src/services/petMode';
+import { bootPetModeAdapters } from './src/services/petModeAdapters';
+import { bootVoiceGreetScheduler } from './src/services/voiceGreetScheduler.service';
+import { bootFormVariantWatcher } from './src/services/formVariant.service';
+import { bootCompanionHealthWatcher } from './src/services/companionHealth.service';
 import { initIap, setUser as setIapUser } from './src/services/iap.service';
 import {
   initAnalytics,
@@ -39,6 +44,9 @@ import { OtaModelDownloadService } from './src/services/otaModelDownload.service
 import { WatchDataLayerService } from './src/services/wearables/watchDataLayerBridge.service';
 import { AxpToastHost } from './src/components/AxpToastHost';
 import { MobilePetProactiveBanner } from './src/components/pet/MobilePetProactiveBanner';
+import { CompanionLayer } from './src/components/companion/CompanionLayer';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { resolveLegacyPath } from './src/navigation/legacyRouteTable';
 import { getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
 import { attachLinkingListener } from './src/services/intents/intentBridge';
@@ -46,6 +54,12 @@ import { installDefaultIntentHandlers } from './src/services/intents/defaultInte
 
 // Register llama.rn bridge for on-device LLM inference
 initLlamaBridge();
+
+// Sprint P-6 (2026-05-22): boot the pet form-state bus so the
+// GlobalFloatingBall and any future pet surfaces can subscribe to a
+// single source of truth for "what is the pet doing right now". Mirror
+// of the desktop bus, mobile-tailored (no Pro Mode, no Computer Use).
+bootPetModeBus();
 
 // Initialize Sentry crash reporting (no-op if SENTRY_DSN unset)
 initCrashReport();
@@ -68,15 +82,32 @@ const queryClient = new QueryClient({
 const isMaestroE2E = process.env.EXPO_PUBLIC_MAESTRO_E2E === '1';
 
 function SplashScreen() {
+  // P-9 wave 12 (T23.1): brand the splash with the active pet sprite
+  // instead of the placeholder "AX" tile. Pure require — no network.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+  const { PetSpriteImage } = require('./src/components/PetSpriteImage') as typeof import('./src/components/PetSpriteImage');
   return (
     <View style={{ flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ width: 64, height: 64, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-        <Text style={{ color: '#fff', fontSize: 28, fontWeight: '900', letterSpacing: -1 }}>AX</Text>
+      <View style={{ width: 96, height: 96, borderRadius: 24, backgroundColor: colors.bgCard, alignItems: 'center', justifyContent: 'center', marginBottom: 16, borderColor: colors.accent, borderWidth: 2 }}>
+        <PetSpriteImage sprite="idle" size={72} testID="splash-pet-sprite" />
       </View>
       <ActivityIndicator size="large" color={colors.accent} />
       <Text style={{ color: colors.textMuted, marginTop: 16, fontSize: 14 }}>Agentrix</Text>
     </View>
   );
+}
+
+/**
+ * Sprint P-8 v0.4.6 (2026-05-22) — kept here as a no-op shim. The
+ * earlier root-level mount of `<GlobalFloatingBall />` as a
+ * NavigationContainer sibling crashed cold launch with "Couldn't get
+ * the navigation state" because `useNavigation()` requires an
+ * enclosing navigator screen. The ball is now mounted directly inside
+ * `HomeScreen` (and any other screen that wants it) where the
+ * navigation context resolves correctly.
+ */
+function AuthenticatedFloatingBall() {
+  return null;
 }
 
 async function registerForPushNotifications(): Promise<string | null> {
@@ -331,6 +362,11 @@ function AppNavigator() {
 
     if (!skipStartupIntegrations) {
       checkAndPromptUpdate().catch(() => {});
+      // P-9 wave 16 — fetch pet_companion_redesign feature flag once on
+      // boot so the navigator tree can branch on isCompanionRedesignEnabledSync.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+      const { fetchCompanionFlag } = require('./src/config/companionFeatureFlag') as typeof import('./src/config/companionFeatureFlag');
+      fetchCompanionFlag().catch(() => {});
     }
 
     const handleAppStateChange = (state: AppStateStatus) => {
@@ -375,6 +411,57 @@ function AppNavigator() {
     return () => {
       unsubscribeAuthRequest();
       void WatchDataLayerService.stopListening().catch(() => {});
+    };
+  }, [isAuthenticated, skipStartupIntegrations, token]);
+
+  // Sprint P-6 Phase 6.4 (2026-05-22): once authenticated, wire the
+  // backend pet-presence socket and wearable wrist-trigger emitter
+  // into the unified petMode bus. The adapters return a disposer the
+  // effect uses to clean up on logout / unmount.
+  useEffect(() => {
+    if (skipStartupIntegrations || !isAuthenticated || !token) return;
+
+    let dispose: (() => void) | null = null;
+    let cancelled = false;
+
+    (async () => {
+      // Reuse the same per-install device id used by MobilePetProactiveBanner
+      // so the backend keeps a single device row instead of two.
+      let deviceId = 'mobile-anon';
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const cached = await AsyncStorage.getItem('agentrix.deviceId');
+        if (cached) deviceId = cached;
+      } catch {
+        /* ignore — defaults to mobile-anon */
+      }
+      if (cancelled) return;
+      dispose = bootPetModeAdapters({ token, deviceId });
+      // P-9 wave 6 — Voice_Greet scheduler hooks AppState transitions
+      // for morning / evening / comeback windows. We compose the
+      // scheduler disposer with the adapters disposer so the cleanup
+      // path stays single-source.
+      const disposeGreet = bootVoiceGreetScheduler();
+      // P-9 wave 9 — Form_Variant watcher (15min poll + AppState foreground).
+      const disposeVariant = bootFormVariantWatcher();
+      // P-9 wave 12 — Health/movement nudges (steps + sitting + late reminder).
+      const disposeHealth = bootCompanionHealthWatcher();
+      const composed = dispose;
+      dispose = () => {
+        try { composed?.(); } catch { /* noop */ }
+        try { disposeGreet(); } catch { /* noop */ }
+        try { disposeVariant(); } catch { /* noop */ }
+        try { disposeHealth(); } catch { /* noop */ }
+      };
+    })();
+
+    return () => {
+      cancelled = true;
+      if (dispose) {
+        try { dispose(); } catch { /* noop */ }
+        dispose = null;
+      }
     };
   }, [isAuthenticated, skipStartupIntegrations, token]);
 
@@ -631,29 +718,32 @@ const linking = {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <AppErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <NavigationContainer ref={navigationRef as any} linking={linking as any}>
-            <StatusBar style="light" />
-            <AppNavigator />
-            {/* Global AXP toast — surfaces +N AXP when earns happen anywhere. */}
-            <AxpToastHost />
-            {/* Pet companion proactive bubble — surfaces pet greetings/
-                suggestions globally (Phase C). Same backend channel as desktop. */}
-            <MobilePetProactiveBanner />
-            {/*
-              VoiceQuickFab (mobile-prd-v3 §3.2) removed 2026-05-10:
-              the always-on mic bubble was orphaned — `handleTap` only flipped
-              mobileFormStore and dispatched a globalThis event with no
-              listener, so users saw a floating ball that did nothing except
-              occlude content on Plaza/Play/Home. Voice entry now lives
-              inside Summon/AgentChatScreen where the actual STT pipeline
-              exists. Restore on a per-screen basis once Voice Quick ships.
-            */}
-          </NavigationContainer>
-        </QueryClientProvider>
-      </AppErrorBoundary>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <AppErrorBoundary>
+          <QueryClientProvider client={queryClient}>
+            <BottomSheetModalProvider>
+              <NavigationContainer ref={navigationRef as any} linking={linking as any}>
+                <StatusBar style="light" />
+                <AppNavigator />
+                {/* Global AXP toast — surfaces +N AXP when earns happen anywhere. */}
+                <AxpToastHost />
+
+                {/* Pet companion proactive bubble — surfaces pet greetings/
+                    suggestions globally (Phase C). Same backend channel as desktop. */}
+                <MobilePetProactiveBanner />
+
+                {/* P-9 Companion Redesign T4: global ball + bottom-sheet
+                    layer. Mounts INSIDE NavigationContainer so children can
+                    call useNavigation()/useNavigationState(), but OUTSIDE
+                    the tab navigator so it persists across tab switches.
+                    See src/components/companion/CompanionLayer.tsx. */}
+                <CompanionLayer navigationRef={navigationRef} />
+              </NavigationContainer>
+            </BottomSheetModalProvider>
+          </QueryClientProvider>
+        </AppErrorBoundary>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

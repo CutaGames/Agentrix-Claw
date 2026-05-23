@@ -30,6 +30,7 @@ import {
 import { colors } from '../../theme/colors';
 import { submitMinigameScore, type MinigameKey } from '../../services/petPhase6Sdk';
 import { playPetFx } from '../../services/petInteractionFx';
+import { celebratePet } from '../../services/petModeAdapters';
 
 const GAME_DURATION_MS = 30_000;
 const FOOD_EMOJIS = ['🍖', '🍗', '🍣', '🍱', '🍙', '🍤', '🥩', '🍪', '🥯', '🥨'];
@@ -165,6 +166,9 @@ export function PetTapGameModal({ visible, onClose }: Props) {
       });
       if (r.level_up) {
         await playPetFx('cheer');
+        // Sprint P-6 phase 6.3: trigger pet form celebration sprite
+        // alongside the cheer haptic + audio fx.
+        celebratePet('axp-level-up', 1500);
       }
     } catch {
       setSubmitResult({ score, xp: 0, levelUp: false });

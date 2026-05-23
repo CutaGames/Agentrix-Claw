@@ -42,6 +42,20 @@ export const PET_PRESENCE_TOPICS = {
   BREEDING_HATCHED: 'presence:pet.breeding.hatched',
   /** P2-6 远程社交动作（visit / touch / feed / co_play） */
   SOCIAL_VISIT: 'presence:pet.social.visit',
+  /**
+   * P-9 Companion Redesign — 4 cross-domain topics surfaced through the
+   * unified Companion_Ball UI. They live in this file so all three clients
+   * (mobile / desktop / web) see one contract.
+   *
+   *   WALLET_DELTA              — wallet balance changed (transfer in/out, agentic commerce, marketplace settlement)
+   *   WORLD_ENGINE_BATTLE_PENDING — challenge issued, defender has 24h to respond
+   *   WORLD_ENGINE_ASSET_READY  — scan completed, generated WorldAsset is ready to bind
+   *   SKILL_UPDATE              — installed skill has new published version (security or capability bump)
+   */
+  WALLET_DELTA: 'presence:wallet.delta',
+  WORLD_ENGINE_BATTLE_PENDING: 'presence:world-engine.battle-pending',
+  WORLD_ENGINE_ASSET_READY: 'presence:world-engine.asset.ready',
+  SKILL_UPDATE: 'presence:skill.update',
 } as const;
 
 export type PetPresenceTopic =
@@ -146,6 +160,72 @@ export interface PetSocialVisitPayload {
 }
 
 // ============================================================
+// §2.5 P-9 Companion Redesign payloads
+// ============================================================
+
+/** presence:wallet.delta — 钱包余额变动(任何币种) */
+export interface WalletDeltaPayload {
+  user_id: string;
+  /** 正数 = 入账, 负数 = 出账 */
+  delta: number;
+  currency: 'USDC' | 'AXP' | 'BTC' | string;
+  /** 变动后余额 */
+  balance_after: number;
+  /** 触发源 */
+  source: 'transfer-in' | 'transfer-out' | 'marketplace-purchase' | 'marketplace-sale'
+        | 'agentic-commerce' | 'subscription-charge' | 'withdrawal' | 'deposit' | 'other';
+  /** 关联的资产 / skill / 订单 id(如果有) */
+  ref_id?: string | null;
+  /** 友好备注(最多 80 字符) */
+  note?: string | null;
+  /** Pet AgentAccount id(如该笔变动属于某只宠物的钱包) */
+  pet_id?: string | null;
+  occurred_at: number;
+}
+
+/** presence:world-engine.battle-pending — 挑战已发起,defender 有 24h 响应 */
+export interface WorldEngineBattlePendingPayload {
+  battle_id: string;
+  challenger_user_id: string;
+  defender_user_id: string;
+  challenger_asset_id: string;
+  defender_asset_id: string;
+  expires_at: number;
+  created_at: number;
+}
+
+/** presence:world-engine.asset.ready — 扫描完成,WorldAsset 已生成可绑定 */
+export interface WorldEngineAssetReadyPayload {
+  asset_id: string;
+  user_id: string;
+  scan_session_id: string;
+  /** 推荐绑定到的 pet id(如果用户单次扫描时已选定) */
+  suggested_pet_id?: string | null;
+  /** 资产类型 */
+  asset_kind: 'character' | 'item' | 'dungeon-room' | 'weapon' | string;
+  /** 缩略图 url(用于推送 large icon / Lock_Screen_Pet 一闪) */
+  thumbnail_url?: string | null;
+  ready_at: number;
+}
+
+/** presence:skill.update — 已安装的 skill 有新版本 */
+export interface SkillUpdatePayload {
+  skill_id: string;
+  user_id: string;
+  /** 已安装版本 */
+  installed_version: string;
+  /** 新发布版本 */
+  new_version: string;
+  /** 是否引入新权限(若 true,前端需走 Trust3 重签) */
+  introduces_new_permissions: boolean;
+  /** 新增的权限列表(如果有) */
+  new_permissions?: string[];
+  /** Release notes 摘要(最多 200 字符) */
+  changelog_summary?: string | null;
+  published_at: number;
+}
+
+// ============================================================
 // §3 Topic → Payload 映射（用于 typed dispatcher / hook）
 // ============================================================
 
@@ -161,6 +241,10 @@ export interface PetPresenceEventMap {
   [PET_PRESENCE_TOPICS.BREEDING_HATCHING]: PetBreedingHatchingPayload;
   [PET_PRESENCE_TOPICS.BREEDING_HATCHED]: PetBreedingHatchedPayload;
   [PET_PRESENCE_TOPICS.SOCIAL_VISIT]: PetSocialVisitPayload;
+  [PET_PRESENCE_TOPICS.WALLET_DELTA]: WalletDeltaPayload;
+  [PET_PRESENCE_TOPICS.WORLD_ENGINE_BATTLE_PENDING]: WorldEngineBattlePendingPayload;
+  [PET_PRESENCE_TOPICS.WORLD_ENGINE_ASSET_READY]: WorldEngineAssetReadyPayload;
+  [PET_PRESENCE_TOPICS.SKILL_UPDATE]: SkillUpdatePayload;
 }
 
 export type PetPresenceEventName = keyof PetPresenceEventMap;
@@ -220,3 +304,8 @@ export const PRESENCE_PET_BREEDING_INVITED = PET_PRESENCE_TOPICS.BREEDING_INVITE
 export const PRESENCE_PET_BREEDING_HATCHING = PET_PRESENCE_TOPICS.BREEDING_HATCHING;
 export const PRESENCE_PET_BREEDING_HATCHED = PET_PRESENCE_TOPICS.BREEDING_HATCHED;
 export const PRESENCE_PET_SOCIAL_VISIT = PET_PRESENCE_TOPICS.SOCIAL_VISIT;
+// P-9 Companion Redesign aliases (cross-domain topics surfaced through Companion_Ball)
+export const PRESENCE_WALLET_DELTA = PET_PRESENCE_TOPICS.WALLET_DELTA;
+export const PRESENCE_WORLD_ENGINE_BATTLE_PENDING = PET_PRESENCE_TOPICS.WORLD_ENGINE_BATTLE_PENDING;
+export const PRESENCE_WORLD_ENGINE_ASSET_READY = PET_PRESENCE_TOPICS.WORLD_ENGINE_ASSET_READY;
+export const PRESENCE_SKILL_UPDATE = PET_PRESENCE_TOPICS.SKILL_UPDATE;

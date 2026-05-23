@@ -25,6 +25,13 @@ import { SpeechWakeWordService } from '../services/speechWakeWord.service';
 import { LocalWakeWordService, hasLocalWakeWordModel, thresholdFromSensitivity } from '../services/localWakeWord.service';
 import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 import { isVoiceUiE2EEnabled } from '../testing/e2e';
+import {
+  resolveSpriteForMode,
+  subscribePetMode,
+  setPetMode,
+  type PetMode,
+} from '../services/petMode';
+import { PetSpriteImage } from './PetSpriteImage';
 
 // ─── Layout constants ───────────────────────────────────────────────────────
 const BALL_SIZE = 48;
@@ -102,11 +109,32 @@ interface Props {
   pillVolume?: number;
   resultText?: string;
   onResultAction?: (action: string) => void;
+  /**
+   * P-9 Companion Redesign T3.3 — when provided, overrides the legacy
+   * "tap = navigate(AgentChat)" behavior so the parent CompanionBall can
+   * route single-tap to ConversationBubble.present() instead. Pass
+   * undefined (or omit) to retain legacy behavior.
+   */
+  onSingleTapOverride?: () => void;
+  /**
+   * P-9 T3.3 — when provided, overrides the legacy "long-press = expand
+   * pill" behavior so the parent can route to PetDetailSheet.present().
+   */
+  onLongPressOverride?: () => void;
+  /**
+   * P-9 T3.3 — when provided, signals from a parent gesture observer
+   * that the user right-swiped the ball (drag finished with dx > 100
+   * and |dy| < 80). The parent runs whatever camera flow it needs.
+   * Phase 1 the wrapper layer doesn't yet detect this; we expose the
+   * prop so wave 6 polish can wire it without further refactors here.
+   */
+  onRightSwipeOverride?: () => void;
 }
 
 export function GlobalFloatingBall({
   onVoiceActivate, pillTranscript, onPillSend, pillVolume = 0,
   resultText, onResultAction,
+  onSingleTapOverride, onLongPressOverride,
 }: Props) {
   const navigation = useNavigation<any>();
   const { language } = useI18n();
@@ -140,6 +168,26 @@ export function GlobalFloatingBall({
   const [pillExpanded, setPillExpanded] = useState(false);
   const [quickInput, setQuickInput] = useState('');
   const [showResultCard, setShowResultCard] = useState(false);
+
+  // Sprint P-6 (2026-05-22): pet form mode subscription. The ball's
+  // gradient + waveform handle ambient state (idle/listening/speaking),
+  // while `petMode` selects a 13-form sprite per
+  // `docs/PET_FORMS_DESIGN_v5.zh-CN.md`. The two are complementary:
+  // ballState drives capsule layout, petMode drives the sprite shown
+  // inside it.
+  const [petMode, setPetModeState] = useState<PetMode>('idle');
+  useEffect(() => {
+    return subscribePetMode((mode) => setPetModeState(mode));
+  }, []);
+  // Cross-wire ballState → petMode so legacy callers that only flip
+  // `ballState` still drive the form system.
+  useEffect(() => {
+    if (ballState === 'listening') setPetMode('listening', 'ballState:listening');
+    else if (ballState === 'speaking') setPetMode('speaking', 'ballState:speaking');
+    else if (ballState === 'thinking') setPetMode('thinking', 'ballState:thinking');
+    else if (ballState === 'idle') setPetMode('idle', 'ballState:idle');
+  }, [ballState]);
+  const petSprite = useMemo(() => resolveSpriteForMode(petMode), [petMode]);
 
   // ── Animation values ──
   const pan = useRef(new Animated.ValueXY({ x: screenW - MINIMIZED_REVEAL, y: screenH - 200 })).current;
@@ -466,16 +514,34 @@ export function GlobalFloatingBall({
       return;
     }
 
+    // P-9 T3.3 single-tap override: when the parent CompanionBall wrapper
+    // wants single-tap to surface the ConversationBubble instead of
+    // navigating to AgentChat, it passes onSingleTapOverride.
+    if (onSingleTapOverride) {
+      addVoiceDiagnostic('floating-ball', 'tap-override');
+      onSingleTapOverride();
+      return;
+    }
+
     void activateVoiceExperience();
-  }, [activateVoiceExperience, isMinimized, pan, screenW, screenH]);
+  }, [activateVoiceExperience, isMinimized, pan, screenW, screenH, onSingleTapOverride]);
 
   const handleLongPress = useCallback(() => {
     addVoiceDiagnostic('floating-ball', 'long-press-activate');
     if (isMinimized) { setIsMinimized(false); return; }
+
+    // P-9 T3.3 long-press override: parent can hijack the long-press to
+    // open PetDetailSheet instead of expanding the legacy pill.
+    if (onLongPressOverride) {
+      addVoiceDiagnostic('floating-ball', 'long-press-override');
+      onLongPressOverride();
+      return;
+    }
+
     setPillExpanded(true);
     setBallState('listening');
     onVoiceActivate?.();
-  }, [isMinimized, onVoiceActivate]);
+  }, [isMinimized, onVoiceActivate, onLongPressOverride]);
 
   const handleQuickSend = useCallback(() => {
     const text = quickInput.trim();
@@ -798,10 +864,16 @@ export function GlobalFloatingBall({
             <LinearGradient colors={gradientColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.innerCoreGradient} />
           </Animated.View>
 
-          {/* Label — morph between "AX" and capsule content */}
+          {/* Label — morph between sprite (idle) and capsule content (listening/speaking).
+            * Sprint P-6: the `AX` text mark is replaced by the 13-form sprite
+            * driven by the PetMode bus. Capsule mode still shows the brand
+            * mark + waveform for clear voice-state feedback.
+            */}
           {isCapsule ? (
             <View style={styles.capsuleContent}>
-              <Text style={styles.capsuleBrand}>AX</Text>
+              <View style={styles.capsuleBrandSlot}>
+                <PetSpriteImage sprite={petSprite} size={28} testID="floating-ball-sprite-capsule" />
+              </View>
               <View style={styles.capsuleWaveRow}>
                 {waveformAnims.slice(0, 5).map((anim, i) => (
                   <Animated.View
@@ -822,7 +894,7 @@ export function GlobalFloatingBall({
               </Text>
             </View>
           ) : (
-            <Text style={styles.brandMark}>AX</Text>
+            <PetSpriteImage sprite={petSprite} size={BALL_SIZE - 8} testID="floating-ball-sprite" />
           )}
         </Animated.View>
       </TouchableOpacity>
@@ -892,6 +964,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#fff',
     letterSpacing: 1,
+  },
+  capsuleBrandSlot: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   capsuleWaveRow: {
     flexDirection: 'row',

@@ -38,7 +38,15 @@ export type IntentName =
   // V4 (mobile-prd-v4 §8)
   | 'create-pet'
   | 'switch-skin'
-  | 'market-search';
+  | 'market-search'
+  // P-9 wave 9 (mobile-pet-companion-redesign §9.4 / 9.5)
+  | 'start-world-scan'
+  | 'enter-dungeon'
+  | 'install-skill'
+  | 'remote-control'
+  | 'quiet-30'
+  // P-9 wave 11 (T21) — Mood Diary push deep-link
+  | 'mood-diary';
 
 export interface IntentPayload {
   // V3
@@ -85,6 +93,14 @@ const ALL_INTENTS: ReadonlySet<IntentName> = new Set<IntentName>([
   'create-pet',
   'switch-skin',
   'market-search',
+  // P-9 wave 9
+  'start-world-scan',
+  'enter-dungeon',
+  'install-skill',
+  'remote-control',
+  'quiet-30',
+  // P-9 wave 11
+  'mood-diary',
 ]);
 
 export function isKnownIntent(name: string): name is IntentName {

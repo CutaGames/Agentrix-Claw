@@ -220,6 +220,134 @@ export function installDefaultIntentHandlers(getNav: () => Nav | null): () => vo
     }),
   );
 
+  // ── start-world-scan (P-9 wave 9) ───────────────────────────────────
+  disposers.push(
+    registerIntentHandler('start-world-scan', async (payload) => {
+      const rawMode = ((payload.mode as string) || 'quick').toLowerCase();
+      const mode = ['quick', 'detail', 'room'].includes(rawMode) ? rawMode : 'quick';
+      safeNavigate(getNav(), 'WorldEngineScanner', { mode });
+      return ok(`扫描模式 ${mode}`, {
+        navigatedTo: 'WorldEngineScanner',
+        data: { mode },
+      });
+    }),
+  );
+
+  // ── enter-dungeon (P-9 wave 9) ──────────────────────────────────────
+  disposers.push(
+    registerIntentHandler('enter-dungeon', async (payload) => {
+      const code = String(payload.shareCode ?? payload.code ?? '').trim();
+      if (!code) {
+        safeNavigate(getNav(), 'WorldDungeonExplorer');
+        return ok('打开副本', { navigatedTo: 'WorldDungeonExplorer' });
+      }
+      safeNavigate(getNav(), 'WorldDungeonExplorer', { shareCode: code });
+      return ok(`进副本 ${code}`, {
+        navigatedTo: 'WorldDungeonExplorer',
+        data: { shareCode: code },
+      });
+    }),
+  );
+
+  // ── install-skill (P-9 wave 9) ──────────────────────────────────────
+  disposers.push(
+    registerIntentHandler('install-skill', async (payload) => {
+      const name = String(payload.name ?? payload.skillName ?? '').trim();
+      try {
+        // Surface SkillInstallCard via the companion sheet refs registry
+        // (lazy require so this file stays usable when companion module
+        // hasn't booted, e.g. in voice-only E2E mode).
+        // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+        const { companionSheets } = require(
+          '../../components/companion/sheetRefRegistry',
+        ) as typeof import('../../components/companion/sheetRefRegistry');
+        const skillInstall = (companionSheets as any).skillInstall as
+          | { present: (opts: { name?: string }) => void }
+          | undefined;
+        if (skillInstall) {
+          skillInstall.present({ name });
+          return ok(`查看技能 ${name || '安装'}`, { data: { name } });
+        }
+      } catch {
+        /* fallback below */
+      }
+      // Fallback — route to Plaza Skills feed with prefilled query.
+      safeNavigate(getNav(), 'Skills', name ? { query: name } : undefined);
+      return ok(`查看 ${name || '技能市场'}`, {
+        navigatedTo: 'Skills',
+        data: { name },
+      });
+    }),
+  );
+
+  // ── remote-control (P-9 wave 9) ─────────────────────────────────────
+  disposers.push(
+    registerIntentHandler('remote-control', async (payload) => {
+      const command = String(payload.command ?? payload.cmd ?? '').trim();
+      // Phase 1 — open the PetDetailSheet so user can pick the target
+      // device + command. Wave 10 wires the actual gateway.
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+        const { companionSheets } = require(
+          '../../components/companion/sheetRefRegistry',
+        ) as typeof import('../../components/companion/sheetRefRegistry');
+        companionSheets.petDetail.present();
+        companionSheets.petDetail.expandSection('cross-device');
+      } catch {
+        /* ignore */
+      }
+      return ok(command ? `准备远程控制: ${command}` : '打开跨端控制面板', {
+        data: { command },
+      });
+    }),
+  );
+
+  // ── quiet-30 (P-9 wave 9) ───────────────────────────────────────────
+  disposers.push(
+    registerIntentHandler('quiet-30', async () => {
+      // Lock manualVariant=night for 30 minutes via formVariant + emit
+      // mode-changed so the ball + ambient presence reflect immediately.
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+        const fv = require('../formVariant.service') as typeof import('../formVariant.service');
+        fv.setManualLock('night', 0.5); // 0.5h = 30min
+        await fv.evaluateAndApply();
+      } catch {
+        /* ignore */
+      }
+      return ok('好,30 分钟内安静一点', {
+        data: { variant: 'night', durationMin: 30 },
+      });
+    }),
+  );
+
+  // ── mood-diary (P-9 wave 11) ────────────────────────────────────────
+  // Backend Mood_Diary_Push notifications include a `agentrix://intent/mood-diary?id=<id>` deep-link.
+  // Tapping it should bring the user back into the app and pulse the
+  // companion ball into a whisper voice-greet so the diary text reads
+  // aloud (ambient TTS is owned by localSpeechOutput.service).
+  disposers.push(
+    registerIntentHandler('mood-diary', async (payload) => {
+      const id = String(payload.id ?? '').trim();
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+        const { companionEvents } = require('../companionEvents.service') as typeof import('../companionEvents.service');
+        const text = String(payload.text ?? '今天有点想你') || '今天有点想你';
+        companionEvents.emit({
+          type: 'voice-greet',
+          scenario: 'manual',
+          text,
+          lang: 'zh',
+        });
+      } catch {
+        /* ignore */
+      }
+      // Best-effort: navigate to PetCompanion / pet diary screen if it exists.
+      safeNavigate(getNav(), 'PetCompanion', id ? { focusDiaryId: id } : undefined);
+      return ok('打开今日小记', { data: { id } });
+    }),
+  );
+
   return () => {
     for (const d of disposers) d();
   };
@@ -240,5 +368,13 @@ export function installedIntentNames(): IntentName[] {
     'approve',
     'invoke-agent',
     'draft',
+    // P-9 wave 9
+    'start-world-scan',
+    'enter-dungeon',
+    'install-skill',
+    'remote-control',
+    'quiet-30',
+    // P-9 wave 11
+    'mood-diary',
   ];
 }

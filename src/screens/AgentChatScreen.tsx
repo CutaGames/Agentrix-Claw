@@ -15,6 +15,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors } from '../theme/colors';
 import { sendAgentMessage, getAgentHistory } from '../services/openclaw.service';
 import { useAuthStore } from '../stores/authStore';
+import { setPetMode } from '../services/petMode';
 
 type RootStackParamList = {
   AgentChat: { agentId: string; agentName: string; instanceId?: string };
@@ -76,6 +77,9 @@ export default function AgentChatScreen({ route }: Props) {
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
     setIsLoading(true);
+    // Sprint P-6: signal pet form bus that the agent is "speaking" while
+    // the reply is being fetched/streamed. Returns to idle in finally.
+    setPetMode('speaking', 'agent-chat-send');
 
     try {
       if (instanceId) {
@@ -109,6 +113,7 @@ export default function AgentChatScreen({ route }: Props) {
       setMessages(prev => [...prev, errMsg]);
     } finally {
       setIsLoading(false);
+      setPetMode('done', 'agent-chat-end', 1200);
     }
   }, [inputText, isLoading, instanceId, sessionId]);
 

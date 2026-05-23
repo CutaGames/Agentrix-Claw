@@ -1,0 +1,278 @@
+/**
+ * WorldHubScreen — 🌍 World Tab root (P-9 Companion Redesign T2.1).
+ *
+ * Phase 1 spec R3 — kills the "World Engine is the 12th drawer cell on
+ * Home" problem by promoting it to a tier-1 tab. The user sees:
+ *   - Top: swipeable banners (quota, pending battles, recent assets)
+ *   - 2x2 main CTA grid: scan / inventory / battle / dungeon
+ *   - "Create digital character" section: text generation / photo→3D / world scan
+ *   - Bottom: World Asset marketplace entry
+ *
+ * Phase 1 simplifications:
+ *   - Banners are static placeholders; live data wiring deferred to T3.x
+ *     once `presence:world-engine.battle-pending` and `asset.ready` events
+ *     (already shipped backend per Task 0.5) feed companionEvents.
+ *   - Marketplace entry is a stub navigation; full screen is Phase 2.
+ *
+ * Cohort guard (R3.5): if `world_engine_enabled` flag returns false, render
+ * a "coming soon" panel instead of the CTA grid.
+ */
+import React, { useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Pressable,
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { useQuery } from '@tanstack/react-query';
+import { colors } from '../../theme/colors';
+import { useI18n } from '../../stores/i18nStore';
+import { fetchWorldEngineFlag } from '../../services/worldEngineApi';
+import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
+type Nav = NativeStackNavigationProp<WorldStackParamList, 'WorldRoot'>;
+
+interface CTACardProps {
+  emoji: string;
+  title: string;
+  subtitle?: string;
+  onPress: () => void;
+  onLongPress?: () => void;
+  testID?: string;
+}
+
+function CTACard({ emoji, title, subtitle, onPress, onLongPress, testID }: CTACardProps) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.ctaCard, pressed && styles.ctaCardPressed]}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      testID={testID}
+    >
+      <Text style={styles.ctaEmoji}>{emoji}</Text>
+      <Text style={styles.ctaTitle}>{title}</Text>
+      {subtitle ? <Text style={styles.ctaSubtitle}>{subtitle}</Text> : null}
+    </Pressable>
+  );
+}
+
+export function WorldHubScreen() {
+  const navigation = useNavigation<Nav>();
+  const { t } = useI18n();
+
+  // Cohort guard: query the same admin_configs `world_engine_enabled` flag
+  // that the backend already enforces (production row was inserted in
+  // Task 5 of the World Engine "Not Found" fix). On mobile we read it via
+  // an authenticated probe of any cohort-gated endpoint to know whether
+  // to render the hub vs the coming-soon panel.
+  const flagQ = useQuery({
+    queryKey: ['world-engine-flag'],
+    queryFn: fetchWorldEngineFlag,
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+
+  const onScan = useCallback(
+    (mode: 'quick' | 'detail' | 'room' = 'quick') => {
+      navigation.navigate('WorldEngineScanner', { mode });
+    },
+    [navigation],
+  );
+  const onInventory = useCallback(() => navigation.navigate('WorldAssetInventory'), [navigation]);
+  const onBattle = useCallback(() => navigation.navigate('WorldBattlePicker'), [navigation]);
+  const onDungeon = useCallback(() => navigation.navigate('WorldDungeonExplorer', {}), [navigation]);
+  const onPetCreator = useCallback(() => navigation.navigate('PetCreator'), [navigation]);
+  const onPhotoToPet = useCallback(() => navigation.navigate('PetCameraScan'), [navigation]);
+
+  // Phase 1: feature flag off → render coming-soon panel
+  if (flagQ.data && !flagQ.data.enabled) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.comingSoon}>
+          <Text style={styles.comingSoonEmoji}>🌍</Text>
+          <Text style={styles.comingSoonTitle}>
+            {t({ en: 'World Engine — Coming Soon', zh: 'World Engine 即将开放' })}
+          </Text>
+          <Text style={styles.comingSoonBody}>
+            {t({
+              en: "Scan real-world objects, generate AI characters, build dungeons. We're rolling this out to a small cohort first.",
+              zh: '扫描真实物体生成 AI 角色,建造你的副本。我们正在小范围灰度,很快开放给所有用户。',
+            })}
+          </Text>
+          <TouchableOpacity style={styles.waitlistBtn}>
+            <Text style={styles.waitlistBtnText}>
+              {t({ en: 'Join Waitlist', zh: '加入候补名单' })}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  return (
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      testID="world-hub-scroll"
+    >
+      <View style={styles.header}>
+        <Text style={styles.title}>🌍 {t({ en: 'World', zh: '世界' })}</Text>
+        <Text style={styles.subtitle}>
+          {t({ en: 'Scan reality. Build a world.', zh: '扫现实,造世界。' })}
+        </Text>
+      </View>
+
+      {/* Top banners — Phase 1 placeholder; live data wiring in T3.x */}
+      <View style={styles.bannerStack}>
+        <View style={[styles.banner, styles.bannerInfo]}>
+          <Text style={styles.bannerText}>
+            {t({
+              en: 'Tap below to scan your first object',
+              zh: '点下面任意按钮,试试扫描身边物品',
+            })}
+          </Text>
+        </View>
+      </View>
+
+      {/* 2x2 main CTA grid */}
+      <View style={styles.ctaGrid}>
+        <CTACard
+          emoji="📷"
+          title={t({ en: 'Scan Object', zh: '扫描物体' })}
+          subtitle={t({ en: 'Quick · long-press for Detail / Room', zh: '快速 · 长按选精细/房间' })}
+          onPress={() => onScan('quick')}
+          onLongPress={() => onScan('detail')}
+          testID="world-cta-scan"
+        />
+        <CTACard
+          emoji="🎒"
+          title={t({ en: 'My Inventory', zh: '我的资产' })}
+          onPress={onInventory}
+          testID="world-cta-inventory"
+        />
+        <CTACard
+          emoji="⚔️"
+          title={t({ en: 'Battle', zh: '战斗' })}
+          subtitle={t({ en: 'Challenge or replay', zh: '挑战 / 回放' })}
+          onPress={onBattle}
+          testID="world-cta-battle"
+        />
+        <CTACard
+          emoji="🏰"
+          title={t({ en: 'Dungeon', zh: '副本' })}
+          subtitle={t({ en: 'Share code or scan room', zh: '分享码 / 扫房间' })}
+          onPress={onDungeon}
+          testID="world-cta-dungeon"
+        />
+      </View>
+
+      {/* Create-digital-character section (R3.2 — moved from Home drawer) */}
+      <Text style={styles.sectionHeader}>
+        ✨ {t({ en: 'Create a digital character', zh: '创造数字角色' })}
+      </Text>
+      <View style={styles.creatorRow}>
+        <CTACard
+          emoji="✨"
+          title={t({ en: 'Text Pet', zh: '文字创生' })}
+          subtitle={t({ en: 'Describe it, AI builds it', zh: '描述它,AI 造出来' })}
+          onPress={onPetCreator}
+          testID="world-cta-text-pet"
+        />
+        <CTACard
+          emoji="📸"
+          title={t({ en: 'Photo → 3D Pet', zh: '拍照→3D' })}
+          subtitle={t({ en: '8-12 angles, ~90s', zh: '8-12 张照片,~90 秒' })}
+          onPress={onPhotoToPet}
+          testID="world-cta-photo-pet"
+        />
+      </View>
+
+      {/* Bottom: marketplace entry (Phase 1 stub) */}
+      <TouchableOpacity
+        style={styles.marketplaceEntry}
+        onPress={() => navigation.navigate('WorldAssetMarketplace')}
+        testID="world-cta-marketplace"
+      >
+        <Text style={styles.marketplaceText}>
+          🛒 {t({ en: 'World Asset Marketplace', zh: '世界资产市场' })} →
+        </Text>
+      </TouchableOpacity>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bgPrimary },
+  content: { padding: 16, paddingBottom: 80 },
+  header: { marginBottom: 16 },
+  title: { fontSize: 24, fontWeight: '700', color: colors.textPrimary, marginBottom: 4 },
+  subtitle: { fontSize: 13, color: colors.textMuted },
+  bannerStack: { marginBottom: 16, gap: 8 },
+  banner: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  bannerInfo: {
+    backgroundColor: 'rgba(167,139,250,0.10)',
+    borderColor: 'rgba(167,139,250,0.30)',
+  },
+  bannerText: { color: colors.textPrimary, fontSize: 13 },
+
+  ctaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 24,
+  },
+  ctaCard: {
+    width: '48%',
+    backgroundColor: colors.bgCard,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minHeight: 108,
+    justifyContent: 'flex-start',
+  },
+  ctaCardPressed: { opacity: 0.7 },
+  ctaEmoji: { fontSize: 28, marginBottom: 6 },
+  ctaTitle: { fontSize: 15, fontWeight: '600', color: colors.textPrimary, marginBottom: 2 },
+  ctaSubtitle: { fontSize: 11, color: colors.textMuted },
+
+  sectionHeader: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 10,
+    marginTop: 4,
+  },
+  creatorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
+
+  marketplaceEntry: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+    alignItems: 'center',
+  },
+  marketplaceText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
+
+  comingSoon: { padding: 24, alignItems: 'center', marginTop: 60 },
+  comingSoonEmoji: { fontSize: 56, marginBottom: 16 },
+  comingSoonTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, marginBottom: 12, textAlign: 'center' },
+  comingSoonBody: { fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 22, marginBottom: 24 },
+  waitlistBtn: {
+    backgroundColor: colors.accent,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  waitlistBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+});
