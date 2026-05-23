@@ -109,16 +109,51 @@ export function CompanionBall(props: CompanionBallProps) {
   });
 
   useEffect(() => {
-    const ref = props.navigationRef?.current;
-    if (!ref?.addListener) return;
-    const unsubscribe = ref.addListener('state', () => {
+    let cancelled = false;
+    let unsubscribe: (() => void) | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    const tryAttach = () => {
+      const ref = props.navigationRef?.current;
+      if (!ref?.addListener) return false;
+      // Poll once for initial state in case it changed between mount and now.
       try {
-        setNavState(ref.getRootState());
+        const initial = ref.getRootState?.();
+        if (initial && !cancelled) setNavState(initial);
       } catch {
-        /* ignore — ref unmounted between calls */
+        /* ignore */
       }
-    });
+      // Subscribe for future tab changes.
+      unsubscribe = ref.addListener('state', () => {
+        try {
+          if (!cancelled) setNavState(ref.getRootState());
+        } catch {
+          /* ignore — ref unmounted between calls */
+        }
+      });
+      return true;
+    };
+
+    // Try to attach immediately. If the ref isn't ready yet (cold launch
+    // SplashScreen → NavigationContainer not mounted), poll every 200ms
+    // until it is. This solves the "ball never appears" bug where the
+    // initial useState read got null and addListener was never wired.
+    if (!tryAttach()) {
+      pollTimer = setInterval(() => {
+        if (cancelled) return;
+        if (tryAttach() && pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }, 200);
+    }
+
     return () => {
+      cancelled = true;
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
       try {
         unsubscribe?.();
       } catch {
@@ -133,7 +168,11 @@ export function CompanionBall(props: CompanionBallProps) {
   const topTab = resolveTopTab(navState);
   const deepRoute = resolveDeepRoute(navState);
 
-  const tabAllowsBall = VISIBLE_TAB_ROOTS.has(topTab);
+  // Wave 17 v4 — until the navigationRef has hydrated (navState is null),
+  // optimistically assume the user is on the default World tab so the
+  // ball shows up immediately on cold launch. Once nav state arrives,
+  // VISIBLE_TAB_ROOTS / HIDE_ON_DEEP_ROUTES filtering kicks in normally.
+  const tabAllowsBall = navState == null ? true : VISIBLE_TAB_ROOTS.has(topTab);
   const deepBlocks = HIDE_ON_DEEP_ROUTES.has(deepRoute);
   const visible = tabAllowsBall && !deepBlocks;
 

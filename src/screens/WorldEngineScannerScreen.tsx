@@ -345,8 +345,22 @@ export default function WorldEngineScannerScreen() {
         scanSessionId: sessionId,
       });
     } catch (error: any) {
-      const msg = error?.message || '网络错误,请检查后重试。';
-      Alert.alert('提交失败', msg);
+      const rawMsg = error?.message || '';
+      // Wave 17 v4 — RN's fetch throws "Network request failed" for any
+      // network-layer error (DNS, TLS, timeout). Translate that to a
+      // friendlier Chinese message + offer Retry vs Back so users
+      // aren't stranded after the alert.
+      const friendly = rawMsg.toLowerCase().includes('network')
+        ? '网络连接失败,请检查网络后重试。如果持续失败,可能是后端图片上传服务暂时不可用。'
+        : rawMsg || '网络错误,请检查后重试。';
+      Alert.alert(
+        '提交失败',
+        friendly,
+        [
+          { text: '返回世界', onPress: () => navigation.goBack(), style: 'cancel' },
+          { text: '重试', onPress: () => { setIsSubmitting(false); /* keep frames so user can hit Generate again */ } },
+        ],
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -467,6 +481,19 @@ export default function WorldEngineScannerScreen() {
         facing="back"
         onMountError={(error) => console.error('Camera mount error:', error)}
       >
+        {/* Top close button — Wave 17 v4: scanner had headerShown=false
+            so the only way out was a small "取消" text button at the
+            bottom that users missed. Surface a clear ✕ in the top-left
+            corner so cancel is obvious from the moment the camera opens. */}
+        <TouchableOpacity
+          style={styles.topCloseButton}
+          onPress={handleCancel}
+          accessibilityLabel="返回"
+          testID="scanner-close-button"
+        >
+          <Text style={styles.topCloseButtonText}>✕</Text>
+        </TouchableOpacity>
+
         {/* Face Detection Warning Overlay */}
         {faceDetected && (
           <View style={styles.faceWarningOverlay}>
@@ -892,6 +919,26 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Top close button (Wave 17 v4) — surfaces an obvious ✕ exit when
+  // the screen is full-bleed camera with no native nav header.
+  topCloseButton: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  topCloseButtonText: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '600',
+    lineHeight: 24,
   },
   // Quality prediction
   qualityPrediction: {

@@ -183,20 +183,52 @@ export function GlobalFloatingBall({
   });
 
   useEffect(() => {
-    const ref = navigationRef?.current;
-    if (!ref?.addListener) return;
-    const updateRoute = () => {
+    let cancelled = false;
+    let unsubscribe: (() => void) | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    const tryAttach = () => {
+      const ref = navigationRef?.current;
+      if (!ref?.addListener) return false;
+      // Sync once on mount — ref may have hydrated between mount and now.
       try {
-        setCurrentRouteName(resolveLeafRouteName(ref.getRootState()));
+        const initial = ref.getRootState?.();
+        if (initial && !cancelled) {
+          setCurrentRouteName(resolveLeafRouteName(initial));
+        }
       } catch {
-        /* ref unmounted between calls — ignore */
+        /* ignore */
       }
+      unsubscribe = ref.addListener('state', () => {
+        try {
+          if (!cancelled) {
+            setCurrentRouteName(resolveLeafRouteName(ref.getRootState()));
+          }
+        } catch {
+          /* ref unmounted — ignore */
+        }
+      });
+      return true;
     };
-    // Sync once on mount in case the ref existed but state arrived
-    // before the listener attached.
-    updateRoute();
-    const unsubscribe = ref.addListener('state', updateRoute);
+
+    // Wave 17 v4 — poll until ref is ready in case NavigationContainer
+    // hasn't mounted yet on cold launch.
+    if (!tryAttach()) {
+      pollTimer = setInterval(() => {
+        if (cancelled) return;
+        if (tryAttach() && pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }, 200);
+    }
+
     return () => {
+      cancelled = true;
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
       try { unsubscribe?.(); } catch { /* ignore */ }
     };
   }, [navigationRef, resolveLeafRouteName]);
