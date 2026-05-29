@@ -24,6 +24,7 @@ import { colors } from '../theme/colors';
 import { useI18n } from '../stores/i18nStore';
 
 import { WorldHubScreen } from '../screens/world/WorldHubScreen';
+import WorldCharacterCardScreen from '../screens/world/WorldCharacterCardScreen';
 import WorldEngineScannerScreen from '../screens/WorldEngineScannerScreen';
 import WorldAssetInventoryScreen from '../screens/WorldAssetInventoryScreen';
 import ReconstructionProgressScreen from '../screens/ReconstructionProgressScreen';
@@ -36,6 +37,12 @@ import { CameraScanScreen } from '../screens/pet/CameraScanScreen';
 
 export type WorldStackParamList = {
   WorldRoot: undefined;
+  WorldCharacterCard: {
+    assetId?: string;
+    card?: import('../services/worldEngineApi').CharacterCard;
+    generationStatus?: import('../services/worldEngineApi').GenerationStatus;
+    jobId?: string;
+  };
   WorldEngineScanner: { mode?: 'quick' | 'detail' | 'room' } | undefined;
   WorldAssetInventory: undefined;
   WorldBattleArena: { challengerAssetId?: string; defenderAssetId?: string } | undefined;
@@ -90,6 +97,11 @@ export function WorldStackNavigator() {
         name="WorldRoot"
         component={WorldHubScreen}
         options={{ title: t({ en: 'World', zh: '世界' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldCharacterCard"
+        component={WorldCharacterCardScreen}
+        options={{ title: t({ en: 'Your Character', zh: '你的角色' }), headerShown: false }}
       />
       <Stack.Screen
         name="WorldEngineScanner"

@@ -30,7 +30,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
-import { fetchWorldEngineFlag } from '../../services/worldEngineApi';
+import { fetchWorldEngineFlag, listWorldAssets } from '../../services/worldEngineApi';
 import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -75,6 +75,16 @@ export function WorldHubScreen() {
     staleTime: 5 * 60_000,
     retry: 1,
   });
+
+  // 用户资产 — 决定首屏是"新用户引导"还是"已有角色的玩家中心"。
+  const assetsQ = useQuery({
+    queryKey: ['world-assets', 'hub'],
+    queryFn: () => listWorldAssets({ sort: 'newest', limit: 6 }),
+    staleTime: 30_000,
+    retry: 1,
+  });
+  const assets = assetsQ.data?.items ?? [];
+  const hasAssets = assets.length > 0;
 
   const onScan = useCallback(
     (mode: 'quick' | 'detail' | 'room' = 'quick') => {
@@ -127,49 +137,84 @@ export function WorldHubScreen() {
         </Text>
       </View>
 
-      {/* Top banners — Phase 1 placeholder; live data wiring in T3.x */}
-      <View style={styles.bannerStack}>
+      {/* HERO — 唯一主 CTA: 拍一下造角色。新用户第一眼就知道做什么。 */}
+      <Pressable
+        style={({ pressed }) => [styles.hero, pressed && styles.heroPressed]}
+        onPress={() => onScan('quick')}
+        onLongPress={() => onScan('detail')}
+        testID="world-hero-scan"
+      >
+        <Text style={styles.heroEmoji}>📷</Text>
+        <Text style={styles.heroTitle}>
+          {t({ en: 'Scan anything → a battle-ready character', zh: '拍一下身边的东西 → 变成会战斗的角色' })}
+        </Text>
+        <Text style={styles.heroSub}>
+          {t({ en: 'Snap 1 photo. AI gives it a name, stats & skills in seconds.', zh: '拍 1 张照片，AI 几秒内给它名字、属性和技能' })}
+        </Text>
+        <View style={styles.heroBtn}>
+          <Text style={styles.heroBtnText}>{t({ en: 'Start scanning', zh: '开始扫描' })}</Text>
+        </View>
+        <Text style={styles.heroHint}>
+          {t({ en: 'Long-press for Detail / Room scan', zh: '长按选择 精细 / 房间扫描' })}
+        </Text>
+      </Pressable>
+
+      {/* 已有角色 → 角色卷轴 + 玩法入口; 新用户 → 不展示空的战斗/副本 */}
+      {hasAssets ? (
+        <>
+          <View style={styles.rosterHeader}>
+            <Text style={styles.sectionHeader}>
+              🎒 {t({ en: 'My Characters', zh: '我的角色' })}
+            </Text>
+            <TouchableOpacity onPress={onInventory}>
+              <Text style={styles.seeAll}>{t({ en: 'See all', zh: '查看全部' })} →</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rosterRow}>
+            {assets.map((a) => (
+              <Pressable
+                key={a.id}
+                style={styles.rosterCard}
+                onPress={onInventory}
+              >
+                <View style={styles.rosterThumb}>
+                  <Text style={styles.rosterThumbEmoji}>
+                    {a.generationStatus && a.generationStatus !== 'complete' ? '⏳' : '🦊'}
+                  </Text>
+                </View>
+                <Text style={styles.rosterName} numberOfLines={1}>{a.name}</Text>
+                <Text style={styles.rosterMeta}>Lv.{a.level} · {a.battleWins}W</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          <View style={styles.actionRow}>
+            <CTACard
+              emoji="⚔️"
+              title={t({ en: 'Battle', zh: '战斗' })}
+              subtitle={t({ en: 'Challenge or replay', zh: '挑战 / 回放' })}
+              onPress={onBattle}
+              testID="world-cta-battle"
+            />
+            <CTACard
+              emoji="🏰"
+              title={t({ en: 'Dungeon', zh: '副本' })}
+              subtitle={t({ en: 'Share code / scan room', zh: '分享码 / 扫房间' })}
+              onPress={onDungeon}
+              testID="world-cta-dungeon"
+            />
+          </View>
+        </>
+      ) : (
         <View style={[styles.banner, styles.bannerInfo]}>
           <Text style={styles.bannerText}>
             {t({
-              en: 'Tap below to scan your first object',
-              zh: '点下面任意按钮,试试扫描身边物品',
+              en: '💡 Your first character appears here. Battle & dungeons unlock once you have one.',
+              zh: '💡 你的第一个角色会出现在这里。拥有角色后即可解锁战斗和副本。',
             })}
           </Text>
         </View>
-      </View>
-
-      {/* 2x2 main CTA grid */}
-      <View style={styles.ctaGrid}>
-        <CTACard
-          emoji="📷"
-          title={t({ en: 'Scan Object', zh: '扫描物体' })}
-          subtitle={t({ en: 'Quick · long-press for Detail / Room', zh: '快速 · 长按选精细/房间' })}
-          onPress={() => onScan('quick')}
-          onLongPress={() => onScan('detail')}
-          testID="world-cta-scan"
-        />
-        <CTACard
-          emoji="🎒"
-          title={t({ en: 'My Inventory', zh: '我的资产' })}
-          onPress={onInventory}
-          testID="world-cta-inventory"
-        />
-        <CTACard
-          emoji="⚔️"
-          title={t({ en: 'Battle', zh: '战斗' })}
-          subtitle={t({ en: 'Challenge or replay', zh: '挑战 / 回放' })}
-          onPress={onBattle}
-          testID="world-cta-battle"
-        />
-        <CTACard
-          emoji="🏰"
-          title={t({ en: 'Dungeon', zh: '副本' })}
-          subtitle={t({ en: 'Share code or scan room', zh: '分享码 / 扫房间' })}
-          onPress={onDungeon}
-          testID="world-cta-dungeon"
-        />
-      </View>
+      )}
 
       {/* Create-digital-character section (R3.2 — moved from Home drawer) */}
       <Text style={styles.sectionHeader}>
@@ -244,6 +289,38 @@ const styles = StyleSheet.create({
   ctaEmoji: { fontSize: 28, marginBottom: 6 },
   ctaTitle: { fontSize: 15, fontWeight: '600', color: colors.textPrimary, marginBottom: 2 },
   ctaSubtitle: { fontSize: 11, color: colors.textMuted },
+
+  // HERO
+  hero: {
+    backgroundColor: 'rgba(99,102,241,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.35)',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  heroPressed: { opacity: 0.85 },
+  heroEmoji: { fontSize: 48, marginBottom: 8 },
+  heroTitle: { fontSize: 19, fontWeight: '800', color: colors.textPrimary, textAlign: 'center', marginBottom: 6 },
+  heroSub: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginBottom: 16, lineHeight: 19 },
+  heroBtn: { backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 32 },
+  heroBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  heroHint: { fontSize: 11, color: colors.textMuted, marginTop: 10 },
+
+  // Roster
+  rosterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  seeAll: { fontSize: 13, color: colors.accent, fontWeight: '600' },
+  rosterRow: { marginBottom: 16 },
+  rosterCard: { width: 96, marginRight: 10, alignItems: 'center' },
+  rosterThumb: {
+    width: 96, height: 96, borderRadius: 14, backgroundColor: colors.bgCard,
+    borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: 6,
+  },
+  rosterThumbEmoji: { fontSize: 40 },
+  rosterName: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, maxWidth: 96 },
+  rosterMeta: { fontSize: 11, color: colors.textMuted },
+  actionRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
 
   sectionHeader: {
     fontSize: 13,

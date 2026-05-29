@@ -12,23 +12,17 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuthStore } from '../stores/authStore';
-import { AuthStackParamList, OnboardingStackParamList, RootStackParamList } from './types';
+import { AuthStackParamList, RootStackParamList } from './types';
 import { MainTabNavigator } from './MainTabNavigator';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { AuthCallbackScreen } from '../screens/auth/AuthCallbackScreen';
-import { InvitationGateScreen } from '../screens/auth/InvitationGateScreen';
 import { WalletConnectScreen } from '../screens/WalletConnectScreen';
-import { DeploySelectScreen } from '../screens/onboarding/DeploySelectScreen';
-import { CloudDeployScreen } from '../screens/onboarding/CloudDeployScreen';
-import { ConnectExistingScreen } from '../screens/onboarding/ConnectExistingScreen';
-import { LocalDeployScreen } from '../screens/onboarding/LocalDeployScreen';
-import { SocialBindScreen } from '../screens/onboarding/SocialBindScreen';
+import { FirstScanScreen } from '../screens/onboarding/FirstScanScreen';
 import { InboxScreen } from '../screens/inbox/InboxScreen';
 import { GlobalScanScreen } from '../screens/scan/GlobalScanScreen';
 
-const Root = createNativeStackNavigator<RootStackParamList & { Inbox: undefined; Scan: undefined }>();
+const Root = createNativeStackNavigator<RootStackParamList & { Inbox: undefined; Scan: undefined; FirstScan: undefined; Auth: undefined }>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
-const OnboardingStack = createNativeStackNavigator<OnboardingStackParamList>();
 
 function AuthNavigator() {
   return (
@@ -40,34 +34,28 @@ function AuthNavigator() {
   );
 }
 
-function OnboardingNavigator() {
-  return (
-    <OnboardingStack.Navigator id={undefined} screenOptions={{ headerShown: false }}>
-      <OnboardingStack.Screen name="DeploySelect" component={DeploySelectScreen} />
-      <OnboardingStack.Screen name="CloudDeploy" component={CloudDeployScreen} />
-      <OnboardingStack.Screen name="ConnectExisting" component={ConnectExistingScreen} />
-      <OnboardingStack.Screen name="LocalDeploy" component={LocalDeployScreen} />
-      <OnboardingStack.Screen name="SocialBind" component={SocialBindScreen} />
-    </OnboardingStack.Navigator>
-  );
-}
-
 export function RootNavigator() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isGuest = useAuthStore((s) => s.isGuest);
   const hasCompletedOnboarding = useAuthStore((s) => s.hasCompletedOnboarding);
-  const hasValidInvitation = useAuthStore((s) => s.hasValidInvitation);
 
+  // 首启体验(2026-05): 邀请码墙已移除(决策: 暂不保留邀请制)。
+  // 未登录且非游客 → FirstScan 落地页(可一键试用首扫 or 登录)。
+  // 游客态(本地试用) → 直接进 Main(可扫描看角色卡, 保存时再引导登录)。
+  // 已登录 → 进 Main(不再经过 InvitationGate / DeploySelect 强制 onboarding;
+  //          部署选择已移到 设置→高级, 不挡新用户)。
   return (
     <Root.Navigator id={undefined} screenOptions={{ headerShown: false, animation: 'fade' }}>
-      {!isAuthenticated ? (
-        <Root.Screen name="Auth" component={AuthNavigator} />
-      ) : !hasValidInvitation ? (
-        <Root.Screen name="InvitationGate" component={InvitationGateScreen} />
-      ) : !hasCompletedOnboarding ? (
-        <Root.Screen name="Onboarding" component={OnboardingNavigator} />
+      {!isAuthenticated && !isGuest ? (
+        <Root.Screen name="FirstScan" component={FirstScanScreen} />
       ) : (
         <>
           <Root.Screen name="Main" component={MainTabNavigator} />
+          <Root.Screen
+            name="Auth"
+            component={AuthNavigator}
+            options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+          />
           <Root.Screen
             name="Inbox"
             component={InboxScreen}

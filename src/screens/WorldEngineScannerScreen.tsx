@@ -229,35 +229,8 @@ export default function WorldEngineScannerScreen() {
         return;
       }
 
-      // Wave 17 v6 — Hunyuan3D rejects images with width or height > 5000px
-      // ("InvalidParameterValue.InvalidImageResolution"). Phone cameras
-      // routinely produce 6144×8192 frames, so we resize down to 4096px
-      // max edge before storing the URI. expo-image-manipulator preserves
-      // aspect ratio and writes a new file under the cache directory.
-      let normalized = { uri: photo.uri, width: photo.width, height: photo.height };
-      const maxEdge = Math.max(photo.width || 0, photo.height || 0);
-      if (maxEdge > 4096) {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-          const ImageManipulator = require('expo-image-manipulator') as typeof import('expo-image-manipulator');
-          const ratio = 4096 / maxEdge;
-          const targetWidth = Math.round((photo.width || 0) * ratio);
-          const result = await ImageManipulator.manipulateAsync(
-            photo.uri,
-            [{ resize: { width: targetWidth } }],
-            { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG },
-          );
-          normalized = { uri: result.uri, width: result.width, height: result.height };
-        } catch (resizeErr) {
-          console.warn('[scanner] resize failed, using original frame:', resizeErr);
-          // Falls through with original photo — backend will still try
-          // Hunyuan3D and surface the resolution error if the device
-          // produces an oversized frame that exceeds the API limit.
-        }
-      }
-
       // Quality Gate Layer 2: Per-frame scoring (Task 14.3)
-      const qualityScore = computeFrameQuality(normalized.uri, capturedFrames.length);
+      const qualityScore = computeFrameQuality(photo.uri, capturedFrames.length);
       setLastQualityScore(qualityScore);
 
       // Check if quality is acceptable
@@ -276,9 +249,9 @@ export default function WorldEngineScannerScreen() {
       }
 
       const frame: CapturedFrame = {
-        uri: normalized.uri,
-        width: normalized.width,
-        height: normalized.height,
+        uri: photo.uri,
+        width: photo.width,
+        height: photo.height,
         faces: [], // Faces already checked in real-time
         qualityScore,
         timestamp: Date.now(),
@@ -356,21 +329,34 @@ export default function WorldEngineScannerScreen() {
         return;
       }
 
-      const { jobId, estimatedSeconds } = await generateFromScan(
-        sessionId,
-        'cartoon',
-      );
+      const gen = await generateFromScan(sessionId, 'cartoon');
+      const { jobId, estimatedSeconds } = gen;
 
-      // Hand off to the progress screen which polls /jobs/:id/status.
-      // Use replace so the user can't swipe back to the scanner mid-flight.
-      // Sprint P-8 P2 (2026-05-22): also pass sessionId so the progress
-      // screen can auto-trigger /dungeons/generate when scanMode === 'room'.
-      (navigation as any).replace('ReconstructionProgress', {
-        jobId,
-        estimatedSeconds,
-        scanMode,
-        scanSessionId: sessionId,
-      });
+      // 方案 B (card-before-mesh): 角色扫描 (quick/detail) 后端会同步返回角色卡
+      // (assetId + characterCard), 直接跳"角色卡"屏秒出 wow, 3D 在后台孵化。
+      // 游客本地试用: 后端返回 characterCard 但无 assetId(不落库), 同样跳角色卡屏
+      // (卡片态 = guest_preview, 屏内引导"保存→登录")。
+      // 房间扫描 (room → 副本) 没有角色卡, 仍走 ReconstructionProgress。
+      // 老后端不返回 characterCard 时也回退到 ReconstructionProgress (向后兼容)。
+      if (scanMode !== 'room' && gen.characterCard) {
+        (navigation as any).replace('WorldCharacterCard', {
+          assetId: gen.assetId,
+          card: gen.characterCard,
+          generationStatus: gen.generationStatus || 'card_ready',
+          jobId,
+        });
+      } else {
+        // Hand off to the progress screen which polls /jobs/:id/status.
+        // Use replace so the user can't swipe back to the scanner mid-flight.
+        // Sprint P-8 P2 (2026-05-22): also pass sessionId so the progress
+        // screen can auto-trigger /dungeons/generate when scanMode === 'room'.
+        (navigation as any).replace('ReconstructionProgress', {
+          jobId,
+          estimatedSeconds,
+          scanMode,
+          scanSessionId: sessionId,
+        });
+      }
     } catch (error: any) {
       const rawMsg = error?.message || '';
       // Wave 17 v4 — RN's fetch throws "Network request failed" for any

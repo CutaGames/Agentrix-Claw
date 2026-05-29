@@ -56,9 +56,29 @@ export interface PredictQualityResponse {
   suggestions: string[];
 }
 
+export interface CharacterCard {
+  name: string;
+  stats: Record<string, number>;
+  skills: { name: string; type?: string; description?: string }[];
+  personalityTraits: string[];
+  backstory: string;
+  category: string;
+  thumbnailUrl?: string;
+}
+
+export type GenerationStatus =
+  | 'card_ready'
+  | 'mesh_pending'
+  | 'complete'
+  | 'mesh_failed';
+
 export interface GenerateFromScanResponse {
   jobId: string;
   estimatedSeconds: number;
+  /** 方案 B: 角色卡秒出 — generate 时已创建的 card_ready 资产 */
+  assetId?: string;
+  characterCard?: CharacterCard;
+  generationStatus?: GenerationStatus;
 }
 
 export type ReconstructionJobStatus =
@@ -86,11 +106,18 @@ export interface WorldAssetSummary {
   level: number;
   battleWins: number;
   battleLosses: number;
-  styledMeshUrl: string;
-  meshUrl?: string;
+  styledMeshUrl: string | null;
+  meshUrl?: string | null;
   styleType: string;
   boundAgentId: string | null;
-  source: 'scanned' | 'purchased' | 'gifted';
+  source: 'scanned' | 'purchased' | 'gifted' | 'guest_trial';
+  /** 方案 B: 生成生命周期状态 */
+  generationStatus?: GenerationStatus;
+  /** AI 属性(card_ready 起即可用) */
+  stats?: Record<string, number>;
+  skills?: { name: string; type?: string; description?: string }[];
+  personalityTraits?: string[];
+  backstory?: string | null;
   createdAt: string;
   updatedAt?: string;
 }

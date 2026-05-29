@@ -24,3 +24,6 @@ export * from './tier-routing';
 export * from './computer-use';
 export * from './world-engine';
 export * from './world-engine-api';
+// Sprint Post-launch P-3 (2026-05-24) — IdeBridge two-way protocol.
+// See docs/agentrix-positioning-2026-05.zh-CN.md §7 P3.
+export * from './ide-bridge';

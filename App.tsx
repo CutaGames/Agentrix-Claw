@@ -510,12 +510,30 @@ function AppNavigator() {
 
     notifSubRef.current = Notifications.addNotificationReceivedListener((notification) => {
       const { addNotification } = useNotificationStore.getState();
+      const data = (notification.request.content.data as Record<string, any>) ?? {};
       addNotification({
         type: (notification.request.content.data?.type ?? 'system') as any,
         title: notification.request.content.title ?? 'Notification',
         body: notification.request.content.body ?? '',
-        data: (notification.request.content.data as Record<string, any>) ?? {},
+        data,
       });
+      // Multi-Agent v2.1 P2 #15 — fan out wearable haptic + watch
+      // complication when a sub-task completion push arrives. Lazy import
+      // to keep startup cost zero when feature unused. Best-effort.
+      void (async () => {
+        try {
+          const { handleSubTaskAck } = await import(
+            './src/services/wearables/multiAgentWearableAck.service'
+          );
+          await handleSubTaskAck({
+            title: notification.request.content.title ?? undefined,
+            body: notification.request.content.body ?? undefined,
+            data,
+          });
+        } catch {
+          /* ignore — wearable ack is non-critical */
+        }
+      })();
     });
 
     return () => {
@@ -748,29 +766,7 @@ export default function App() {
         <AppErrorBoundary>
           <QueryClientProvider client={queryClient}>
             <BottomSheetModalProvider>
-              <NavigationContainer
-                ref={navigationRef as any}
-                linking={linking as any}
-                onReady={() => {
-                  // Wave 17 v6 — push initial nav state into the store so
-                  // CompanionBall / GlobalFloatingBall can render immediately
-                  // without waiting for the next state mutation. Avoids the
-                  // ref-hydration race that left the ball hidden forever
-                  // in v3/v4/v5.
-                  try {
-                    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-                    const { useNavStateStore } = require('./src/stores/navStateStore') as typeof import('./src/stores/navStateStore');
-                    useNavStateStore.getState().setState(navigationRef.getRootState?.() ?? null);
-                  } catch { /* noop */ }
-                }}
-                onStateChange={(state) => {
-                  try {
-                    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-                    const { useNavStateStore } = require('./src/stores/navStateStore') as typeof import('./src/stores/navStateStore');
-                    useNavStateStore.getState().setState(state ?? null);
-                  } catch { /* noop */ }
-                }}
-              >
+              <NavigationContainer ref={navigationRef as any} linking={linking as any}>
                 <StatusBar style="light" />
                 <AppNavigator />
                 {/* Global AXP toast — surfaces +N AXP when earns happen anywhere. */}

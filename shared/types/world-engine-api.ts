@@ -63,6 +63,24 @@ export interface GenerateFromScanRequest {
 export interface GenerateFromScanResponse {
   jobId: string;
   estimatedSeconds: number;
+  /**
+   * 方案 B (card-before-mesh): generate 时已同步创建好的 card_ready 资产。
+   * 移动端拿到 assetId + characterCard 即可秒显示角色卡, 不必等 3D。
+   * 老客户端忽略这些字段仍按 jobId 轮询, 向后兼容。
+   */
+  assetId?: string;
+  characterCard?: {
+    name: string;
+    stats: Record<string, number>;
+    skills: { name: string; type?: string; description?: string }[];
+    personalityTraits: string[];
+    backstory: string;
+    category: string;
+    /** 角色卡 2D 占位图(混元 preview 或风格化缩略); 3D 完成后由客户端轮询替换 */
+    thumbnailUrl?: string;
+  };
+  /** 'card_ready' | 'mesh_pending' | 'complete' | 'mesh_failed' */
+  generationStatus?: string;
 }
 
 /** GET /api/v1/world-engine/jobs/:jobId/status — Response */
