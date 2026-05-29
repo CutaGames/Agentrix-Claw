@@ -51,11 +51,16 @@ export function RootNavigator() {
       ) : (
         <>
           <Root.Screen name="Main" component={MainTabNavigator} />
-          <Root.Screen
-            name="Auth"
-            component={AuthNavigator}
-            options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-          />
+          {/* Auth 作为 modal: 仅在尚未正式登录时注册(游客态 isAuthenticated=false)。
+              登录成功 → isAuthenticated=true → 该 Screen 从导航树移除 → modal 自动消失,
+              用户回到 Main(根治"卡在 Authentication successful 不跳转")。*/}
+          {!isAuthenticated && (
+            <Root.Screen
+              name="Auth"
+              component={AuthNavigator}
+              options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+            />
+          )}
           <Root.Screen
             name="Inbox"
             component={InboxScreen}

@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   Animated,
   Image,
+  Modal,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -28,6 +29,8 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { useAuthStore } from '../../stores/authStore';
 import { getWorldAsset, type CharacterCard, type GenerationStatus } from '../../services/worldEngineApi';
+import { ShareCardView } from '../../components/ShareCardView';
+import { buildShareUrl } from '../../utils/shareCard';
 import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
 
 type Nav = NativeStackNavigationProp<WorldStackParamList, 'WorldCharacterCard'>;
@@ -55,6 +58,7 @@ export function WorldCharacterCardScreen() {
     route.params.generationStatus || 'card_ready',
   );
   const [meshUrl, setMeshUrl] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const pollStartRef = useRef<number>(Date.now());
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -110,6 +114,12 @@ export function WorldCharacterCardScreen() {
   }, [navigation]);
 
   const onShare = useCallback(() => {
+    // 打开精美角色海报弹层(ShareCardView): 截图成 PNG → 系统分享面板 → 微信/WhatsApp
+    // /Telegram/Ins 等任意社交 app。这是病毒裂变入口(不是上架)。
+    setShareOpen(true);
+  }, []);
+
+  const onList = useCallback(() => {
     if (!assetId) return;
     navigation.navigate('WorldAssetListing', { assetId, assetName: card?.name });
   }, [assetId, card?.name, navigation]);
@@ -145,6 +155,7 @@ export function WorldCharacterCardScreen() {
   const statSum = STAT_META.reduce((sum, m) => sum + (card.stats?.[m.key] || 0), 0);
 
   return (
+    <>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* 3D 状态条 */}
       <MeshStatusBanner status={genStatus} t={t} />
@@ -252,6 +263,10 @@ export function WorldCharacterCardScreen() {
               <Text style={styles.primaryBtnText}>💾 {t({ en: 'Save this character', zh: '保存这个角色' })}</Text>
             </TouchableOpacity>
           </View>
+          {/* 游客也能分享(裂变): 分享卡片到社交 app, 好友点开下载 app */}
+          <TouchableOpacity style={styles.shareBtnFull} onPress={onShare} testID="card-share-guest">
+            <Text style={styles.secondaryBtnText}>🔗 {t({ en: 'Share to friends', zh: '分享给好友' })}</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('WorldEngineScanner', { mode: 'quick' })}>
             <Text style={styles.linkText}>{t({ en: 'Scan another →', zh: '再扫一个 →' })}</Text>
           </TouchableOpacity>
@@ -262,16 +277,46 @@ export function WorldCharacterCardScreen() {
             <TouchableOpacity style={styles.primaryBtn} onPress={onBattle}>
               <Text style={styles.primaryBtnText}>⚔️ {t({ en: 'Battle', zh: '去战斗' })}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={onShare}>
-              <Text style={styles.secondaryBtnText}>🔗 {t({ en: 'Share', zh: '分享' })}</Text>
+            <TouchableOpacity style={styles.primaryBtn} onPress={onShare} testID="card-share">
+              <Text style={styles.primaryBtnText}>🔗 {t({ en: 'Share', zh: '分享' })}</Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity style={styles.linkBtn} onPress={onInventory}>
-            <Text style={styles.linkText}>{t({ en: 'View all my assets →', zh: '查看我的全部资产 →' })}</Text>
-          </TouchableOpacity>
+          <View style={styles.ctaRow}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={onList} testID="card-list">
+              <Text style={styles.secondaryBtnText}>💰 {t({ en: 'List for sale', zh: '上架出售' })}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={onInventory}>
+              <Text style={styles.secondaryBtnText}>🎒 {t({ en: 'My assets', zh: '我的资产' })}</Text>
+            </TouchableOpacity>
+          </View>
         </>
       )}
     </ScrollView>
+
+    {/* 病毒裂变: 精美角色海报弹层 — 截图成 PNG, 系统分享面板可选微信/WhatsApp/Telegram/Ins 等 */}
+    <Modal visible={shareOpen} transparent animationType="slide" onRequestClose={() => setShareOpen(false)}>
+      <View style={styles.shareOverlay}>
+        <View style={styles.shareSheet}>
+          <ShareCardView
+            shareUrl={buildShareUrl('world-asset', assetId || 'preview')}
+            title={card?.name || (t({ en: 'My AI Character', zh: '我的 AI 角色' }) as string)}
+            subtitle={t({ en: 'Made on Agentrix · Scan reality, build a world', zh: 'Agentrix 出品 · 扫现实，造世界' }) as string}
+            headerEmoji="🎮"
+            categoryLabel={card?.category}
+            statsLabel={STAT_META.map((m) => `${m.emoji}${card?.stats?.[m.key] ?? 0}`).join('  ')}
+            description={card?.backstory || undefined}
+            tags={card?.personalityTraits?.slice(0, 3)}
+            ctaLabel={t({ en: 'Scan to make your own character', zh: '扫码做一个你的角色' }) as string}
+            accentFrom="#7C3AED"
+            accentTo="#2563EB"
+          />
+          <TouchableOpacity style={styles.shareClose} onPress={() => setShareOpen(false)}>
+            <Text style={styles.shareCloseText}>{t({ en: 'Close', zh: '关闭' })}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -366,6 +411,11 @@ const styles = StyleSheet.create({
   },
   guestSaveHint: { color: colors.textSecondary, fontSize: 13, lineHeight: 20, marginBottom: 14, textAlign: 'center' },
   primaryBtnFull: { backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  shareBtnFull: { marginTop: 12, backgroundColor: colors.bgCard, borderRadius: 14, paddingVertical: 15, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  shareOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  shareSheet: { width: '100%', alignItems: 'center' },
+  shareClose: { marginTop: 16, paddingVertical: 12, paddingHorizontal: 32, borderRadius: 12, backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border },
+  shareCloseText: { color: colors.textPrimary, fontSize: 15, fontWeight: '600' },
 });
 
 export default WorldCharacterCardScreen;

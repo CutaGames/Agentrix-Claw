@@ -59,7 +59,24 @@ export function AuthCallbackScreen() {
 
           setStatus('success');
           setMessage('Authentication successful!');
-          // RootNavigator will handle redirect to Main/Onboarding
+          // 2026-05-29 fix: Auth 现在是挂在 Main 之上的 modal(首启游客流程改造后)。
+          // setAuth 把 isAuthenticated=true / isGuest=false, 但 RootNavigator 已在
+          // 渲染 Main 分支(游客态也渲染 Main), 分支不变 → Auth modal 不会自动消失,
+          // 用户卡在"Authentication successful"。这里主动关闭 Auth modal 回到 Main。
+          setTimeout(() => {
+            try {
+              const parent = navigation.getParent?.();
+              if (parent?.canGoBack?.()) {
+                parent.goBack();
+              } else if (navigation.canGoBack()) {
+                navigation.goBack();
+              } else {
+                (navigation as any).navigate('Main');
+              }
+            } catch {
+              try { (navigation as any).navigate('Main'); } catch { /* noop */ }
+            }
+          }, 600);
         } else {
           throw new Error('Invalid response from server');
         }
