@@ -748,7 +748,29 @@ export default function App() {
         <AppErrorBoundary>
           <QueryClientProvider client={queryClient}>
             <BottomSheetModalProvider>
-              <NavigationContainer ref={navigationRef as any} linking={linking as any}>
+              <NavigationContainer
+                ref={navigationRef as any}
+                linking={linking as any}
+                onReady={() => {
+                  // Wave 17 v6 — push initial nav state into the store so
+                  // CompanionBall / GlobalFloatingBall can render immediately
+                  // without waiting for the next state mutation. Avoids the
+                  // ref-hydration race that left the ball hidden forever
+                  // in v3/v4/v5.
+                  try {
+                    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+                    const { useNavStateStore } = require('./src/stores/navStateStore') as typeof import('./src/stores/navStateStore');
+                    useNavStateStore.getState().setState(navigationRef.getRootState?.() ?? null);
+                  } catch { /* noop */ }
+                }}
+                onStateChange={(state) => {
+                  try {
+                    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+                    const { useNavStateStore } = require('./src/stores/navStateStore') as typeof import('./src/stores/navStateStore');
+                    useNavStateStore.getState().setState(state ?? null);
+                  } catch { /* noop */ }
+                }}
+              >
                 <StatusBar style="light" />
                 <AppNavigator />
                 {/* Global AXP toast — surfaces +N AXP when earns happen anywhere. */}

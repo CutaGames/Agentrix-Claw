@@ -1,5 +1,3 @@
-appId: app.agentrix.claw
----
 # Maestro E2E master flow for P-9 Companion Redesign (T24.1).
 #
 # Smoke covers the highest-leverage paths so a green run = "core companion
@@ -15,6 +13,8 @@ appId: app.agentrix.claw
 # (deferred to wave 15+).
 #
 # Spec: requirements.md R12.3, R12.10.
+
+appId: com.cutagames.agentrix
 
 # ── Pre-flight: launch app cold ──────────────────────────────────────
 - launchApp:

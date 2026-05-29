@@ -32,6 +32,7 @@ import {
   type PetMode,
 } from '../services/petMode';
 import { PetSpriteImage } from './PetSpriteImage';
+import { useNavStateStore, resolveLeafRouteName } from '../stores/navStateStore';
 
 // ─── Layout constants ───────────────────────────────────────────────────────
 const BALL_SIZE = 48;
@@ -153,85 +154,13 @@ export function GlobalFloatingBall({
   const { width: screenW, height: screenH } = Dimensions.get('window');
   const wakeWordConfig = useMemo(() => resolveMobileWakeWordConfig(wakeWordSettings), [wakeWordSettings]);
 
-  // Wave 17 hotfix — read current route via navigationRef instead of
-  // useNavigationState. The hook throws "Couldn't get the navigation
-  // state. Is your component inside a navigator?" because the ball
-  // mounts as a sibling of the Navigator subtree (under
-  // NavigationContainer but outside Stack/Tab navigators). The ref
-  // gives us the same root state without any context dependency.
-  //
-  // Resolution mirrors the legacy useNavigationState selector: walk
-  // up to 4 levels of nested route.state until we hit the leaf route.
-  const resolveLeafRouteName = useCallback((rootState: any): string => {
-    if (!rootState) return '';
-    let route = rootState.routes?.[rootState.index];
-    if (!route) return '';
-    for (let depth = 0; depth < 4; depth++) {
-      const nested = route?.state as any;
-      if (!nested?.routes || nested.index == null) break;
-      route = nested.routes[nested.index];
-    }
-    return route?.name || '';
-  }, []);
+  // Wave 17 v6 — subscribe to centralized navStateStore (populated by
+  // App.tsx NavigationContainer onReady/onStateChange) instead of
+  // polling navigationRef. The polling pattern was racy and left the
+  // ball hidden in earlier hotfixes.
+  const navState = useNavStateStore((s) => s.state);
 
-  const [currentRouteName, setCurrentRouteName] = useState<string>(() => {
-    try {
-      return resolveLeafRouteName(navigationRef?.current?.getRootState?.());
-    } catch {
-      return '';
-    }
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    let unsubscribe: (() => void) | null = null;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
-
-    const tryAttach = () => {
-      const ref = navigationRef?.current;
-      if (!ref?.addListener) return false;
-      // Sync once on mount — ref may have hydrated between mount and now.
-      try {
-        const initial = ref.getRootState?.();
-        if (initial && !cancelled) {
-          setCurrentRouteName(resolveLeafRouteName(initial));
-        }
-      } catch {
-        /* ignore */
-      }
-      unsubscribe = ref.addListener('state', () => {
-        try {
-          if (!cancelled) {
-            setCurrentRouteName(resolveLeafRouteName(ref.getRootState()));
-          }
-        } catch {
-          /* ref unmounted — ignore */
-        }
-      });
-      return true;
-    };
-
-    // Wave 17 v4 — poll until ref is ready in case NavigationContainer
-    // hasn't mounted yet on cold launch.
-    if (!tryAttach()) {
-      pollTimer = setInterval(() => {
-        if (cancelled) return;
-        if (tryAttach() && pollTimer) {
-          clearInterval(pollTimer);
-          pollTimer = null;
-        }
-      }, 200);
-    }
-
-    return () => {
-      cancelled = true;
-      if (pollTimer) {
-        clearInterval(pollTimer);
-        pollTimer = null;
-      }
-      try { unsubscribe?.(); } catch { /* ignore */ }
-    };
-  }, [navigationRef, resolveLeafRouteName]);
+  const currentRouteName = useMemo(() => resolveLeafRouteName(navState), [navState]);
 
   const hideOnScreens = ['AgentChat', 'VoiceChat', 'ClawSettings'];
   // Keep the ball (and wake-word listener) visible on the main tab routes.

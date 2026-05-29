@@ -229,8 +229,35 @@ export default function WorldEngineScannerScreen() {
         return;
       }
 
+      // Wave 17 v6 — Hunyuan3D rejects images with width or height > 5000px
+      // ("InvalidParameterValue.InvalidImageResolution"). Phone cameras
+      // routinely produce 6144×8192 frames, so we resize down to 4096px
+      // max edge before storing the URI. expo-image-manipulator preserves
+      // aspect ratio and writes a new file under the cache directory.
+      let normalized = { uri: photo.uri, width: photo.width, height: photo.height };
+      const maxEdge = Math.max(photo.width || 0, photo.height || 0);
+      if (maxEdge > 4096) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+          const ImageManipulator = require('expo-image-manipulator') as typeof import('expo-image-manipulator');
+          const ratio = 4096 / maxEdge;
+          const targetWidth = Math.round((photo.width || 0) * ratio);
+          const result = await ImageManipulator.manipulateAsync(
+            photo.uri,
+            [{ resize: { width: targetWidth } }],
+            { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG },
+          );
+          normalized = { uri: result.uri, width: result.width, height: result.height };
+        } catch (resizeErr) {
+          console.warn('[scanner] resize failed, using original frame:', resizeErr);
+          // Falls through with original photo — backend will still try
+          // Hunyuan3D and surface the resolution error if the device
+          // produces an oversized frame that exceeds the API limit.
+        }
+      }
+
       // Quality Gate Layer 2: Per-frame scoring (Task 14.3)
-      const qualityScore = computeFrameQuality(photo.uri, capturedFrames.length);
+      const qualityScore = computeFrameQuality(normalized.uri, capturedFrames.length);
       setLastQualityScore(qualityScore);
 
       // Check if quality is acceptable
@@ -249,9 +276,9 @@ export default function WorldEngineScannerScreen() {
       }
 
       const frame: CapturedFrame = {
-        uri: photo.uri,
-        width: photo.width,
-        height: photo.height,
+        uri: normalized.uri,
+        width: normalized.width,
+        height: normalized.height,
         faces: [], // Faces already checked in real-time
         qualityScore,
         timestamp: Date.now(),

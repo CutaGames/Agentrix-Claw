@@ -32,6 +32,7 @@ import { companionEvents } from '../../services/companionEvents.service';
 import { subscribeCompanionMode, getCompanionMode } from '../../services/petMode';
 import type { CompanionMode } from '../../services/petMode';
 import { useActivePet } from '../../services/activePet.service';
+import { useNavStateStore } from '../../stores/navStateStore';
 
 interface CompanionBallProps {
   /** Optional callback invoked on single-tap (default: navigate to AgentChat). */
@@ -90,77 +91,17 @@ const HIDE_ON_DEEP_ROUTES = new Set([
 ]);
 
 export function CompanionBall(props: CompanionBallProps) {
-  // Wave 17 hotfix — read navigation state via the navigation ref instead
-  // of useNavigationState. The hook throws "Couldn't get the navigation
-  // state. Is your component inside a navigator?" when no Navigator is
-  // mounted yet (cold launch SplashScreen, auth flip, E2E surrogate
-  // apps). Reading the ref is safe — `current` may be null which we
-  // handle with the nullish-coalescing fallback below.
+  // Wave 17 v6 hotfix — subscribe to the centralized navStateStore which
+  // is populated by App.tsx's NavigationContainer onReady/onStateChange
+  // callbacks. The earlier navigationRef-polling pattern (v3-v5) was
+  // racy — addListener attached before NavigationContainer registered
+  // its handler, so we missed the very first state update and the ball
+  // stayed hidden forever.
   //
-  // We poll the ref via a state subscription set up in useEffect so the
-  // ball repaints on tab changes. The state listener is wired in
-  // App.tsx via navigationRef.addListener('state', ...).
-  const [navState, setNavState] = useState<any>(() => {
-    try {
-      return props.navigationRef?.current?.getRootState?.() ?? null;
-    } catch {
-      return null;
-    }
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    let unsubscribe: (() => void) | null = null;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
-
-    const tryAttach = () => {
-      const ref = props.navigationRef?.current;
-      if (!ref?.addListener) return false;
-      // Poll once for initial state in case it changed between mount and now.
-      try {
-        const initial = ref.getRootState?.();
-        if (initial && !cancelled) setNavState(initial);
-      } catch {
-        /* ignore */
-      }
-      // Subscribe for future tab changes.
-      unsubscribe = ref.addListener('state', () => {
-        try {
-          if (!cancelled) setNavState(ref.getRootState());
-        } catch {
-          /* ignore — ref unmounted between calls */
-        }
-      });
-      return true;
-    };
-
-    // Try to attach immediately. If the ref isn't ready yet (cold launch
-    // SplashScreen → NavigationContainer not mounted), poll every 200ms
-    // until it is. This solves the "ball never appears" bug where the
-    // initial useState read got null and addListener was never wired.
-    if (!tryAttach()) {
-      pollTimer = setInterval(() => {
-        if (cancelled) return;
-        if (tryAttach() && pollTimer) {
-          clearInterval(pollTimer);
-          pollTimer = null;
-        }
-      }, 200);
-    }
-
-    return () => {
-      cancelled = true;
-      if (pollTimer) {
-        clearInterval(pollTimer);
-        pollTimer = null;
-      }
-      try {
-        unsubscribe?.();
-      } catch {
-        /* ignore */
-      }
-    };
-  }, [props.navigationRef]);
+  // The store is synchronous and reactive: `useNavStateStore` re-renders
+  // this component whenever NavigationContainer fires onStateChange, no
+  // ref hydration timing to worry about.
+  const navState = useNavStateStore((s) => s.state);
 
   const layoutStore = useCompanionLayoutStore();
   const activePet = useActivePet();
