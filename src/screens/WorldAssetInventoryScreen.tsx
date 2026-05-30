@@ -54,6 +54,7 @@ interface WorldAssetSummary {
   battleWins: number;
   battleLosses: number;
   styledMeshUrl: string;
+  portraitUrl?: string | null;
   styleType: string;
   boundAgentId: string | null;
   source: 'scanned' | 'purchased' | 'gifted';
@@ -372,17 +373,17 @@ export default function WorldAssetInventoryScreen() {
         delayLongPress={500}
         activeOpacity={0.7}
       >
-        {/* Thumbnail (Phase 1: pre-rendered PNG/GIF per design §8) */}
+        {/* Thumbnail — prefer 3D styled mesh, fall back to 2D portrait (扫描照片) */}
         <View style={styles.thumbnailContainer}>
-          {item.styledMeshUrl ? (
+          {item.styledMeshUrl || item.portraitUrl ? (
             <Image
-              source={{ uri: item.styledMeshUrl }}
+              source={{ uri: item.styledMeshUrl || (item.portraitUrl as string) }}
               style={styles.thumbnail}
               resizeMode="cover"
             />
           ) : (
             <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
-              <Text style={styles.thumbnailPlaceholderText}>3D</Text>
+              <Text style={styles.thumbnailPlaceholderText}>🦊</Text>
             </View>
           )}
 

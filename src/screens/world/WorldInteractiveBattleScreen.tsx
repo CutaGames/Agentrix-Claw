@@ -21,6 +21,7 @@ import {
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import {
   startInteractiveBattle,
+  startTrainingBattle,
   stepInteractiveBattle,
   type InteractiveBattleState,
   type InteractiveRound,
@@ -31,6 +32,9 @@ import {
 interface RouteParams {
   challengerAssetId: string;
   defenderAssetId: string;
+  /** 训练模式: 战斗已由 /train 创建好, 直接用这个 id 不再 start */
+  preStartedBattleId?: string;
+  training?: boolean;
 }
 
 const ENERGY_MAX = 3;
@@ -39,7 +43,7 @@ const CHARGE_MAX = 3;
 export default function WorldInteractiveBattleScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<{ p: RouteParams }, 'p'>>();
-  const { challengerAssetId, defenderAssetId } = route.params;
+  const { challengerAssetId, defenderAssetId, training } = route.params;
 
   const [battleId, setBattleId] = useState<string | null>(null);
   const [state, setState] = useState<InteractiveBattleState | null>(null);
@@ -55,7 +59,9 @@ export default function WorldInteractiveBattleScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const r = await startInteractiveBattle({ challengerAssetId, defenderAssetId });
+        const r = training
+          ? await startTrainingBattle({ challengerAssetId, difficulty: 'normal' })
+          : await startInteractiveBattle({ challengerAssetId, defenderAssetId });
         if (cancelled) return;
         setBattleId(r.battleId);
         setState(r.state);
@@ -67,7 +73,7 @@ export default function WorldInteractiveBattleScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [challengerAssetId, defenderAssetId]);
+  }, [challengerAssetId, defenderAssetId, training]);
 
   const submit = useCallback(
     async (decision: BattleDecision) => {

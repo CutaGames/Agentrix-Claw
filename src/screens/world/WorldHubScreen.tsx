@@ -25,6 +25,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Pressable,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
@@ -198,9 +199,17 @@ export function WorldHubScreen() {
                 onPress={onInventory}
               >
                 <View style={styles.rosterThumb}>
-                  <Text style={styles.rosterThumbEmoji}>
-                    {a.generationStatus && a.generationStatus !== 'complete' ? '⏳' : '🦊'}
-                  </Text>
+                  {a.portraitUrl || a.styledMeshUrl ? (
+                    <Image
+                      source={{ uri: (a.styledMeshUrl as string) || (a.portraitUrl as string) }}
+                      style={styles.rosterThumbImg}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Text style={styles.rosterThumbEmoji}>
+                      {a.generationStatus && a.generationStatus !== 'complete' && a.generationStatus !== 'card_ready' ? '⏳' : '🦊'}
+                    </Text>
+                  )}
                 </View>
                 <Text style={styles.rosterName} numberOfLines={1}>{a.name}</Text>
                 <Text style={styles.rosterMeta}>Lv.{a.level} · {a.battleWins}W</Text>
@@ -370,9 +379,10 @@ const styles = StyleSheet.create({
   rosterCard: { width: 96, marginRight: 10, alignItems: 'center' },
   rosterThumb: {
     width: 96, height: 96, borderRadius: 14, backgroundColor: colors.bgCard,
-    borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: 6,
+    borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: 6, overflow: 'hidden',
   },
   rosterThumbEmoji: { fontSize: 40 },
+  rosterThumbImg: { width: '100%', height: '100%' },
   rosterName: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, maxWidth: 96 },
   rosterMeta: { fontSize: 11, color: colors.textMuted },
   actionRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },

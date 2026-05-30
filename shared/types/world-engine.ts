@@ -512,6 +512,19 @@ export const WORLD_MAX_CATCHUP_TICKS = 8;
 export const WORLD_WORK_AXP_BASE_MIN = 5;
 export const WORLD_WORK_AXP_BASE_MAX = 40;
 
+/** 系统 NPC(常驻小镇, 单人也热闹;不依赖真人在线) */
+export interface WorldNpc {
+  id: string;
+  name: string;
+  emoji: string;
+  role: 'merchant' | 'guard' | 'guide' | 'trainer';
+  location: string;
+  /** 一句招呼语 */
+  line: string;
+  /** 可交互动作(客户端据此渲染按钮) */
+  actions: Array<'talk' | 'train' | 'trade' | 'quest'>;
+}
+
 /** GET /api/v1/world-engine/world/feed — Response */
 export interface WorldFeedResponse {
   /** 自上次以来新推进/补算的事件数 */
@@ -523,8 +536,18 @@ export interface WorldFeedResponse {
     assetId: string;
     name: string;
     level: number;
+    portraitUrl?: string | null;
     state: WorldResidentState;
   }>;
+  /** 常驻系统 NPC(单人也有得玩, 不依赖真人在线) */
+  npcs: WorldNpc[];
+  /** 小镇整体信息 */
+  town: {
+    name: string;
+    population: number; // residents + npcs
+    /** 用户主宠当前世界形态摘要(若有) */
+    mainPet?: { name: string; intimacyLevel: number; emotion: string } | null;
+  };
 }
 
 // ============================================================

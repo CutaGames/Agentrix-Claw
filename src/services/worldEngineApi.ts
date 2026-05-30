@@ -108,6 +108,8 @@ export interface WorldAssetSummary {
   battleLosses: number;
   styledMeshUrl: string | null;
   meshUrl?: string | null;
+  /** 2D 立绘兜底: 角色形象图(扫描照片), 100% 有图不依赖 3D */
+  portraitUrl?: string | null;
   styleType: string;
   boundAgentId: string | null;
   source: 'scanned' | 'purchased' | 'gifted' | 'guest_trial';
@@ -562,6 +564,7 @@ export interface WorldResidentSummary {
   assetId: string;
   name: string;
   level: number;
+  portraitUrl?: string | null;
   state: {
     job?: string;
     mood?: string;
@@ -572,6 +575,16 @@ export interface WorldResidentSummary {
   };
 }
 
+export interface WorldNpc {
+  id: string;
+  name: string;
+  emoji: string;
+  role: 'merchant' | 'guard' | 'guide' | 'trainer';
+  location: string;
+  line: string;
+  actions: Array<'talk' | 'train' | 'trade' | 'quest'>;
+}
+
 export interface WorldFeedResponse {
   /** 本次请求离线补算新生成的事件数(用于"你不在时发生了 N 件事"提示) */
   newEventCount: number;
@@ -579,6 +592,14 @@ export interface WorldFeedResponse {
   events: WorldEventItem[];
   /** 各居民当前状态摘要 */
   residents: WorldResidentSummary[];
+  /** 常驻系统 NPC */
+  npcs: WorldNpc[];
+  /** 小镇整体信息 */
+  town: {
+    name: string;
+    population: number;
+    mainPet?: { name: string; intimacyLevel: number; emotion: string } | null;
+  };
 }
 
 /**
@@ -668,6 +689,17 @@ export function startInteractiveBattle(body: {
 }): Promise<StartInteractiveBattleResponse> {
   return apiFetch<StartInteractiveBattleResponse>(
     '/v1/world-engine/battles/interactive/start',
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+}
+
+/** 单人 PvE: 跟系统训练假人打一场(不需要第二个角色/不需要别人在线)。 */
+export function startTrainingBattle(body: {
+  challengerAssetId: string;
+  difficulty?: 'easy' | 'normal' | 'hard';
+}): Promise<StartInteractiveBattleResponse & { isTrainingDummy: boolean; dummyName: string }> {
+  return apiFetch<StartInteractiveBattleResponse & { isTrainingDummy: boolean; dummyName: string }>(
+    '/v1/world-engine/battles/interactive/train',
     { method: 'POST', body: JSON.stringify(body) },
   );
 }

@@ -50,7 +50,7 @@ export type WorldStackParamList = {
   WorldEngineScanner: { mode?: 'quick' | 'detail' | 'room' } | undefined;
   WorldAssetInventory: undefined;
   WorldBattleArena: { challengerAssetId?: string; defenderAssetId?: string } | undefined;
-  WorldInteractiveBattle: { challengerAssetId: string; defenderAssetId: string };
+  WorldInteractiveBattle: { challengerAssetId: string; defenderAssetId: string; training?: boolean };
   WorldBattlePicker: undefined;
   WorldDungeonExplorer: { shareCode?: string };
   WorldUgcRuleSets: undefined;

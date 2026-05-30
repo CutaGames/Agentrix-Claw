@@ -34,6 +34,7 @@
  * of a Companion bug.
  */
 import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CompanionBall } from './CompanionBall';
 import { ConversationBubble } from './ConversationBubble';
 import { PetDetailSheet } from './PetDetailSheet';
@@ -68,10 +69,10 @@ interface CompanionLayerProps {
  *   - Missing pet sprite errors.
  */
 class CompanionErrorBoundary extends React.Component<
-  { children: React.ReactNode },
+  { children: React.ReactNode; navigationRef?: any },
   { failed: boolean }
 > {
-  constructor(props: { children: React.ReactNode }) {
+  constructor(props: { children: React.ReactNode; navigationRef?: any }) {
     super(props);
     this.state = { failed: false };
   }
@@ -88,17 +89,35 @@ class CompanionErrorBoundary extends React.Component<
       error?.message,
       info?.componentStack?.split('\n').slice(0, 4).join(' / '),
     );
+    // Wave 18 — record the failure reason so we can diagnose the
+    // "ball never appears even after reinstall" reports. Without this we
+    // were blind: the boundary silently rendered null and there was no
+    // device-visible signal.
+    try {
+      (globalThis as any).__companionBallError = {
+        message: error?.message,
+        at: Date.now(),
+        stack: info?.componentStack?.split('\n').slice(0, 6).join('\n'),
+      };
+    } catch {
+      /* ignore */
+    }
   }
 
   render() {
-    if (this.state.failed) return null;
+    // Wave 18 — instead of rendering null (which made the ball vanish with
+    // zero user-visible signal whenever ANY descendant threw on mount),
+    // fall back to a minimal always-tappable companion entry so the user
+    // can still reach their pet. The full-featured ball returns next launch
+    // once the transient error clears.
+    if (this.state.failed) return <CompanionFallbackBall navigationRef={this.props.navigationRef} />;
     return this.props.children;
   }
 }
 
 export function CompanionLayer(props: CompanionLayerProps) {
   return (
-    <CompanionErrorBoundary>
+    <CompanionErrorBoundary navigationRef={props.navigationRef}>
       <CompanionLayerContent navigationRef={props.navigationRef} />
     </CompanionErrorBoundary>
   );
@@ -144,3 +163,63 @@ function CompanionLayerContent(props: CompanionLayerProps) {
     </>
   );
 }
+
+/**
+ * CompanionFallbackBall — wave 18 minimal safe ball.
+ *
+ * Rendered by CompanionErrorBoundary when the full GlobalFloatingBall
+ * subtree throws on mount (battery API, sprite resolution, wake-word,
+ * reanimated worklet, etc.). Zero heavy deps: just a draggable-free
+ * fixed-corner button that navigates to the pet companion screen. This
+ * guarantees the user ALWAYS has a visible companion entry, fixing the
+ * "ball never appears" class of bugs where the boundary silently rendered
+ * null.
+ */
+function CompanionFallbackBall({ navigationRef }: { navigationRef?: any }) {
+  const onPress = React.useCallback(() => {
+    try {
+      if (navigationRef?.current?.navigate) {
+        navigationRef.current.navigate('Main', { screen: 'World' });
+      }
+    } catch {
+      /* best-effort */
+    }
+  }, [navigationRef]);
+
+  return (
+    <View style={fallbackStyles.wrap} pointerEvents="box-none">
+      <TouchableOpacity
+        style={fallbackStyles.ball}
+        onPress={onPress}
+        activeOpacity={0.8}
+        accessibilityLabel="companion"
+        testID="companion-fallback-ball"
+      >
+        <Text style={fallbackStyles.emoji}>🦊</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const fallbackStyles = StyleSheet.create({
+  wrap: {
+    position: 'absolute',
+    right: 16,
+    bottom: 120,
+    zIndex: 9999,
+  },
+  ball: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#6C5CE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#6C5CE7',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  emoji: { fontSize: 24 },
+});
