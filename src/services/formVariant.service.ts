@@ -121,20 +121,47 @@ function isInQuietHours(now = new Date()): boolean {
 }
 
 async function isInCalendarMeeting(): Promise<boolean> {
-  // Phase 1 best-effort. expo-calendar isn't installed yet; when the
-  // package lands in wave 10, this becomes:
-  //   const Calendar = require('expo-calendar');
-  //   const cals = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
-  //   const events = await Calendar.getEventsAsync(cals.map(c=>c.id), startOfHour, endOfHour);
-  //   return events.some(...)
-  return false;
+  // Best-effort: lazy-require expo-calendar. The package isn't bundled yet
+  // (lands in a future EAS rebuild); until then this resolves false and the
+  // resolver falls back to the walking / default paths. Once the native dep
+  // is present this activates automatically with no further code change.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    const Calendar = require('expo-calendar') as any;
+    if (!Calendar?.getCalendarsAsync || !Calendar?.getEventsAsync) return false;
+    const perm = await Calendar.getCalendarPermissionsAsync?.();
+    if (perm && !perm.granted) return false;
+    const cals = await Calendar.getCalendarsAsync(Calendar.EntityTypes?.EVENT);
+    if (!Array.isArray(cals) || cals.length === 0) return false;
+    const now = new Date();
+    const soon = new Date(now.getTime() + 5 * 60 * 1000); // next 5 min window
+    const events = await Calendar.getEventsAsync(
+      cals.map((c: any) => c.id),
+      now,
+      soon,
+    );
+    // "In a meeting" = an event is happening right now (started, not ended).
+    return (Array.isArray(events) ? events : []).some((e: any) => {
+      const start = new Date(e.startDate).getTime();
+      const end = new Date(e.endDate).getTime();
+      return start <= now.getTime() && end > now.getTime() && !e.allDay;
+    });
+  } catch {
+    return false;
+  }
 }
 
 async function isWalking(): Promise<boolean> {
-  // Phase 1 best-effort. expo-health bridge not installed yet; when
-  // the package lands in wave 10, polled steps + cadence sustained
-  // for 60s above threshold flips this to true.
-  return false;
+  // P1: real detection via expo-location (already a dependency), replacing
+  // the old hardcoded `false`. Best-effort + silent — never prompts for
+  // permission here, only reads when foreground permission already granted.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    const { detectWalking } = require('./motionDetection.service') as typeof import('./motionDetection.service');
+    return await detectWalking();
+  } catch {
+    return false;
+  }
 }
 
 // ─── Boot — 15 min poll + key event triggers ─────────────────────────────

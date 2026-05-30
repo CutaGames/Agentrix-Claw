@@ -16,12 +16,15 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { companionEvents } from './companionEvents.service';
+import { clanShortCode, type PetClanShortCode } from '../../shared/types/pet';
 
 export interface ActivePet {
   id: string;
   name: string;
-  /** Optional clan / sprite hint (mobile defaults to clan 'A' aka the kitsune). */
-  clan?: 'A' | 'B' | 'C';
+  /** Single-letter clan / sprite code (A..F). Derived via the shared
+   *  `clanShortCode()` bridge so the canonical `A_office..F_family` slugs and
+   *  the renderer's short codes never drift. Mobile default = 'A' (kitsune). */
+  clan?: PetClanShortCode;
   /** True when no instance is bound yet (user logged in but hasn't onboarded). */
   isPlaceholder: boolean;
 }
@@ -47,7 +50,7 @@ export function useActivePet(): ActivePet {
     return {
       id: activeInstance.id,
       name: activeInstance.name || 'Aira',
-      clan: ((activeInstance as any).clan as 'A' | 'B' | 'C' | undefined) || 'A',
+      clan: clanShortCode((activeInstance as any).clan ?? (activeInstance as any).soul_template_id),
       isPlaceholder: false,
     };
   }, [activeInstance]);
@@ -81,7 +84,7 @@ export function getActivePet(): ActivePet {
   return {
     id: inst.id,
     name: inst.name || 'Aira',
-    clan: ((inst as any).clan as 'A' | 'B' | 'C' | undefined) || 'A',
+    clan: clanShortCode((inst as any).clan ?? (inst as any).soul_template_id),
     isPlaceholder: false,
   };
 }
