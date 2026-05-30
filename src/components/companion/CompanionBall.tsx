@@ -30,6 +30,7 @@ import { GlobalFloatingBall } from '../GlobalFloatingBall';
 import { useCompanionLayoutStore } from '../../stores/companionLayoutStore';
 import { companionEvents } from '../../services/companionEvents.service';
 import { subscribeCompanionMode, getCompanionMode } from '../../services/petMode';
+import { COMPANION_MODE_COLOR, COMPANION_MODE_PULSES } from '../../services/petMode';
 import type { CompanionMode } from '../../services/petMode';
 import { useActivePet } from '../../services/activePet.service';
 
@@ -244,6 +245,9 @@ export function CompanionBall(props: CompanionBallProps) {
         onVoiceActivate={props.onSingleTap}
         onSingleTapOverride={props.onSingleTap}
         onLongPressOverride={props.onLongPress}
+        companionModeColor={mode === 'companion' ? undefined : COMPANION_MODE_COLOR[mode]}
+        companionModePulse={COMPANION_MODE_PULSES[mode]}
+        spriteClan={activePet.clan}
         navigationRef={props.navigationRef}
       />
 

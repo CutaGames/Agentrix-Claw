@@ -23,6 +23,7 @@ import React, {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import {
@@ -58,6 +59,18 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
     const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
     const instances = useAuthStore((s) => s.user?.openClawInstances ?? []);
 
+    // P1a — real data for hero / wallet / skills (was hardcoded placeholders).
+    const [detail, setDetail] = useState<import('../../services/petDetail.api').PetDetailData | null>(null);
+    const loadDetail = useCallback(async () => {
+      try {
+        const { fetchPetDetailData } = await import('../../services/petDetail.api');
+        const data = await fetchPetDetailData();
+        setDetail(data);
+      } catch (err) {
+        console.warn('[PetDetailSheet] loadDetail failed:', err);
+      }
+    }, []);
+
     const present = useCallback(() => {
       // P-9 wave 14 (T24.2): perf budget is P95 ≤ 250ms from emit →
       // sheet visible at 85% snap.
@@ -87,7 +100,9 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
       }
       sheetRef.current?.present();
       perfMod.endMark(perfTok);
-    }, [isAuthenticated, navigation]);
+      // Kick off real-data fetch (best-effort, non-blocking).
+      void loadDetail();
+    }, [isAuthenticated, navigation, loadDetail]);
 
     const dismiss = useCallback(() => {
       sheetRef.current?.dismiss();
@@ -166,16 +181,18 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
           >
             <HeroBlock
               pet={pet}
+              detail={detail}
               hasMultiplePets={instances.length > 1}
               onSwitchPet={() =>
                 navigateAndDismiss(() => navigation.navigate('MyAgents'))
               }
             />
 
-            <StatusOverviewSection />
+            <StatusOverviewSection detail={detail} />
 
             <View onLayout={onSectionLayout('wallet')}>
               <WalletCardSection
+                detail={detail}
                 onOpenWallet={() =>
                   navigateAndDismiss(() =>
                     navigation.navigate('Main', {
@@ -244,6 +261,7 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
 
             <View onLayout={onSectionLayout('skills')}>
               <SkillsCardSection
+                detail={detail}
                 onOpenInstall={() =>
                   navigateAndDismiss(() =>
                     navigation.navigate('Main', {
@@ -266,6 +284,7 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
             <View onLayout={onSectionLayout('cross-device')}>
               <CrossDeviceCardSection
                 originDeviceId={pet.id}
+                instances={instances}
                 onManageDevices={() =>
                   navigateAndDismiss(() =>
                     navigation.navigate('Main', {
@@ -322,14 +341,30 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
 
 interface HeroBlockProps {
   pet: ReturnType<typeof useActivePet>;
+  detail: import('../../services/petDetail.api').PetDetailData | null;
   hasMultiplePets: boolean;
   onSwitchPet: () => void;
 }
 const HeroBlock = React.memo(function HeroBlock({
   pet,
+  detail,
   hasMultiplePets,
   onSwitchPet,
 }: HeroBlockProps) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+  const { xpProgress, emotionEmoji } = require('../../services/petDetail.api') as typeof import('../../services/petDetail.api');
+  const ps = detail?.pet ?? null;
+  const level = ps?.intimacy_level ?? null;
+  const xp = ps?.intimacy_xp ?? 0;
+  const energy = detail?.energy ?? null;
+  const prog = level != null ? xpProgress(level, xp) : null;
+
+  const metaText =
+    ps == null
+      ? '加载中…'
+      : `Lv ${level} · 心情${emotionEmoji(ps.emotion)}` +
+        (energy != null ? ` · 能量 ${Math.round(energy)}%` : '');
+
   return (
     <View style={styles.hero}>
       <View style={styles.heroAvatar}>
@@ -344,22 +379,35 @@ const HeroBlock = React.memo(function HeroBlock({
             </TouchableOpacity>
           ) : null}
         </View>
-        <Text style={styles.heroMeta}>Lv 12 · 心情😊 · 能量 78%</Text>
+        <Text style={styles.heroMeta}>{metaText}</Text>
         <View style={styles.xpBarBg}>
-          <View style={[styles.xpBarFill, { width: '64%' }]} />
+          <View style={[styles.xpBarFill, { width: `${prog?.pct ?? 0}%` }]} />
         </View>
       </View>
     </View>
   );
 });
 
-const StatusOverviewSection = React.memo(function StatusOverviewSection() {
+const StatusOverviewSection = React.memo(function StatusOverviewSection({
+  detail,
+}: {
+  detail: import('../../services/petDetail.api').PetDetailData | null;
+}) {
+  const emotion = detail?.pet?.emotion ?? null;
+  const action =
+    emotion === 'sleepy' || emotion === 'tired'
+      ? '它有点累了,在休息'
+      : emotion === 'focused'
+        ? '它正在专注工作'
+        : emotion === 'excited' || emotion === 'happy'
+          ? '它心情不错,陪着你'
+          : '它正陪你逛集市';
   return (
     <View style={styles.statusOverview}>
-      <Text style={styles.statusActionText}>它在做什么:正陪你逛集市</Text>
+      <Text style={styles.statusActionText}>它在做什么:{action}</Text>
       <View style={styles.statusDeviceRow}>
-        <Text style={styles.statusDeviceEmoji}>🖥</Text>
         <Text style={styles.statusDeviceEmoji}>📱</Text>
+        <Text style={styles.statusDeviceEmojiDim}>🖥</Text>
         <Text style={styles.statusDeviceEmojiDim}>⌚</Text>
         <Text style={styles.statusDeviceEmojiDim}>👓</Text>
       </View>
@@ -368,15 +416,23 @@ const StatusOverviewSection = React.memo(function StatusOverviewSection() {
 });
 
 interface WalletCardProps {
+  detail: import('../../services/petDetail.api').PetDetailData | null;
   onOpenWallet: () => void;
   onTransfer: () => void;
   onTrust3Demo: () => void;
 }
 const WalletCardSection = React.memo(function WalletCardSection({
+  detail,
   onOpenWallet,
   onTransfer,
   onTrust3Demo,
 }: WalletCardProps) {
+  const axp = detail?.axp ?? null;
+  const axpText = axp ? String(axp.balance) : '—';
+  const usdText =
+    axp && typeof axp.usd_value_cents === 'number'
+      ? `$${(axp.usd_value_cents / 100).toFixed(2)}`
+      : '—';
   return (
     <SectionCard
       title="💰 钱包"
@@ -384,15 +440,15 @@ const WalletCardSection = React.memo(function WalletCardSection({
     >
       <View style={styles.walletRow}>
         <View style={styles.walletCol}>
-          <Text style={styles.walletLabel}>USDC</Text>
-          <Text style={styles.walletValue}>—</Text>
-        </View>
-        <View style={styles.walletCol}>
           <Text style={styles.walletLabel}>AXP</Text>
-          <Text style={styles.walletValue}>—</Text>
+          <Text style={styles.walletValue}>{axpText}</Text>
         </View>
         <View style={styles.walletCol}>
-          <Text style={styles.walletLabel}>BTC</Text>
+          <Text style={styles.walletLabel}>≈ USD</Text>
+          <Text style={styles.walletValue}>{usdText}</Text>
+        </View>
+        <View style={styles.walletCol}>
+          <Text style={styles.walletLabel}>USDC</Text>
           <Text style={styles.walletValue}>—</Text>
         </View>
       </View>
@@ -406,19 +462,34 @@ const WalletCardSection = React.memo(function WalletCardSection({
 });
 
 interface SkillsCardProps {
+  detail: import('../../services/petDetail.api').PetDetailData | null;
   onOpenInstall: () => void;
   onMySkills: () => void;
 }
 const SkillsCardSection = React.memo(function SkillsCardSection({
+  detail,
   onOpenInstall,
   onMySkills,
 }: SkillsCardProps) {
+  const skins = detail?.skins ?? [];
+  // P1a — surface the user's REAL owned skins (skin = the pet's installed
+  // visual capability) instead of three hardcoded pills. Falls back to a
+  // hint when the user hasn't acquired any yet.
+  const pills = skins.slice(0, 3);
   return (
-    <SectionCard title="🧠 技能" subtitle="已装 / 安装新的">
+    <SectionCard title="🧠 技能 / 皮肤" subtitle="已拥有 / 安装新的">
       <View style={styles.skillRow}>
-        <Text style={styles.skillItemText}>🎯 任务接单</Text>
-        <Text style={styles.skillItemText}>📚 翻译</Text>
-        <Text style={styles.skillItemText}>📷 视觉问答</Text>
+        {pills.length > 0 ? (
+          pills.map((s) => (
+            <Text key={s.id} style={styles.skillItemText} numberOfLines={1}>
+              {s.format === 'vrm' ? '🧸' : '🎨'} {s.display_name}
+            </Text>
+          ))
+        ) : (
+          <Text style={styles.skillItemText}>
+            {detail == null ? '加载中…' : '还没有皮肤,去市场逛逛'}
+          </Text>
+        )}
       </View>
       <View style={styles.cardActionRow}>
         <ActionButton label="装新的" onPress={onOpenInstall} />
@@ -431,19 +502,29 @@ const SkillsCardSection = React.memo(function SkillsCardSection({
 interface CrossDeviceCardProps {
   onManageDevices: () => void;
   originDeviceId: string;
+  instances: Array<{ id: string; name: string; status?: string }>;
 }
 const CrossDeviceCardSection = React.memo(function CrossDeviceCardSection({
   onManageDevices,
   originDeviceId,
+  instances,
 }: CrossDeviceCardProps) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
   const { RemoteControlPanel } = require('./RemoteControlPanel') as typeof import('./RemoteControlPanel');
+  // `presence:device.list` backend API doesn't exist yet (T0 audit), so we
+  // surface the user's real OpenClaw instances as the cross-device list +
+  // always show 📱 (this device) online. Phase 2 swaps to the live topic.
+  const activeInstances = instances.filter((i) => i.status === 'active');
   return (
     <SectionCard title="🔗 跨端" subtitle="同一只宠物 · 同一份记忆">
       <View style={styles.deviceListRow}>
-        <DevicePill emoji="🖥" name="桌面" online />
+        <DevicePill emoji="📱" name="本机" online />
+        {activeInstances.length > 0 ? (
+          <DevicePill emoji="🖥" name={`实例 ×${activeInstances.length}`} online />
+        ) : (
+          <DevicePill emoji="🖥" name="桌面" online={false} />
+        )}
         <DevicePill emoji="⌚" name="手表" online={false} />
-        <DevicePill emoji="🔊" name="音箱" online={false} />
       </View>
       <RemoteControlPanel originDeviceId={originDeviceId} />
       <View style={styles.cardActionRow}>

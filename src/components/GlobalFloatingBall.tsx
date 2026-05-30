@@ -130,6 +130,17 @@ interface Props {
    */
   onRightSwipeOverride?: () => void;
   /**
+   * P1b — current CompanionMode accent color + pulse flag, passed down
+   * from CompanionBall so the ball's ring reflects the 8 high-level modes
+   * (signing=purple pulse, nudge=orange, journey=green, ...). Undefined =
+   * legacy ballState-only ring.
+   */
+  companionModeColor?: string;
+  companionModePulse?: boolean;
+  companionModeLabel?: string;
+  /** P2 — active pet clan code (A..F) for per-clan sprite selection. */
+  spriteClan?: 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+  /**
    * Wave 17 hotfix — module-scope NavigationContainerRef from App.tsx.
    * Used to read root navigation state via `getRootState()` instead of
    * `useNavigationState`, which throws "Couldn't get the navigation
@@ -145,6 +156,8 @@ export function GlobalFloatingBall({
   onVoiceActivate, pillTranscript, onPillSend, pillVolume = 0,
   resultText, onResultAction,
   onSingleTapOverride, onLongPressOverride,
+  companionModeColor, companionModePulse,
+  spriteClan,
   navigationRef,
 }: Props) {
   // P-9 Q2 root-cause fix (2026-05-30): the ball mounts as a sibling of the
@@ -295,6 +308,8 @@ export function GlobalFloatingBall({
   const magneticY = useRef(new Animated.Value(0)).current;
   const pillExpandAnim = useRef(new Animated.Value(0)).current;
   const resultCardAnim = useRef(new Animated.Value(0)).current;
+  // P1b — CompanionMode ring pulse (signing / nudge draw attention).
+  const modeRingPulse = useRef(new Animated.Value(1)).current;
   const waveformAnims = useRef(
     Array.from({ length: 7 }, () => new Animated.Value(0.15))
   ).current;
@@ -333,6 +348,21 @@ export function GlobalFloatingBall({
       pulseAnim.setValue(1);
     }
   }, [ballState, pulseAnim]);
+
+  // ── P1b CompanionMode ring pulse (signing / nudge) ──
+  useEffect(() => {
+    if (companionModePulse) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(modeRingPulse, { toValue: 0.35, duration: 650, useNativeDriver: true }),
+          Animated.timing(modeRingPulse, { toValue: 1, duration: 650, useNativeDriver: true }),
+        ]),
+      );
+      loop.start();
+      return () => loop.stop();
+    }
+    modeRingPulse.setValue(1);
+  }, [companionModePulse, modeRingPulse]);
 
   useEffect(() => {
     if (!shouldHide) {
@@ -919,6 +949,31 @@ export function GlobalFloatingBall({
         <View style={[styles.glowRing, { borderColor: borderColor + '50' }]} />
       )}
 
+      {/* P1b — CompanionMode ring: a colored border that reflects the 8
+          high-level modes (signing=purple, nudge=orange, journey=green, ...)
+          so mode transitions are visible even when the sprite is the same.
+          Pulses for signing/nudge. Hidden for the ambient `companion`
+          default (no color passed) so the resting ball stays clean. */}
+      {!!companionModeColor && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.companionModeRing,
+            {
+              borderColor: companionModeColor,
+              opacity: companionModePulse ? modeRingPulse : 0.9,
+              transform: [
+                {
+                  scale: companionModePulse
+                    ? modeRingPulse.interpolate({ inputRange: [0.35, 1], outputRange: [1, 1.12] })
+                    : 1,
+                },
+              ],
+            },
+          ]}
+        />
+      )}
+
       {/* Orbiting Particles (thinking state) */}
       <OrbitingParticles active={ballState === 'thinking'} />
 
@@ -968,7 +1023,7 @@ export function GlobalFloatingBall({
           {isCapsule ? (
             <View style={styles.capsuleContent}>
               <View style={styles.capsuleBrandSlot}>
-                <PetSpriteImage sprite={petSprite} size={28} testID="floating-ball-sprite-capsule" />
+                <PetSpriteImage sprite={petSprite} size={28} clan={spriteClan} testID="floating-ball-sprite-capsule" />
               </View>
               <View style={styles.capsuleWaveRow}>
                 {waveformAnims.slice(0, 5).map((anim, i) => (
@@ -990,7 +1045,7 @@ export function GlobalFloatingBall({
               </Text>
             </View>
           ) : (
-            <PetSpriteImage sprite={petSprite} size={BALL_SIZE - 8} testID="floating-ball-sprite" />
+            <PetSpriteImage sprite={petSprite} size={BALL_SIZE - 8} clan={spriteClan} testID="floating-ball-sprite" />
           )}
         </Animated.View>
       </TouchableOpacity>
@@ -1039,6 +1094,15 @@ const styles = StyleSheet.create({
     borderRadius: (BALL_SIZE + 14) / 2,
     borderWidth: 2,
     top: -7,
+    alignSelf: 'center',
+  },
+  companionModeRing: {
+    position: 'absolute',
+    width: BALL_SIZE + 8,
+    height: BALL_SIZE + 8,
+    borderRadius: (BALL_SIZE + 8) / 2,
+    borderWidth: 2.5,
+    top: -4,
     alignSelf: 'center',
   },
   brandMark: {

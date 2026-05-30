@@ -50,10 +50,11 @@ const SPRITE_SPECS: Record<PetSpriteKey, SpriteSpec> = {
 };
 
 /**
- * Static require map — every sprite the mobile app ships. Adding a new
- * sprite = adding an entry here. RN bundler resolves these at build time.
+ * Static require map — the DEFAULT clan sprite set the app always ships.
+ * Adding a new sprite = adding an entry here. RN bundler resolves these at
+ * build time (require() needs literal string paths).
  */
-const SPRITE_SOURCES: Record<PetSpriteKey, ImageSourcePropType> = {
+const DEFAULT_SPRITE_SOURCES: Record<PetSpriteKey, ImageSourcePropType> = {
   walk: require('../../assets/pets/sprites/default/walk.png'),
   idle: require('../../assets/pets/sprites/default/idle.png'),
   sleep: require('../../assets/pets/sprites/default/sleep.png'),
@@ -68,12 +69,54 @@ const SPRITE_SOURCES: Record<PetSpriteKey, ImageSourcePropType> = {
   alert: require('../../assets/pets/sprites/default/alert.png'),
 };
 
+/**
+ * P2 — per-clan sprite registry. EMPTY today (only `default` art is
+ * bundled), but this is the single place to wire clan-specific sheets when
+ * the art lands. To add clan B (Life) art, drop the PNGs under
+ * `assets/pets/sprites/B/` and add:
+ *
+ *   B: {
+ *     idle: require('../../assets/pets/sprites/B/idle.png'),
+ *     ... (all PetSpriteKey)
+ *   }
+ *
+ * `resolveSpriteSource()` falls back to DEFAULT for any clan/key not present
+ * here, so partial clan packs are safe.
+ */
+type ClanCode = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+const CLAN_SPRITE_SOURCES: Partial<
+  Record<ClanCode, Partial<Record<PetSpriteKey, ImageSourcePropType>>>
+> = {
+  // A (Office) currently uses the shipped `default` set — no override needed.
+  // B/C/D/E/F: add entries here when per-clan art is produced.
+};
+
+/**
+ * Resolve the image source for a (clan, spriteKey) pair. Falls back to the
+ * default clan sheet when the clan has no override for that key, and finally
+ * to `idle` if even that is missing — never returns undefined.
+ */
+function resolveSpriteSource(
+  clan: ClanCode | undefined,
+  key: PetSpriteKey,
+): ImageSourcePropType | undefined {
+  const clanPack = clan ? CLAN_SPRITE_SOURCES[clan] : undefined;
+  return clanPack?.[key] ?? DEFAULT_SPRITE_SOURCES[key] ?? DEFAULT_SPRITE_SOURCES.idle;
+}
+
 interface Props {
   sprite: PetSpriteKey;
   /** Output size (square). Internal scaling preserves frame aspect. */
   size: number;
   /** Mirror sprite horizontally (e.g., facing left). */
   facing?: 'left' | 'right';
+  /**
+   * P2 — clan code (A..F). When a per-clan sprite pack is bundled for this
+   * clan, its art is used; otherwise falls back to the default set. Lets a
+   * Life/Web3/Family pet look different from the Office kitsune once art
+   * ships, with zero call-site changes.
+   */
+  clan?: ClanCode;
   /** Called once when a non-loop sprite (jump, pro-done) finishes. */
   onActionComplete?: (sprite: PetSpriteKey) => void;
   /** Test ID for E2E hooks. */
@@ -90,6 +133,7 @@ export function PetSpriteImage({
   sprite,
   size,
   facing = 'right',
+  clan,
   onActionComplete,
   testID,
 }: Props) {
@@ -99,7 +143,7 @@ export function PetSpriteImage({
   // dead fallback ball. Degrade to `idle`, then to a transparent box.
   const safeKey: PetSpriteKey = SPRITE_SPECS[sprite] ? sprite : 'idle';
   const spec = SPRITE_SPECS[safeKey];
-  const source = SPRITE_SOURCES[safeKey];
+  const source = resolveSpriteSource(clan, safeKey);
   const [frame, setFrame] = useState(0);
   // Capture the active sprite key for the timer closure so we don't
   // accidentally fire `onActionComplete` for a stale sprite after a swap.
