@@ -85,6 +85,17 @@ export default function WorldBattlePickerScreen() {
     });
   }, [challenger, defender, navigation]);
 
+  const handleStartInteractive = useCallback(() => {
+    if (!challenger || !defender) {
+      Alert.alert('需要选择双方', '请选择挑战者和防御者');
+      return;
+    }
+    navigation.navigate('WorldInteractiveBattle', {
+      challengerAssetId: challenger.id,
+      defenderAssetId: defender.id,
+    });
+  }, [challenger, defender, navigation]);
+
   return (
     <View style={styles.container} testID="world-battle-picker">
       <Text style={styles.title}>选择对战双方</Text>
@@ -174,18 +185,34 @@ export default function WorldBattlePickerScreen() {
         />
       )}
 
-      {/* Start button */}
-      <TouchableOpacity
-        style={[
-          styles.startButton,
-          (!challenger || !defender) && { opacity: 0.4 },
-        ]}
-        onPress={handleStart}
-        disabled={!challenger || !defender}
-        testID="world-battle-picker-start"
-      >
-        <Text style={styles.startButtonText}>⚔ 开始战斗</Text>
-      </TouchableOpacity>
+      {/* Start buttons */}
+      <View style={styles.startRow}>
+        <TouchableOpacity
+          style={[
+            styles.startButtonHalf,
+            styles.startButtonAuto,
+            (!challenger || !defender) && { opacity: 0.4 },
+          ]}
+          onPress={handleStart}
+          disabled={!challenger || !defender}
+          testID="world-battle-picker-start"
+        >
+          <Text style={styles.startButtonText}>⚡ 快速对战</Text>
+          <Text style={styles.startButtonHint}>自动结算</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.startButtonHalf,
+            (!challenger || !defender) && { opacity: 0.4 },
+          ]}
+          onPress={handleStartInteractive}
+          disabled={!challenger || !defender}
+          testID="world-battle-picker-start-interactive"
+        >
+          <Text style={styles.startButtonText}>🎮 决策对战</Text>
+          <Text style={styles.startButtonHint}>你来出招</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -367,6 +394,29 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
+  },
+  startRow: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: Platform.OS === 'ios' ? 30 : 16,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  startButtonHalf: {
+    flex: 1,
+    backgroundColor: '#6c5ce7',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  startButtonAuto: {
+    backgroundColor: '#2d2d44',
+  },
+  startButtonHint: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    marginTop: 2,
   },
   startButtonText: {
     color: '#fff',

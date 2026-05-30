@@ -78,6 +78,31 @@ export interface GenerateFromScanResponse {
     category: string;
     /** 角色卡 2D 占位图(混元 preview 或风格化缩略); 3D 完成后由客户端轮询替换 */
     thumbnailUrl?: string;
+    /**
+     * Phase A 能力飞轮: 该角色吃到的真实 agent 战绩加成。
+     * 移动端用来展示 "⚡ 能力加成 +XX%（来自你的 agent 真实战绩）"。
+     * 游客 / 无 agent 时为 undefined 或 multiplier=1。
+     */
+    abilityBoost?: {
+      /** 总倍率, 1.0 = 无加成 */
+      multiplier: number;
+      /** 加成后的实际战斗属性 (= baseStats × multiplier) */
+      effectiveStats: Record<string, number>;
+      /** 各项加成明细 + 数据来源 (展示用) */
+      breakdown: {
+        tasksBonus: number;
+        qualityBonus: number;
+        tierBonus: number;
+        intimacyBonus: number;
+        sources: {
+          tasksCompleted: number;
+          avgQualityScore: number;
+          tier: string;
+          intimacyLevel: number;
+          agentAccountId: string | null;
+        };
+      };
+    };
   };
   /** 'card_ready' | 'mesh_pending' | 'complete' | 'mesh_failed' */
   generationStatus?: string;
@@ -94,6 +119,24 @@ export interface JobStatusResponse {
 export interface JobStreamEvent {
   type: 'progress' | 'complete' | 'error';
   data: unknown;
+}
+
+// ============================================================
+// §1b Living World feed APIs (Phase A2)
+// ============================================================
+
+/** GET /api/v1/world-engine/world/feed — Response */
+export interface WorldFeedResponse {
+  /** 时间线倒序的事件 */
+  events: import('./world-engine').WorldEventItem[];
+  /** 本次请求新推进(tick)生成的事件数, 用于客户端"你不在时发生了 N 件事"提示 */
+  newlyGenerated: number;
+}
+
+/** POST /api/v1/world-engine/world/tick — Response */
+export interface WorldTickResponse {
+  /** 本次 tick 新生成的事件 */
+  events: import('./world-engine').WorldEventItem[];
 }
 
 // ============================================================

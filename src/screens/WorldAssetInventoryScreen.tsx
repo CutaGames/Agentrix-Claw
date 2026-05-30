@@ -38,6 +38,7 @@ import {
   bindAgentToAsset,
   unbindAgentFromAsset,
   regenerateWorldAssetAttribute,
+  incarnateAsset,
   type WorldAssetSummary as ApiWorldAssetSummary,
 } from '../services/worldEngineApi';
 
@@ -172,6 +173,7 @@ export default function WorldAssetInventoryScreen() {
       asset.boundAgentId
         ? { text: '解绑 Agent', action: () => handleUnbindAgent(asset) }
         : { text: '绑定 Agent', action: () => handleBindAgent(asset) },
+      { text: '🦊 化身主宠', action: () => handleIncarnate(asset) },
       { text: '上架出售', action: () => handleListForSale(asset) },
       { text: '赠送', action: () => handleGift(asset) },
       { text: '删除', action: () => handleDelete(asset), destructive: true },
@@ -198,6 +200,30 @@ export default function WorldAssetInventoryScreen() {
     setRenameAsset(asset);
     setRenameDraft(asset.name);
   };
+
+  const handleIncarnate = useCallback((asset: WorldAssetSummary) => {
+    Alert.alert(
+      '🦊 化身主宠',
+      `把「${asset.name}」化身为你主宠的世界形态?灵魂(亲密度/情绪/记忆)会延续到这个角色上。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '化身',
+          onPress: async () => {
+            try {
+              const r = await incarnateAsset(asset.id);
+              Alert.alert(
+                '化身成功',
+                `你的主宠「${r.petName}」(亲密度 Lv.${r.intimacyLevel})现在以「${asset.name}」的形态活在世界里。`,
+              );
+            } catch (e: any) {
+              Alert.alert('化身失败', e?.message || '请稍后再试');
+            }
+          },
+        },
+      ],
+    );
+  }, []);
 
   const submitRename = useCallback(async () => {
     if (!renameAsset) return;

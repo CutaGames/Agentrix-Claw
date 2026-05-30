@@ -24,6 +24,7 @@ import { colors } from '../theme/colors';
 import { useI18n } from '../stores/i18nStore';
 
 import { WorldHubScreen } from '../screens/world/WorldHubScreen';
+import WorldFeedScreen from '../screens/world/WorldFeedScreen';
 import WorldCharacterCardScreen from '../screens/world/WorldCharacterCardScreen';
 import WorldEngineScannerScreen from '../screens/WorldEngineScannerScreen';
 import WorldAssetInventoryScreen from '../screens/WorldAssetInventoryScreen';
@@ -31,12 +32,15 @@ import ReconstructionProgressScreen from '../screens/ReconstructionProgressScree
 import WorldAssetListingScreen from '../screens/WorldAssetListingScreen';
 import WorldBattlePickerScreen from '../screens/WorldBattlePickerScreen';
 import WorldBattleArenaScreen from '../screens/WorldBattleArenaScreen';
+import WorldInteractiveBattleScreen from '../screens/world/WorldInteractiveBattleScreen';
+import WorldUgcRuleSetsScreen from '../screens/world/WorldUgcRuleSetsScreen';
 import WorldDungeonExplorerScreen from '../screens/WorldDungeonExplorerScreen';
 import { PetCreatorScreen } from '../screens/pet/PetCreatorScreen';
 import { CameraScanScreen } from '../screens/pet/CameraScanScreen';
 
 export type WorldStackParamList = {
   WorldRoot: undefined;
+  WorldFeed: undefined;
   WorldCharacterCard: {
     assetId?: string;
     card?: import('../services/worldEngineApi').CharacterCard;
@@ -46,8 +50,10 @@ export type WorldStackParamList = {
   WorldEngineScanner: { mode?: 'quick' | 'detail' | 'room' } | undefined;
   WorldAssetInventory: undefined;
   WorldBattleArena: { challengerAssetId?: string; defenderAssetId?: string } | undefined;
+  WorldInteractiveBattle: { challengerAssetId: string; defenderAssetId: string };
   WorldBattlePicker: undefined;
   WorldDungeonExplorer: { shareCode?: string };
+  WorldUgcRuleSets: undefined;
   ReconstructionProgress: {
     jobId: string;
     estimatedSeconds?: number;
@@ -99,6 +105,11 @@ export function WorldStackNavigator() {
         options={{ title: t({ en: 'World', zh: '世界' }), headerShown: false }}
       />
       <Stack.Screen
+        name="WorldFeed"
+        component={WorldFeedScreen}
+        options={{ title: t({ en: 'My World', zh: '我的世界' }), headerShown: false }}
+      />
+      <Stack.Screen
         name="WorldCharacterCard"
         component={WorldCharacterCardScreen}
         options={{ title: t({ en: 'Your Character', zh: '你的角色' }), headerShown: false }}
@@ -119,6 +130,11 @@ export function WorldStackNavigator() {
         options={{ title: t({ en: 'Battle', zh: '战斗' }), headerShown: false }}
       />
       <Stack.Screen
+        name="WorldInteractiveBattle"
+        component={WorldInteractiveBattleScreen}
+        options={{ title: t({ en: 'Battle', zh: '决策对战' }), headerShown: false }}
+      />
+      <Stack.Screen
         name="WorldBattlePicker"
         component={WorldBattlePickerScreen}
         options={{ title: t({ en: 'Battle Picker', zh: '选择对战' }), headerShown: false }}
@@ -127,6 +143,11 @@ export function WorldStackNavigator() {
         name="WorldDungeonExplorer"
         component={WorldDungeonExplorerScreen}
         options={{ title: t({ en: 'Dungeon', zh: '副本' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldUgcRuleSets"
+        component={WorldUgcRuleSetsScreen}
+        options={{ title: t({ en: 'Game Modes', zh: '我的玩法' }), headerShown: false }}
       />
       <Stack.Screen
         name="ReconstructionProgress"

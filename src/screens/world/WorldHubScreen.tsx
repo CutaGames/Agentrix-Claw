@@ -95,6 +95,8 @@ export function WorldHubScreen() {
   const onInventory = useCallback(() => navigation.navigate('WorldAssetInventory'), [navigation]);
   const onBattle = useCallback(() => navigation.navigate('WorldBattlePicker'), [navigation]);
   const onDungeon = useCallback(() => navigation.navigate('WorldDungeonExplorer', {}), [navigation]);
+  const onWorldFeed = useCallback(() => navigation.navigate('WorldFeed'), [navigation]);
+  const onUgc = useCallback(() => navigation.navigate('WorldUgcRuleSets'), [navigation]);
   const onPetCreator = useCallback(() => navigation.navigate('PetCreator'), [navigation]);
   const onPhotoToPet = useCallback(() => navigation.navigate('PetCameraScan'), [navigation]);
 
@@ -162,6 +164,24 @@ export function WorldHubScreen() {
       {/* 已有角色 → 角色卷轴 + 玩法入口; 新用户 → 不展示空的战斗/副本 */}
       {hasAssets ? (
         <>
+          {/* 活世界入口 —— 追剧式日常留存的核心入口 */}
+          <Pressable
+            style={({ pressed }) => [styles.worldFeedEntry, pressed && styles.heroPressed]}
+            onPress={onWorldFeed}
+            testID="world-feed-entry"
+          >
+            <Text style={styles.worldFeedEmoji}>🌍</Text>
+            <View style={styles.worldFeedTextWrap}>
+              <Text style={styles.worldFeedTitle}>
+                {t({ en: 'Enter My World', zh: '进入我的世界' })}
+              </Text>
+              <Text style={styles.worldFeedSub}>
+                {t({ en: 'See what your characters did while you were away', zh: '看看你不在时,角色们经历了什么' })}
+              </Text>
+            </View>
+            <Text style={styles.worldFeedArrow}>→</Text>
+          </Pressable>
+
           <View style={styles.rosterHeader}>
             <Text style={styles.sectionHeader}>
               🎒 {t({ en: 'My Characters', zh: '我的角色' })}
@@ -202,6 +222,23 @@ export function WorldHubScreen() {
               subtitle={t({ en: 'Share code / scan room', zh: '分享码 / 扫房间' })}
               onPress={onDungeon}
               testID="world-cta-dungeon"
+            />
+          </View>
+
+          <View style={styles.actionRow}>
+            <CTACard
+              emoji="🎮"
+              title={t({ en: 'Decision Battle', zh: '决策对战' })}
+              subtitle={t({ en: 'You call the moves', zh: '你来出招' })}
+              onPress={onBattle}
+              testID="world-cta-decision-battle"
+            />
+            <CTACard
+              emoji="🛠️"
+              title={t({ en: 'My Game Modes', zh: '我的玩法' })}
+              subtitle={t({ en: 'Create & share', zh: '创建并分享' })}
+              onPress={onUgc}
+              testID="world-cta-ugc"
             />
           </View>
         </>
@@ -311,6 +348,24 @@ const styles = StyleSheet.create({
   // Roster
   rosterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   seeAll: { fontSize: 13, color: colors.accent, fontWeight: '600' },
+
+  // World feed entry
+  worldFeedEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(52,211,153,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(52,211,153,0.30)',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+  },
+  worldFeedEmoji: { fontSize: 32, marginRight: 12 },
+  worldFeedTextWrap: { flex: 1 },
+  worldFeedTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginBottom: 2 },
+  worldFeedSub: { fontSize: 12, color: colors.textMuted, lineHeight: 16 },
+  worldFeedArrow: { fontSize: 20, color: colors.accent, fontWeight: '700', marginLeft: 8 },
+
   rosterRow: { marginBottom: 16 },
   rosterCard: { width: 96, marginRight: 10, alignItems: 'center' },
   rosterThumb: {
