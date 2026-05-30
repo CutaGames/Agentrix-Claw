@@ -1,0 +1,56 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 11: Plaza 5-segment flow
+# Cycles through Feed / Skills / Tasks / Pets / Play and
+# verifies each segment renders without crash.
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+
+- tapOn: "Plaza"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# ── Feed segment (default) ───────────────────────────────
+- takeScreenshot: "11-plaza-feed"
+
+# ── Skills segment ───────────────────────────────────────
+- tapOn:
+    text: "Skills"
+    index: 0  # the Segmented control, not a card
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "11-plaza-skills"
+
+# ── Tasks segment ────────────────────────────────────────
+- tapOn:
+    text: "Tasks"
+    index: 0
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "11-plaza-tasks"
+
+# ── Pets segment ─────────────────────────────────────────
+- tapOn:
+    text: "Pets"
+    index: 0
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "11-plaza-pets"
+
+# ── Play segment ─────────────────────────────────────────
+- tapOn:
+    text: "Play"
+    index: 0
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "11-plaza-play"
