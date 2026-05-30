@@ -45,9 +45,9 @@ import {
   BottomSheetScrollView,
 } from '@gorhom/bottom-sheet';
 import * as ImagePicker from 'expo-image-picker';
-import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useActivePet } from '../../services/activePet.service';
+import { navRefNavigate } from '../../navigation/navigationRef';
 import { companionEvents } from '../../services/companionEvents.service';
 import {
   subscribeConversation,
@@ -66,7 +66,12 @@ const SNAP_POINTS = ['65%', '100%'];
 export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
   function ConversationBubble(_props, externalRef) {
     const sheetRef = useRef<BottomSheetModal>(null);
-    const navigation = useNavigation<any>();
+    // Navigate via shared navigationRef — NOT useNavigation() (throws at the
+    // CompanionLayer sibling position; root cause of the dead ball).
+    const navigation = useMemo(
+      () => ({ navigate: (...args: any[]) => navRefNavigate(...args) }),
+      [],
+    );
     const pet = useActivePet();
 
     const [draft, setDraft] = useState('');

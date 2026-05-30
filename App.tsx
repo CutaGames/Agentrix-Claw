@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -48,6 +48,7 @@ import { CompanionLayer } from './src/components/companion/CompanionLayer';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { resolveLegacyPath } from './src/navigation/legacyRouteTable';
+import { navigationRef as sharedNavigationRef } from './src/navigation/navigationRef';
 import { getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
 import { attachLinkingListener } from './src/services/intents/intentBridge';
 import { installDefaultIntentHandlers } from './src/services/intents/defaultIntentHandlers';
@@ -68,10 +69,12 @@ initCrashReport();
 initAnalytics();
 trackEvent('mobile_launch', { platform: Platform.OS });
 
-// Singleton ref so the system-assistant intent handlers can navigate the
-// React Navigation root without prop drilling. Created here (module scope)
-// so it survives any re-mount of <NavigationContainer>.
-const navigationRef = createNavigationContainerRef<Record<string, object | undefined>>();
+// Singleton ref so the system-assistant intent handlers + the P-9 companion
+// layer (ball / sheets / capsules) can navigate the React Navigation root
+// without prop drilling AND without useNavigation() (which throws at the
+// CompanionLayer sibling position). Defined in its own module so any file
+// can import it. Assigned to <NavigationContainer ref={navigationRef}>.
+const navigationRef = sharedNavigationRef;
 
 const queryClient = new QueryClient({
   defaultOptions: {

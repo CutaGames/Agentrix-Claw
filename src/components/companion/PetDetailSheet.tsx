@@ -30,10 +30,10 @@ import {
   BottomSheetModal,
   BottomSheetView,
 } from '@gorhom/bottom-sheet';
-import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useActivePet } from '../../services/activePet.service';
 import { useAuthStore } from '../../stores/authStore';
+import { navRefNavigate } from '../../navigation/navigationRef';
 import { getCompanionMode } from '../../services/petMode';
 import { companionEvents } from '../../services/companionEvents.service';
 import {
@@ -48,7 +48,12 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
   function PetDetailSheet(_props, externalRef) {
     const sheetRef = useRef<BottomSheetModal>(null);
     const scrollRef = useRef<ScrollView>(null);
-    const navigation = useNavigation<any>();
+    // Navigate via shared navigationRef — NOT useNavigation() (which throws
+    // at the CompanionLayer sibling position; root cause of the dead ball).
+    const navigation = useMemo(
+      () => ({ navigate: (...args: any[]) => navRefNavigate(...args) }),
+      [],
+    );
     const pet = useActivePet();
     const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
     const instances = useAuthStore((s) => s.user?.openClawInstances ?? []);

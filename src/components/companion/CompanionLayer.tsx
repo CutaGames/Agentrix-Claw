@@ -1,14 +1,13 @@
 /**
  * CompanionLayer — global mount point for the P-9 Companion experience.
  *
- * Mounts INSIDE NavigationContainer (so children can call useNavigation),
- * but OUTSIDE all tab navigators. Note: useNavigationState is NOT safe
- * here — its NavigationStateListenerContext is provided by individual
- * Navigators (Stack/Tab), not NavigationContainer, so any direct usage
- * inside this layer crashes cold launch with "Couldn't get the navigation
- * state. Is your component inside a navigator?". CompanionBall +
- * GlobalFloatingBall both read root state via the navigationRef (wave 17
- * hotfix) to bypass that requirement entirely.
+ * Mounts INSIDE NavigationContainer but OUTSIDE all tab navigators. IMPORTANT:
+ * children must NOT call `useNavigation()` / `useNavigationState()` here — those
+ * hooks require a Stack/Tab navigator context which does NOT exist at this
+ * sibling position and THROW on mount (this was the root cause of the long-
+ * standing "dead companion ball": the throw was swallowed by the boundaries
+ * below and the real ball replaced by the static fallback). All companion
+ * components navigate via the shared `src/navigation/navigationRef` instead.
  *
  * The layer persists across tab switches with shared state. Spec
  * design.md §Components §1.
@@ -155,10 +154,10 @@ class CompanionErrorBoundary extends React.Component<
  *   keeps its full draggable + sprite-animated + mode-reactive behavior.
  */
 class IsolatedBoundary extends React.Component<
-  { children: React.ReactNode; label: string },
+  { children: React.ReactNode; label: string; fallback?: React.ReactNode },
   { failed: boolean }
 > {
-  constructor(props: { children: React.ReactNode; label: string }) {
+  constructor(props: { children: React.ReactNode; label: string; fallback?: React.ReactNode }) {
     super(props);
     this.state = { failed: false };
   }
@@ -177,7 +176,7 @@ class IsolatedBoundary extends React.Component<
   }
 
   render() {
-    if (this.state.failed) return null;
+    if (this.state.failed) return this.props.fallback ?? null;
     return this.props.children;
   }
 }
@@ -313,7 +312,9 @@ function CompanionFallbackBall({ navigationRef }: { navigationRef?: any }) {
   }, [goWorld]);
 
   // Try to render the real idle sprite; if even that throws (asset/render
-  // issue) the inner boundary drops to the 🦊 emoji so we never crash.
+  // Render the real idle sprite as a SINGLE icon. If the sprite render
+  // throws (asset/native issue), the IsolatedBoundary swaps to the 🦊 emoji
+  // — they never stack, so the fallback ball shows exactly one icon.
   return (
     <View style={fallbackStyles.wrap} pointerEvents="box-none">
       <TouchableOpacity
@@ -325,17 +326,12 @@ function CompanionFallbackBall({ navigationRef }: { navigationRef?: any }) {
         accessibilityLabel="companion"
         testID="companion-fallback-ball"
       >
-        {/* Emoji sits behind the sprite as the absolute last resort: if the
-            sprite render throws, the IsolatedBoundary renders null and this
-            🦊 shows through instead of an empty ball. */}
-        <Text style={fallbackStyles.emoji}>🦊</Text>
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <IsolatedBoundary label="fallback-sprite">
-            <View style={fallbackStyles.spriteCenter}>
-              <FallbackSprite />
-            </View>
-          </IsolatedBoundary>
-        </View>
+        <IsolatedBoundary
+          label="fallback-sprite"
+          fallback={<Text style={fallbackStyles.emoji}>🦊</Text>}
+        >
+          <FallbackSprite />
+        </IsolatedBoundary>
       </TouchableOpacity>
     </View>
   );
@@ -369,5 +365,4 @@ const fallbackStyles = StyleSheet.create({
     elevation: 6,
   },
   emoji: { fontSize: 24 },
-  spriteCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });

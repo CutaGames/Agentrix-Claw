@@ -11,10 +11,10 @@
  *
  * Spec: requirements.md R6.4, design.md §Components/Core 5.
  */
-import React, { useEffect, useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CapsuleOverlay } from './CapsuleOverlay';
 import { colors } from '../../theme/colors';
+import { navRefNavigate } from '../../navigation/navigationRef';
 import {
   companionEvents,
   type CompanionEventOf,
@@ -43,7 +43,12 @@ function formatApproval(evt: CompanionEventOf<'approval-incoming'>): VisibleEntr
 
 export function ApprovalAlertCapsule() {
   const [entry, setEntry] = useState<VisibleEntry | null>(null);
-  const navigation = useNavigation<any>();
+  // Navigate via shared navigationRef — NOT useNavigation() (throws at the
+  // CompanionLayer sibling position).
+  const navigation = useMemo(
+    () => ({ navigate: (...args: any[]) => navRefNavigate(...args) }),
+    [],
+  );
 
   useEffect(() => {
     const off = companionEvents.subscribe('approval-incoming', (evt) => {

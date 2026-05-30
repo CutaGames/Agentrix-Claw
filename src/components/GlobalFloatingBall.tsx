@@ -12,7 +12,6 @@ import {
   Linking,
   TextInput,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Circle } from 'react-native-svg';
@@ -32,6 +31,7 @@ import {
   type PetMode,
 } from '../services/petMode';
 import { PetSpriteImage } from './PetSpriteImage';
+import { navRefNavigate } from '../navigation/navigationRef';
 
 // ─── Layout constants ───────────────────────────────────────────────────────
 const BALL_SIZE = 48;
@@ -147,7 +147,18 @@ export function GlobalFloatingBall({
   onSingleTapOverride, onLongPressOverride,
   navigationRef,
 }: Props) {
-  const navigation = useNavigation<any>();
+  // P-9 Q2 root-cause fix (2026-05-30): the ball mounts as a sibling of the
+  // tab navigators (inside NavigationContainer, outside any Stack/Tab), so
+  // `useNavigation()` THROWS "Couldn't find a navigation object" on mount in
+  // React Navigation v7 — which was silently caught by the CompanionLayer
+  // BallBoundary and replaced the real ball with the dead fallback (the
+  // "two stacked icons / can't drag / on all tabs / tap→World" report).
+  // We navigate via the shared module-scope navigationRef instead, which
+  // needs no navigator context. `navigation` is intentionally NOT from a hook.
+  const navigation = React.useMemo(
+    () => ({ navigate: (...args: any[]) => navRefNavigate(...args) }),
+    [],
+  );
   const { language } = useI18n();
   const wakeWordSettings = useSettingsStore((state) => state.wakeWordConfig);
   const { width: screenW, height: screenH } = Dimensions.get('window');
