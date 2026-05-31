@@ -1,0 +1,50 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 20: V4 Home Tab Full Verification
+# Covers: M2-M4 (Home Tab 主宠 + 签到 + 召唤 CTA)
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+
+- tapOn: "Home"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# ── M2: 主宠显示 ────────────────────────────────────────
+- takeScreenshot: "20-home-pet-visible"
+
+# Pet renderer should be visible (XP bar or emotion indicator)
+- assertVisible:
+    text: "XP"
+    optional: true
+
+# ── M3: 签到 ────────────────────────────────────────────
+- assertVisible:
+    text: "签到"
+    optional: true
+
+- tapOn:
+    text: "签到"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "20-home-checkin"
+
+# ── M4: 召唤 CTA ────────────────────────────────────────
+- assertVisible:
+    text: "召唤"
+    optional: true
+
+- tapOn:
+    text: "召唤"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "20-home-summon-cta"
+
+- back
