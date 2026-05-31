@@ -486,25 +486,38 @@ const SkillsCardSection = React.memo(function SkillsCardSection({
   onMySkills,
 }: SkillsCardProps) {
   const skins = detail?.skins ?? [];
-  // P1a — surface the user's REAL owned skins (skin = the pet's installed
-  // visual capability) instead of three hardcoded pills. Falls back to a
-  // hint when the user hasn't acquired any yet.
-  const pills = skins.slice(0, 3);
+  const skills = detail?.skills ?? [];
+  // P1a + 2026-05-31 fix — surface REAL installed skills (capabilities) AND
+  // owned skins. Previously this only showed skins, so a skill the user just
+  // installed never appeared here and looked "lost".
+  const skillPills = skills.slice(0, 3);
+  const skinPills = skins.slice(0, 3);
   return (
-    <SectionCard title="🧠 技能 / 皮肤" subtitle="已拥有 / 安装新的">
+    <SectionCard title="🧠 技能 / 皮肤" subtitle="已装技能 / 已拥有皮肤">
+      {/* 已装技能 */}
       <View style={styles.skillRow}>
-        {pills.length > 0 ? (
-          pills.map((s) => (
+        {skillPills.length > 0 ? (
+          skillPills.map((s) => (
             <Text key={s.id} style={styles.skillItemText} numberOfLines={1}>
-              {s.format === 'vrm' ? '🧸' : '🎨'} {s.display_name}
+              ⚡ {s.name}
             </Text>
           ))
         ) : (
           <Text style={styles.skillItemText}>
-            {detail == null ? '加载中…' : '还没有皮肤,去市场逛逛'}
+            {detail == null ? '加载中…' : '还没装技能,点"装新的"去技能市场'}
           </Text>
         )}
       </View>
+      {/* 已拥有皮肤 */}
+      {skinPills.length > 0 ? (
+        <View style={styles.skillRow}>
+          {skinPills.map((s) => (
+            <Text key={s.id} style={styles.skillItemText} numberOfLines={1}>
+              {s.format === 'vrm' ? '🧸' : '🎨'} {s.display_name}
+            </Text>
+          ))}
+        </View>
+      ) : null}
       <View style={styles.cardActionRow}>
         <ActionButton label="装新的" onPress={onOpenInstall} />
         <ActionButton label="我的技能" onPress={onMySkills} variant="ghost" />

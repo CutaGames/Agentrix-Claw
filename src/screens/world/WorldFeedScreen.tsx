@@ -38,6 +38,8 @@ import {
 } from '../../services/worldEngineApi';
 import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { PetSpriteImage } from '../../components/PetSpriteImage';
+import { useActivePet } from '../../services/activePet.service';
 
 type Nav = NativeStackNavigationProp<WorldStackParamList, 'WorldFeed'>;
 
@@ -67,6 +69,7 @@ export function WorldFeedScreen() {
   const navigation = useNavigation<Nav>();
   const { t } = useI18n();
   const queryClient = useQueryClient();
+  const activePet = useActivePet();
   const [selectedResident, setSelectedResident] = useState<WorldResidentSummary | null>(null);
 
   const feedQ = useQuery({
@@ -99,6 +102,9 @@ export function WorldFeedScreen() {
           challengerAssetId: residents[0].assetId,
           defenderAssetId: residents[0].assetId,
           training: true,
+          challengerName: residents[0].name,
+          challengerPortraitUrl: residents[0].portraitUrl ?? null,
+          defenderName: '训练假人',
         });
       } else if (action === 'quest') {
         Alert.alert(npc.name, npc.line);
@@ -166,7 +172,7 @@ export function WorldFeedScreen() {
                 {r.portraitUrl ? (
                   <Image source={{ uri: r.portraitUrl }} style={styles.charImg} resizeMode="cover" />
                 ) : (
-                  <Text style={styles.charThumbEmoji}>🦊</Text>
+                  <PetSpriteImage sprite="idle" size={56} clan={activePet.clan} />
                 )}
                 <Text style={styles.charMood}>{MOOD_EMOJI[r.state?.mood ?? 'calm'] ?? '😌'}</Text>
               </View>
@@ -249,6 +255,7 @@ export function WorldFeedScreen() {
 function ResidentDetail({ resident, onTrain, onClose }: {
   resident: WorldResidentSummary; onTrain: () => void; onClose: () => void;
 }) {
+  const activePet = useActivePet();
   return (
     <View>
       <View style={styles.sheetHeader}>
@@ -256,7 +263,7 @@ function ResidentDetail({ resident, onTrain, onClose }: {
           {resident.portraitUrl ? (
             <Image source={{ uri: resident.portraitUrl }} style={styles.sheetImg} resizeMode="cover" />
           ) : (
-            <Text style={{ fontSize: 40 }}>🦊</Text>
+            <PetSpriteImage sprite="idle" size={56} clan={activePet.clan} />
           )}
         </View>
         <View style={{ flex: 1 }}>

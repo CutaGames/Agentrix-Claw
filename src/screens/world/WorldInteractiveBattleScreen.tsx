@@ -17,6 +17,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Platform,
+  Image,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import {
@@ -28,6 +29,8 @@ import {
   type BattleDecision,
   type BattleActionType,
 } from '../../services/worldEngineApi';
+import { PetSpriteImage } from '../../components/PetSpriteImage';
+import { useActivePet } from '../../services/activePet.service';
 
 interface RouteParams {
   challengerAssetId: string;
@@ -35,6 +38,11 @@ interface RouteParams {
   /** 训练模式: 战斗已由 /train 创建好, 直接用这个 id 不再 start */
   preStartedBattleId?: string;
   training?: boolean;
+  /** 真实身份(头像/名字), 避免写死的 🦊/👹。 */
+  challengerName?: string;
+  challengerPortraitUrl?: string | null;
+  defenderName?: string;
+  defenderPortraitUrl?: string | null;
 }
 
 const ENERGY_MAX = 3;
@@ -43,7 +51,16 @@ const CHARGE_MAX = 3;
 export default function WorldInteractiveBattleScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<{ p: RouteParams }, 'p'>>();
-  const { challengerAssetId, defenderAssetId, training } = route.params;
+  const {
+    challengerAssetId,
+    defenderAssetId,
+    training,
+    challengerName,
+    challengerPortraitUrl,
+    defenderName,
+    defenderPortraitUrl,
+  } = route.params;
+  const activePet = useActivePet();
 
   const [battleId, setBattleId] = useState<string | null>(null);
   const [state, setState] = useState<InteractiveBattleState | null>(null);
@@ -53,6 +70,33 @@ export default function WorldInteractiveBattleScreen() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ winnerSide: string; xpAwarded: { challenger: number; defender: number } } | null>(null);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+  // 首次进入展示玩法教程(怎么玩)。
+  const [showHelp, setShowHelp] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const seen = await AsyncStorage.getItem('agentrix_battle_tutorial_seen_v1');
+        if (!cancelled && !seen) setShowHelp(true);
+      } catch {
+        /* best-effort: show help if storage unavailable */
+        if (!cancelled) setShowHelp(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  const dismissHelp = useCallback(() => {
+    setShowHelp(false);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      AsyncStorage.setItem('agentrix_battle_tutorial_seen_v1', '1').catch(() => {});
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   // 开局
   useEffect(() => {
@@ -138,13 +182,37 @@ export default function WorldInteractiveBattleScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>🎮 决策对战 · 第 {state?.round ?? 0} 回合</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.title}>🎮 决策对战 · 第 {state?.round ?? 0} 回合</Text>
+        <TouchableOpacity style={styles.helpBtn} onPress={() => setShowHelp(true)} testID="battle-help-btn">
+          <Text style={styles.helpBtnText}>怎么玩?</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* 双方状态 */}
       <View style={styles.combatants}>
-        <Combatant label="你" emoji="🦊" hp={c?.hp ?? 0} energy={c?.energy ?? 0} charge={c?.charge ?? 0} defending={c?.defending} side="me" />
+        <Combatant
+          label={challengerName || '你的角色'}
+          portraitUrl={challengerPortraitUrl}
+          spriteClan={activePet.clan}
+          fallbackEmoji="🦊"
+          hp={c?.hp ?? 0}
+          energy={c?.energy ?? 0}
+          charge={c?.charge ?? 0}
+          defending={c?.defending}
+          side="me"
+        />
         <Text style={styles.vs}>VS</Text>
-        <Combatant label="对手" emoji="👹" hp={d?.hp ?? 0} energy={d?.energy ?? 0} charge={d?.charge ?? 0} defending={d?.defending} side="foe" />
+        <Combatant
+          label={defenderName || (training ? '训练假人' : '对手')}
+          portraitUrl={defenderPortraitUrl}
+          fallbackEmoji={training ? '🥋' : '👹'}
+          hp={d?.hp ?? 0}
+          energy={d?.energy ?? 0}
+          charge={d?.charge ?? 0}
+          defending={d?.defending}
+          side="foe"
+        />
       </View>
 
       {/* 结果 */}
@@ -204,6 +272,32 @@ export default function WorldInteractiveBattleScreen() {
           ))
         )}
       </ScrollView>
+
+      {/* 首次玩法教程 / 怎么玩 */}
+      {showHelp ? (
+        <View style={styles.helpOverlay}>
+          <View style={styles.helpCard}>
+            <Text style={styles.helpTitle}>🎮 怎么玩决策对战</Text>
+            <Text style={styles.helpLine}>每回合从三个行动里选一个,目标是把对手的 HP 打到 0:</Text>
+            <View style={styles.helpItem}>
+              <Text style={styles.helpItemEmoji}>⚔️</Text>
+              <Text style={styles.helpItemText}><Text style={styles.helpBold}>攻击</Text> — 消耗 1 行动力造成伤害。技能多时可选技能。</Text>
+            </View>
+            <View style={styles.helpItem}>
+              <Text style={styles.helpItemEmoji}>🔋</Text>
+              <Text style={styles.helpItemText}><Text style={styles.helpBold}>蓄力</Text> — 回满行动力,并让下次攻击 +60% 伤害。</Text>
+            </View>
+            <View style={styles.helpItem}>
+              <Text style={styles.helpItemEmoji}>🛡️</Text>
+              <Text style={styles.helpItemText}><Text style={styles.helpBold}>防御</Text> — 本回合减伤 50% 并反弹部分伤害。</Text>
+            </View>
+            <Text style={styles.helpTip}>💡 没行动力了就先蓄力;血量低就防御。胜利可获得 XP 升级你的角色。</Text>
+            <TouchableOpacity style={styles.helpOkBtn} onPress={dismissHelp} testID="battle-help-ok">
+              <Text style={styles.helpOkText}>开始战斗</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -212,13 +306,22 @@ function actionLabel(a: BattleActionType): string {
   return a === 'attack' ? '攻击' : a === 'charge' ? '蓄力' : '防御';
 }
 
-function Combatant({ label, emoji, hp, energy, charge, defending, side }: {
-  label: string; emoji: string; hp: number; energy: number; charge: number; defending?: boolean; side: 'me' | 'foe';
+function Combatant({ label, portraitUrl, spriteClan, fallbackEmoji, hp, energy, charge, defending, side }: {
+  label: string; portraitUrl?: string | null; spriteClan?: 'A' | 'B' | 'C' | 'D' | 'E' | 'F'; fallbackEmoji: string; hp: number; energy: number; charge: number; defending?: boolean; side: 'me' | 'foe';
 }) {
   return (
     <View style={styles.combatant}>
-      <Text style={styles.combatantEmoji}>{emoji}{defending ? '🛡️' : ''}</Text>
-      <Text style={styles.combatantLabel}>{label}</Text>
+      <View style={styles.combatantAvatar}>
+        {portraitUrl ? (
+          <Image source={{ uri: portraitUrl }} style={styles.combatantImg} resizeMode="cover" />
+        ) : spriteClan ? (
+          <PetSpriteImage sprite="idle" size={56} clan={spriteClan} />
+        ) : (
+          <Text style={styles.combatantEmoji}>{fallbackEmoji}</Text>
+        )}
+        {defending ? <Text style={styles.combatantShield}>🛡️</Text> : null}
+      </View>
+      <Text style={styles.combatantLabel} numberOfLines={1}>{label}</Text>
       <Text style={styles.hpText}>HP {hp}</Text>
       <View style={styles.pips}>
         {Array.from({ length: ENERGY_MAX }).map((_, i) => (
@@ -252,9 +355,26 @@ const styles = StyleSheet.create({
   loadingText: { color: '#888', marginTop: 12 },
   errorText: { color: '#ef4444', fontSize: 14, marginBottom: 16, textAlign: 'center', paddingHorizontal: 32 },
   title: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 16, textAlign: 'center' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  helpBtn: { marginLeft: 8, backgroundColor: '#2d2d44', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  helpBtnText: { color: '#bcaaff', fontSize: 12, fontWeight: '600' },
+  helpOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.8)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  helpCard: { backgroundColor: '#1a1a2e', borderRadius: 18, padding: 22, width: '100%', maxWidth: 380, borderWidth: 1, borderColor: '#6c5ce7' },
+  helpTitle: { color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 12, textAlign: 'center' },
+  helpLine: { color: '#ccc', fontSize: 13, marginBottom: 12, lineHeight: 19 },
+  helpItem: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
+  helpItemEmoji: { fontSize: 22, marginRight: 10, width: 28, textAlign: 'center' },
+  helpItemText: { color: '#ddd', fontSize: 13, flex: 1, lineHeight: 19 },
+  helpBold: { color: '#fff', fontWeight: '700' },
+  helpTip: { color: '#9aa', fontSize: 12, marginTop: 6, marginBottom: 16, lineHeight: 18 },
+  helpOkBtn: { backgroundColor: '#6c5ce7', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  helpOkText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
   combatants: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
   combatant: { flex: 1, alignItems: 'center', backgroundColor: '#1a1a2e', borderRadius: 14, padding: 12 },
+  combatantAvatar: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
+  combatantImg: { width: 56, height: 56, borderRadius: 12 },
+  combatantShield: { position: 'absolute', right: -4, bottom: -4, fontSize: 18 },
   combatantEmoji: { fontSize: 36 },
   combatantLabel: { color: '#aaa', fontSize: 12, marginTop: 2 },
   hpText: { color: '#fff', fontSize: 15, fontWeight: '700', marginTop: 4 },

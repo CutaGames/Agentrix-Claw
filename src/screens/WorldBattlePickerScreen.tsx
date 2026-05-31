@@ -93,6 +93,10 @@ export default function WorldBattlePickerScreen() {
     navigation.navigate('WorldInteractiveBattle', {
       challengerAssetId: challenger.id,
       defenderAssetId: defender.id,
+      challengerName: challenger.name,
+      challengerPortraitUrl: challenger.styledMeshUrl ?? challenger.portraitUrl ?? null,
+      defenderName: defender.name,
+      defenderPortraitUrl: defender.styledMeshUrl ?? defender.portraitUrl ?? null,
     });
   }, [challenger, defender, navigation]);
 
@@ -109,6 +113,9 @@ export default function WorldBattlePickerScreen() {
       // 训练模式下后端用 system-dummy 作防守方, defenderAssetId 仅占位。
       defenderAssetId: me.id,
       training: true,
+      challengerName: me.name,
+      challengerPortraitUrl: me.styledMeshUrl ?? me.portraitUrl ?? null,
+      defenderName: '训练假人',
     });
   }, [challenger, assets, navigation]);
 

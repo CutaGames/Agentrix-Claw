@@ -55,6 +55,31 @@ export interface PetDetailData {
   axp: AxpBalanceView | null;
   /** Owned skins (used to surface real "installed" capability pills). */
   skins: PetSkinSummary[];
+  /** Installed skills (capabilities/tools), unioned across user + claw scope. */
+  skills: InstalledSkillSummary[];
+}
+
+export interface InstalledSkillSummary {
+  id: string;
+  name: string;
+  displayName?: string;
+  category?: string;
+}
+
+/** Installed skills for the logged-in user (unioned user + claw scope). */
+export async function listInstalledSkills(): Promise<InstalledSkillSummary[]> {
+  try {
+    const json = await apiFetch<{ items?: any[] }>('/skills/installed');
+    const items = json?.items ?? [];
+    return items.map((s: any) => ({
+      id: s.id,
+      name: s.displayName || s.name || '技能',
+      displayName: s.displayName,
+      category: s.category,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -63,10 +88,11 @@ export interface PetDetailData {
  * whole sheet. Returns nulls/empties for the parts that failed.
  */
 export async function fetchPetDetailData(): Promise<PetDetailData> {
-  const [snapRes, axpRes, skinsRes] = await Promise.allSettled([
+  const [snapRes, axpRes, skinsRes, skillsRes] = await Promise.allSettled([
     fetchPetSnapshot(),
     fetchAxpBalance(),
     listSkins(),
+    listInstalledSkills(),
   ]);
 
   const snap = snapRes.status === 'fulfilled' ? snapRes.value : null;
@@ -76,6 +102,7 @@ export async function fetchPetDetailData(): Promise<PetDetailData> {
     energy: snap?.energy?.energy ?? null,
     axp: axpRes.status === 'fulfilled' ? axpRes.value : null,
     skins: skinsRes.status === 'fulfilled' ? skinsRes.value : [],
+    skills: skillsRes.status === 'fulfilled' ? skillsRes.value : [],
   };
 }
 

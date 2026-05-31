@@ -50,7 +50,16 @@ export type WorldStackParamList = {
   WorldEngineScanner: { mode?: 'quick' | 'detail' | 'room' } | undefined;
   WorldAssetInventory: undefined;
   WorldBattleArena: { challengerAssetId?: string; defenderAssetId?: string } | undefined;
-  WorldInteractiveBattle: { challengerAssetId: string; defenderAssetId: string; training?: boolean };
+  WorldInteractiveBattle: {
+    challengerAssetId: string;
+    defenderAssetId: string;
+    training?: boolean;
+    /** Real identity for the combatant header (avoids the hardcoded 🦊/👹). */
+    challengerName?: string;
+    challengerPortraitUrl?: string | null;
+    defenderName?: string;
+    defenderPortraitUrl?: string | null;
+  };
   WorldBattlePicker: undefined;
   WorldDungeonExplorer: { shareCode?: string };
   WorldUgcRuleSets: undefined;
