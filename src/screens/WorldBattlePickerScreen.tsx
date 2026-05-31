@@ -96,6 +96,22 @@ export default function WorldBattlePickerScreen() {
     });
   }, [challenger, defender, navigation]);
 
+  // 单人训练对战 — 只需要挑战者(防御者由系统训练假人担任)。这是冷启动
+  // "只有一个角色也能 PK"的核心入口: 解决"没有对手/无法对战"的代入感问题。
+  const handleStartTraining = useCallback(() => {
+    const me = challenger ?? assets[0];
+    if (!me) {
+      Alert.alert('还没有角色', '先去扫描生成一个角色,再来训练场练习对战。');
+      return;
+    }
+    navigation.navigate('WorldInteractiveBattle', {
+      challengerAssetId: me.id,
+      // 训练模式下后端用 system-dummy 作防守方, defenderAssetId 仅占位。
+      defenderAssetId: me.id,
+      training: true,
+    });
+  }, [challenger, assets, navigation]);
+
   return (
     <View style={styles.container} testID="world-battle-picker">
       <Text style={styles.title}>选择对战双方</Text>
@@ -144,6 +160,13 @@ export default function WorldBattlePickerScreen() {
           <Text style={styles.emptyText}>
             没有可对战的角色,先去扫描生成一些吧
           </Text>
+          <TouchableOpacity
+            style={styles.emptyScanButton}
+            onPress={() => navigation.navigate('WorldEngineScanner')}
+            testID="world-battle-picker-empty-scan"
+          >
+            <Text style={styles.emptyScanText}>📷 去扫描生成角色</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -186,33 +209,50 @@ export default function WorldBattlePickerScreen() {
       )}
 
       {/* Start buttons */}
-      <View style={styles.startRow}>
-        <TouchableOpacity
-          style={[
-            styles.startButtonHalf,
-            styles.startButtonAuto,
-            (!challenger || !defender) && { opacity: 0.4 },
-          ]}
-          onPress={handleStart}
-          disabled={!challenger || !defender}
-          testID="world-battle-picker-start"
-        >
-          <Text style={styles.startButtonText}>⚡ 快速对战</Text>
-          <Text style={styles.startButtonHint}>自动结算</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.startButtonHalf,
-            (!challenger || !defender) && { opacity: 0.4 },
-          ]}
-          onPress={handleStartInteractive}
-          disabled={!challenger || !defender}
-          testID="world-battle-picker-start-interactive"
-        >
-          <Text style={styles.startButtonText}>🎮 决策对战</Text>
-          <Text style={styles.startButtonHint}>你来出招</Text>
-        </TouchableOpacity>
-      </View>
+      {!loading && assets.length > 0 && (
+        <View style={styles.startWrap}>
+          {/* 单人训练 — 只需 1 个角色即可开打(对手 = 系统训练假人)。
+              冷启动核心入口: 没有第二只角色 / 没有别的玩家在线也能 PK。 */}
+          <TouchableOpacity
+            style={styles.trainButton}
+            onPress={handleStartTraining}
+            testID="world-battle-picker-start-training"
+          >
+            <Text style={styles.startButtonText}>🥋 单人训练对战</Text>
+            <Text style={styles.startButtonHint}>
+              {challenger ? `${challenger.name} vs 训练假人` : `${assets[0]?.name ?? '你的角色'} vs 训练假人`} · 只需 1 个角色
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.startRow}>
+            <TouchableOpacity
+              style={[
+                styles.startButtonHalf,
+                styles.startButtonAuto,
+                (!challenger || !defender) && { opacity: 0.4 },
+              ]}
+              onPress={handleStart}
+              disabled={!challenger || !defender}
+              testID="world-battle-picker-start"
+            >
+              <Text style={styles.startButtonText}>⚡ 快速对战</Text>
+              <Text style={styles.startButtonHint}>双角色 · 自动结算</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.startButtonHalf,
+                (!challenger || !defender) && { opacity: 0.4 },
+              ]}
+              onPress={handleStartInteractive}
+              disabled={!challenger || !defender}
+              testID="world-battle-picker-start-interactive"
+            >
+              <Text style={styles.startButtonText}>🎮 决策对战</Text>
+              <Text style={styles.startButtonHint}>双角色 · 你来出招</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -333,7 +373,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   gridContent: {
-    paddingBottom: 100,
+    paddingBottom: 180,
   },
   gridRow: {
     gap: 8,
@@ -385,23 +425,34 @@ const styles = StyleSheet.create({
     color: '#6c5ce7',
     fontSize: 10,
   },
-  startButton: {
+  startRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  startWrap: {
     position: 'absolute',
     left: 16,
     right: 16,
     bottom: Platform.OS === 'ios' ? 30 : 16,
+    gap: 10,
+  },
+  trainButton: {
     backgroundColor: '#6c5ce7',
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
   },
-  startRow: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: Platform.OS === 'ios' ? 30 : 16,
-    flexDirection: 'row',
-    gap: 10,
+  emptyScanButton: {
+    marginTop: 18,
+    backgroundColor: '#6c5ce7',
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 12,
+  },
+  emptyScanText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
   },
   startButtonHalf: {
     flex: 1,

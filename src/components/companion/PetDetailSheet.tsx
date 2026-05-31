@@ -368,7 +368,7 @@ const HeroBlock = React.memo(function HeroBlock({
   return (
     <View style={styles.hero}>
       <View style={styles.heroAvatar}>
-        <Text style={styles.heroAvatarEmoji}>🐾</Text>
+        <PetSpriteImageOrEmoji clan={pet.clan} />
       </View>
       <View style={{ flex: 1, marginLeft: 16 }}>
         <View style={styles.heroNameRow}>
@@ -387,6 +387,20 @@ const HeroBlock = React.memo(function HeroBlock({
     </View>
   );
 });
+
+/**
+ * Renders the real idle pet sprite (matching the ball), falling back to a
+ * 🐾 emoji only if the sprite render throws — never blanks the hero.
+ */
+function PetSpriteImageOrEmoji({ clan }: { clan?: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' }) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    const { PetSpriteImage } = require('../PetSpriteImage') as typeof import('../PetSpriteImage');
+    return <PetSpriteImage sprite="idle" size={72} clan={clan} testID="pet-detail-hero-sprite" />;
+  } catch {
+    return <Text style={styles.heroAvatarEmoji}>🐾</Text>;
+  }
+}
 
 const StatusOverviewSection = React.memo(function StatusOverviewSection({
   detail,

@@ -70,25 +70,71 @@ const DEFAULT_SPRITE_SOURCES: Record<PetSpriteKey, ImageSourcePropType> = {
 };
 
 /**
- * P2 — per-clan sprite registry. EMPTY today (only `default` art is
- * bundled), but this is the single place to wire clan-specific sheets when
- * the art lands. To add clan B (Life) art, drop the PNGs under
- * `assets/pets/sprites/B/` and add:
+ * P2 — per-clan sprite registry. Wired for C_learn (owl/Pino),
+ * E_web3 (whale/Whale, 10/12 actions), and F_family (teddy/Teddy) as of the
+ * 2026-05-31 art delivery. A_office uses the `default` kitsune set.
+ * B_life (Mochi) + D_play (Goblin) still fall back to default until their
+ * per-action strips ship.
  *
- *   B: {
- *     idle: require('../../assets/pets/sprites/B/idle.png'),
- *     ... (all PetSpriteKey)
- *   }
- *
- * `resolveSpriteSource()` falls back to DEFAULT for any clan/key not present
- * here, so partial clan packs are safe.
+ * To add a clan: drop the 256px-tall strips under `assets/pets/sprites/<X>/`
+ * (use `.tmp_apk/sprite-tools/resize-sprites.ps1` to normalize raw art) and
+ * add a `require()` map below. `resolveSpriteSource()` falls back to DEFAULT
+ * for any clan/key not present here, so partial clan packs are safe.
  */
 type ClanCode = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
 const CLAN_SPRITE_SOURCES: Partial<
   Record<ClanCode, Partial<Record<PetSpriteKey, ImageSourcePropType>>>
 > = {
-  // A (Office) currently uses the shipped `default` set — no override needed.
-  // B/C/D/E/F: add entries here when per-clan art is produced.
+  // A (Office) = the shipped `default` set (kitsune 九尾灵狐) — no override.
+  //
+  // B_life (Mochi 团子猫) + D_play (Goblin 哥布): only 定妆照 delivered so
+  // far, no per-action strips → still fall back to default. Add here once
+  // their 12 strips land under assets/pets/sprites/{B,D}/.
+  //
+  // C_learn (Pino 猫头鹰) — full 12-action pack (2026-05-31 delivery).
+  C: {
+    walk: require('../../assets/pets/sprites/C/walk.png'),
+    idle: require('../../assets/pets/sprites/C/idle.png'),
+    sleep: require('../../assets/pets/sprites/C/sleep.png'),
+    sit: require('../../assets/pets/sprites/C/sit.png'),
+    jump: require('../../assets/pets/sprites/C/jump.png'),
+    eat: require('../../assets/pets/sprites/C/eat.png'),
+    listen: require('../../assets/pets/sprites/C/listen.png'),
+    talk: require('../../assets/pets/sprites/C/talk.png'),
+    'pro-thinking': require('../../assets/pets/sprites/C/pro-thinking.png'),
+    'pro-typing': require('../../assets/pets/sprites/C/pro-typing.png'),
+    'pro-done': require('../../assets/pets/sprites/C/pro-done.png'),
+    alert: require('../../assets/pets/sprites/C/alert.png'),
+  },
+  // E_web3 (Whale 鲸) — 10/12 actions delivered (eat + listen pending →
+  // resolveSpriteSource() falls those two back to the default set).
+  E: {
+    walk: require('../../assets/pets/sprites/E/walk.png'),
+    idle: require('../../assets/pets/sprites/E/idle.png'),
+    sleep: require('../../assets/pets/sprites/E/sleep.png'),
+    sit: require('../../assets/pets/sprites/E/sit.png'),
+    jump: require('../../assets/pets/sprites/E/jump.png'),
+    talk: require('../../assets/pets/sprites/E/talk.png'),
+    'pro-thinking': require('../../assets/pets/sprites/E/pro-thinking.png'),
+    'pro-typing': require('../../assets/pets/sprites/E/pro-typing.png'),
+    'pro-done': require('../../assets/pets/sprites/E/pro-done.png'),
+    alert: require('../../assets/pets/sprites/E/alert.png'),
+  },
+  // F_family (Teddy 毛绒熊) — full 12-action pack (2026-05-31 delivery).
+  F: {
+    walk: require('../../assets/pets/sprites/F/walk.png'),
+    idle: require('../../assets/pets/sprites/F/idle.png'),
+    sleep: require('../../assets/pets/sprites/F/sleep.png'),
+    sit: require('../../assets/pets/sprites/F/sit.png'),
+    jump: require('../../assets/pets/sprites/F/jump.png'),
+    eat: require('../../assets/pets/sprites/F/eat.png'),
+    listen: require('../../assets/pets/sprites/F/listen.png'),
+    talk: require('../../assets/pets/sprites/F/talk.png'),
+    'pro-thinking': require('../../assets/pets/sprites/F/pro-thinking.png'),
+    'pro-typing': require('../../assets/pets/sprites/F/pro-typing.png'),
+    'pro-done': require('../../assets/pets/sprites/F/pro-done.png'),
+    alert: require('../../assets/pets/sprites/F/alert.png'),
+  },
 };
 
 /**

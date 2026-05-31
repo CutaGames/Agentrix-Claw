@@ -440,12 +440,20 @@ export function GlobalFloatingBall({
     }
   }, [isMinimized, snapToEdge, pan, screenW, screenH]);
 
-  // Auto re-minimize after 8s idle
+  // Auto re-minimize after 8s idle.
+  // P-9 fix (2026-05-30): when the companion override props are active
+  // (single-tap → ConversationBubble, long-press → PetDetailSheet), do NOT
+  // auto-minimize. The minimized state swallows the FIRST tap/long-press
+  // (it only un-minimizes), which is exactly the user-reported "after a
+  // while, tap/long-press do nothing, only jumps to World". The companion
+  // ball is meant to be persistently in-place per spec R1, so keep it open.
+  const companionInteractive = !!onSingleTapOverride || !!onLongPressOverride;
   useEffect(() => {
+    if (companionInteractive) return;
     if (ballState !== 'idle' || isMinimized || pillExpanded || showResultCard) return;
     const timer = setTimeout(() => setIsMinimized(true), 8000);
     return () => clearTimeout(timer);
-  }, [ballState, isMinimized, pillExpanded, showResultCard]);
+  }, [companionInteractive, ballState, isMinimized, pillExpanded, showResultCard]);
 
   const showWakeWordGuidance = useCallback((message: string) => {
     const now = Date.now();
@@ -637,6 +645,13 @@ export function GlobalFloatingBall({
         toValue: { x: onLeft ? EDGE_MARGIN : screenW - BALL_SIZE - EDGE_MARGIN, y: currentY },
         useNativeDriver: false, friction: 7,
       }).start();
+      // P-9 fix: in companion mode the un-minimize tap should ALSO open the
+      // bubble — otherwise the first tap is "wasted" un-minimizing and feels
+      // dead. Only swallow the tap in legacy (non-override) mode.
+      if (onSingleTapOverride) {
+        addVoiceDiagnostic('floating-ball', 'tap-override-from-minimized');
+        onSingleTapOverride();
+      }
       return;
     }
 
@@ -654,7 +669,15 @@ export function GlobalFloatingBall({
 
   const handleLongPress = useCallback(() => {
     addVoiceDiagnostic('floating-ball', 'long-press-activate');
-    if (isMinimized) { setIsMinimized(false); return; }
+    if (isMinimized) {
+      setIsMinimized(false);
+      // P-9 fix: don't swallow the long-press when minimized — open detail.
+      if (onLongPressOverride) {
+        addVoiceDiagnostic('floating-ball', 'long-press-override-from-minimized');
+        onLongPressOverride();
+      }
+      return;
+    }
 
     // P-9 T3.3 long-press override: parent can hijack the long-press to
     // open PetDetailSheet instead of expanding the legacy pill.
