@@ -69,6 +69,7 @@ export interface CharacterCard {
 export type GenerationStatus =
   | 'card_ready'
   | 'mesh_pending'
+  | 'card_only'
   | 'complete'
   | 'mesh_failed';
 

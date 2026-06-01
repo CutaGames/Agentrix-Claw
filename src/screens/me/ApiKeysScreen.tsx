@@ -588,8 +588,8 @@ export function ApiKeysScreen() {
             <Text style={styles.sectionTitle}>{t({ en: '🎬 Media Creation (video / image / 3D)', zh: '🎬 媒体创作（视频 / 图片 / 3D 模型）' })}</Text>
             <Text style={styles.sectionHint}>
               {t({
-                en: 'Bring your own key to generate videos, images and 3D models with your own quota.',
-                zh: '用你自己的 API Key 来生成视频、图片和 3D 模型，走你自己的额度。',
+                en: 'Bring your own key to generate videos, images and 3D models with your own quota. Connect a 3D provider (Tencent Hunyuan3D / Meshy) to turn your photo scans into 3D models — the platform 3D pipeline is not open yet, so your own key is the way to unlock it.',
+                zh: '用你自己的 API Key 来生成视频、图片和 3D 模型，走你自己的额度。绑定 3D provider（腾讯混元 / Meshy）后，拍照扫描即可生成 3D 模型 —— 平台 3D 暂未开放，绑定自己的 key 即可解锁。',
               })}
             </Text>
             {mediaProviders.map(renderProvider)}

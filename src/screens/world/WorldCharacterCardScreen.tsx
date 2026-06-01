@@ -91,7 +91,7 @@ export function WorldCharacterCardScreen() {
   }, [assetId]);
 
   useEffect(() => {
-    if (genStatus !== 'complete' && genStatus !== 'mesh_failed') {
+    if (genStatus !== 'complete' && genStatus !== 'mesh_failed' && genStatus !== 'card_only') {
       pollTimerRef.current = setTimeout(poll, POLL_INTERVAL_MS);
     }
     return () => {
@@ -125,9 +125,13 @@ export function WorldCharacterCardScreen() {
   }, [isGuestPreview, markGuestTrialUsed]);
 
   const onSaveLogin = useCallback(() => {
-    // 引导游客登录以保存角色。登录成功后 RootNavigator 切到已登录态;
     // 用户可在资产库重新生成并永久保存(游客预览不落库)。
     (navigation as any).navigate('Auth', { screen: 'Login' });
+  }, [navigation]);
+
+  // card_only 引导: 平台 3D 未开放, 跳到"我的 → AI 厂商与订阅"绑定自己的 3D provider。
+  const onUseOwnProvider = useCallback(() => {
+    (navigation as any).navigate('Me', { screen: 'ApiKeys' });
   }, [navigation]);
 
   if (!card) {
@@ -147,7 +151,7 @@ export function WorldCharacterCardScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* 3D 状态条 */}
-      <MeshStatusBanner status={genStatus} t={t} />
+      <MeshStatusBanner status={genStatus} t={t} onUseOwnProvider={onUseOwnProvider} />
 
       {/* 角色卡 */}
       <Animated.View
@@ -278,9 +282,11 @@ export function WorldCharacterCardScreen() {
 function MeshStatusBanner({
   status,
   t,
+  onUseOwnProvider,
 }: {
   status: GenerationStatus;
   t: (x: { en: string; zh: string }) => string;
+  onUseOwnProvider?: () => void;
 }) {
   if (status === 'complete') {
     return (
@@ -295,6 +301,32 @@ function MeshStatusBanner({
         <Text style={styles.bannerText}>
           ⚠️ {t({ en: '3D model failed — your character is saved, retry 3D later', zh: '3D 生成失败 — 角色已保存，可稍后重试 3D' })}
         </Text>
+      </View>
+    );
+  }
+  if (status === 'card_only') {
+    // 平台 3D 暂未开放, 但用户可绑定自己的 3D provider(腾讯混元 / Meshy)用自己额度生成。
+    return (
+      <View style={[styles.banner, styles.bannerInfo]}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.bannerText}>
+            🎴 {t({
+              en: 'Character card is ready and fully playable in 2D. Platform 3D is not open yet.',
+              zh: '角色卡已生成，2D 即可直接游玩。平台 3D 暂未开放。',
+            })}
+          </Text>
+          <Text style={styles.bannerSubText}>
+            {t({
+              en: 'Want a 3D model? Connect your own provider (Tencent Hunyuan3D / Meshy) and generate on your own quota.',
+              zh: '想要 3D 模型？绑定你自己的 provider（腾讯混元 / Meshy），用自己的额度即可生成。',
+            })}
+          </Text>
+        </View>
+        {onUseOwnProvider && (
+          <TouchableOpacity style={styles.bannerCta} onPress={onUseOwnProvider}>
+            <Text style={styles.bannerCtaText}>{t({ en: 'Set up', zh: '去设置' })}</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   }
@@ -318,6 +350,10 @@ const styles = StyleSheet.create({
   banner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, padding: 12, marginBottom: 16 },
   bannerPending: { backgroundColor: 'rgba(99,102,241,0.12)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.3)' },
   bannerOk: { backgroundColor: 'rgba(16,185,129,0.12)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.3)' },
+  bannerInfo: { backgroundColor: 'rgba(56,189,248,0.10)', borderWidth: 1, borderColor: 'rgba(56,189,248,0.3)', alignItems: 'flex-start' },
+  bannerSubText: { color: colors.textMuted, fontSize: 12, marginTop: 4, lineHeight: 17 },
+  bannerCta: { backgroundColor: colors.accent, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, alignSelf: 'center' },
+  bannerCtaText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   bannerWarn: { backgroundColor: 'rgba(245,158,11,0.12)', borderWidth: 1, borderColor: 'rgba(245,158,11,0.3)' },
   bannerText: { color: colors.textPrimary, fontSize: 13, flex: 1 },
 

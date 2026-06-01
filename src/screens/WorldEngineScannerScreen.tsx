@@ -339,10 +339,15 @@ export default function WorldEngineScannerScreen() {
       // 房间扫描 (room → 副本) 没有角色卡, 仍走 ReconstructionProgress。
       // 老后端不返回 characterCard 时也回退到 ReconstructionProgress (向后兼容)。
       if (scanMode !== 'room' && gen.characterCard) {
+        // 3D 跳过判定: 平台 3D 关闭且用户无自带 key 时, 后端返回 jobId="card-<sessionId>"
+        // 且不会有 mesh 到来。此时标记 card_only, 卡片屏展示"用自己的 provider 生成 3D"引导,
+        // 而不是无限"孵化中…"。
+        const meshSkipped = typeof jobId === 'string' && jobId.startsWith('card-');
+        const status = meshSkipped ? 'card_only' : (gen.generationStatus || 'card_ready');
         (navigation as any).replace('WorldCharacterCard', {
           assetId: gen.assetId,
           card: gen.characterCard,
-          generationStatus: gen.generationStatus || 'card_ready',
+          generationStatus: status,
           jobId,
         });
       } else {
