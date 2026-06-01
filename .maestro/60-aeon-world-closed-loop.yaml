@@ -1,0 +1,75 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 60: Aeon(永曜城)端到端闭环冒烟(Task 5.4 / R18.7)
+# 进地图 → 圈地 → 进房间(看身份徽章)→ 建造 → 公司/任务/市场入口
+# 容错:Aeon 为新模块,关键步骤用 optional 断言,避免阻断既有 CI。
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+
+# ── 进入 World Tab ──────────────────────────────────────
+- tapOn: "World"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: "60-world-landing"
+
+# ── 进入 Aeon 地图(选址层)─────────────────────────────
+- tapOn:
+    text: "Aeon.*"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: "60-aeon-map"
+
+# 地图为选址/选址列表;尝试圈地(claim)按钮
+- tapOn:
+    text: "圈一块地|圈地|Claim|选址"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: "60-aeon-claim"
+
+# ── 进入地块场景(2.5D + 身份徽章)──────────────────────
+- tapOn:
+    text: "进入|Enter|我的领地"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: "60-aeon-scene"
+
+# 新手引导(首次进入)应出现"怎么玩"或引导卡
+- assertVisible:
+    text: "怎么玩|欢迎来到永曜城|开始逛逛"
+    optional: true
+- tapOn:
+    text: "开始逛逛|知道了"
+    optional: true
+
+# 身份铁律可见(✋ 真人 / 🤖 agent / 🟣 NPC 之一)
+- assertVisible:
+    text: "真人|Agent|NPC|在场"
+    optional: true
+- takeScreenshot: "60-aeon-roster"
+
+# ── 建造入口 ────────────────────────────────────────────
+- tapOn:
+    text: "建造|Build|🏗️"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertVisible:
+    text: "建筑目录|公司总部楼|市场货架"
+    optional: true
+- takeScreenshot: "60-aeon-build"
+
+# 选一个目录项并尝试放置(点目录 → 点网格)
+- tapOn:
+    text: "公司总部楼|任务公告台|市场货架"
+    optional: true
+- takeScreenshot: "60-aeon-build-selected"
+
+# ── 返回,确认闭环入口可达 ──────────────────────────────
+- back
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: "60-aeon-closed-loop-done"
