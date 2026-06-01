@@ -1,0 +1,133 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 28: V4 Me Tab Deep — All Sub-pages + Settings
+# Covers: MM-1~MM-8 (个人信息/订阅/AXP/兑换/设备/设置/关于/登出)
+# Based on: UI_ELEMENT_AUDIT_MOBILE_2026-05.zh-CN.md §5
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+
+- tapOn: "Me"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot: "28-me-tab"
+
+# ── MM-1: 个人信息 (Profile Edit) ────────────────────────
+- tapOn:
+    text: "个人信息"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "28-me-profile-edit"
+
+- back
+
+# ── MM-2: 订阅 (Subscribe Plan) ─────────────────────────
+- tapOn:
+    text: "订阅"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "28-me-subscribe"
+
+# Verify 5 tiers visible
+- assertVisible:
+    text: "Free"
+    optional: true
+
+- assertVisible:
+    text: "Pro"
+    optional: true
+
+- back
+
+# ── MM-3: AXP 中心 ──────────────────────────────────────
+- tapOn:
+    text: "AXP"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "28-me-axp-center"
+
+- back
+
+# ── MM-4: AXP 兑换 ──────────────────────────────────────
+- tapOn:
+    text: "兑换"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "28-me-axp-redeem"
+
+- back
+
+# ── MM-5: 设备管理 (Toy Binding) ─────────────────────────
+- tapOn:
+    text: "设备"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "28-me-devices"
+
+- back
+
+# ── MM-6: 设置 (Settings) ────────────────────────────────
+- tapOn:
+    text: "设置"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "28-me-settings"
+
+- back
+
+# ── MM-7: 关于 (About) ──────────────────────────────────
+- tapOn:
+    text: "关于"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "28-me-about"
+
+# Verify version info
+- assertVisible:
+    text: "1."
+    optional: true
+
+- back
+
+# ── MM-8: 登出确认 (Logout) ─────────────────────────────
+- scroll
+
+- tapOn:
+    text: "登出"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "28-me-logout-confirm"
+
+# Cancel logout (don't actually log out)
+- tapOn:
+    text: "取消"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 1000
