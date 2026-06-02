@@ -1,0 +1,133 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 27: V4 Home Drawer Deep — All 10 Entries
+# Covers: MD-1~MD-10 (技能/接单/钱包/记忆/玩乐/衣柜/灵魂/繁育/身份/创生)
+# Based on: UI_ELEMENT_AUDIT_MOBILE_2026-05.zh-CN.md §2.3
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+
+- tapOn: "Home"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# ── MD-1: 技能 (Skills) ─────────────────────────────────
+- tapOn:
+    id: "drawer-skills"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "27-drawer-skills"
+
+- back
+
+# ── MD-2: 接单 (Jobs) ───────────────────────────────────
+- tapOn:
+    id: "drawer-jobs"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "27-drawer-jobs"
+
+- back
+
+# ── MD-3: 钱包 (Wallet) ─────────────────────────────────
+- tapOn:
+    id: "drawer-wallet"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "27-drawer-wallet"
+
+- back
+
+# ── MD-4: 记忆 (Memory) ─────────────────────────────────
+- tapOn:
+    id: "drawer-memory"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "27-drawer-memory"
+
+- back
+
+# ── MD-5: 玩乐 (Play) ───────────────────────────────────
+- tapOn:
+    id: "drawer-play"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "27-drawer-play"
+
+- back
+
+# ── MD-6: 衣柜 (Wardrobe) ───────────────────────────────
+- tapOn:
+    id: "drawer-wardrobe"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "27-drawer-wardrobe"
+
+- back
+
+# ── MD-7: 灵魂 (Soul) ───────────────────────────────────
+- tapOn:
+    id: "drawer-soul"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "27-drawer-soul"
+
+- back
+
+# ── MD-8: 繁育 (Breed) ──────────────────────────────────
+- tapOn:
+    id: "drawer-breed"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "27-drawer-breed"
+
+- back
+
+# ── MD-9: 身份 (Identity) ───────────────────────────────
+- tapOn:
+    id: "drawer-identity"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "27-drawer-identity"
+
+- back
+
+# ── MD-10: 创生 (Create) ────────────────────────────────
+- tapOn:
+    id: "drawer-create"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "27-drawer-create"
+
+- back
