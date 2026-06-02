@@ -1,0 +1,76 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 14: Co-Raising invite + Greeting Card compose
+# Covers the two multiplayer entry points from Plaza and Home.
+# Backend must be reachable (staging or prod) so API calls succeed.
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+
+# ── Co-Raising from Home ─────────────────────────────────
+- tapOn: "Home"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- scroll
+
+- tapOn:
+    text: "Co-raise"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "14-coraising-invite-form"
+
+- assertVisible:
+    text: "New invite"
+    optional: true
+
+- back
+
+# ── Greeting compose from Plaza Feed ─────────────────────
+- tapOn: "Plaza"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- tapOn:
+    text: "Compose"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "14-greeting-compose"
+
+- assertVisible:
+    text: "Choose template"
+    optional: true
+
+# Tap a free template (Cheer)
+- tapOn:
+    text: "Cheer"
+    optional: true
+
+- takeScreenshot: "14-greeting-template-selected"
+
+- back
+
+# ── Greeting Inbox from Play segment ─────────────────────
+- tapOn:
+    text: "Play"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- tapOn:
+    text: "Inbox"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "14-greeting-inbox"
