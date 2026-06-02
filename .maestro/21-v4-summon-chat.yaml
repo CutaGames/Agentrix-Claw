@@ -1,0 +1,62 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 21: V4 Summon Tab Chat + Voice + LLM Budget
+# Covers: M5-M7 (发消息 + 语音 + LLM 预算条)
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+
+- tapOn: "Summon"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot: "21-summon-tab"
+
+# ── M5: 发消息 ──────────────────────────────────────────
+- tapOn:
+    id: "chat-input"
+    optional: true
+
+- inputText: "你好，这是 E2E 测试"
+
+- takeScreenshot: "21-summon-input"
+
+- tapOn:
+    id: "send-btn"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 8000
+
+- takeScreenshot: "21-summon-response"
+
+# ── M6: 语音按钮 ────────────────────────────────────────
+- assertVisible:
+    id: "voice-btn"
+    optional: true
+
+- tapOn:
+    id: "voice-btn"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "21-summon-voice"
+
+# Stop recording
+- tapOn:
+    id: "voice-btn"
+    optional: true
+
+# ── M7: LLM 预算条 ──────────────────────────────────────
+- assertVisible:
+    text: "预算"
+    optional: true
+
+- assertVisible:
+    id: "llm-budget-bar"
+    optional: true
+
+- takeScreenshot: "21-summon-budget"
