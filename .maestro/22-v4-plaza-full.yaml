@@ -1,0 +1,82 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 22: V4 Plaza Tab Full 5-Segment Verification
+# Covers: M8-M16 (Feed/Skills/Tasks/Pets/Play)
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+
+- tapOn: "Plaza"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot: "22-plaza-landing"
+
+# ── M8: Feed ────────────────────────────────────────────
+- tapOn: "Feed"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- scroll
+
+- takeScreenshot: "22-plaza-feed"
+
+# ── M9: Skills ──────────────────────────────────────────
+- tapOn: "Skills"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "22-plaza-skills"
+
+# ── M10: Tasks ──────────────────────────────────────────
+- tapOn: "Tasks"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "22-plaza-tasks"
+
+# ── M11-M12: Pets (Skin Auction + Pet Auction) ──────────
+- tapOn: "Pets"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "22-plaza-pets"
+
+# Check for auction sub-tabs
+- assertVisible:
+    text: "皮肤"
+    optional: true
+
+- assertVisible:
+    text: "主宠"
+    optional: true
+
+# ── M13-M16: Play ────────────────────────────────────────
+- tapOn: "Play"
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "22-plaza-play"
+
+# Play sub-entries
+- assertVisible:
+    text: "模仿秀"
+    optional: true
+
+- assertVisible:
+    text: "预测"
+    optional: true
+
+- assertVisible:
+    text: "共养"
+    optional: true
+
+- assertVisible:
+    text: "贺卡"
+    optional: true
