@@ -1,0 +1,80 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 25: V4 Global Inbox + Deep Link + NFC
+# Covers: M29-M32 (铃铛 + 扫码 + Deep Link + 推送)
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# ── M29: 全局铃铛 (Inbox) ────────────────────────────────
+- tapOn:
+    id: "global-bell"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "25-inbox"
+
+- back
+
+# ── M30: 全局扫码 ────────────────────────────────────────
+- tapOn:
+    id: "global-scan"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "25-scan"
+
+- back
+
+# ── M31: Deep Link 接收 ──────────────────────────────────
+- openLink: "agentrix://market/skin/skin-001"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot: "25-deeplink-skin"
+
+- back
+
+# Deep link: co-raising
+- openLink: "agentrix://co-raising/test-token"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot: "25-deeplink-coraising"
+
+- back
+
+# Deep link: greeting
+- openLink: "agentrix://greeting/test-token"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot: "25-deeplink-greeting"
+
+- back
+
+# ── M24: NFC 盲盒入口 ────────────────────────────────────
+- tapOn: "Home"
+
+- scroll
+
+- tapOn:
+    text: "NFC"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "25-nfc-redeem"
+
+- back
