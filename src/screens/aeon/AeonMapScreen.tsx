@@ -10,7 +10,7 @@
  *
  * 不依赖设备 GPS 限制圈地(R4.7):坐标来自地图点选或手动输入,与实时定位解耦。
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -38,7 +38,7 @@ import {
 } from '../../services/aeon/aeonApi';
 import type { AeonPlotDto, AeonPlotMarker, AeonNearbyPlot, AeonNearbyPerson, AeonCheckinLeaderEntry } from '../../../shared/types/aeon-world';
 import { wgs84ToGcj02 } from '../../../shared/types/aeon-world';
-import { resolveMapStyle, defaultMapZoom, hasHighPrecisionMap, mapBaseIsGcj02 } from '../../config/mapStyle';
+import { resolveMapStyle, defaultMapZoom, hasHighPrecisionMap, mapBaseIsGcj02, defaultMapCenterWgs84, fallbackMapZoom } from '../../config/mapStyle';
 
 /** 尝试加载 MapLibre;未安装则 null(降级)。 */
 function loadMapLibre(): any | null {
@@ -50,14 +50,20 @@ function loadMapLibre(): any | null {
   }
 }
 
-/** 尝试取实时定位(expo-location 已是依赖);失败返回 null。 */
+/** 尝试取实时定位(expo-location 已是依赖);失败/超时返回 null。 */
 async function getMyLocation(): Promise<{ lat: number; lng: number } | null> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
     const Location = require('expo-location');
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') return null;
-    const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy?.Balanced ?? 3 });
+    // getCurrentPositionAsync 在室内/无 GPS 信号时可能永久挂起 → 加 8s 超时兜底,
+    // 超时返回 null,UI 退回兜底中心(不再卡"定位中…")。
+    const pos = await Promise.race([
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy?.Balanced ?? 3 }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+    ]);
+    if (!pos?.coords) return null;
     return { lat: pos.coords.latitude, lng: pos.coords.longitude };
   } catch {
     return null;
@@ -83,6 +89,7 @@ export default function AeonMapScreen() {
   const [claiming, setClaiming] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
   const [board, setBoard] = useState<AeonCheckinLeaderEntry[]>([]);
+  const cameraRef = useRef<any>(null);
 
   const openBoard = useCallback(async () => {
     setBoardOpen(true);
@@ -139,6 +146,17 @@ export default function AeonMapScreen() {
       clearGeoPresence().catch(() => {});
     };
   }, [locateAndLoadNearby]);
+
+  // GPS 取到后把相机飞到我的位置(initialViewState 只在首帧生效,之后要用 ref)。
+  useEffect(() => {
+    if (!myLoc || !cameraRef.current) return;
+    const [ln, la] = mapBaseIsGcj02()
+      ? (() => { const g = wgs84ToGcj02(myLoc.lat, myLoc.lng); return [g.lng, g.lat]; })()
+      : [myLoc.lng, myLoc.lat];
+    try {
+      cameraRef.current.flyTo?.({ center: [ln, la], zoom: defaultMapZoom(), duration: 800 });
+    } catch { /* 老版本 API 差异,忽略 */ }
+  }, [myLoc]);
 
   /**
    * 把 WGS-84(GPS/存库)坐标投影到当前底图坐标系用于渲染:
@@ -320,6 +338,11 @@ export default function AeonMapScreen() {
       );
     };
     const meBase = myLoc ? toBase(myLoc.lat, myLoc.lng) : null;
+    // 兜底中心:GPS 未取到时用配置/北京,避免地图落到 [0,0] 海面(整屏蓝)。
+    const fb = defaultMapCenterWgs84();
+    const fbBase = toBase(fb.lat, fb.lng);
+    const initialCenter = meBase ?? fbBase;
+    const initialZoom = meBase ? defaultMapZoom() : fallbackMapZoom();
     return (
       <View style={styles.container}>
         <Map
@@ -330,8 +353,8 @@ export default function AeonMapScreen() {
           attribution
         >
           <Camera
-            initialViewState={{ zoom: defaultMapZoom() }}
-            {...(meBase ? { centerCoordinate: meBase, zoomLevel: defaultMapZoom() } : {})}
+            ref={cameraRef}
+            initialViewState={{ center: initialCenter, zoom: initialZoom }}
           />
           {meBase ? (
             <ViewAnnotation id="me" lngLat={meBase} anchor="center">

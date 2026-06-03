@@ -2,28 +2,22 @@
  * AeonStoreScreen — 商家店铺(地块 POI 接 marketplace 商品)。
  *
  * 从地图/拜访页点商家地块的「🛒 进店」进来:拉该商家(merchantUserId)在 marketplace 的在售商品,
- * 货架展示。点商品 → 详情 + "去购买"(跨 tab 到 Plaza 市场完成下单/支付,复用现有结账流程)。
+ * 货架展示。点商品 → 详情 + "下单购买"(走真实 /orders 订单流程,创建订单后提示)。
  *
- * 这把"游戏里的店铺"和"真实 marketplace 商品"打通:商家入驻地块 = 把自己的真实商品摆上货架。
+ * 这把"游戏里的店铺"和"真实 marketplace 商品"打通:商家入驻地块 = 把自己的真实商品摆上货架,
+ * 到访者可直接下单。
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Image, Alert,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import * as Haptics from 'expo-haptics';
 import { colors } from '../../theme/colors';
-import { listMerchantProducts, type ProductSummary } from '../../services/productApi';
+import { listMerchantProducts, createProductOrder, formatPrice, type ProductSummary } from '../../services/productApi';
 import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
 
 type Rt = RouteProp<WorldStackParamList, 'AeonStore'>;
-
-function priceText(p: ProductSummary): string {
-  if (p.price == null) return '面议';
-  return `${p.currency || '¥'}${p.price}`;
-}
-function imageOf(p: ProductSummary): string | null {
-  return p.imageUrl ?? (Array.isArray(p.images) && p.images.length ? p.images[0] : null);
-}
 
 export default function AeonStoreScreen() {
   const navigation = useNavigation<any>();
@@ -31,6 +25,7 @@ export default function AeonStoreScreen() {
   const { merchantUserId, storeName } = route.params;
   const [products, setProducts] = useState<ProductSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ordering, setOrdering] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -44,23 +39,32 @@ export default function AeonStoreScreen() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const placeOrder = useCallback(async (p: ProductSummary) => {
+    try {
+      setOrdering(true);
+      const order = await createProductOrder(p);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('下单成功', `订单已创建(${formatPrice(p)})。可在「我的订单」查看与支付。`, [{ text: '好的' }]);
+      return order;
+    } catch (e: any) {
+      Alert.alert('下单失败', e?.message || '请稍后再试');
+    } finally {
+      setOrdering(false);
+    }
+  }, []);
+
   const onProduct = useCallback(
     (p: ProductSummary) => {
       Alert.alert(
         p.name,
-        `${p.description || ''}\n\n价格:${priceText(p)}`,
+        `${p.description || ''}\n\n价格:${formatPrice(p)}`,
         [
           { text: '关闭', style: 'cancel' },
-          {
-            text: '🛒 去购买',
-            onPress: () =>
-              // 跨 tab 到 Plaza 市场(完整下单/支付流程)。带 productId 让市场定位该商品。
-              (navigation as any).navigate('Plaza', { screen: 'PlazaRoot', params: { focusProductId: p.id } }),
-          },
+          { text: '🛒 下单购买', onPress: () => void placeOrder(p) },
         ],
       );
     },
-    [navigation],
+    [placeOrder],
   );
 
   return (
@@ -85,20 +89,17 @@ export default function AeonStoreScreen() {
           numColumns={2}
           columnWrapperStyle={{ gap: 12, paddingHorizontal: 16 }}
           contentContainerStyle={{ paddingVertical: 12, gap: 12 }}
-          renderItem={({ item }) => {
-            const img = imageOf(item);
-            return (
-              <TouchableOpacity style={styles.card} onPress={() => onProduct(item)} activeOpacity={0.8}>
-                {img ? (
-                  <Image source={{ uri: img }} style={styles.cardImg} resizeMode="cover" />
-                ) : (
-                  <View style={[styles.cardImg, styles.cardImgPlaceholder]}><Text style={{ fontSize: 28 }}>📦</Text></View>
-                )}
-                <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.cardPrice}>{priceText(item)}</Text>
-              </TouchableOpacity>
-            );
-          }}
+          renderItem={({ item }) => (
+            <TouchableOpacity style={styles.card} onPress={() => onProduct(item)} activeOpacity={0.8} disabled={ordering}>
+              {item.imageUrl ? (
+                <Image source={{ uri: item.imageUrl }} style={styles.cardImg} resizeMode="cover" />
+              ) : (
+                <View style={[styles.cardImg, styles.cardImgPlaceholder]}><Text style={{ fontSize: 28 }}>📦</Text></View>
+              )}
+              <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.cardPrice}>{formatPrice(item)}</Text>
+            </TouchableOpacity>
+          )}
         />
       )}
     </View>

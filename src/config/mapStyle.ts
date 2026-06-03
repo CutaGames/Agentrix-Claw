@@ -74,3 +74,22 @@ export function resolveMapStyleUrl(): string {
 export function defaultMapZoom(): number {
   return hasHighPrecisionMap() ? 14 : 2;
 }
+
+/**
+ * GPS 尚未取到时的兜底中心(WGS-84,{lat,lng})。
+ * 避免地图落到 [0,0](几内亚湾海面 → 整屏蓝)。可由 extra.defaultMapCenter 覆盖,
+ * 默认北京天安门。调用方需自行按底图坐标系(GCJ-02/WGS-84)用 toBase 投影。
+ */
+export function defaultMapCenterWgs84(): { lat: number; lng: number } {
+  const e = extra();
+  const c = e.defaultMapCenter;
+  if (c && Number.isFinite(c.lat) && Number.isFinite(c.lng)) {
+    return { lat: c.lat, lng: c.lng };
+  }
+  return { lat: 39.909, lng: 116.397 };
+}
+
+/** GPS 未取到时的兜底缩放(比定位到自己时小一档,城市级)。 */
+export function fallbackMapZoom(): number {
+  return hasHighPrecisionMap() ? 11 : 2;
+}
