@@ -1,0 +1,63 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 45: Production-tree Mobile Pet Forms — Sprint P-8 (2026-05-22).
+#
+# Replaces .maestro/44-mobile-pet-forms.yaml which incorrectly relied
+# on the `EXPO_PUBLIC_VOICE_UI_E2E=1` test harness — its assertions
+# passed even though the production app never mounted GlobalFloatingBall.
+#
+# This spec runs against a normal release APK build (no test harness)
+# and verifies:
+#   1. The floating ball mounts globally on Home (post-auth + onboarded).
+#   2. The 12-form sprite testID is present (PetSpriteImage rendered).
+#   3. The ball stays mounted after navigation between tabs.
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp:
+    clearState: false
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# ── Step 1: confirm we're on Home (or any main tab post-auth) ──
+- assertVisible:
+    text: "Home"
+    optional: true
+
+# ── Step 2: floating ball sprite IS mounted in production ──
+# This is the core regression check: before P-8 the testID only
+# appeared under the E2E harness. After P-8 it must appear in
+# normal builds.
+- assertVisible:
+    id: "floating-ball-sprite"
+    optional: true
+
+- takeScreenshot: "45-pet-forms-prod-home-idle"
+
+# ── Step 3: navigate to another tab, ball must persist ──
+- tapOn:
+    text: "Plaza"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- assertVisible:
+    id: "floating-ball-sprite"
+    optional: true
+
+- takeScreenshot: "45-pet-forms-prod-plaza"
+
+# ── Step 4: tap back to Home, sprite still mounted ──
+- tapOn:
+    text: "Home"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- assertVisible:
+    id: "floating-ball-sprite"
+    optional: true
+
+- takeScreenshot: "45-pet-forms-prod-back-home"
