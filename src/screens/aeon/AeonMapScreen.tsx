@@ -50,23 +50,48 @@ function loadMapLibre(): any | null {
   }
 }
 
-/** 尝试取实时定位(expo-location 已是依赖);失败/超时返回 null。 */
-async function getMyLocation(): Promise<{ lat: number; lng: number } | null> {
+type LocResult =
+  | { status: 'ok'; lat: number; lng: number }
+  | { status: 'denied' }      // 用户拒绝了定位权限
+  | { status: 'unavailable' }; // 有权限但暂时拿不到坐标(室内/信号弱/超时)
+
+/**
+ * 尝试取实时定位(expo-location 已是依赖)。区分"没权限"与"暂时拿不到",
+ * 避免把超时误报成"需要定位权限"。
+ * 策略:先用 getLastKnownPositionAsync(秒回缓存)→ 拿不到再 getCurrentPositionAsync
+ * (放宽精度 + 12s 超时),都失败才算 unavailable。
+ */
+async function getMyLocation(): Promise<LocResult> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
     const Location = require('expo-location');
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') return null;
-    // getCurrentPositionAsync 在室内/无 GPS 信号时可能永久挂起 → 加 8s 超时兜底,
-    // 超时返回 null,UI 退回兜底中心(不再卡"定位中…")。
+    // requestForegroundPermissionsAsync 幂等:已授权直接返回 granted(不再弹框),
+    // 永久拒绝也直接返回 denied(不弹框)。比先 get 再 request 更稳(规避 expo
+    // getForegroundPermissionsAsync 误报 canAskAgain:false 的已知问题)。
+    const perm = await Location.requestForegroundPermissionsAsync();
+    if (perm.status !== 'granted') return { status: 'denied' };
+
+    // 先确认系统定位总开关是否打开;关了就别白等 getCurrentPosition。
+    try {
+      const enabled = await Location.hasServicesEnabledAsync();
+      if (!enabled) return { status: 'unavailable' };
+    } catch { /* 老平台无此 API,忽略 */ }
+
+    // 1) 缓存位置(秒回,先让地图动起来)。
+    try {
+      const last = await Location.getLastKnownPositionAsync({ maxAge: 5 * 60 * 1000 });
+      if (last?.coords) return { status: 'ok', lat: last.coords.latitude, lng: last.coords.longitude };
+    } catch { /* ignore */ }
+
+    // 2) 实时定位:放宽精度更快出点;12s 超时兜底(不永久挂起)。
     const pos = await Promise.race([
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy?.Balanced ?? 3 }),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy?.Low ?? 2 }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
     ]);
-    if (!pos?.coords) return null;
-    return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    if (pos?.coords) return { status: 'ok', lat: pos.coords.latitude, lng: pos.coords.longitude };
+    return { status: 'unavailable' };
   } catch {
-    return null;
+    return { status: 'unavailable' };
   }
 }
 
@@ -115,15 +140,27 @@ export default function AeonMapScreen() {
     void refresh();
   }, [refresh]);
 
-  /** 定位 + 拉附近领地(基于实时 GPS 的地理社交)。 */
-  const locateAndLoadNearby = useCallback(async () => {
+  /**
+   * 定位 + 拉附近领地(基于实时 GPS 的地理社交)。
+   * @param opts.silent 进屏自动定位时为 true:失败不弹窗,默默退回兜底中心;
+   *   仅用户主动点"圈地/签到"时(silent=false)才按失败类型提示。
+   */
+  const locateAndLoadNearby = useCallback(async (opts?: { silent?: boolean }): Promise<{ lat: number; lng: number } | null> => {
+    const silent = opts?.silent ?? false;
     setLocating(true);
     try {
-      const loc = await getMyLocation();
-      if (!loc) {
-        Alert.alert('需要定位权限', '开启定位后即可看到你附近的领地、就近圈地和签到。');
+      const r = await getMyLocation();
+      if (r.status !== 'ok') {
+        if (!silent) {
+          if (r.status === 'denied') {
+            Alert.alert('需要定位权限', '请在系统设置里允许 Agentrix 访问定位,即可看到附近的领地、就近圈地和签到。');
+          } else {
+            Alert.alert('暂时定位不到', '定位信号较弱(室内或刚开 GPS)。可到窗边或室外再试,或用下方坐标手动圈地。');
+          }
+        }
         return null;
       }
+      const loc = { lat: r.lat, lng: r.lng };
       setMyLoc(loc);
       try {
         setNearby(await listNearbyPlots({ lat: loc.lat, lng: loc.lng, radiusM: 5000 }));
@@ -138,9 +175,9 @@ export default function AeonMapScreen() {
     }
   }, []);
 
-  // 进屏自动尝试定位(失败静默,不打断列表/坐标兜底)。
+  // 进屏自动尝试定位(静默:失败不弹窗,退回兜底中心)。
   useEffect(() => {
-    void locateAndLoadNearby();
+    void locateAndLoadNearby({ silent: true });
     // 退出地图清除我的实时位置(不再出现在别人"附近的人")。
     return () => {
       clearGeoPresence().catch(() => {});

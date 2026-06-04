@@ -63,15 +63,9 @@ export default function AeonBuildScreen() {
     setItems(list);
   }, [plotId]);
 
-  /** 拍照/选图 → 上传 → 创建建材资产 → 刷新「我的素材」(#2 自己准备素材建造)。 */
-  const onAddPhotoMaterial = useCallback(async () => {
+  /** 把选中的图片(相机/相册)上传 → 创建建材 → 刷新「我的素材」。 */
+  const ingestPickedImage = useCallback(async (a: ImagePicker.ImagePickerAsset) => {
     try {
-      const picked = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.7,
-      });
-      if (picked.canceled || !picked.assets?.[0]) return;
-      const a = picked.assets[0];
       setBusy(true);
       const up = await uploadChatAttachment({
         uri: a.uri,
@@ -90,6 +84,45 @@ export default function AeonBuildScreen() {
       setBusy(false);
     }
   }, []);
+
+  /** 现场拍一张 → 做素材。 */
+  const pickFromCamera = useCallback(async () => {
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('需要相机权限', '请在系统设置里允许 Agentrix 使用相机,即可现场拍素材。');
+        return;
+      }
+      const shot = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
+      if (shot.canceled || !shot.assets?.[0]) return;
+      await ingestPickedImage(shot.assets[0]);
+    } catch (e: any) {
+      Alert.alert('拍照失败', e?.message ?? '请重试');
+    }
+  }, [ingestPickedImage]);
+
+  /** 从相册选一张现成照片 → 做素材。 */
+  const pickFromGallery = useCallback(async () => {
+    try {
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.7,
+      });
+      if (picked.canceled || !picked.assets?.[0]) return;
+      await ingestPickedImage(picked.assets[0]);
+    } catch (e: any) {
+      Alert.alert('选图失败', e?.message ?? '请重试');
+    }
+  }, [ingestPickedImage]);
+
+  /** 入口:让用户选「现拍」或「相册选现成照片」(#2 自己准备素材建造)。 */
+  const onAddPhotoMaterial = useCallback(() => {
+    Alert.alert('做一个素材', '拍一张照片,或从相册选现成的照片,做成可摆放的建材。', [
+      { text: '📷 拍一张', onPress: () => void pickFromCamera() },
+      { text: '🖼️ 相册选', onPress: () => void pickFromGallery() },
+      { text: '取消', style: 'cancel' },
+    ]);
+  }, [pickFromCamera, pickFromGallery]);
 
   useEffect(() => {
     let cancelled = false;
@@ -308,18 +341,18 @@ export default function AeonBuildScreen() {
       ) : myAssets.length === 0 ? (
         <View style={styles.assetsEmpty}>
           <Text style={styles.assetsEmptyText}>
-            还没有任何资产。点下方「📷 拍照做素材」拍下你想摆进领地的东西(招牌、桌椅、摆件…),
+            还没有任何资产。点下方「📷 拍照/选图做素材」拍下(或从相册选)你想摆进领地的东西(招牌、桌椅、摆件…),
             就能在这里把它摆进你的领地 —— 这才是真·共建。
           </Text>
           <TouchableOpacity style={styles.photoMatBtn} onPress={onAddPhotoMaterial} disabled={busy}>
-            <Text style={styles.photoMatBtnText}>📷 拍照做素材</Text>
+            <Text style={styles.photoMatBtnText}>📷 拍照/选图做素材</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow}>
           <TouchableOpacity style={styles.photoMatCard} onPress={onAddPhotoMaterial} disabled={busy} activeOpacity={0.7}>
             <Text style={styles.photoMatIcon}>📷</Text>
-            <Text style={styles.photoMatLabel}>拍照做素材</Text>
+            <Text style={styles.photoMatLabel}>拍照/选图</Text>
           </TouchableOpacity>
           {myAssets.map((a) => (
             <TouchableOpacity
