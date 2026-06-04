@@ -25,11 +25,11 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import {
   BottomSheetBackdrop,
   BottomSheetModal,
-  BottomSheetView,
+  BottomSheetScrollView,
 } from '@gorhom/bottom-sheet';
 import { colors } from '../../theme/colors';
 import { useActivePet } from '../../services/activePet.service';
@@ -48,7 +48,7 @@ const SNAP_POINTS = ['85%'];
 export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
   function PetDetailSheet(_props, externalRef) {
     const sheetRef = useRef<BottomSheetModal>(null);
-    const scrollRef = useRef<ScrollView>(null);
+    const scrollRef = useRef<React.ComponentRef<typeof BottomSheetScrollView>>(null);
     // Navigate via shared navigationRef — NOT useNavigation() (which throws
     // at the CompanionLayer sibling position; root cause of the dead ball).
     const navigation = useMemo(
@@ -173,14 +173,14 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
         handleIndicatorStyle={styles.handleIndicator}
         enableDismissOnClose
       >
-        <BottomSheetView style={styles.container}>
-          <ScrollView
-            ref={scrollRef}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
-            <HeroBlock
-              pet={pet}
+        <BottomSheetScrollView
+          ref={scrollRef}
+          style={styles.container}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <HeroBlock
+            pet={pet}
               detail={detail}
               hasMultiplePets={instances.length > 1}
               onSwitchPet={() =>
@@ -330,8 +330,7 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
             </View>
 
             <View style={{ height: 32 }} />
-          </ScrollView>
-        </BottomSheetView>
+        </BottomSheetScrollView>
       </BottomSheetModal>
     );
   },

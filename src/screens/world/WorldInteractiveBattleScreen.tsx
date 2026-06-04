@@ -272,16 +272,23 @@ export default function WorldInteractiveBattleScreen() {
           </TouchableOpacity>
         </View>
       ) : skillPickerOpen ? (
-        /* 技能选择 */
-        <View style={styles.actionBar}>
+        /* 技能选择 — 用 column 容器(之前误用 row 的 actionBar, 技能行被挤成 0 宽 → "选择技能"显示但技能不可见) */
+        <View style={styles.skillPickerBar}>
           <Text style={styles.skillPickHint}>选择技能</Text>
           <View style={styles.skillRow}>
-            {skills.map((s, i) => (
-              <TouchableOpacity key={i} style={styles.skillBtn} onPress={() => submit({ action: 'attack', skillIndex: s.skillIndex })}>
-                <Text style={styles.skillBtnText} numberOfLines={1}>{s.name || `技能 ${i + 1}`}</Text>
-                <Text style={styles.skillBtnDmg}>⚔ {s.damageBase ?? 10}</Text>
+            {skills.length > 0 ? (
+              skills.map((s, i) => (
+                <TouchableOpacity key={i} style={styles.skillBtn} onPress={() => submit({ action: 'attack', skillIndex: s.skillIndex })}>
+                  <Text style={styles.skillBtnText} numberOfLines={1}>{s.name || `技能 ${i + 1}`}</Text>
+                  <Text style={styles.skillBtnDmg}>⚔ {s.damageBase ?? 10}</Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <TouchableOpacity style={styles.skillBtn} onPress={() => submit({ action: 'attack', skillIndex: 0 })}>
+                <Text style={styles.skillBtnText}>基础攻击</Text>
+                <Text style={styles.skillBtnDmg}>⚔ 10</Text>
               </TouchableOpacity>
-            ))}
+            )}
           </View>
           <TouchableOpacity onPress={() => setSkillPickerOpen(false)}>
             <Text style={styles.cancelText}>取消</Text>
@@ -452,6 +459,7 @@ const styles = StyleSheet.create({
   actionHint: { color: 'rgba(255,255,255,0.7)', fontSize: 10, marginTop: 2, textAlign: 'center' },
 
   skillPickHint: { color: '#aaa', fontSize: 12, marginBottom: 8, width: '100%' },
+  skillPickerBar: { marginBottom: 20, minHeight: 96, backgroundColor: '#14142a', borderRadius: 14, padding: 12 },
   skillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, flex: 1 },
   skillBtn: { backgroundColor: '#2d2d44', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center', minWidth: 90 },
   skillBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },

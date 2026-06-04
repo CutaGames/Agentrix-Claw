@@ -59,9 +59,11 @@ type LocResult =
  * 尝试取实时定位(expo-location 已是依赖)。区分"没权限"与"暂时拿不到",
  * 避免把超时误报成"需要定位权限"。
  * 策略:先用 getLastKnownPositionAsync(秒回缓存)→ 拿不到再 getCurrentPositionAsync
- * (放宽精度 + 12s 超时),都失败才算 unavailable。
+ * (放宽精度 + 超时),都失败才算 unavailable。
+ * 整个函数有总超时兜底:任一原生调用在无 GPS 硬件/驱动异常时可能永久挂起,
+ * 总超时保证调用方的 `locating` 一定会复位("定位中…"不会卡死)。
  */
-async function getMyLocation(): Promise<LocResult> {
+async function getMyLocationInner(): Promise<LocResult> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
     const Location = require('expo-location');
@@ -83,16 +85,24 @@ async function getMyLocation(): Promise<LocResult> {
       if (last?.coords) return { status: 'ok', lat: last.coords.latitude, lng: last.coords.longitude };
     } catch { /* ignore */ }
 
-    // 2) 实时定位:放宽精度更快出点;12s 超时兜底(不永久挂起)。
+    // 2) 实时定位:放宽精度更快出点;10s 超时兜底(不永久挂起)。
     const pos = await Promise.race([
       Location.getCurrentPositionAsync({ accuracy: Location.Accuracy?.Low ?? 2 }),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
     ]);
     if (pos?.coords) return { status: 'ok', lat: pos.coords.latitude, lng: pos.coords.longitude };
     return { status: 'unavailable' };
   } catch {
     return { status: 'unavailable' };
   }
+}
+
+async function getMyLocation(): Promise<LocResult> {
+  // 总超时 14s:任一原生定位调用挂死时也保证返回(无 GPS 设备/驱动异常)。
+  return Promise.race([
+    getMyLocationInner(),
+    new Promise<LocResult>((resolve) => setTimeout(() => resolve({ status: 'unavailable' }), 14000)),
+  ]);
 }
 
 function fmtDist(m: number): string {
@@ -115,6 +125,7 @@ export default function AeonMapScreen() {
   const [boardOpen, setBoardOpen] = useState(false);
   const [board, setBoard] = useState<AeonCheckinLeaderEntry[]>([]);
   const cameraRef = useRef<any>(null);
+  const mapRef = useRef<any>(null);
 
   const openBoard = useCallback(async () => {
     setBoardOpen(true);
@@ -228,11 +239,33 @@ export default function AeonMapScreen() {
     [refresh, myLoc],
   );
 
-  /** 在我当前真实位置圈地(基于实时 GPS)。 */
+  /** 在我当前真实位置圈地(基于实时 GPS);无 GPS 时退回"在当前地图视野中心圈地"。 */
   const onClaimHere = useCallback(async () => {
     const loc = myLoc ?? (await locateAndLoadNearby());
-    if (!loc) return;
-    void onClaim(loc.lat, loc.lng);
+    if (loc) { void onClaim(loc.lat, loc.lng); return; }
+    // 无 GPS:不卡死,改成在地图当前视野中心圈地(没定位也能玩)。
+    let center: { lat: number; lng: number } | null = null;
+    try {
+      const c = await mapRef.current?.getCenter?.(); // v11: [lng, lat]
+      if (Array.isArray(c) && c.length >= 2) {
+        let la = c[1], ln = c[0];
+        if (mapBaseIsGcj02()) {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+          const { gcj02ToWgs84 } = require('../../../shared/types/aeon-world');
+          const w = gcj02ToWgs84(la, ln); la = w.lat; ln = w.lng;
+        }
+        center = { lat: la, lng: ln };
+      }
+    } catch { /* ignore */ }
+    if (!center) center = defaultMapCenterWgs84();
+    Alert.alert(
+      '没拿到定位',
+      '可能这台设备没有 GPS 或信号弱。可以直接在地图上点任意位置圈地,或就在当前地图中心圈一块?',
+      [
+        { text: '取消', style: 'cancel' },
+        { text: '在地图中心圈地', onPress: () => void onClaim(center!.lat, center!.lng) },
+      ],
+    );
   }, [myLoc, locateAndLoadNearby, onClaim]);
 
   /** 地理签到:到访某地块附近(用实测 GPS)→ 得 AXP。 */
@@ -383,6 +416,7 @@ export default function AeonMapScreen() {
     return (
       <View style={styles.container}>
         <Map
+          ref={mapRef}
           style={styles.map}
           mapStyle={resolveMapStyle()}
           onPress={onMapPress}
@@ -425,8 +459,8 @@ export default function AeonMapScreen() {
             <Text style={styles.peopleBarText} numberOfLines={1}>👥 附近 {people.length} 人在线 · 点看最近的 {people[0].displayName}({people[0].distanceM < 1000 ? `${people[0].distanceM}m` : `${(people[0].distanceM / 1000).toFixed(1)}km`})</Text>
           </TouchableOpacity>
         ) : null}
-        <TouchableOpacity style={styles.locateFab} onPress={onClaimHere} disabled={claiming || locating}>
-          <Text style={styles.locateFabText}>{locating ? '定位中…' : '📍 在我的位置圈地'}</Text>
+        <TouchableOpacity style={styles.locateFab} onPress={onClaimHere} disabled={claiming}>
+          <Text style={styles.locateFabText}>{locating ? '定位中…(可直接点地图圈地)' : myLoc ? '📍 在我的位置圈地' : '📍 圈地(点我或点地图)'}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.plazaFab} onPress={() => navigation.navigate('AeonPlaza')}>
           <Text style={styles.plazaFabText}>🎪 公共广场</Text>
