@@ -38,7 +38,7 @@ import {
 } from '../../services/aeon/aeonApi';
 import type { AeonPlotDto, AeonPlotMarker, AeonNearbyPlot, AeonNearbyPerson, AeonCheckinLeaderEntry } from '../../../shared/types/aeon-world';
 import { wgs84ToGcj02 } from '../../../shared/types/aeon-world';
-import { resolveMapStyle, defaultMapZoom, hasHighPrecisionMap, mapBaseIsGcj02, defaultMapCenterWgs84, fallbackMapZoom } from '../../config/mapStyle';
+import { resolveMapStyle, defaultMapZoom, hasHighPrecisionMap, mapBaseIsGcj02, defaultMapCenterWgs84, fallbackMapZoom, geocodeAddress, hasGeocoder, type GeocodeHit } from '../../config/mapStyle';
 
 /** 尝试加载 MapLibre;未安装则 null(降级)。 */
 function loadMapLibre(): any | null {
@@ -124,6 +124,11 @@ export default function AeonMapScreen() {
   const [claiming, setClaiming] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
   const [board, setBoard] = useState<AeonCheckinLeaderEntry[]>([]);
+  // 输入地址定位(拿不到 GPS 时的兜底):地址 → geocoding → 候选坐标 → 飞过去/圈地。
+  const [addrOpen, setAddrOpen] = useState(false);
+  const [addrQuery, setAddrQuery] = useState('');
+  const [addrBusy, setAddrBusy] = useState(false);
+  const [addrHits, setAddrHits] = useState<GeocodeHit[]>([]);
   const cameraRef = useRef<any>(null);
   const mapRef = useRef<any>(null);
 
@@ -195,16 +200,22 @@ export default function AeonMapScreen() {
     };
   }, [locateAndLoadNearby]);
 
+  // 把相机飞到某个 WGS-84 坐标(投影到底图坐标系)。
+  const flyToWgs84 = useCallback((la: number, ln: number, zoom?: number) => {
+    if (!cameraRef.current) return;
+    const [bln, bla] = mapBaseIsGcj02()
+      ? (() => { const g = wgs84ToGcj02(la, ln); return [g.lng, g.lat]; })()
+      : [ln, la];
+    try {
+      cameraRef.current.flyTo?.({ center: [bln, bla], zoom: zoom ?? defaultMapZoom(), duration: 800 });
+    } catch { /* 老版本 API 差异,忽略 */ }
+  }, []);
+
   // GPS 取到后把相机飞到我的位置(initialViewState 只在首帧生效,之后要用 ref)。
   useEffect(() => {
-    if (!myLoc || !cameraRef.current) return;
-    const [ln, la] = mapBaseIsGcj02()
-      ? (() => { const g = wgs84ToGcj02(myLoc.lat, myLoc.lng); return [g.lng, g.lat]; })()
-      : [myLoc.lng, myLoc.lat];
-    try {
-      cameraRef.current.flyTo?.({ center: [ln, la], zoom: defaultMapZoom(), duration: 800 });
-    } catch { /* 老版本 API 差异,忽略 */ }
-  }, [myLoc]);
+    if (!myLoc) return;
+    flyToWgs84(myLoc.lat, myLoc.lng);
+  }, [myLoc, flyToWgs84]);
 
   /**
    * 把 WGS-84(GPS/存库)坐标投影到当前底图坐标系用于渲染:
@@ -258,15 +269,49 @@ export default function AeonMapScreen() {
       }
     } catch { /* ignore */ }
     if (!center) center = defaultMapCenterWgs84();
+    const buttons: any[] = [
+      { text: '取消', style: 'cancel' },
+      { text: '在地图中心圈地', onPress: () => void onClaim(center!.lat, center!.lng) },
+    ];
+    if (hasGeocoder()) {
+      buttons.splice(1, 0, { text: '🔍 输入地址定位', onPress: () => { setAddrHits([]); setAddrQuery(''); setAddrOpen(true); } });
+    }
     Alert.alert(
       '没拿到定位',
-      '可能这台设备没有 GPS 或信号弱。可以直接在地图上点任意位置圈地,或就在当前地图中心圈一块?',
-      [
-        { text: '取消', style: 'cancel' },
-        { text: '在地图中心圈地', onPress: () => void onClaim(center!.lat, center!.lng) },
-      ],
+      '可能这台设备没有 GPS 或信号弱。可以输入地址定位、直接在地图上点任意位置圈地,或就在当前地图中心圈一块。',
+      buttons,
     );
   }, [myLoc, locateAndLoadNearby, onClaim]);
+
+  /** 地址搜索(geocoding):拿不到 GPS 时手动定位。 */
+  const onAddrSearch = useCallback(async () => {
+    const q = addrQuery.trim();
+    if (!q) return;
+    setAddrBusy(true);
+    try {
+      const hits = await geocodeAddress(q);
+      setAddrHits(hits);
+      if (hits.length === 0) Alert.alert('没找到', '换个更具体的地址试试,或直接在地图上点位置。');
+    } catch (e: any) {
+      Alert.alert('搜索失败', e?.message || '请稍后再试');
+    } finally {
+      setAddrBusy(false);
+    }
+  }, [addrQuery]);
+
+  /** 选中一个地址候选:设为我的位置 + 飞过去 + 拉附近。 */
+  const onAddrPick = useCallback((hit: GeocodeHit) => {
+    const loc = { lat: hit.lat, lng: hit.lng };
+    setMyLoc(loc);
+    setAddrOpen(false);
+    flyToWgs84(loc.lat, loc.lng);
+    listNearbyPlots({ lat: loc.lat, lng: loc.lng, radiusM: 5000 }).then(setNearby).catch(() => {});
+    findNearbyPeople({ lat: loc.lat, lng: loc.lng, radiusM: 5000 }).then(setPeople).catch(() => {});
+    Alert.alert('已定位到', `${hit.label}\n现在可以在这里圈地、看附近的领地。`, [
+      { text: '好', style: 'cancel' },
+      { text: '在这圈地', onPress: () => void onClaim(loc.lat, loc.lng) },
+    ]);
+  }, [flyToWgs84, onClaim]);
 
   /** 地理签到:到访某地块附近(用实测 GPS)→ 得 AXP。 */
   const onCheckIn = useCallback(
@@ -372,6 +417,44 @@ export default function AeonMapScreen() {
     </Modal>
   );
 
+  /** 输入地址定位弹窗(两模式共用;拿不到 GPS 的兜底)。 */
+  const renderAddrModal = () => (
+    <Modal visible={addrOpen} transparent animationType="slide" onRequestClose={() => setAddrOpen(false)}>
+      <View style={styles.boardBackdrop}>
+        <View style={styles.boardCard}>
+          <Text style={styles.boardTitle}>🔍 输入地址定位</Text>
+          <Text style={styles.dim}>拿不到 GPS 时,输入地址/地名(如「北京市朝阳区三里屯」)来定位。</Text>
+          <View style={styles.addrRow}>
+            <TextInput
+              style={styles.addrInput}
+              placeholder="输入地址或地名"
+              placeholderTextColor={colors.textMuted}
+              value={addrQuery}
+              onChangeText={setAddrQuery}
+              onSubmitEditing={onAddrSearch}
+              returnKeyType="search"
+              autoFocus
+            />
+            <TouchableOpacity style={[styles.addrSearchBtn, addrBusy && { opacity: 0.5 }]} onPress={onAddrSearch} disabled={addrBusy}>
+              <Text style={styles.addrSearchBtnText}>{addrBusy ? '…' : '搜索'}</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
+            {addrHits.map((h, i) => (
+              <TouchableOpacity key={i} style={styles.addrHit} onPress={() => onAddrPick(h)}>
+                <Text style={styles.addrHitLabel} numberOfLines={2}>📍 {h.label}</Text>
+                <Text style={styles.addrHitCoord}>{h.lat.toFixed(4)}, {h.lng.toFixed(4)}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <TouchableOpacity style={styles.boardClose} onPress={() => setAddrOpen(false)}>
+            <Text style={styles.boardCloseText}>关闭</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -462,6 +545,11 @@ export default function AeonMapScreen() {
         <TouchableOpacity style={styles.locateFab} onPress={onClaimHere} disabled={claiming}>
           <Text style={styles.locateFabText}>{locating ? '定位中…(可直接点地图圈地)' : myLoc ? '📍 在我的位置圈地' : '📍 圈地(点我或点地图)'}</Text>
         </TouchableOpacity>
+        {!myLoc && hasGeocoder() ? (
+          <TouchableOpacity style={styles.addrFab} onPress={() => { setAddrHits([]); setAddrQuery(''); setAddrOpen(true); }}>
+            <Text style={styles.addrFabText}>🔍 输入地址定位</Text>
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity style={styles.plazaFab} onPress={() => navigation.navigate('AeonPlaza')}>
           <Text style={styles.plazaFabText}>🎪 公共广场</Text>
         </TouchableOpacity>
@@ -474,6 +562,7 @@ export default function AeonMapScreen() {
           </Text>
         </View>
         {renderBoardModal()}
+        {renderAddrModal()}
       </View>
     );
   }
@@ -525,6 +614,11 @@ export default function AeonMapScreen() {
       <TouchableOpacity style={[styles.hereBtn, (claiming || locating) && { opacity: 0.5 }]} onPress={onClaimHere} disabled={claiming || locating}>
         <Text style={styles.hereBtnText}>{locating ? '📍 定位中…' : '📍 在我的真实位置圈地'}</Text>
       </TouchableOpacity>
+      {hasGeocoder() ? (
+        <TouchableOpacity style={styles.addrEntryBtn} onPress={() => { setAddrHits([]); setAddrQuery(''); setAddrOpen(true); }}>
+          <Text style={styles.addrEntryBtnText}>🔍 输入地址定位(没 GPS 也能用)</Text>
+        </TouchableOpacity>
+      ) : null}
       <View style={styles.claimRow}>
         <TextInput
           style={styles.input}
@@ -612,6 +706,7 @@ export default function AeonMapScreen() {
         </>
       )}
       {renderBoardModal()}
+      {renderAddrModal()}
     </View>
   );
 }
@@ -658,12 +753,23 @@ const styles = StyleSheet.create({
   boardStat: { color: colors.textMuted, fontSize: 11 },
   boardClose: { marginTop: 14, paddingVertical: 12, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10 },
   boardCloseText: { color: colors.textSecondary, fontSize: 14 },
+  addrRow: { flexDirection: 'row', gap: 8, marginTop: 12, marginBottom: 8 },
+  addrInput: { flex: 1, backgroundColor: colors.bgPrimary, color: colors.textPrimary, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, borderWidth: 1, borderColor: colors.border },
+  addrSearchBtn: { backgroundColor: colors.accent, borderRadius: 10, paddingHorizontal: 18, justifyContent: 'center', alignItems: 'center' },
+  addrSearchBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  addrHit: { paddingVertical: 12, paddingHorizontal: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  addrHitLabel: { color: colors.textPrimary, fontSize: 14, lineHeight: 19 },
+  addrHitCoord: { color: colors.textMuted, fontSize: 11, marginTop: 3 },
   locateFab: { position: 'absolute', bottom: 108, right: 16, backgroundColor: colors.accent, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 },
   locateFabText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  addrFab: { position: 'absolute', bottom: 156, right: 16, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  addrFabText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   meDot: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,122,255,0.25)', alignItems: 'center', justifyContent: 'center' },
   meDotInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#007aff', borderWidth: 2, borderColor: '#fff' },
   hereBtn: { backgroundColor: colors.accent, borderRadius: 10, paddingVertical: 11, alignItems: 'center', marginBottom: 10 },
   hereBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  addrEntryBtn: { borderRadius: 10, paddingVertical: 11, alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgCard },
+  addrEntryBtnText: { color: colors.textPrimary, fontSize: 14, fontWeight: '600' },
   checkinBtn: { backgroundColor: '#140e2e', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 7, borderWidth: 1, borderColor: 'rgba(167,139,250,0.5)' },
   checkinBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   banner: { backgroundColor: 'rgba(167,139,250,0.10)', borderColor: 'rgba(167,139,250,0.30)', borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 12 },

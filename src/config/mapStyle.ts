@@ -93,3 +93,65 @@ export function defaultMapCenterWgs84(): { lat: number; lng: number } {
 export function fallbackMapZoom(): number {
   return hasHighPrecisionMap() ? 11 : 2;
 }
+
+// ── 地址 → 经纬度(geocoding):拿不到 GPS 时让用户输入地址定位 ──────────────
+export interface GeocodeHit {
+  /** 始终是 WGS-84(与 GPS/存库一致);天地图返回的是 GCJ-02,内部已转回。 */
+  lat: number;
+  lng: number;
+  label: string;
+}
+
+/**
+ * 把一段地址文本解析成候选坐标。优先用已配置的供应商:
+ *   - 天地图(tiandituKey):国内地名/地址解析准,返回 GCJ-02 → 转回 WGS-84。
+ *   - MapTiler(mapTilerKey):全球 geocoding,返回 WGS-84。
+ * 没配 key 时返回空数组(调用方提示用户手填经纬度)。
+ */
+export async function geocodeAddress(query: string): Promise<GeocodeHit[]> {
+  const e = extra();
+  const q = query.trim();
+  if (!q) return [];
+
+  // 天地图地理编码(国内优先)。返回 lon/lat 为 GCJ-02。
+  if (typeof e.tiandituKey === 'string' && e.tiandituKey) {
+    try {
+      const ds = encodeURIComponent(JSON.stringify({ keyWord: q }));
+      const url = `https://api.tianditu.gov.cn/geocoder?ds=${ds}&tk=${e.tiandituKey}`;
+      const r = await fetch(url);
+      const j: any = await r.json();
+      const loc = j?.location;
+      if (loc && Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lon))) {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+        const { gcj02ToWgs84 } = require('../../shared/types/aeon-world');
+        const w = gcj02ToWgs84(Number(loc.lat), Number(loc.lon));
+        return [{ lat: w.lat, lng: w.lng, label: j?.searchVersion ? q : (loc.keyWord || q) }];
+      }
+    } catch { /* 落到 MapTiler 兜底 */ }
+  }
+
+  // MapTiler geocoding(全球)。返回 [lng, lat] WGS-84。
+  if (typeof e.mapTilerKey === 'string' && e.mapTilerKey) {
+    try {
+      const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=${e.mapTilerKey}&limit=5`;
+      const r = await fetch(url);
+      const j: any = await r.json();
+      const feats: any[] = Array.isArray(j?.features) ? j.features : [];
+      return feats
+        .map((f) => {
+          const c = f?.center ?? f?.geometry?.coordinates;
+          if (!Array.isArray(c) || c.length < 2) return null;
+          return { lat: Number(c[1]), lng: Number(c[0]), label: f?.place_name || f?.text || q };
+        })
+        .filter((x): x is GeocodeHit => !!x && Number.isFinite(x.lat) && Number.isFinite(x.lng));
+    } catch { /* ignore */ }
+  }
+
+  return [];
+}
+
+/** 是否有可用的地理编码供应商(决定是否展示"输入地址定位"入口)。 */
+export function hasGeocoder(): boolean {
+  const e = extra();
+  return !!(e.tiandituKey || e.mapTilerKey);
+}
