@@ -39,15 +39,24 @@ export function RootNavigator() {
   const isGuest = useAuthStore((s) => s.isGuest);
   const hasCompletedOnboarding = useAuthStore((s) => s.hasCompletedOnboarding);
 
-  // 首启体验(2026-05): 邀请码墙已移除(决策: 暂不保留邀请制)。
-  // 未登录且非游客 → FirstScan 落地页(可一键试用首扫 or 登录)。
+  // 首启体验(2026-06 调整): 恢复经典登录页作为启动入口。
+  //   决策回滚 — 拍照生成3D的 FirstScan 首启"wow"效果不及预期, 改回品牌登录页。
+  // 未登录且非游客 → Auth(LoginScreen) 作为根入口(登录页内仍保留"免注册先逛逛"游客入口,
+  //   以及"拍一下造角色"可跳 FirstScan, 不丢试用漏斗)。
   // 游客态(本地试用) → 直接进 Main(可扫描看角色卡, 保存时再引导登录)。
   // 已登录 → 进 Main(不再经过 InvitationGate / DeploySelect 强制 onboarding;
   //          部署选择已移到 设置→高级, 不挡新用户)。
   return (
     <Root.Navigator id={undefined} screenOptions={{ headerShown: false, animation: 'fade' }}>
       {!isAuthenticated && !isGuest ? (
-        <Root.Screen name="FirstScan" component={FirstScanScreen} />
+        <>
+          <Root.Screen name="Auth" component={AuthNavigator} />
+          <Root.Screen
+            name="FirstScan"
+            component={FirstScanScreen}
+            options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+          />
+        </>
       ) : (
         <>
           <Root.Screen name="Main" component={MainTabNavigator} />

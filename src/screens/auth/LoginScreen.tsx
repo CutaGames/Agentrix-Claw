@@ -9,7 +9,7 @@ import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
 import { loginWithGoogle, loginWithApple, loginWithDiscord, loginWithEmail, registerWithEmail } from '../../services/auth';
-import { loginWithOpenClaw } from '../../services/auth';
+import { loginWithOpenClaw, loginAsGuest } from '../../services/auth';
 import type { AuthStackParamList } from '../../navigation/types';
 
 const { width } = Dimensions.get('window');
@@ -132,6 +132,22 @@ export function LoginScreen() {
     }
   };
 
+  // 免注册先逛逛:取游客 token → RootNavigator 切到 Main(保存角色时再引导登录)。
+  const handleGuestTrial = async () => {
+    try {
+      setLoadingProvider('guest');
+      await loginAsGuest();
+      // 游客 token 就位后 RootNavigator 会切到 Main, World 为默认 tab。
+    } catch (err: any) {
+      Alert.alert(
+        t({ en: 'Could not start', zh: '无法开始' }),
+        err?.message || t({ en: 'Please check your connection and try again.', zh: '请检查网络后重试。' }),
+      );
+    } finally {
+      setLoadingProvider(null);
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {/* Brand Header */}
@@ -204,6 +220,20 @@ export function LoginScreen() {
 
           <TouchableOpacity style={styles.linkRow} onPress={() => setMode('email')}>
             <Text style={styles.linkText}>{t({ en: 'Use Email Address instead →', zh: '改用邮箱登录 →' })}</Text>
+          </TouchableOpacity>
+
+          {/* 免注册先逛逛(游客试用):保留拍照造角色的试用漏斗,不强制登录 */}
+          <TouchableOpacity
+            style={[styles.guestBtn, loadingProvider === 'guest' && styles.btnDisabled]}
+            onPress={handleGuestTrial}
+            disabled={!!loadingProvider}
+            activeOpacity={0.8}
+          >
+            {loadingProvider === 'guest' ? (
+              <ActivityIndicator color={colors.accent} size="small" />
+            ) : (
+              <Text style={styles.guestBtnText}>{t({ en: '👀 Explore first, sign up later', zh: '👀 免注册,先逛逛' })}</Text>
+            )}
           </TouchableOpacity>
         </View>
       )}
@@ -370,6 +400,16 @@ const styles = StyleSheet.create({
   
   linkRow: { alignItems: 'center', marginTop: 24 },
   linkText: { color: colors.accent, fontWeight: '600', fontSize: 15 },
+  guestBtn: {
+    marginTop: 20,
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  guestBtnText: { color: colors.textSecondary, fontWeight: '600', fontSize: 15 },
   
   section: { width: '100%' },
   sectionTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, marginBottom: 12 },

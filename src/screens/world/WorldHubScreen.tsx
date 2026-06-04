@@ -167,66 +167,67 @@ export function WorldHubScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>🌍 {t({ en: 'World', zh: '世界' })}</Text>
         <Text style={styles.subtitle}>
-          {t({ en: 'Scan reality. Build a world.', zh: '扫现实,造世界。' })}
+          {t({ en: 'Aeon — a living world you build with your AI.', zh: '永曜城 · 和你的 AI 一起共建的活世界' })}
         </Text>
       </View>
 
-      {/* HERO — 唯一主 CTA: 拍一下造角色。新用户第一眼就知道做什么。 */}
+      {/* HERO — 永曜城 是 World tab 的核心体验入口。
+          进去就能在真实地球地图上圈地、建造、社交、和 AI 一起经营,参与感最强。 */}
       <Pressable
-        style={({ pressed }) => [styles.hero, pressed && styles.heroPressed]}
+        style={({ pressed }) => [styles.aeonHero, pressed && styles.heroPressed]}
+        onPress={onAeon}
+        testID="world-hero-aeon"
+      >
+        <Text style={styles.heroEmoji}>🏙️</Text>
+        <Text style={styles.heroTitle}>
+          {t({ en: 'Enter Aeon — the shared living world', zh: '进入永曜城 · 大家共建的活世界' })}
+        </Text>
+        <Text style={styles.heroSub}>
+          {t({
+            en: 'Claim land on the real map, build your place, meet neighbors, run a business with your AI.',
+            zh: '在真实地图上圈地、建造、串门、和你的 AI 一起开店经营',
+          })}
+        </Text>
+        <View style={styles.heroBtn}>
+          <Text style={styles.heroBtnText}>{t({ en: 'Enter Aeon', zh: '进入永曜城' })}</Text>
+        </View>
+      </Pressable>
+
+      {/* 次级:把现实变成角色,带进永曜城 */}
+      <Pressable
+        style={({ pressed }) => [styles.scanStrip, pressed && styles.heroPressed]}
         onPress={() => onScan('quick')}
         onLongPress={() => onScan('detail')}
         testID="world-hero-scan"
       >
-        <Text style={styles.heroEmoji}>📷</Text>
-        <Text style={styles.heroTitle}>
-          {t({ en: 'Scan anything → a battle-ready character', zh: '拍一下身边的东西 → 变成会战斗的角色' })}
-        </Text>
-        <Text style={styles.heroSub}>
-          {t({ en: 'Snap 1 photo. AI gives it a name, stats & skills in seconds.', zh: '拍 1 张照片，AI 几秒内给它名字、属性和技能' })}
-        </Text>
-        <View style={styles.heroBtn}>
-          <Text style={styles.heroBtnText}>{t({ en: 'Start scanning', zh: '开始扫描' })}</Text>
+        <Text style={styles.scanStripEmoji}>📷</Text>
+        <View style={styles.worldFeedTextWrap}>
+          <Text style={styles.scanStripTitle}>
+            {t({ en: 'Scan anything → a character for your world', zh: '拍一下身边的东西 → 变成你世界里的角色' })}
+          </Text>
+          <Text style={styles.worldFeedSub}>
+            {t({ en: 'AI gives it a name, stats & skills in seconds. Long-press for Detail / Room.', zh: '拍 1 张,AI 几秒给它名字属性技能。长按选 精细 / 房间扫描' })}
+          </Text>
         </View>
-        <Text style={styles.heroHint}>
-          {t({ en: 'Long-press for Detail / Room scan', zh: '长按选择 精细 / 房间扫描' })}
-        </Text>
+        <Text style={styles.worldFeedArrow}>→</Text>
       </Pressable>
 
       {/* 已有角色 → 角色卷轴 + 玩法入口; 新用户 → 不展示空的战斗/副本 */}
       {hasAssets ? (
         <>
-          {/* 活世界入口 —— 追剧式日常留存的核心入口 */}
+          {/* 我的世界(角色动态)—— 永曜城里"你不在时角色们在忙什么"的剧情线 */}
           <Pressable
             style={({ pressed }) => [styles.worldFeedEntry, pressed && styles.heroPressed]}
             onPress={onWorldFeed}
             testID="world-feed-entry"
           >
-            <Text style={styles.worldFeedEmoji}>🌍</Text>
+            <Text style={styles.worldFeedEmoji}>📖</Text>
             <View style={styles.worldFeedTextWrap}>
               <Text style={styles.worldFeedTitle}>
-                {t({ en: 'Enter My World', zh: '进入我的世界' })}
+                {t({ en: 'My characters’ stories', zh: '我的角色动态' })}
               </Text>
               <Text style={styles.worldFeedSub}>
-                {t({ en: 'See what your characters did while you were away', zh: '看看你不在时,角色们经历了什么' })}
-              </Text>
-            </View>
-            <Text style={styles.worldFeedArrow}>→</Text>
-          </Pressable>
-
-          {/* Aeon(永曜城)实时多人共建世界入口 — Phase 1 */}
-          <Pressable
-            style={({ pressed }) => [styles.aeonEntry, pressed && styles.heroPressed]}
-            onPress={onAeon}
-            testID="aeon-entry"
-          >
-            <Text style={styles.worldFeedEmoji}>🌐</Text>
-            <View style={styles.worldFeedTextWrap}>
-              <Text style={styles.worldFeedTitle}>
-                {t({ en: 'Aeon — build a world together', zh: 'Aeon 永曜城 · 和大家一起共建' })}
-              </Text>
-              <Text style={styles.worldFeedSub}>
-                {t({ en: 'Claim a plot on Earth, build, work & earn with your AI', zh: '在地球上圈地、建造、和你的 AI 一起工作赚钱' })}
+                {t({ en: 'See what your residents did in Aeon while you were away', zh: '看看你不在时,你在永曜城的居民们经历了什么' })}
               </Text>
             </View>
             <Text style={styles.worldFeedArrow}>→</Text>
@@ -304,8 +305,8 @@ export function WorldHubScreen() {
         <View style={[styles.banner, styles.bannerInfo]}>
           <Text style={styles.bannerText}>
             {t({
-              en: '💡 Your first character appears here. Battle & dungeons unlock once you have one.',
-              zh: '💡 你的第一个角色会出现在这里。拥有角色后即可解锁战斗和副本。',
+              en: '💡 Scan your first object to get a character, then bring it into Aeon — claim land, build, and let it live & work there.',
+              zh: '💡 先拍一个东西得到你的第一个角色,再把它带进永曜城 —— 圈地、建造,让它在城里生活和工作。',
             })}
           </Text>
         </View>
@@ -395,6 +396,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
+  // Aeon hero (primary World entry)
+  aeonHero: {
+    backgroundColor: 'rgba(99,102,241,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.4)',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  // Secondary scan strip (row style)
+  scanStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+  },
+  scanStripEmoji: { fontSize: 30, marginRight: 12 },
+  scanStripTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary, marginBottom: 2 },
   heroPressed: { opacity: 0.85 },
   heroEmoji: { fontSize: 48, marginBottom: 8 },
   heroTitle: { fontSize: 19, fontWeight: '800', color: colors.textPrimary, textAlign: 'center', marginBottom: 6 },
