@@ -318,8 +318,8 @@ class AndroidBackgroundWakeWordService : Service() {
       scaleType = ImageView.ScaleType.FIT_CENTER
       background = bg
       elevation = 18f
-      width = ballSize
-      height = ballSize
+      // 尺寸由下方 WindowManager.LayoutParams(ballSize,ballSize) 决定;
+      // ImageView 没有 setWidth/setHeight,直接给 width/height 会编译报错('val' cannot be reassigned)。
       try {
         setImageResource(
           resources.getIdentifier("companion_ball_default", "drawable", packageName)
