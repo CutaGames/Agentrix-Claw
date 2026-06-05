@@ -34,6 +34,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { fetchWorldEngineFlag, listWorldAssets } from '../../services/worldEngineApi';
+import { FirstRunQuestBanner } from '../../components/world/FirstRunQuestBanner';
 import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -170,6 +171,9 @@ export function WorldHubScreen() {
           {t({ en: 'Aeon — a living world you build with your AI.', zh: '永曜城 · 和你的 AI 一起共建的活世界' })}
         </Text>
       </View>
+
+      {/* 新手 90 秒任务线:把创角→保存→首胜→落地永曜城串成一条引导 */}
+      <FirstRunQuestBanner />
 
       {/* HERO — 永曜城 是 World tab 的核心体验入口。
           进去就能在真实地球地图上圈地、建造、社交、和 AI 一起经营,参与感最强。 */}

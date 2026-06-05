@@ -31,6 +31,7 @@ import {
 } from '../../services/worldEngineApi';
 import { PetSpriteImage } from '../../components/PetSpriteImage';
 import { useActivePet } from '../../services/activePet.service';
+import { markFirstRunStep } from '../../stores/firstRunStore';
 
 interface RouteParams {
   challengerAssetId: string;
@@ -151,6 +152,8 @@ export default function WorldInteractiveBattleScreen() {
         setLog((prev) => [r.round, ...prev]);
         if (r.result) {
           setResult({ winnerSide: r.result.winnerSide, xpAwarded: r.result.xpAwarded });
+          // 新手任务:打赢训练战 = 第 3 步「首胜」完成。
+          if (r.result.winnerSide === 'challenger') markFirstRunStep('battle');
         }
       } catch (e: any) {
         setError(e?.message || '出招失败,请重试');

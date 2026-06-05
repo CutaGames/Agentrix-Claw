@@ -27,6 +27,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { useAuthStore } from '../../stores/authStore';
+import { markFirstRunStep } from '../../stores/firstRunStore';
 import { getWorldAsset, type CharacterCard, type GenerationStatus } from '../../services/worldEngineApi';
 import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
 
@@ -123,6 +124,12 @@ export function WorldCharacterCardScreen() {
     // 游客看到角色卡即视为消耗了一次免费试用(用于落地页文案 + 后续引导)。
     if (isGuestPreview) markGuestTrialUsed();
   }, [isGuestPreview, markGuestTrialUsed]);
+
+  // 新手任务推进:角色卡出现 = 第 1 步「造角色」完成;已登录且落库(有 assetId)= 第 2 步「保存」完成。
+  useEffect(() => {
+    if (card) markFirstRunStep('create');
+    if (!isGuestPreview && assetId) markFirstRunStep('save');
+  }, [card, isGuestPreview, assetId]);
 
   const onSaveLogin = useCallback(() => {
     // 用户可在资产库重新生成并永久保存(游客预览不落库)。

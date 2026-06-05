@@ -38,6 +38,7 @@ import {
 } from '../../services/aeon/aeonApi';
 import type { AeonPlotDto, AeonPlotMarker, AeonNearbyPlot, AeonNearbyPerson, AeonCheckinLeaderEntry } from '../../../shared/types/aeon-world';
 import { wgs84ToGcj02 } from '../../../shared/types/aeon-world';
+import { markFirstRunStep } from '../../stores/firstRunStore';
 import { resolveMapStyle, defaultMapZoom, hasHighPrecisionMap, mapBaseIsGcj02, defaultMapCenterWgs84, fallbackMapZoom, geocodeAddress, hasGeocoder, type GeocodeHit } from '../../config/mapStyle';
 
 /** 尝试加载 MapLibre;未安装则 null(降级)。 */
@@ -236,6 +237,7 @@ export default function AeonMapScreen() {
       try {
         const plot = await claimPlot({ lat: la, lng: ln, displayName: '我的领地' });
         await refresh();
+        markFirstRunStep('settle'); // 新手任务:圈下第一块地 = 第 4 步「安家永曜城」完成。
         if (myLoc) listNearbyPlots({ lat: myLoc.lat, lng: myLoc.lng, radiusM: 5000 }).then(setNearby).catch(() => {});
         Alert.alert('圈地成功', `已在 (${la.toFixed(3)}, ${ln.toFixed(3)}) 圈定领地`, [
           { text: '进入', onPress: () => onEnter(plot) },
