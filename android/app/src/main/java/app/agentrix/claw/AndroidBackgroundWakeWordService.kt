@@ -22,6 +22,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -304,20 +305,28 @@ class AndroidBackgroundWakeWordService : Service() {
 
     val manager = getSystemService(WINDOW_SERVICE) as? WindowManager ?: return
     val ballSize = (48 * resources.displayMetrics.density).toInt()
-    val label = TextView(this).apply {
-      text = "AX"
-      textSize = 14f
-      setTextColor(0xFFFFFFFF.toInt())
-      gravity = Gravity.CENTER
-      val bg = android.graphics.drawable.GradientDrawable(
-        android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-        intArrayOf(0xCC6C5CE7.toInt(), 0xCCa78bfa.toInt())
-      )
-      bg.cornerRadius = ballSize / 2f
+    // P-9 fix: render the pet sprite (companion_ball_default) instead of the
+    // old "AX" text mark, so the system-desktop floating ball matches the
+    // in-app companion ball. A circular gradient sits behind it as the badge.
+    val bg = android.graphics.drawable.GradientDrawable(
+      android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+      intArrayOf(0xCC6C5CE7.toInt(), 0xCCa78bfa.toInt())
+    ).apply { shape = android.graphics.drawable.GradientDrawable.OVAL }
+    val label = ImageView(this).apply {
+      val pad = (4 * resources.displayMetrics.density).toInt()
+      setPadding(pad, pad, pad, pad)
+      scaleType = ImageView.ScaleType.FIT_CENTER
       background = bg
       elevation = 18f
-      width = ballSize
-      height = ballSize
+      // 尺寸由下方 WindowManager.LayoutParams(ballSize,ballSize) 决定;
+      // ImageView 没有 setWidth/setHeight,直接给 width/height 会编译报错('val' cannot be reassigned)。
+      try {
+        setImageResource(
+          resources.getIdentifier("companion_ball_default", "drawable", packageName)
+        )
+      } catch (e: Exception) {
+        Log.w(TAG, "companion_ball_default drawable missing, falling back to blank ball", e)
+      }
     }
 
     val params = WindowManager.LayoutParams(

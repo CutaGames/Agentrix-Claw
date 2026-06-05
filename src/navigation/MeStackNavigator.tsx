@@ -23,6 +23,15 @@ import { SubscribePlanScreen } from '../screens/me/SubscribePlanScreen';
 import { AxpCenterScreen } from '../screens/me/AxpCenterScreen';
 import { AxpRewardShopScreen } from '../screens/me/AxpRewardShopScreen';
 import { ToyBindingScreen } from '../screens/me/ToyBindingScreen';
+// P-9 Q1 — re-home orphaned pet screens (T6.7). These exist as components
+// but were not mounted in any navigator after the legacy PetStack was
+// deleted, so PetDetailSheet navigation to them crashed at runtime.
+import { WardrobeScreen } from '../screens/pet/WardrobeScreen';
+import { SoulPickerScreen } from '../screens/pet/SoulPickerScreen';
+import { BreedScreen } from '../screens/pet/BreedScreen';
+import { PetPlaygroundScreen } from '../screens/pet/PetPlaygroundScreen';
+import { SkinMarketplaceScreen } from '../screens/pet/SkinMarketplaceScreen';
+import { MemoryManagementScreen } from '../screens/agent/MemoryManagementScreen';
 import { useI18n } from '../stores/i18nStore';
 
 const Stack = createNativeStackNavigator<MeStackParamList>();
@@ -60,6 +69,14 @@ export function MeStackNavigator() {
       <Stack.Screen name="AxpCenter" component={AxpCenterScreen} options={{ title: t({ en: 'AXP Center', zh: 'AXP 中心' }) }} />
       <Stack.Screen name="AxpRewardShop" component={AxpRewardShopScreen} options={{ title: t({ en: 'Redeem Shop', zh: '兑换中心' }) }} />
       <Stack.Screen name="ToyBinding" component={ToyBindingScreen} options={{ title: t({ en: 'Devices', zh: '设备管理' }) }} />
+
+      {/* P-9 Q1 — re-homed pet screens (reachable from PetDetailSheet action grid) */}
+      <Stack.Screen name="PetWardrobe" component={WardrobeScreen} options={{ title: t({ en: 'Wardrobe', zh: '衣柜' }) }} />
+      <Stack.Screen name="SoulPicker" component={SoulPickerScreen} options={{ title: t({ en: 'Soul', zh: '灵魂' }) }} />
+      <Stack.Screen name="PetBreed" component={BreedScreen} options={{ title: t({ en: 'Breed', zh: '繁育' }) }} />
+      <Stack.Screen name="PetPlayground" component={PetPlaygroundScreen} options={{ title: t({ en: 'Playground', zh: '玩乐' }) }} />
+      <Stack.Screen name="PetSkinMarketplace" component={SkinMarketplaceScreen} options={{ title: t({ en: 'Skin Market', zh: '皮肤市场' }) }} />
+      <Stack.Screen name="MemoryManagement" component={MemoryManagementScreen} options={{ title: t({ en: 'Memory', zh: '记忆' }) }} />
     </Stack.Navigator>
   );
 }

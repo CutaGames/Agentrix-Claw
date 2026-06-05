@@ -89,14 +89,14 @@ export function WardrobeScreen() {
       <View style={styles.ctaRow}>
         <Pressable
           style={styles.ctaBtn}
-          onPress={() => navigation.navigate('SkinMarketplace')}
+          onPress={() => navigation.navigate('PetSkinMarketplace')}
           testID="wardrobe-link-marketplace"
         >
           <Text style={styles.ctaText}>🛒 皮肤市场</Text>
         </Pressable>
         <Pressable
           style={styles.ctaBtn}
-          onPress={() => navigation.navigate('Breed')}
+          onPress={() => navigation.navigate('PetBreed')}
           testID="wardrobe-link-breed"
         >
           <Text style={styles.ctaText}>🧬 双图繁殖</Text>

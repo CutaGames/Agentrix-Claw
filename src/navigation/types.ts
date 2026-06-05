@@ -138,6 +138,16 @@ export type MeStackParamList = {
   AxpRewardShop: undefined;
   // Sprint 4: Toy Binding
   ToyBinding: undefined;
+  // P-9 Q1: re-home the orphaned pet screens here (T6.7). PetDetailSheet's
+  // companion-action grid + several legacy call sites navigate to these;
+  // before Q1 they pointed at unregistered route names and crashed at
+  // runtime. Registered under Me so the 4-tab IA can reach them.
+  PetWardrobe: undefined;
+  SoulPicker: undefined;
+  PetBreed: undefined;
+  PetPlayground: undefined;
+  PetSkinMarketplace: undefined;
+  MemoryManagement: undefined;
 };
 
 export type DiscoverStackParamList = {

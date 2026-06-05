@@ -23,6 +23,14 @@ interface StreamChatOptions {
   token: string;
   model?: string;
   voiceId?: string;
+  /**
+   * Optional runtime context forwarded to the backend (R9.3 — Companion_QA
+   * context awareness). Carries `{ device, scene/route, taskState }` so the
+   * answer is scene-aware. The backend `ChatMessageDto` already accepts an
+   * optional `context` field and routes it through the shared
+   * `RuntimeSeamService`. Additive/optional — never breaks existing turns.
+   */
+  context?: Record<string, any>;
   onChunk: ChunkCallback;
   onDone: DoneCallback;
   onError: ErrorCallback;
@@ -296,6 +304,12 @@ export function streamProxyChatSSE(opts: StreamChatOptions): AbortController {
       sessionId: opts.sessionId,
       model: opts.model,
       voiceId: opts.voiceId,
+      // R9.3 — carry current device/scene/task context so the answer is
+      // context-aware. Merge sessionId in too so the backend's
+      // `context.sessionId` path stays consistent with the top-level field.
+      context: opts.context
+        ? { ...opts.context, sessionId: opts.context.sessionId ?? opts.sessionId }
+        : undefined,
     });
     try {
       await streamAgentrixSseRequest({
@@ -333,6 +347,12 @@ export interface DirectClaudeOptions {
   /** Claude model override, defaults to 'claude-3-haiku' (Bedrock) */
   model?: string;
   sessionId?: string;
+  /**
+   * Optional runtime context (R9.3 — Companion_QA context awareness). Merged
+   * into the request `context` alongside `sessionId`. Kept in sync with the
+   * proxy SSE path per AGENTS.md (both chat paths must carry the same fields).
+   */
+  context?: Record<string, any>;
 }
 
 function buildDirectClaudePayload(opts: DirectClaudeOptions, stream = false) {
@@ -341,7 +361,7 @@ function buildDirectClaudePayload(opts: DirectClaudeOptions, stream = false) {
     mode: 'ask' as const,
     platform: 'mobile' as const,
     stream,
-    context: { sessionId: opts.sessionId },
+    context: { ...(opts.context ?? {}), sessionId: opts.sessionId },
     options: {
       model: opts.model || 'claude-3-haiku',
       maxTokens: 2048,

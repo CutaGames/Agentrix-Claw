@@ -14,6 +14,9 @@ frontend/.next/
 dist/
 build/
 builds/
+# Exception: Aeon world build-system ART assets (must ship in APK, not a build output)
+!assets/aeon/build/
+!assets/aeon/build/**
 coverage/
 playwright-report/
 test-results/

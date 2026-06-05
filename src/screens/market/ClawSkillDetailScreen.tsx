@@ -197,6 +197,8 @@ export function ClawSkillDetailScreen() {
 
       void queryClient.invalidateQueries({ queryKey: ['instance-skills', activeInstance.id] });
       void queryClient.invalidateQueries({ queryKey: ['my-skills', activeInstance.id] });
+      // 同时失效裸 key(我的技能屏用的是 ['my-skills'] 无 id),否则列表不刷新。
+      void queryClient.invalidateQueries({ queryKey: ['my-skills'] });
 
       // Both dbRecorded (marketplace) and pendingDeploy (live push) are acceptable success states
       if (result?.dbRecorded || result?.pendingDeploy) {

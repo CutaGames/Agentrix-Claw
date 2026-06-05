@@ -15,6 +15,7 @@ import { useSettingsStore, SUPPORTED_MODELS, type ModelOption, type LocalAiStatu
 import { streamProxyChatSSE, streamDirectClaude } from '../../services/realtime.service';
 import { getInstanceStatus, sendAgentMessage, switchInstanceModel } from '../../services/openclaw.service';
 import { DeviceBridgingService } from '../../services/deviceBridging.service';
+import { buildCompanionChatContext } from '../../services/companionContext';
 import { API_BASE } from '../../config/env';
 import { useTokenQuota } from '../../hooks/useTokenQuota';
 import { useVoiceSession } from '../../hooks/useVoiceSession';
@@ -47,6 +48,11 @@ import {
 import { buildSystemPrompt, sanitizeAgentContext } from '../../utils/agentPersona';
 import { trackLocalInferenceOutcome } from '../../services/localInferenceTelemetry';
 import type { StreamEvent } from '../../../shared/stream-parser';
+import {
+  publishConversation,
+  consumePendingPrefill,
+  type ConversationMessageSnapshot,
+} from '../../services/conversationStore';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -1233,6 +1239,30 @@ export function AgentChatScreen() {
     }
   }, [messages]);
 
+  // P-9 Q2 (T5.2/T5.4) — mirror the live conversation into the shared
+  // conversationStore so the CompanionBall's ConversationBubble (65% sheet)
+  // can render the SAME messages + routing badge without re-mounting this
+  // ~2000-line screen. Read-only snapshot; this screen stays the single
+  // owner of the send/stream pipeline.
+  useEffect(() => {
+    const snapshot: ConversationMessageSnapshot[] = messages.map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      streaming: m.streaming,
+      error: m.error,
+      createdAt: m.createdAt,
+      attachmentCount: m.attachments?.length ?? 0,
+    }));
+    publishConversation({
+      sessionId: activeSessionId ?? sessionIdRef.current ?? null,
+      agentName: instanceName,
+      messages: snapshot,
+      routing: isLocalModelSelected ? 'local' : 'cloud',
+      busy: sending,
+    });
+  }, [messages, activeSessionId, instanceName, isLocalModelSelected, sending]);
+
   useEffect(() => {
     try { mmkv.set(draftStorageKey, input); } catch {}
   }, [draftStorageKey, input]);
@@ -1596,6 +1626,35 @@ export function AgentChatScreen() {
       navigation.setParams({ voiceMode: undefined, duplexMode: undefined });
     }
   }, [voiceMode, voiceModeRequested, duplexModeRequested, navigation]);
+
+  // P-9 Q2 (T5.2) — consume any draft the ConversationBubble handed off when
+  // the user expanded to full-screen Summon. The bubble writes to the shared
+  // conversationStore (navigator-agnostic) instead of relying on route params
+  // that don't survive the Summon→AgentChat nesting. Applied once per focus.
+  useFocusEffect(
+    React.useCallback(() => {
+      const prefill = consumePendingPrefill();
+      if (!prefill) return;
+      if (prefill.text) {
+        setInput((prev) => (prev ? prev : prefill.text!));
+      }
+      if (prefill.autoVoice && !voiceMode) {
+        setVoiceMode(true);
+      }
+      addVoiceDiagnostic('agent-chat', 'consumed-bubble-prefill', {
+        hasText: !!prefill.text,
+        attachmentCount: prefill.attachments?.length ?? 0,
+        autoVoice: !!prefill.autoVoice,
+      });
+      // Note: image/audio attachment re-upload from a local uri is handled by
+      // the existing attach pipeline; the bubble only forwards uris, so we
+      // surface them as a hint in the input rather than silently dropping.
+      if (prefill.attachments?.length) {
+        const note = `（已带 ${prefill.attachments.length} 个附件，请在下方重新选择以上传）`;
+        setInput((prev) => (prev ? prev : note));
+      }
+    }, [voiceMode, setVoiceMode])
+  );
 
   // Diagnostic: log render state when voice mode is requested via navigation.
   // This helps debug the white-screen issue (screen navigated but appears blank).
@@ -2191,6 +2250,7 @@ export function AgentChatScreen() {
             token,
             model: proxyModelId,
             voiceId: agentVoiceId || undefined,
+            context: buildCompanionChatContext('mobile'),
             onEvent: handleStructuredStreamEvent,
             onMeta: (meta) => {
               if (meta.resolvedModelLabel) setResolvedModelLabel(meta.resolvedModelLabel);
@@ -2216,7 +2276,7 @@ export function AgentChatScreen() {
       if (!streamSucceeded) {
         if (instanceId) {
           try {
-            const proxyResult = await sendAgentMessage(instanceId, outgoingText, sessionIdRef.current, proxyModelId);
+            const proxyResult = await sendAgentMessage(instanceId, outgoingText, sessionIdRef.current, proxyModelId, buildCompanionChatContext('mobile'));
             const proxyReply = typeof proxyResult?.reply === 'string'
               ? proxyResult.reply
               : proxyResult?.reply?.content || '';
@@ -2256,6 +2316,7 @@ export function AgentChatScreen() {
               token,
               model: proxyModelId,
               sessionId: sessionIdRef.current,
+              context: buildCompanionChatContext('mobile'),
               onEvent: handleStructuredStreamEvent,
               onChunk: (chunk) => {
                 streamSucceeded = true;

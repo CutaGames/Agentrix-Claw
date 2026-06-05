@@ -32,9 +32,11 @@ import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useSoulBirthStore } from '../../stores/soulBirthStore';
 import { useI18n } from '../../stores/i18nStore';
 import { fetchAxpBalance } from '../../services/axp.api';
 import { fetchMySubscription, fetchMyQuota, SubscriptionTier } from '../../services/subscription.api';
+import { DesktopBanner } from '../../components/desktop/DesktopBanner';
 import type { MeStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<MeStackParamList, 'Profile'>;
@@ -74,6 +76,7 @@ export function ProfileScreen() {
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const uiComplexity = useSettingsStore((s) => s.uiComplexity);
   const setUiComplexity = useSettingsStore((s) => s.setUiComplexity);
+  const replaySoulBirth = useSoulBirthStore((s) => s.reset);
   const { t } = useI18n();
 
   const [devicesOpen, setDevicesOpen] = useState(false);
@@ -118,6 +121,29 @@ export function ProfileScreen() {
     (navigation as any).getParent?.()?.getParent?.()?.navigate('Scan');
   }, [navigation]);
 
+  /**
+   * 「重看引导」(R1.7):重置 Soul_Birth 进度并从 birth 步骤重新开始。
+   * 调 `soulBirthStore.reset()` 置 `replaying` 抑制 recompute 回填——挂在 RootNavigator 的
+   * `SoulBirthHost` 监听到 terminated 转 false、completed 清空后会自动重新挂载覆盖层,
+   * 从诞生段重放整条主线(无需导航)。先弹确认避免误触(重放会重走起名/苏醒)。
+   */
+  const handleReplaySoulBirth = useCallback(() => {
+    Alert.alert(
+      t({ en: 'Replay onboarding', zh: '重看引导' }),
+      t({
+        en: 'Restart the Soul Birth onboarding from the very beginning?',
+        zh: '从头再体验一次「灵魂诞生」首跑引导吗？',
+      }),
+      [
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+        {
+          text: t({ en: 'Replay', zh: '重看' }),
+          onPress: () => replaySoulBirth(),
+        },
+      ],
+    );
+  }, [replaySoulBirth, t]);
+
   const tier = (subQ.data?.tier ?? 'free') as SubscriptionTier;
   const tierAccent = TIER_ACCENT[tier];
   const quota = quotaQ.data;
@@ -141,6 +167,9 @@ export function ProfileScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* ── Desktop cross-device banner (persistent entry, R7.1) ── */}
+      <DesktopBanner variant="persistent" />
 
       {/* ── 1. Profile Header ───────────────────────── */}
       <View style={styles.profileHeader}>
@@ -277,6 +306,12 @@ export function ProfileScreen() {
         <MenuItem icon="🔐" label={t({ en: 'Account & security', zh: '账户与安全' })} onPress={() => navigation.navigate('Account')} />
         <MenuItem icon="🔔" label={t({ en: 'Notifications', zh: '通知' })} onPress={() => navigation.navigate('NotificationCenter')} />
         <MenuItem icon="⚙️" label={t({ en: 'Preferences', zh: '偏好设置' })} onPress={() => navigation.navigate('Settings')} />
+        <MenuItem
+          icon="✨"
+          label={t({ en: 'Replay onboarding', zh: '重看引导' })}
+          onPress={handleReplaySoulBirth}
+          testID="me-replay-onboarding"
+        />
       </Section>
 
       {/* ── 7. Advanced (collapsible, requires advanced+ complexity) ── */}

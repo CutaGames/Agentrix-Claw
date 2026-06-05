@@ -41,22 +41,8 @@ export function LlmBudgetBar() {
   const quota = quotaQ.data;
   const usage = usageQ.data;
 
-  if (!quota || !usage) return null;
-
-  const budgetCents = quota.llm_budget_cents_monthly;
-  const usedCents = Math.round((usage.usagePercent / 100) * budgetCents);
-  const pct = Math.min(100, usage.usagePercent);
-  const isExhausted = usage.quotaExhausted;
-  const isWarning = pct >= 80;
-
-  const barColor = isExhausted
-    ? '#ef4444'
-    : isWarning
-      ? '#f59e0b'
-      : colors.accent;
-
   const handlePress = useCallback(() => {
-    if (isExhausted) {
+    if (usage?.quotaExhausted) {
       // Show three-choice modal per PRD §13.7 超额策略
       Alert.alert(
         t({ en: 'Budget Exhausted', zh: '预算已用完' }),
@@ -84,7 +70,35 @@ export function LlmBudgetBar() {
       // Navigate to subscription page
       navigation.getParent?.()?.navigate('Me', { screen: 'Subscribe' });
     }
-  }, [isExhausted, navigation, t]);
+  }, [usage?.quotaExhausted, navigation, t]);
+
+  // ⚠️ Rules of Hooks: this early-return MUST come after ALL hooks above.
+  // First-mount crash fix (2026-06-01): quota/usage can resolve as a partial
+  // payload before the auth token fully hydrates, so guard the NESTED fields
+  // we dereference (not just the top-level objects). Missing any → render
+  // nothing until the next settled fetch (no throw → no AppErrorBoundary
+  // remount that bounced the Summon tab back to World).
+  if (
+    !quota ||
+    !usage ||
+    typeof quota.llm_budget_cents_monthly !== 'number' ||
+    typeof usage.usagePercent !== 'number' ||
+    typeof quota.effective_tier !== 'string'
+  ) {
+    return null;
+  }
+
+  const budgetCents = quota.llm_budget_cents_monthly;
+  const usedCents = Math.round((usage.usagePercent / 100) * budgetCents);
+  const pct = Math.min(100, usage.usagePercent);
+  const isExhausted = usage.quotaExhausted;
+  const isWarning = pct >= 80;
+
+  const barColor = isExhausted
+    ? '#ef4444'
+    : isWarning
+      ? '#f59e0b'
+      : colors.accent;
 
   return (
     <Pressable style={styles.container} onPress={handlePress}>

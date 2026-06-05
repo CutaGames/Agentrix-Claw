@@ -94,39 +94,30 @@ export default function WorldBattleArenaScreen() {
     setPhase('fighting');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
-    // Sprint P-8 (2026-05-22): real backend battle simulation when both
-    // asset IDs are present. Falls back to a deterministic mock if the
-    // user opens the arena without both sides selected — useful for
-    // demo / preview surfaces.
     const challengerAssetId = (route.params as any)?.challengerAssetId;
     const defenderAssetId = (route.params as any)?.defenderAssetId;
 
-    let result: BattleResult;
-    if (challengerAssetId && defenderAssetId) {
-      try {
-        result = await createBattle({ challengerAssetId, defenderAssetId });
-      } catch (err: any) {
-        Alert.alert('战斗发起失败', err?.message || '请稍后重试');
-        setPhase('preBattle');
-        return;
-      }
-    } else {
-      // Demo mock — preserved so empty-params previews still work.
-      result = {
-        battleId: 'mock-battle-1',
-        winnerSide: 'challenger',
-        totalRounds: 5,
-        rounds: [
-          { roundNumber: 1, attackerId: 'c1', defenderId: 'd1', damageDealt: 15, isCritical: false, attackerHpAfter: 100, defenderHpAfter: 85 },
-          { roundNumber: 2, attackerId: 'd1', defenderId: 'c1', damageDealt: 12, isCritical: false, attackerHpAfter: 85, defenderHpAfter: 88 },
-          { roundNumber: 3, attackerId: 'c1', defenderId: 'd1', damageDealt: 28, isCritical: true, attackerHpAfter: 88, defenderHpAfter: 57 },
-          { roundNumber: 4, attackerId: 'd1', defenderId: 'c1', damageDealt: 10, isCritical: false, attackerHpAfter: 57, defenderHpAfter: 78 },
-          { roundNumber: 5, attackerId: 'c1', defenderId: 'd1', damageDealt: 57, isCritical: true, attackerHpAfter: 78, defenderHpAfter: 0 },
+    if (!challengerAssetId || !defenderAssetId) {
+      // 没有选好双方 → 不再跑假战斗, 引导去选人(真实可玩入口)。
+      setPhase('waiting');
+      Alert.alert(
+        '先选择对战双方',
+        '请先在"选择对战"里挑好你的角色和对手,再开始战斗。',
+        [
+          { text: '取消', style: 'cancel' },
+          { text: '去选人', onPress: () => (navigation as any).navigate('WorldBattlePicker') },
         ],
-        xpAwarded: { winner: 65, loser: 20 },
-        challenger: { id: 'c1', name: '火焰杯', stats: { hp: 100, atk: 45, def: 30, spd: 60, int: 35 }, level: 3, styledMeshUrl: '' },
-        defender: { id: 'd1', name: '冰晶球', stats: { hp: 100, atk: 35, def: 40, spd: 45, int: 50 }, level: 2, styledMeshUrl: '' },
-      };
+      );
+      return;
+    }
+
+    let result: BattleResult;
+    try {
+      result = await createBattle({ challengerAssetId, defenderAssetId });
+    } catch (err: any) {
+      Alert.alert('战斗发起失败', err?.message || '请稍后重试');
+      setPhase('waiting');
+      return;
     }
 
     setBattleResult(result);
@@ -140,7 +131,7 @@ export default function WorldBattleArenaScreen() {
     // Show result
     setPhase('result');
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [route]);
+  }, [route, navigation]);
 
   const animateRound = (round: BattleRound, result: BattleResult): Promise<void> => {
     return new Promise((resolve) => {

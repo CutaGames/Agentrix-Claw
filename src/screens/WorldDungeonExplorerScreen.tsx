@@ -23,8 +23,8 @@ import {
   Dimensions,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { useNavigation } from '@react-navigation/native';
-import { getDungeonByCode, attemptDungeon } from '../services/worldEngineApi';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { getDungeonByCode, attemptDungeon, listWorldAssets } from '../services/worldEngineApi';
 
 // ============================================================
 // Types
@@ -41,6 +41,7 @@ interface DungeonRoom {
   hasBoss: boolean;
   hasLoot: boolean;
   enemies: number;
+  cleared?: boolean;
 }
 
 // ============================================================
@@ -54,6 +55,21 @@ export default function WorldDungeonExplorerScreen() {
   const [isExploring, setIsExploring] = useState(false);
   const [rooms, setRooms] = useState<DungeonRoom[]>([]);
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
+  const [myAssetId, setMyAssetId] = useState<string | null>(null);
+
+  // 载入玩家第一个角色作为副本闯关者(打房间怪用)。
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const r = await listWorldAssets({ category: 'character', sort: 'level', limit: 1 });
+          if (!cancelled) setMyAssetId(r.items?.[0]?.id ?? null);
+        } catch { /* ignore */ }
+      })();
+      return () => { cancelled = true; };
+    }, []),
+  );
 
   // ─── Enter dungeon by share code ────────────────────────────────────
 
@@ -114,7 +130,40 @@ export default function WorldDungeonExplorerScreen() {
     setRooms((prev) =>
       prev.map((r) => (r.id === roomId ? { ...r, explored: true } : r)),
     );
-  }, []);
+    const room = rooms.find((r) => r.id === roomId);
+    if (!room) return;
+    // 房间→战斗打通:有怪/BOSS 且未清的房间,进入即开打(PvE 训练战引擎,
+    // 房间主题/BOSS 决定难度)。打赢标记 cleared,可拿战利品。
+    if (!room.cleared && (room.enemies > 0 || room.hasBoss)) {
+      if (!myAssetId) {
+        Alert.alert('需要一个角色', '先去扫描生成一个角色,才能进副本战斗。', [
+          { text: '去扫描', onPress: () => (navigation as any).navigate('WorldEngineScanner') },
+          { text: '取消', style: 'cancel' },
+        ]);
+        return;
+      }
+      const difficulty: 'easy' | 'normal' | 'hard' = room.hasBoss ? 'hard' : room.enemies >= 3 ? 'normal' : 'easy';
+      Alert.alert(
+        room.hasBoss ? '👹 BOSS 房间' : '⚔️ 遭遇敌人',
+        `这个房间有 ${room.enemies} 个敌人${room.hasBoss ? ' + 1 个 BOSS' : ''}。开打?`,
+        [
+          { text: '稍后', style: 'cancel' },
+          {
+            text: '开战',
+            onPress: () => (navigation as any).navigate('WorldInteractiveBattle', {
+              challengerAssetId: myAssetId,
+              defenderAssetId: myAssetId,
+              training: true,
+              difficulty,
+              challengerName: '你的角色',
+              defenderName: room.hasBoss ? '副本 BOSS' : '副本守卫',
+              dungeonRoomId: roomId,
+            }),
+          },
+        ],
+      );
+    }
+  }, [rooms, myAssetId, navigation]);
 
   // ─── Generate from scan ──────────────────────────────────────────────
 

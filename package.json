@@ -39,6 +39,7 @@
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
     "@gorhom/bottom-sheet": "^5.2.14",
+    "@maplibre/maplibre-react-native": "11.3.0",
     "@picovoice/porcupine-react-native": "^4.0.0",
     "@picovoice/react-native-voice-processor": "^1.2.3",
     "@pixiv/three-vrm": "^3.0.0",

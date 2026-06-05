@@ -55,6 +55,18 @@ export async function getPetState(): Promise<PetState> {
   return apiFetch<PetState>('/v1/pet/state');
 }
 
+/**
+ * 喂食 / 互动：增加亲密度 XP。后端：POST /v1/pet/intimacy { xp }。
+ * 返回更新后的 PetState（含新的 intimacy_level / intimacy_xp）。
+ * P-9 Q1：PetDetailSheet 🍖 喂食动作的真实落点（此前是只 emit mode-change 的 stub）。
+ */
+export async function feedPet(xp = 5): Promise<PetState> {
+  return apiFetch<PetState>('/v1/pet/intimacy', {
+    method: 'POST',
+    body: JSON.stringify({ xp }),
+  });
+}
+
 /** 列出可用灵魂模板（Phase 1：A 族群 7 只） */
 export async function listSouls(opts: { clan?: PetClan } = {}): Promise<PetSoulSummary[]> {
   const qs = opts.clan ? `?clan=${encodeURIComponent(opts.clan)}` : '';

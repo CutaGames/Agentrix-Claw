@@ -12,7 +12,6 @@ import {
   Linking,
   TextInput,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Circle } from 'react-native-svg';
@@ -32,7 +31,7 @@ import {
   type PetMode,
 } from '../services/petMode';
 import { PetSpriteImage } from './PetSpriteImage';
-import { useNavStateStore, resolveLeafRouteName } from '../stores/navStateStore';
+import { navRefNavigate } from '../navigation/navigationRef';
 
 // ─── Layout constants ───────────────────────────────────────────────────────
 const BALL_SIZE = 48;
@@ -131,6 +130,17 @@ interface Props {
    */
   onRightSwipeOverride?: () => void;
   /**
+   * P1b — current CompanionMode accent color + pulse flag, passed down
+   * from CompanionBall so the ball's ring reflects the 8 high-level modes
+   * (signing=purple pulse, nudge=orange, journey=green, ...). Undefined =
+   * legacy ballState-only ring.
+   */
+  companionModeColor?: string;
+  companionModePulse?: boolean;
+  companionModeLabel?: string;
+  /** P2 — active pet clan code (A..F) for per-clan sprite selection. */
+  spriteClan?: 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+  /**
    * Wave 17 hotfix — module-scope NavigationContainerRef from App.tsx.
    * Used to read root navigation state via `getRootState()` instead of
    * `useNavigationState`, which throws "Couldn't get the navigation
@@ -146,21 +156,106 @@ export function GlobalFloatingBall({
   onVoiceActivate, pillTranscript, onPillSend, pillVolume = 0,
   resultText, onResultAction,
   onSingleTapOverride, onLongPressOverride,
+  companionModeColor, companionModePulse,
+  spriteClan,
   navigationRef,
 }: Props) {
-  const navigation = useNavigation<any>();
+  // P-9 Q2 root-cause fix (2026-05-30): the ball mounts as a sibling of the
+  // tab navigators (inside NavigationContainer, outside any Stack/Tab), so
+  // `useNavigation()` THROWS "Couldn't find a navigation object" on mount in
+  // React Navigation v7 — which was silently caught by the CompanionLayer
+  // BallBoundary and replaced the real ball with the dead fallback (the
+  // "two stacked icons / can't drag / on all tabs / tap→World" report).
+  // We navigate via the shared module-scope navigationRef instead, which
+  // needs no navigator context. `navigation` is intentionally NOT from a hook.
+  const navigation = React.useMemo(
+    () => ({ navigate: (...args: any[]) => navRefNavigate(...args) }),
+    [],
+  );
   const { language } = useI18n();
   const wakeWordSettings = useSettingsStore((state) => state.wakeWordConfig);
   const { width: screenW, height: screenH } = Dimensions.get('window');
   const wakeWordConfig = useMemo(() => resolveMobileWakeWordConfig(wakeWordSettings), [wakeWordSettings]);
 
-  // Wave 17 v6 — subscribe to centralized navStateStore (populated by
-  // App.tsx NavigationContainer onReady/onStateChange) instead of
-  // polling navigationRef. The polling pattern was racy and left the
-  // ball hidden in earlier hotfixes.
-  const navState = useNavStateStore((s) => s.state);
+  // Wave 17 hotfix — read current route via navigationRef instead of
+  // useNavigationState. The hook throws "Couldn't get the navigation
+  // state. Is your component inside a navigator?" because the ball
+  // mounts as a sibling of the Navigator subtree (under
+  // NavigationContainer but outside Stack/Tab navigators). The ref
+  // gives us the same root state without any context dependency.
+  //
+  // Resolution mirrors the legacy useNavigationState selector: walk
+  // up to 4 levels of nested route.state until we hit the leaf route.
+  const resolveLeafRouteName = useCallback((rootState: any): string => {
+    if (!rootState) return '';
+    let route = rootState.routes?.[rootState.index];
+    if (!route) return '';
+    for (let depth = 0; depth < 4; depth++) {
+      const nested = route?.state as any;
+      if (!nested?.routes || nested.index == null) break;
+      route = nested.routes[nested.index];
+    }
+    return route?.name || '';
+  }, []);
 
-  const currentRouteName = useMemo(() => resolveLeafRouteName(navState), [navState]);
+  const [currentRouteName, setCurrentRouteName] = useState<string>(() => {
+    try {
+      return resolveLeafRouteName(navigationRef?.current?.getRootState?.());
+    } catch {
+      return '';
+    }
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsubscribe: (() => void) | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    const tryAttach = () => {
+      const ref = navigationRef?.current;
+      if (!ref?.addListener) return false;
+      // Sync once on mount — ref may have hydrated between mount and now.
+      try {
+        const initial = ref.getRootState?.();
+        if (initial && !cancelled) {
+          setCurrentRouteName(resolveLeafRouteName(initial));
+        }
+      } catch {
+        /* ignore */
+      }
+      unsubscribe = ref.addListener('state', () => {
+        try {
+          if (!cancelled) {
+            setCurrentRouteName(resolveLeafRouteName(ref.getRootState()));
+          }
+        } catch {
+          /* ref unmounted — ignore */
+        }
+      });
+      return true;
+    };
+
+    // Wave 17 v4 — poll until ref is ready in case NavigationContainer
+    // hasn't mounted yet on cold launch.
+    if (!tryAttach()) {
+      pollTimer = setInterval(() => {
+        if (cancelled) return;
+        if (tryAttach() && pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }, 200);
+    }
+
+    return () => {
+      cancelled = true;
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      try { unsubscribe?.(); } catch { /* ignore */ }
+    };
+  }, [navigationRef, resolveLeafRouteName]);
 
   const hideOnScreens = ['AgentChat', 'VoiceChat', 'ClawSettings'];
   // Keep the ball (and wake-word listener) visible on the main tab routes.
@@ -171,7 +266,10 @@ export function GlobalFloatingBall({
 
   // ── Core state ──
   const [ballState, setBallState] = useState<BallState>('idle');
-  const [isMinimized, setIsMinimized] = useState(true);
+  // P-9 Q1 — boot VISIBLE, not minimized. The redesign positions the ball
+  // as "宠物本体, 持续在场"; booting minimized (an 18px edge sliver whose
+  // first tap only un-minimizes) was a major reason the ball felt "dead".
+  const [isMinimized, setIsMinimized] = useState(false);
   const [isCapsule, setIsCapsule] = useState(false);
   const [pillExpanded, setPillExpanded] = useState(false);
   const [quickInput, setQuickInput] = useState('');
@@ -198,7 +296,10 @@ export function GlobalFloatingBall({
   const petSprite = useMemo(() => resolveSpriteForMode(petMode), [petMode]);
 
   // ── Animation values ──
-  const pan = useRef(new Animated.ValueXY({ x: screenW - MINIMIZED_REVEAL, y: screenH - 200 })).current;
+  // P-9 Q1 — boot fully on-screen at the right edge (was screenW -
+  // MINIMIZED_REVEAL, i.e. an 18px sliver) so the pet is visible and
+  // tappable on first paint.
+  const pan = useRef(new Animated.ValueXY({ x: screenW - BALL_SIZE - EDGE_MARGIN, y: screenH - 200 })).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const coreBreathAnim = useRef(new Animated.Value(0.6)).current;
   const morphWidth = useRef(new Animated.Value(BALL_SIZE)).current;
@@ -207,6 +308,8 @@ export function GlobalFloatingBall({
   const magneticY = useRef(new Animated.Value(0)).current;
   const pillExpandAnim = useRef(new Animated.Value(0)).current;
   const resultCardAnim = useRef(new Animated.Value(0)).current;
+  // P1b — CompanionMode ring pulse (signing / nudge draw attention).
+  const modeRingPulse = useRef(new Animated.Value(1)).current;
   const waveformAnims = useRef(
     Array.from({ length: 7 }, () => new Animated.Value(0.15))
   ).current;
@@ -245,6 +348,21 @@ export function GlobalFloatingBall({
       pulseAnim.setValue(1);
     }
   }, [ballState, pulseAnim]);
+
+  // ── P1b CompanionMode ring pulse (signing / nudge) ──
+  useEffect(() => {
+    if (companionModePulse) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(modeRingPulse, { toValue: 0.35, duration: 650, useNativeDriver: true }),
+          Animated.timing(modeRingPulse, { toValue: 1, duration: 650, useNativeDriver: true }),
+        ]),
+      );
+      loop.start();
+      return () => loop.stop();
+    }
+    modeRingPulse.setValue(1);
+  }, [companionModePulse, modeRingPulse]);
 
   useEffect(() => {
     if (!shouldHide) {
@@ -322,12 +440,20 @@ export function GlobalFloatingBall({
     }
   }, [isMinimized, snapToEdge, pan, screenW, screenH]);
 
-  // Auto re-minimize after 8s idle
+  // Auto re-minimize after 8s idle.
+  // P-9 fix (2026-05-30): when the companion override props are active
+  // (single-tap → ConversationBubble, long-press → PetDetailSheet), do NOT
+  // auto-minimize. The minimized state swallows the FIRST tap/long-press
+  // (it only un-minimizes), which is exactly the user-reported "after a
+  // while, tap/long-press do nothing, only jumps to World". The companion
+  // ball is meant to be persistently in-place per spec R1, so keep it open.
+  const companionInteractive = !!onSingleTapOverride || !!onLongPressOverride;
   useEffect(() => {
+    if (companionInteractive) return;
     if (ballState !== 'idle' || isMinimized || pillExpanded || showResultCard) return;
     const timer = setTimeout(() => setIsMinimized(true), 8000);
     return () => clearTimeout(timer);
-  }, [ballState, isMinimized, pillExpanded, showResultCard]);
+  }, [companionInteractive, ballState, isMinimized, pillExpanded, showResultCard]);
 
   const showWakeWordGuidance = useCallback((message: string) => {
     const now = Date.now();
@@ -519,6 +645,13 @@ export function GlobalFloatingBall({
         toValue: { x: onLeft ? EDGE_MARGIN : screenW - BALL_SIZE - EDGE_MARGIN, y: currentY },
         useNativeDriver: false, friction: 7,
       }).start();
+      // P-9 fix: in companion mode the un-minimize tap should ALSO open the
+      // bubble — otherwise the first tap is "wasted" un-minimizing and feels
+      // dead. Only swallow the tap in legacy (non-override) mode.
+      if (onSingleTapOverride) {
+        addVoiceDiagnostic('floating-ball', 'tap-override-from-minimized');
+        onSingleTapOverride();
+      }
       return;
     }
 
@@ -536,7 +669,15 @@ export function GlobalFloatingBall({
 
   const handleLongPress = useCallback(() => {
     addVoiceDiagnostic('floating-ball', 'long-press-activate');
-    if (isMinimized) { setIsMinimized(false); return; }
+    if (isMinimized) {
+      setIsMinimized(false);
+      // P-9 fix: don't swallow the long-press when minimized — open detail.
+      if (onLongPressOverride) {
+        addVoiceDiagnostic('floating-ball', 'long-press-override-from-minimized');
+        onLongPressOverride();
+      }
+      return;
+    }
 
     // P-9 T3.3 long-press override: parent can hijack the long-press to
     // open PetDetailSheet instead of expanding the legacy pill.
@@ -831,6 +972,31 @@ export function GlobalFloatingBall({
         <View style={[styles.glowRing, { borderColor: borderColor + '50' }]} />
       )}
 
+      {/* P1b — CompanionMode ring: a colored border that reflects the 8
+          high-level modes (signing=purple, nudge=orange, journey=green, ...)
+          so mode transitions are visible even when the sprite is the same.
+          Pulses for signing/nudge. Hidden for the ambient `companion`
+          default (no color passed) so the resting ball stays clean. */}
+      {!!companionModeColor && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.companionModeRing,
+            {
+              borderColor: companionModeColor,
+              opacity: companionModePulse ? modeRingPulse : 0.9,
+              transform: [
+                {
+                  scale: companionModePulse
+                    ? modeRingPulse.interpolate({ inputRange: [0.35, 1], outputRange: [1, 1.12] })
+                    : 1,
+                },
+              ],
+            },
+          ]}
+        />
+      )}
+
       {/* Orbiting Particles (thinking state) */}
       <OrbitingParticles active={ballState === 'thinking'} />
 
@@ -880,7 +1046,7 @@ export function GlobalFloatingBall({
           {isCapsule ? (
             <View style={styles.capsuleContent}>
               <View style={styles.capsuleBrandSlot}>
-                <PetSpriteImage sprite={petSprite} size={28} testID="floating-ball-sprite-capsule" />
+                <PetSpriteImage sprite={petSprite} size={28} clan={spriteClan} testID="floating-ball-sprite-capsule" />
               </View>
               <View style={styles.capsuleWaveRow}>
                 {waveformAnims.slice(0, 5).map((anim, i) => (
@@ -902,7 +1068,7 @@ export function GlobalFloatingBall({
               </Text>
             </View>
           ) : (
-            <PetSpriteImage sprite={petSprite} size={BALL_SIZE - 8} testID="floating-ball-sprite" />
+            <PetSpriteImage sprite={petSprite} size={BALL_SIZE - 8} clan={spriteClan} testID="floating-ball-sprite" />
           )}
         </Animated.View>
       </TouchableOpacity>
@@ -951,6 +1117,15 @@ const styles = StyleSheet.create({
     borderRadius: (BALL_SIZE + 14) / 2,
     borderWidth: 2,
     top: -7,
+    alignSelf: 'center',
+  },
+  companionModeRing: {
+    position: 'absolute',
+    width: BALL_SIZE + 8,
+    height: BALL_SIZE + 8,
+    borderRadius: (BALL_SIZE + 8) / 2,
+    borderWidth: 2.5,
+    top: -4,
     alignSelf: 'center',
   },
   brandMark: {

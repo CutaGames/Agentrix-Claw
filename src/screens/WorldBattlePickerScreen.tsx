@@ -19,7 +19,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   listWorldAssets,
   type WorldAssetSummary,
@@ -29,6 +29,9 @@ type Slot = 'challenger' | 'defender';
 
 export default function WorldBattlePickerScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const ruleSetShareCode: string | undefined = route.params?.ruleSetShareCode;
+  const ruleSetName: string | undefined = route.params?.ruleSetName;
   const [assets, setAssets] = useState<WorldAssetSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeSlot, setActiveSlot] = useState<Slot>('challenger');
@@ -85,9 +88,52 @@ export default function WorldBattlePickerScreen() {
     });
   }, [challenger, defender, navigation]);
 
+  const handleStartInteractive = useCallback(() => {
+    if (!challenger || !defender) {
+      Alert.alert('需要选择双方', '请选择挑战者和防御者');
+      return;
+    }
+    navigation.navigate('WorldInteractiveBattle', {
+      challengerAssetId: challenger.id,
+      defenderAssetId: defender.id,
+      ruleSetShareCode,
+      ruleSetName,
+      challengerName: challenger.name,
+      challengerPortraitUrl: challenger.styledMeshUrl ?? challenger.portraitUrl ?? null,
+      defenderName: defender.name,
+      defenderPortraitUrl: defender.styledMeshUrl ?? defender.portraitUrl ?? null,
+    });
+  }, [challenger, defender, navigation]);
+
+  // 单人训练对战 — 只需要挑战者(防御者由系统训练假人担任)。这是冷启动
+  // "只有一个角色也能 PK"的核心入口: 解决"没有对手/无法对战"的代入感问题。
+  const handleStartTraining = useCallback(() => {
+    const me = challenger ?? assets[0];
+    if (!me) {
+      Alert.alert('还没有角色', '先去扫描生成一个角色,再来训练场练习对战。');
+      return;
+    }
+    navigation.navigate('WorldInteractiveBattle', {
+      challengerAssetId: me.id,
+      // 训练模式下后端用 system-dummy 作防守方, defenderAssetId 仅占位。
+      defenderAssetId: me.id,
+      training: true,
+      ruleSetShareCode,
+      ruleSetName,
+      challengerName: me.name,
+      challengerPortraitUrl: me.styledMeshUrl ?? me.portraitUrl ?? null,
+      defenderName: '训练假人',
+    });
+  }, [challenger, assets, navigation]);
+
   return (
     <View style={styles.container} testID="world-battle-picker">
       <Text style={styles.title}>选择对战双方</Text>
+      {ruleSetName ? (
+        <View style={styles.ruleBanner}>
+          <Text style={styles.ruleBannerText}>🎲 使用玩法「{ruleSetName}」规则对战</Text>
+        </View>
+      ) : null}
 
       {/* Slot row */}
       <View style={styles.slotRow}>
@@ -133,6 +179,13 @@ export default function WorldBattlePickerScreen() {
           <Text style={styles.emptyText}>
             没有可对战的角色,先去扫描生成一些吧
           </Text>
+          <TouchableOpacity
+            style={styles.emptyScanButton}
+            onPress={() => navigation.navigate('WorldEngineScanner')}
+            testID="world-battle-picker-empty-scan"
+          >
+            <Text style={styles.emptyScanText}>📷 去扫描生成角色</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -174,18 +227,54 @@ export default function WorldBattlePickerScreen() {
         />
       )}
 
-      {/* Start button */}
-      <TouchableOpacity
-        style={[
-          styles.startButton,
-          (!challenger || !defender) && { opacity: 0.4 },
-        ]}
-        onPress={handleStart}
-        disabled={!challenger || !defender}
-        testID="world-battle-picker-start"
-      >
-        <Text style={styles.startButtonText}>⚔ 开始战斗</Text>
-      </TouchableOpacity>
+      {/* Start buttons */}
+      {!loading && assets.length > 0 && (
+        <View style={styles.startWrap}>
+          {/* 单人训练 — 只需 1 个角色即可开打(对手 = 系统训练假人)。
+              冷启动核心入口: 没有第二只角色 / 没有别的玩家在线也能 PK。 */}
+          <TouchableOpacity
+            style={styles.trainButton}
+            onPress={handleStartTraining}
+            testID="world-battle-picker-start-training"
+          >
+            <Text style={styles.startButtonText}>🥋 单人训练对战</Text>
+            <Text style={styles.startButtonHint}>
+              {challenger ? `${challenger.name} vs 训练假人` : `${assets[0]?.name ?? '你的角色'} vs 训练假人`} · 只需 1 个角色
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.startRow}>
+            <TouchableOpacity
+              style={[
+                styles.startButtonHalf,
+                styles.startButtonAuto,
+                (!challenger || !defender) && { opacity: 0.55 },
+              ]}
+              onPress={handleStart}
+              testID="world-battle-picker-start"
+            >
+              <Text style={styles.startButtonText}>⚡ 快速对战</Text>
+              <Text style={styles.startButtonHint}>{(!challenger || !defender) ? '需选双方角色' : '双角色 · 自动结算'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.startButtonHalf,
+                (!challenger || !defender) && { opacity: 0.55 },
+              ]}
+              onPress={handleStartInteractive}
+              testID="world-battle-picker-start-interactive"
+            >
+              <Text style={styles.startButtonText}>🎮 决策对战</Text>
+              <Text style={styles.startButtonHint}>{(!challenger || !defender) ? '需选双方角色' : '双角色 · 你来出招'}</Text>
+            </TouchableOpacity>
+          </View>
+          {(!challenger || !defender) ? (
+            <Text style={styles.dualHint}>
+              💡 只有一个角色?先用上面的「🥋 单人训练对战」练手;扫描/购买第二个角色后即可解锁双人对战。
+            </Text>
+          ) : null}
+        </View>
+      )}
     </View>
   );
 }
@@ -225,6 +314,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 16,
   },
+  ruleBanner: { backgroundColor: 'rgba(108,92,231,0.18)', borderColor: '#6c5ce7', borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 14 },
+  ruleBannerText: { color: '#bcaaff', fontSize: 13, fontWeight: '600', textAlign: 'center' },
   slotRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -306,7 +397,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   gridContent: {
-    paddingBottom: 100,
+    paddingBottom: 180,
   },
   gridRow: {
     gap: 8,
@@ -358,15 +449,56 @@ const styles = StyleSheet.create({
     color: '#6c5ce7',
     fontSize: 10,
   },
-  startButton: {
+  startRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  startWrap: {
     position: 'absolute',
     left: 16,
     right: 16,
     bottom: Platform.OS === 'ios' ? 30 : 16,
+    gap: 10,
+  },
+  trainButton: {
     backgroundColor: '#6c5ce7',
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
+  },
+  emptyScanButton: {
+    marginTop: 18,
+    backgroundColor: '#6c5ce7',
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 12,
+  },
+  emptyScanText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  startButtonHalf: {
+    flex: 1,
+    backgroundColor: '#6c5ce7',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  startButtonAuto: {
+    backgroundColor: '#2d2d44',
+  },
+  startButtonHint: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  dualHint: {
+    color: '#9aa',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 12,
+    paddingHorizontal: 4,
   },
   startButtonText: {
     color: '#fff',

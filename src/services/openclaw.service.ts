@@ -116,14 +116,21 @@ export async function getInstanceStatus(instanceId: string): Promise<{
 }
 
 // Send a chat message to an agent via the instance
-export async function sendAgentMessage(instanceId: string, message: string | any[], sessionId?: string, model?: string): Promise<{
+export async function sendAgentMessage(instanceId: string, message: string | any[], sessionId?: string, model?: string, ctx?: Record<string, any>): Promise<{
   sessionId: string;
   reply: ChatMessage;
   stopReason?: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | 'abort' | 'error';
 }> {
   return apiFetch(`/openclaw/proxy/${instanceId}/chat`, {
     method: 'POST',
-    body: JSON.stringify({ message, sessionId, model }),
+    body: JSON.stringify({
+      message,
+      sessionId,
+      model,
+      // R9.3 — keep the non-streaming fallback context-aware too. Optional;
+      // backend ChatMessageDto already accepts `context`.
+      context: ctx ? { ...ctx, sessionId: ctx.sessionId ?? sessionId } : undefined,
+    }),
   });
 }
 
@@ -325,7 +332,11 @@ export function streamAgentChat(
   onChunk: (chunk: string) => void,
   onDone: (fullText: string) => void,
   onError: (err: string) => void,
-  token: string
+  token: string,
+  // R9.3 — optional runtime context (Companion_QA). Carries
+  // `{ device, scene/route, taskState }` so the answer is scene-aware. The
+  // backend accepts an optional `context` field on the proxy stream path.
+  ctx?: Record<string, any>
 ): () => void {
   const WS_BASE = 'wss://api.agentrix.top';
   const ws = new WebSocket(
@@ -335,7 +346,13 @@ export function streamAgentChat(
   let fullText = '';
 
   ws.onopen = () => {
-    ws.send(JSON.stringify({ message, sessionId }));
+    ws.send(
+      JSON.stringify({
+        message,
+        sessionId,
+        context: ctx ? { ...ctx, sessionId: ctx.sessionId ?? sessionId } : undefined,
+      })
+    );
   };
 
   ws.onmessage = (e) => {

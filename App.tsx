@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -48,6 +48,7 @@ import { CompanionLayer } from './src/components/companion/CompanionLayer';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { resolveLegacyPath } from './src/navigation/legacyRouteTable';
+import { navigationRef as sharedNavigationRef } from './src/navigation/navigationRef';
 import { getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
 import { attachLinkingListener } from './src/services/intents/intentBridge';
 import { installDefaultIntentHandlers } from './src/services/intents/defaultIntentHandlers';
@@ -68,10 +69,12 @@ initCrashReport();
 initAnalytics();
 trackEvent('mobile_launch', { platform: Platform.OS });
 
-// Singleton ref so the system-assistant intent handlers can navigate the
-// React Navigation root without prop drilling. Created here (module scope)
-// so it survives any re-mount of <NavigationContainer>.
-const navigationRef = createNavigationContainerRef<Record<string, object | undefined>>();
+// Singleton ref so the system-assistant intent handlers + the P-9 companion
+// layer (ball / sheets / capsules) can navigate the React Navigation root
+// without prop drilling AND without useNavigation() (which throws at the
+// CompanionLayer sibling position). Defined in its own module so any file
+// can import it. Assigned to <NavigationContainer ref={navigationRef}>.
+const navigationRef = sharedNavigationRef;
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -362,11 +365,6 @@ function AppNavigator() {
 
     if (!skipStartupIntegrations) {
       checkAndPromptUpdate().catch(() => {});
-      // P-9 wave 16 — fetch pet_companion_redesign feature flag once on
-      // boot so the navigator tree can branch on isCompanionRedesignEnabledSync.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-      const { fetchCompanionFlag } = require('./src/config/companionFeatureFlag') as typeof import('./src/config/companionFeatureFlag');
-      fetchCompanionFlag().catch(() => {});
     }
 
     const handleAppStateChange = (state: AppStateStatus) => {
@@ -510,12 +508,30 @@ function AppNavigator() {
 
     notifSubRef.current = Notifications.addNotificationReceivedListener((notification) => {
       const { addNotification } = useNotificationStore.getState();
+      const data = (notification.request.content.data as Record<string, any>) ?? {};
       addNotification({
         type: (notification.request.content.data?.type ?? 'system') as any,
         title: notification.request.content.title ?? 'Notification',
         body: notification.request.content.body ?? '',
-        data: (notification.request.content.data as Record<string, any>) ?? {},
+        data,
       });
+      // Multi-Agent v2.1 P2 #15 — fan out wearable haptic + watch
+      // complication when a sub-task completion push arrives. Lazy import
+      // to keep startup cost zero when feature unused. Best-effort.
+      void (async () => {
+        try {
+          const { handleSubTaskAck } = await import(
+            './src/services/wearables/multiAgentWearableAck.service'
+          );
+          await handleSubTaskAck({
+            title: notification.request.content.title ?? undefined,
+            body: notification.request.content.body ?? undefined,
+            data,
+          });
+        } catch {
+          /* ignore — wearable ack is non-critical */
+        }
+      })();
     });
 
     return () => {
@@ -638,34 +654,6 @@ const linking = {
       },
       Main: {
         screens: {
-          Home: {
-            screens: {
-              HomeRoot: 'home',
-              PetCompanion: 'home/pet',
-              PetSkills: 'home/pet/skills',
-              PetTasks: 'home/pet/tasks',
-              PetWallet: 'home/pet/wallet',
-              PetWalletBalance: 'home/pet/wallet/balance',
-              PetMemory: 'home/pet/memory',
-              PetMemoryDreaming: 'home/pet/memory/dreaming',
-              PetMemoryLogs: 'home/pet/memory/logs',
-              PetPlay: 'home/pet/play',
-              PetWardrobe: 'home/pet/wardrobe',
-              PetSoul: 'home/pet/soul',
-              PetBreed: 'home/pet/breed',
-              PetIdentity: 'home/pet/identity',
-              PetCreator: 'home/pet/creator',
-              PetPermissions: 'home/pet/permissions',
-              PetSpace: 'home/pet/space/:spaceId',
-              PetTeam: 'home/pet/team',
-              PetWorkflow: 'home/pet/skills/workflow',
-              PetWorkflowDetail: 'home/pet/skills/workflow/:workflowId',
-              CoRaisingInvite: 'home/co-raising/invite',
-              CoRaisingLanding: 'home/co-raising/:token',
-              CoRaisingActivity: 'home/co-raising/activity',
-              PlanApproval: 'home/approvals',
-            },
-          },
           Summon: {
             screens: {
               SummonRoot: 'summon',
@@ -726,6 +714,13 @@ const linking = {
               AxpCenter: 'me/axp',
               AxpRewardShop: 'me/axp/shop',
               ShareCard: 'me/share-card',
+              // P-9 Q1 — re-homed pet screens (former PetStack drawer).
+              PetWardrobe: 'me/pet/wardrobe',
+              SoulPicker: 'me/pet/soul',
+              PetBreed: 'me/pet/breed',
+              PetPlayground: 'me/pet/playground',
+              PetSkinMarketplace: 'me/pet/skins',
+              MemoryManagement: 'me/pet/memory',
             },
           },
           // ── Legacy tabs (hidden, but keep deep link compat) ──
@@ -748,29 +743,7 @@ export default function App() {
         <AppErrorBoundary>
           <QueryClientProvider client={queryClient}>
             <BottomSheetModalProvider>
-              <NavigationContainer
-                ref={navigationRef as any}
-                linking={linking as any}
-                onReady={() => {
-                  // Wave 17 v6 — push initial nav state into the store so
-                  // CompanionBall / GlobalFloatingBall can render immediately
-                  // without waiting for the next state mutation. Avoids the
-                  // ref-hydration race that left the ball hidden forever
-                  // in v3/v4/v5.
-                  try {
-                    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-                    const { useNavStateStore } = require('./src/stores/navStateStore') as typeof import('./src/stores/navStateStore');
-                    useNavStateStore.getState().setState(navigationRef.getRootState?.() ?? null);
-                  } catch { /* noop */ }
-                }}
-                onStateChange={(state) => {
-                  try {
-                    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-                    const { useNavStateStore } = require('./src/stores/navStateStore') as typeof import('./src/stores/navStateStore');
-                    useNavStateStore.getState().setState(state ?? null);
-                  } catch { /* noop */ }
-                }}
-              >
+              <NavigationContainer ref={navigationRef as any} linking={linking as any}>
                 <StatusBar style="light" />
                 <AppNavigator />
                 {/* Global AXP toast — surfaces +N AXP when earns happen anywhere. */}

@@ -163,6 +163,15 @@ export class AgentrixStreamParser {
   private buffer = '';
   private isDone = false;
   private seenStructuredTextDelta = false;
+  // v0.7.12 — count keepalive frames so we can confirm backend heartbeat is
+  // actually reaching us. We only surface every 6th one to the diag ring
+  // buffer so 200 events isn't blown by 5s pings.
+  private keepaliveCount = 0;
+
+  /** Public read-only accessor for keepalive frames seen so far. */
+  getKeepaliveCount(): number {
+    return this.keepaliveCount;
+  }
 
   constructor(private readonly callbacks: StreamParserCallbacks) {}
 
@@ -280,6 +289,13 @@ export class AgentrixStreamParser {
    * Dispatch a structured StreamEvent to the appropriate callback.
    */
   private dispatchStructuredEvent(event: StreamEvent): void {
+    // v0.7.11 — silently drop keepalive events. Backend emits them every 5s
+    // as real `data:` events (not SSE comments) so WebView2 native fetch
+    // resets its idle timer. They carry no chat semantics; never bubble up.
+    if ((event as any).type === 'keepalive') {
+      this.keepaliveCount += 1;
+      return;
+    }
     switch (event.type) {
       case 'text_delta':
         this.seenStructuredTextDelta = true;

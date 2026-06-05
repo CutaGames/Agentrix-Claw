@@ -126,7 +126,12 @@ export function BreedScreen() {
           </Text>
           <Pressable
             style={styles.submitBtn}
-            onPress={() => navigation.navigate('PetCreator')}
+            onPress={() =>
+              navigation.navigate('Main', {
+                screen: 'World',
+                params: { screen: 'PetCreator' },
+              })
+            }
           >
             <Text style={styles.submitBtnText}>✨ {t({ en: 'Create Pet', zh: '创建宠物' })}</Text>
           </Pressable>
@@ -259,7 +264,7 @@ export function BreedScreen() {
               {result.taskId && <Text style={styles.resultMeta}>Task ID: {result.taskId}</Text>}
               {result.message && <Text style={styles.resultMsg}>{result.message}</Text>}
               <Pressable
-                onPress={() => navigation.navigate('Wardrobe')}
+                onPress={() => navigation.navigate('PetWardrobe')}
                 style={[styles.submitBtn, { marginTop: 12 }]}
               >
                 <Text style={styles.submitBtnText}>{t({ en: 'Back to Wardrobe', zh: '回到衣柜' })}</Text>

@@ -18,60 +18,114 @@
  *   - WorldAssetMarketplaceScreen  (NEW stub; Phase 2 fills in)
  */
 import React from 'react';
-import { View, Text } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../theme/colors';
 import { useI18n } from '../stores/i18nStore';
 
 import { WorldHubScreen } from '../screens/world/WorldHubScreen';
+import WorldFeedScreen from '../screens/world/WorldFeedScreen';
+import WorldCharacterCardScreen from '../screens/world/WorldCharacterCardScreen';
 import WorldEngineScannerScreen from '../screens/WorldEngineScannerScreen';
 import WorldAssetInventoryScreen from '../screens/WorldAssetInventoryScreen';
 import ReconstructionProgressScreen from '../screens/ReconstructionProgressScreen';
 import WorldAssetListingScreen from '../screens/WorldAssetListingScreen';
+import { WorldAssetDetailScreen } from '../screens/world/WorldAssetDetailScreen';
+import { WorldMarketplaceScreen } from '../screens/world/WorldMarketplaceScreen';
 import WorldBattlePickerScreen from '../screens/WorldBattlePickerScreen';
 import WorldBattleArenaScreen from '../screens/WorldBattleArenaScreen';
+import WorldInteractiveBattleScreen from '../screens/world/WorldInteractiveBattleScreen';
+import WorldUgcRuleSetsScreen from '../screens/world/WorldUgcRuleSetsScreen';
 import WorldDungeonExplorerScreen from '../screens/WorldDungeonExplorerScreen';
 import { PetCreatorScreen } from '../screens/pet/PetCreatorScreen';
 import { CameraScanScreen } from '../screens/pet/CameraScanScreen';
+// Aeon(永曜城)— 实时多人共建世界(Phase 1)
+import AeonMapScreen from '../screens/aeon/AeonMapScreen';
+import AeonSceneScreen from '../screens/aeon/AeonSceneScreen';
+// Aeon Phase 4 — 共建建造
+import AeonBuildScreen from '../screens/aeon/AeonBuildScreen';
+// Aeon 玩法循环 — 任务广场 + 世界动态(2026-06-01)
+import AeonTasksScreen from '../screens/aeon/AeonTasksScreen';
+import AeonNewsScreen from '../screens/aeon/AeonNewsScreen';
+import AeonMarketScreen from '../screens/aeon/AeonMarketScreen';
+import AeonPlotVisitScreen from '../screens/aeon/AeonPlotVisitScreen';
+import AeonCompanyScreen from '../screens/aeon/AeonCompanyScreen';
+// Aeon 社交场所 — 全服公共广场 + 实时群聊(2026-06-01)
+import AeonPlazaScreen from '../screens/aeon/AeonPlazaScreen';
+// Aeon 社交场所 Step 2 — 现场活动/脱口秀直播厅(2026-06-02)
+import AeonLiveStageScreen from '../screens/aeon/AeonLiveStageScreen';
+// Aeon 社交场所 Step 3 — 活动排期/预约(2026-06-02)
+import AeonEventsScreen from '../screens/aeon/AeonEventsScreen';
+// 连接器/插件库 — agent 能力扩展 + 玩法A(派 agent 办真事)(2026-06-02)
+import ConnectorHubScreen from '../screens/aeon/ConnectorHubScreen';
+// 商家店铺(地块 POI 接 marketplace 商品)(2026-06-03)
+import AeonStoreScreen from '../screens/aeon/AeonStoreScreen';
 
 export type WorldStackParamList = {
   WorldRoot: undefined;
+  WorldFeed: undefined;
+  WorldCharacterCard: {
+    assetId?: string;
+    card?: import('../services/worldEngineApi').CharacterCard;
+    generationStatus?: import('../services/worldEngineApi').GenerationStatus;
+    jobId?: string;
+  };
   WorldEngineScanner: { mode?: 'quick' | 'detail' | 'room' } | undefined;
   WorldAssetInventory: undefined;
   WorldBattleArena: { challengerAssetId?: string; defenderAssetId?: string } | undefined;
-  WorldBattlePicker: undefined;
+  WorldInteractiveBattle: {
+    challengerAssetId: string;
+    defenderAssetId: string;
+    training?: boolean;
+    /** 训练难度(副本房间据 BOSS/怪数传入)。 */
+    difficulty?: 'easy' | 'normal' | 'hard';
+    /** 副本房间 id(从副本进战斗时透传,用于战后标记清场)。 */
+    dungeonRoomId?: string;
+    /** UGC 玩法分享码 + 名称(用"我的玩法"开打时透传)。 */
+    ruleSetShareCode?: string;
+    ruleSetName?: string;
+    /** Real identity for the combatant header (avoids the hardcoded 🦊/👹). */
+    challengerName?: string;
+    challengerPortraitUrl?: string | null;
+    defenderName?: string;
+    defenderPortraitUrl?: string | null;
+  };
+  WorldBattlePicker: { ruleSetShareCode?: string; ruleSetName?: string; preselectChallengerId?: string } | undefined;
   WorldDungeonExplorer: { shareCode?: string };
+  WorldUgcRuleSets: undefined;
   ReconstructionProgress: {
     jobId: string;
     estimatedSeconds?: number;
     scanMode?: 'quick' | 'detail' | 'room';
   };
   WorldAssetListing: { assetId: string; assetName?: string };
+  WorldAssetDetail: { assetId: string; assetName?: string };
   WorldAssetMarketplace: undefined;
   PetCreator: undefined;
   PetCameraScan: undefined;
+  // Aeon(永曜城)Phase 1
+  AeonMap: undefined;
+  AeonScene: { plotId: string; displayName?: string; roomId?: string };
+  // Aeon Phase 4
+  AeonBuild: { plotId: string; displayName?: string };
+  // Aeon 玩法循环
+  AeonTasks: undefined;
+  AeonNews: undefined;
+  AeonMarket: undefined;
+  AeonPlotVisit: { plotId: string; displayName?: string; ownerUserId?: string; ownerName?: string };
+  AeonCompany: undefined;
+  // Aeon 社交场所 — 全服公共广场
+  AeonPlaza: undefined;
+  // Aeon 社交场所 Step 2 — 现场活动/脱口秀直播厅
+  AeonLiveStage: { roomId?: string; title?: string } | undefined;
+  // Aeon 社交场所 Step 3 — 活动排期/预约
+  AeonEvents: undefined;
+  // 连接器/插件库
+  ConnectorHub: undefined;
+  // 商家店铺(地块 POI 接 marketplace 商品)
+  AeonStore: { merchantUserId: string; storeName?: string; plotId?: string };
 };
 
 const Stack = createNativeStackNavigator<WorldStackParamList>();
-
-/**
- * Phase 1 marketplace stub — full screen lands in Phase 2 once moderation
- * + pricing flow are settled. Click-through to existing WorldAssetListing
- * for now is enough.
- */
-function WorldAssetMarketplaceScreen() {
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.bgPrimary, padding: 24, alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ fontSize: 48, marginBottom: 16 }}>🛒</Text>
-      <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '600', marginBottom: 8, textAlign: 'center' }}>
-        World Asset Marketplace
-      </Text>
-      <Text style={{ color: colors.textMuted, fontSize: 13, textAlign: 'center' }}>
-        Phase 2 — coming soon. List or browse user-generated 3D assets.
-      </Text>
-    </View>
-  );
-}
 
 export function WorldStackNavigator() {
   const { t } = useI18n();
@@ -92,6 +146,16 @@ export function WorldStackNavigator() {
         options={{ title: t({ en: 'World', zh: '世界' }), headerShown: false }}
       />
       <Stack.Screen
+        name="WorldFeed"
+        component={WorldFeedScreen}
+        options={{ title: t({ en: 'My World', zh: '我的世界' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldCharacterCard"
+        component={WorldCharacterCardScreen}
+        options={{ title: t({ en: 'Your Character', zh: '你的角色' }), headerShown: false }}
+      />
+      <Stack.Screen
         name="WorldEngineScanner"
         component={WorldEngineScannerScreen}
         options={{ title: t({ en: 'World Scanner', zh: '世界扫描' }), headerShown: false }}
@@ -107,6 +171,11 @@ export function WorldStackNavigator() {
         options={{ title: t({ en: 'Battle', zh: '战斗' }), headerShown: false }}
       />
       <Stack.Screen
+        name="WorldInteractiveBattle"
+        component={WorldInteractiveBattleScreen}
+        options={{ title: t({ en: 'Battle', zh: '决策对战' }), headerShown: false }}
+      />
+      <Stack.Screen
         name="WorldBattlePicker"
         component={WorldBattlePickerScreen}
         options={{ title: t({ en: 'Battle Picker', zh: '选择对战' }), headerShown: false }}
@@ -115,6 +184,11 @@ export function WorldStackNavigator() {
         name="WorldDungeonExplorer"
         component={WorldDungeonExplorerScreen}
         options={{ title: t({ en: 'Dungeon', zh: '副本' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldUgcRuleSets"
+        component={WorldUgcRuleSetsScreen}
+        options={{ title: t({ en: 'Game Modes', zh: '我的玩法' }), headerShown: false }}
       />
       <Stack.Screen
         name="ReconstructionProgress"
@@ -127,9 +201,14 @@ export function WorldStackNavigator() {
         options={{ title: t({ en: 'List for Sale', zh: '上架出售' }), headerShown: false }}
       />
       <Stack.Screen
+        name="WorldAssetDetail"
+        component={WorldAssetDetailScreen}
+        options={{ title: t({ en: 'Asset Detail', zh: '资产详情' }), headerShown: false }}
+      />
+      <Stack.Screen
         name="WorldAssetMarketplace"
-        component={WorldAssetMarketplaceScreen}
-        options={{ title: t({ en: 'Marketplace', zh: '世界资产市场' }) }}
+        component={WorldMarketplaceScreen}
+        options={{ title: t({ en: 'Marketplace', zh: '世界资产市场' }), headerShown: false }}
       />
       <Stack.Screen
         name="PetCreator"
@@ -140,6 +219,71 @@ export function WorldStackNavigator() {
         name="PetCameraScan"
         component={CameraScanScreen}
         options={{ title: t({ en: 'Photo → 3D Pet', zh: '拍照创生' }) }}
+      />
+      <Stack.Screen
+        name="AeonMap"
+        component={AeonMapScreen}
+        options={{ title: t({ en: 'Aeon', zh: 'Aeon · 永曜城' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="AeonScene"
+        component={AeonSceneScreen}
+        options={{ title: t({ en: 'World', zh: '世界' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="AeonBuild"
+        component={AeonBuildScreen}
+        options={{ title: t({ en: 'Build', zh: '建造' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="AeonTasks"
+        component={AeonTasksScreen}
+        options={{ title: t({ en: 'Tasks', zh: '任务广场' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="AeonNews"
+        component={AeonNewsScreen}
+        options={{ title: t({ en: 'World News', zh: '世界动态' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="AeonMarket"
+        component={AeonMarketScreen}
+        options={{ title: t({ en: 'Market', zh: '市场街区' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="AeonPlotVisit"
+        component={AeonPlotVisitScreen}
+        options={{ title: t({ en: 'Visit', zh: '拜访领地' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="AeonCompany"
+        component={AeonCompanyScreen}
+        options={{ title: t({ en: 'Company', zh: '公司运营' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="AeonPlaza"
+        component={AeonPlazaScreen}
+        options={{ title: t({ en: 'Public Plaza', zh: '公共广场' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="AeonLiveStage"
+        component={AeonLiveStageScreen}
+        options={{ title: t({ en: 'Live Stage', zh: '直播厅' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="AeonEvents"
+        component={AeonEventsScreen}
+        options={{ title: t({ en: 'Events', zh: '活动现场' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="ConnectorHub"
+        component={ConnectorHubScreen}
+        options={{ title: t({ en: 'Connectors', zh: '连接器' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="AeonStore"
+        component={AeonStoreScreen}
+        options={{ title: t({ en: 'Store', zh: '店铺' }), headerShown: false }}
       />
     </Stack.Navigator>
   );

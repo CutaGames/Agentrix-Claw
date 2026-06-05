@@ -120,11 +120,34 @@ export const skillInstallCardRef: RegistryEntry<SkillInstallCardHandle> = {
   current: null,
 };
 
+/**
+ * Diagnostic helper — records when an imperative sheet call is a no-op
+ * because the sheet's ref is null (the sheet crashed in its IsolatedBoundary
+ * or hasn't mounted). This is the on-device signal for "tap does nothing /
+ * bubble won't open" reports: if `companion-sheet-noop` shows up in the
+ * Diagnostics log, the sheet subtree failed to mount.
+ */
+function recordSheetNoop(sheet: string, action: string): void {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    const { addVoiceDiagnostic } = require('../../services/voiceDiagnostics') as typeof import('../../services/voiceDiagnostics');
+    addVoiceDiagnostic('companion-sheet-noop', `${sheet}:${action}`, {
+      reason: 'ref-null (sheet not mounted or crashed)',
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Imperative shortcut — guarded so test/non-mounted call sites are no-ops. */
 export const companionSheets = {
   conversation: {
     present(opts?: ConversationBubblePresentOpts): void {
-      conversationBubbleRef.current?.present(opts);
+      if (!conversationBubbleRef.current) {
+        recordSheetNoop('conversation', 'present');
+        return;
+      }
+      conversationBubbleRef.current.present(opts);
     },
     dismiss(): void {
       conversationBubbleRef.current?.dismiss();
@@ -135,7 +158,11 @@ export const companionSheets = {
   },
   petDetail: {
     present(): void {
-      petDetailSheetRef.current?.present();
+      if (!petDetailSheetRef.current) {
+        recordSheetNoop('petDetail', 'present');
+        return;
+      }
+      petDetailSheetRef.current.present();
     },
     dismiss(): void {
       petDetailSheetRef.current?.dismiss();

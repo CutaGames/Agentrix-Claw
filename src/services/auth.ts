@@ -3,6 +3,7 @@
 // Secondary: Google/Apple/X/Discord/Telegram/Wallet/Email
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
+import * as SecureStore from 'expo-secure-store';
 import { Platform, Linking } from 'react-native';
 import { apiFetch, saveTokenToStorage, setApiConfig, getApiConfig } from './api';
 import { useAuthStore, AuthUser, AuthProvider, OpenClawInstance } from '../stores/authStore';
@@ -423,6 +424,46 @@ export async function registerWithEmail(email: string, password: string): Promis
   });
 
   return handleLoginResult(registerResult, 'email');
+}
+
+// ========== 游客本地试用（World Engine 首扫体验，无需注册）==========
+
+/**
+ * 获取/生成本设备稳定的 deviceId（持久化到 SecureStore）。
+ * 用于游客 token 的配额标识(每安装一次免费首扫)。
+ */
+async function getOrCreateDeviceId(): Promise<string> {
+  try {
+    let id = await SecureStore.getItemAsync('agentrix_device_id');
+    if (!id) {
+      id = `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      await SecureStore.setItemAsync('agentrix_device_id', id);
+    }
+    return id;
+  } catch {
+    return `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
+/**
+ * 游客登录（本地试用模式）。
+ * 向后端 POST /auth/guest 取一个游客 JWT, 写入 authStore.isGuest=true。
+ * 游客可调 World Engine 扫描/生成看到角色卡, 但不落库(后端 isGuest 跳过资产创建);
+ * 点"保存"时引导真正登录。
+ */
+export async function loginAsGuest(): Promise<{ token: string }> {
+  const { setGuest } = useAuthStore.getState();
+  const deviceId = await getOrCreateDeviceId();
+  const result = await apiFetch<{ access_token: string; isGuest: boolean }>('/auth/guest', {
+    method: 'POST',
+    body: JSON.stringify({ deviceId }),
+  });
+  const token = result?.access_token;
+  if (!token) {
+    throw new Error('Guest token not returned by server');
+  }
+  setGuest(token);
+  return { token };
 }
 
 // ========== OpenClaw Binding & Login ==========

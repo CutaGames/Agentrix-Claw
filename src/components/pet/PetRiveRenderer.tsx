@@ -18,13 +18,17 @@ import React, { useEffect, useMemo, useRef, useState, lazy, Suspense, type React
 import { View, Text, StyleSheet, Animated, Easing, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getRecommendedRenderer, type RendererType } from '../../utils/deviceCapability';
+import type { PetClanShortCode } from '../../../shared/types/pet';
 
 // Lazy-load VRM renderer to avoid loading three.js on low/mid-end devices
 const LazyPetVrmRenderer = lazy(() => import('./PetVrmRenderer'));
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export type PetClan = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+// Renderer clan code is the shared single-letter bridge type — keep the
+// `PetClan` export name for back-compat with existing imports, but base it on
+// the canonical `PetClanShortCode` so the two never drift (audit P1).
+export type PetClan = PetClanShortCode;
 
 export type PetEmotion =
   | 'happy' | 'excited' | 'sleepy' | 'thinking' | 'sad' | 'neutral'

@@ -42,24 +42,38 @@ import {
   BottomSheetBackdrop,
   BottomSheetModal,
   BottomSheetView,
+  BottomSheetScrollView,
 } from '@gorhom/bottom-sheet';
 import * as ImagePicker from 'expo-image-picker';
-import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useActivePet } from '../../services/activePet.service';
+import { navRefNavigate } from '../../navigation/navigationRef';
 import { companionEvents } from '../../services/companionEvents.service';
+import {
+  subscribeConversation,
+  setPendingPrefill,
+  getConversationSnapshot,
+  type ConversationSnapshot,
+} from '../../services/conversationStore';
 import {
   conversationBubbleRef,
   type ConversationBubbleHandle,
   type ConversationBubblePresentOpts,
 } from './sheetRefRegistry';
+import { speakCompanionReply, stopCompanionVoice } from '../../services/onboarding/companionVoice';
+import { getOnboardingTtsSpeaker } from '../../services/onboarding/ttsSpeaker';
 
 const SNAP_POINTS = ['65%', '100%'];
 
 export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
   function ConversationBubble(_props, externalRef) {
     const sheetRef = useRef<BottomSheetModal>(null);
-    const navigation = useNavigation<any>();
+    // Navigate via shared navigationRef — NOT useNavigation() (throws at the
+    // CompanionLayer sibling position; root cause of the dead ball).
+    const navigation = useMemo(
+      () => ({ navigate: (...args: any[]) => navRefNavigate(...args) }),
+      [],
+    );
     const pet = useActivePet();
 
     const [draft, setDraft] = useState('');
@@ -68,13 +82,63 @@ export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
     >([]);
     const [voiceActive, setVoiceActive] = useState(false);
     const [busy, setBusy] = useState(false);
+    /** 正在朗读的助手消息 id(用于 🔊 高亮 + 二次点击停止)。 */
+    const [speakingId, setSpeakingId] = useState<string | null>(null);
+
+    // P-9 Q2 (T5.2/T5.4) — live mirror of the active conversation so the
+    // bubble shows the SAME messages + routing badge as the full Summon
+    // screen. AgentChatScreen publishes; we subscribe.
+    const [convo, setConvo] = useState<ConversationSnapshot>(() =>
+      getConversationSnapshot(),
+    );
+    useEffect(() => subscribeConversation(setConvo), []);
+
+    // Show the most recent turns in the bubble preview (skip system rows).
+    const visibleMessages = useMemo(
+      () =>
+        convo.messages
+          .filter((m) => m.role !== 'system' && m.id !== 'welcome')
+          .slice(-12),
+      [convo.messages],
+    );
 
     const reset = useCallback(() => {
       setDraft('');
       setPendingAttachments([]);
       setVoiceActive(false);
       setBusy(false);
+      setSpeakingId(null);
+      stopCompanionVoice();
     }, []);
+
+    /**
+     * 朗读一条助手回复(R9.8):复用 ttsSpeaker 的同会话限频/缓存/降级。
+     * 再次点击同一条 → 停止播放。被限频/失败时静默降级(文字本已在气泡里)。
+     */
+    const handleSpeak = useCallback(
+      (id: string, text: string) => {
+        if (speakingId === id) {
+          stopCompanionVoice();
+          setSpeakingId(null);
+          return;
+        }
+        setSpeakingId(id);
+        void speakCompanionReply(text, {
+          onDegrade: () => setSpeakingId((cur) => (cur === id ? null : cur)),
+        }).then((outcome) => {
+          // 入队成功(played/cached)→ 播放队列排空后复位高亮;
+          // 被限频/降级(throttled/degraded)→ 立即复位。
+          if (outcome === 'played' || outcome === 'cached') {
+            void getOnboardingTtsSpeaker()
+              .whenIdle()
+              .then(() => setSpeakingId((cur) => (cur === id ? null : cur)));
+          } else {
+            setSpeakingId((cur) => (cur === id ? null : cur));
+          }
+        });
+      },
+      [speakingId],
+    );
 
     const present = useCallback(
       (opts?: ConversationBubblePresentOpts) => {
@@ -154,15 +218,21 @@ export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
     );
 
     const handleSendOrJump = useCallback(() => {
-      // Phase 1: bubble = launcher. Forward draft + attachments into
-      // AgentChatScreen for the actual streaming turn so we don't fork
-      // chat state across two surfaces. T5.2 will replace this with a
-      // shared conversationStore.
+      // Q2: bubble = launcher into full Summon. We now ALSO write the draft
+      // into the shared conversationStore so AgentChatScreen picks it up via
+      // consumePendingPrefill() on focus — robust against the Summon→AgentChat
+      // navigator nesting that drops route params. Nav params kept too for
+      // back-compat with the legacy ball flow.
       const params: any = {
         autoVoice: voiceActive,
         prefillText: draft || undefined,
         attachments: pendingAttachments.length ? pendingAttachments : undefined,
       };
+      setPendingPrefill({
+        text: draft || undefined,
+        attachments: pendingAttachments.length ? pendingAttachments : undefined,
+        autoVoice: voiceActive,
+      });
       sheetRef.current?.dismiss();
       reset();
       try {
@@ -217,9 +287,9 @@ export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
             <View style={styles.headerLeft}>
               <Text style={styles.headerEmoji}>🐾</Text>
               <View>
-                <Text style={styles.headerName}>{pet.name}</Text>
+                <Text style={styles.headerName}>{convo.agentName || pet.name}</Text>
                 <Text style={styles.headerMode}>
-                  {voiceActive ? '在听…' : '准备好了'}
+                  {convo.busy ? '思考中…' : voiceActive ? '在听…' : '准备好了'}
                 </Text>
               </View>
             </View>
@@ -233,16 +303,20 @@ export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
             </View>
           </View>
 
-          {/* Routing badge (top-right of body) — Phase 1 stub showing
-              "云端" / "本地" without yet wiring resolveLocalTurnExecution.
-              Wave 5 will read mobileLocalMultimodalRouting.service. */}
+          {/* Routing badge (top-right of body) — live from conversationStore,
+              reflecting whether the current turn runs on-device (📱 本地) or
+              in the cloud (🌐 云端). Published by AgentChatScreen. */}
           <View style={styles.routingBadgeRow}>
             <View style={styles.routingBadge}>
-              <Text style={styles.routingBadgeText}>🌐 云端</Text>
+              <Text style={styles.routingBadgeText}>
+                {convo.routing === 'local' ? '📱 本地' : '🌐 云端'}
+              </Text>
             </View>
           </View>
 
-          {/* Body — Phase 1 launcher mode */}
+          {/* Body — live message mirror (Q2). Shows the same conversation as
+              the full Summon screen; empty state falls back to the launcher
+              hint. */}
           <View style={styles.body}>
             {pendingAttachments.length > 0 && (
               <View style={styles.attachmentRow}>
@@ -256,16 +330,64 @@ export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
               </View>
             )}
 
-            {busy ? (
+            {visibleMessages.length > 0 ? (
+              <BottomSheetScrollView
+                style={styles.messageList}
+                contentContainerStyle={styles.messageListContent}
+                showsVerticalScrollIndicator={false}
+              >
+                {visibleMessages.map((m) => (
+                  <View
+                    key={m.id}
+                    style={[
+                      styles.msgRow,
+                      m.role === 'user' ? styles.msgRowUser : styles.msgRowAssistant,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.msgBubble,
+                        m.role === 'user' ? styles.msgBubbleUser : styles.msgBubbleAssistant,
+                        m.error ? styles.msgBubbleError : null,
+                      ]}
+                    >
+                      <Text style={[styles.msgText, m.role === 'user' ? styles.msgTextUser : null]}>
+                        {m.content || (m.streaming ? '…' : '')}
+                        {m.attachmentCount ? `  📎${m.attachmentCount}` : ''}
+                      </Text>
+                      {/* 朗读助手回复(R9.8):复用 ttsSpeaker 限频/缓存。仅在
+                          回复完成且有文本时出现,避免对流式中途内容反复合成。 */}
+                      {m.role === 'assistant' && !m.streaming && !m.error && !!m.content && (
+                        <TouchableOpacity
+                          style={styles.speakBtn}
+                          onPress={() => handleSpeak(m.id, m.content)}
+                          accessibilityLabel={speakingId === m.id ? '停止朗读' : '朗读这条回复'}
+                        >
+                          <Text style={styles.speakBtnText}>
+                            {speakingId === m.id ? '⏹ 停止' : '🔊 朗读'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                ))}
+                {convo.busy && (
+                  <View style={styles.busyRow}>
+                    <ActivityIndicator color={colors.accent} />
+                    <Text style={styles.busyText}>思考中…</Text>
+                  </View>
+                )}
+              </BottomSheetScrollView>
+            ) : busy ? (
               <View style={styles.busyRow}>
                 <ActivityIndicator color={colors.accent} />
                 <Text style={styles.busyText}>相机准备中…</Text>
               </View>
-            ) : null}
-
-            <Text style={styles.bodyHint}>
-              直接说话或输入,我会接住。也可以先拍照,然后向我提问。
-            </Text>
+            ) : (
+              <Text style={styles.bodyHint}>
+                直接说话或输入,我会接住。也可以先拍照,然后向我提问。
+              </Text>
+            )}
           </View>
 
           {/* Composer */}
@@ -443,6 +565,63 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 8,
     lineHeight: 18,
+  },
+  messageList: {
+    flex: 1,
+    marginTop: 8,
+  },
+  messageListContent: {
+    paddingBottom: 8,
+    gap: 8,
+  },
+  msgRow: {
+    flexDirection: 'row',
+    width: '100%',
+  },
+  msgRowUser: { justifyContent: 'flex-end' },
+  msgRowAssistant: { justifyContent: 'flex-start' },
+  msgBubble: {
+    maxWidth: '82%',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+  },
+  msgBubbleUser: {
+    backgroundColor: colors.accent,
+    borderBottomRightRadius: 4,
+  },
+  msgBubbleAssistant: {
+    backgroundColor: colors.bgPrimary,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderBottomLeftRadius: 4,
+  },
+  msgBubbleError: {
+    borderColor: '#ef4444',
+    borderWidth: 1,
+  },
+  msgText: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    lineHeight: 19,
+  },
+  msgTextUser: {
+    color: '#fff',
+  },
+  speakBtn: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: colors.bgCard,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  speakBtnText: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
   },
   composer: {
     flexDirection: 'row',

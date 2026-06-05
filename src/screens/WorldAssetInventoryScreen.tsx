@@ -38,6 +38,7 @@ import {
   bindAgentToAsset,
   unbindAgentFromAsset,
   regenerateWorldAssetAttribute,
+  incarnateAsset,
   type WorldAssetSummary as ApiWorldAssetSummary,
 } from '../services/worldEngineApi';
 
@@ -53,6 +54,7 @@ interface WorldAssetSummary {
   battleWins: number;
   battleLosses: number;
   styledMeshUrl: string;
+  portraitUrl?: string | null;
   styleType: string;
   boundAgentId: string | null;
   source: 'scanned' | 'purchased' | 'gifted';
@@ -172,6 +174,7 @@ export default function WorldAssetInventoryScreen() {
       asset.boundAgentId
         ? { text: '解绑 Agent', action: () => handleUnbindAgent(asset) }
         : { text: '绑定 Agent', action: () => handleBindAgent(asset) },
+      { text: '🦊 化身主宠', action: () => handleIncarnate(asset) },
       { text: '上架出售', action: () => handleListForSale(asset) },
       { text: '赠送', action: () => handleGift(asset) },
       { text: '删除', action: () => handleDelete(asset), destructive: true },
@@ -198,6 +201,30 @@ export default function WorldAssetInventoryScreen() {
     setRenameAsset(asset);
     setRenameDraft(asset.name);
   };
+
+  const handleIncarnate = useCallback((asset: WorldAssetSummary) => {
+    Alert.alert(
+      '🦊 化身主宠',
+      `把「${asset.name}」化身为你主宠的世界形态?灵魂(亲密度/情绪/记忆)会延续到这个角色上。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '化身',
+          onPress: async () => {
+            try {
+              const r = await incarnateAsset(asset.id);
+              Alert.alert(
+                '化身成功',
+                `你的主宠「${r.petName}」(亲密度 Lv.${r.intimacyLevel})现在以「${asset.name}」的形态活在世界里。`,
+              );
+            } catch (e: any) {
+              Alert.alert('化身失败', e?.message || '请稍后再试');
+            }
+          },
+        },
+      ],
+    );
+  }, []);
 
   const submitRename = useCallback(async () => {
     if (!renameAsset) return;
@@ -331,9 +358,8 @@ export default function WorldAssetInventoryScreen() {
   // ─── Navigate to detail ──────────────────────────────────────────────
 
   const handleOpenDetail = useCallback((asset: WorldAssetSummary) => {
-    // TODO: Navigate to WorldAssetDetailScreen
-    Alert.alert(asset.name, `Lv.${asset.level} | ${asset.category}`);
-  }, []);
+    (navigation as any).navigate('WorldAssetDetail', { assetId: asset.id, assetName: asset.name });
+  }, [navigation]);
 
   // ─── Render ──────────────────────────────────────────────────────────
 
@@ -346,17 +372,17 @@ export default function WorldAssetInventoryScreen() {
         delayLongPress={500}
         activeOpacity={0.7}
       >
-        {/* Thumbnail (Phase 1: pre-rendered PNG/GIF per design §8) */}
+        {/* Thumbnail — prefer 3D styled mesh, fall back to 2D portrait (扫描照片) */}
         <View style={styles.thumbnailContainer}>
-          {item.styledMeshUrl ? (
+          {item.styledMeshUrl || item.portraitUrl ? (
             <Image
-              source={{ uri: item.styledMeshUrl }}
+              source={{ uri: item.styledMeshUrl || (item.portraitUrl as string) }}
               style={styles.thumbnail}
               resizeMode="cover"
             />
           ) : (
             <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
-              <Text style={styles.thumbnailPlaceholderText}>3D</Text>
+              <Text style={styles.thumbnailPlaceholderText}>🦊</Text>
             </View>
           )}
 

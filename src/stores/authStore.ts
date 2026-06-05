@@ -54,6 +54,10 @@ interface AuthState {
   hasCompletedOnboarding: boolean;
   hasValidInvitation: boolean;
   activeInstance: OpenClawInstance | null;
+  /** Guest (local-trial) mode: a guest token is active but no real account yet. */
+  isGuest: boolean;
+  /** Whether this install has already used its free guest trial scan. */
+  guestTrialUsed: boolean;
 
   // Actions
   setAuth: (user: AuthUser, token: string) => Promise<void>;
@@ -63,6 +67,10 @@ interface AuthState {
   restoreSession: () => Promise<boolean>;
   setOnboardingComplete: () => void;
   setInvitationValid: () => void;
+  /** Activate guest (local-trial) mode with a guest JWT from POST /auth/guest. */
+  setGuest: (token: string) => void;
+  /** Mark the one free guest trial scan as consumed (per install). */
+  markGuestTrialUsed: () => void;
   addInstance: (instance: OpenClawInstance) => void;
   setActiveInstance: (instanceId: string) => void;
   updateInstance: (instanceId: string, update: Partial<OpenClawInstance>) => void;
@@ -81,6 +89,8 @@ export const useAuthStore = create<AuthState>()(
       hasCompletedOnboarding: false,
       hasValidInvitation: false,
       activeInstance: null,
+      isGuest: false,
+      guestTrialUsed: false,
 
       setAuth: async (user, token) => {
         // Sync token to api config immediately so apiFetch works in the same tick
@@ -104,6 +114,7 @@ export const useAuthStore = create<AuthState>()(
           token,
           isAuthenticated: true,
           isLoading: false,
+          isGuest: false,
           activeInstance,
           hasValidInvitation: previousUserId && previousUserId !== user.id ? false : get().hasValidInvitation,
         });
@@ -123,6 +134,7 @@ export const useAuthStore = create<AuthState>()(
           token: null,
           isAuthenticated: false,
           isLoading: false,
+          isGuest: false,
           hasValidInvitation: false,
           activeInstance: null,
         });
@@ -132,6 +144,12 @@ export const useAuthStore = create<AuthState>()(
       setInitialized: (initialized) => set({ isInitialized: initialized }),
       setOnboardingComplete: () => set({ hasCompletedOnboarding: true }),
       setInvitationValid: () => set({ hasValidInvitation: true }),
+      setGuest: (token) => {
+        // Guest (local-trial) token: drives apiFetch but is NOT a real account.
+        setApiConfig({ token });
+        set({ token, isGuest: true, isAuthenticated: false });
+      },
+      markGuestTrialUsed: () => set({ guestTrialUsed: true }),
 
       restoreSession: async () => {
         try {
@@ -237,6 +255,7 @@ export const useAuthStore = create<AuthState>()(
         hasCompletedOnboarding: state.hasCompletedOnboarding,
         hasValidInvitation: state.hasValidInvitation,
         activeInstance: state.activeInstance,
+        guestTrialUsed: state.guestTrialUsed,
       }),
     }
   )

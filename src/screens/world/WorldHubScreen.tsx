@@ -12,12 +12,12 @@
  *   - Banners are static placeholders; live data wiring deferred to T3.x
  *     once `presence:world-engine.battle-pending` and `asset.ready` events
  *     (already shipped backend per Task 0.5) feed companionEvents.
- *   - Marketplace entry is a stub navigation; full screen is Phase 2.
+ *   - Marketplace entry now routes to the real browse/buy screen (2026-06-01).
  *
  * Cohort guard (R3.5): if `world_engine_enabled` flag returns false, render
  * a "coming soon" panel instead of the CTA grid.
  */
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -25,12 +25,15 @@ import {
   ScrollView,
   TouchableOpacity,
   Pressable,
+  Image,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
-import { fetchWorldEngineFlag } from '../../services/worldEngineApi';
+import { fetchWorldEngineFlag, listWorldAssets } from '../../services/worldEngineApi';
 import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -76,6 +79,38 @@ export function WorldHubScreen() {
     retry: 1,
   });
 
+  // 用户资产 — 决定首屏是"新用户引导"还是"已有角色的玩家中心"。
+  const assetsQ = useQuery({
+    queryKey: ['world-assets', 'hub'],
+    queryFn: () => listWorldAssets({ sort: 'newest', limit: 6 }),
+    staleTime: 30_000,
+    retry: 1,
+  });
+  const assets = assetsQ.data?.items ?? [];
+  const hasAssets = assets.length > 0;
+
+  // 候补名单: 后端暂无专用接口, 用本地持久化记录用户意愿(灰度放量时可读取上报)。
+  const WAITLIST_KEY = 'world_engine_waitlist_joined';
+  const [waitlistJoined, setWaitlistJoined] = useState(false);
+  React.useEffect(() => {
+    AsyncStorage.getItem(WAITLIST_KEY).then((v) => setWaitlistJoined(v === '1')).catch(() => {});
+  }, []);
+  const onJoinWaitlist = useCallback(async () => {
+    try {
+      await AsyncStorage.setItem(WAITLIST_KEY, '1');
+    } catch {
+      /* ignore */
+    }
+    setWaitlistJoined(true);
+    Alert.alert(
+      t({ en: "You're on the list", zh: '已加入候补名单' }),
+      t({
+        en: "We'll notify you the moment World Engine opens to your account.",
+        zh: 'World Engine 向你的账号开放时,我们会第一时间通知你。',
+      }),
+    );
+  }, [t]);
+
   const onScan = useCallback(
     (mode: 'quick' | 'detail' | 'room' = 'quick') => {
       navigation.navigate('WorldEngineScanner', { mode });
@@ -85,6 +120,9 @@ export function WorldHubScreen() {
   const onInventory = useCallback(() => navigation.navigate('WorldAssetInventory'), [navigation]);
   const onBattle = useCallback(() => navigation.navigate('WorldBattlePicker'), [navigation]);
   const onDungeon = useCallback(() => navigation.navigate('WorldDungeonExplorer', {}), [navigation]);
+  const onWorldFeed = useCallback(() => navigation.navigate('WorldFeed'), [navigation]);
+  const onAeon = useCallback(() => navigation.navigate('AeonMap'), [navigation]);
+  const onUgc = useCallback(() => navigation.navigate('WorldUgcRuleSets'), [navigation]);
   const onPetCreator = useCallback(() => navigation.navigate('PetCreator'), [navigation]);
   const onPhotoToPet = useCallback(() => navigation.navigate('PetCameraScan'), [navigation]);
 
@@ -103,9 +141,15 @@ export function WorldHubScreen() {
               zh: '扫描真实物体生成 AI 角色,建造你的副本。我们正在小范围灰度,很快开放给所有用户。',
             })}
           </Text>
-          <TouchableOpacity style={styles.waitlistBtn}>
+          <TouchableOpacity
+            style={[styles.waitlistBtn, waitlistJoined && styles.waitlistBtnJoined]}
+            onPress={onJoinWaitlist}
+            disabled={waitlistJoined}
+          >
             <Text style={styles.waitlistBtnText}>
-              {t({ en: 'Join Waitlist', zh: '加入候补名单' })}
+              {waitlistJoined
+                ? t({ en: '✓ On the waitlist', zh: '✓ 已加入候补' })
+                : t({ en: 'Join Waitlist', zh: '加入候补名单' })}
             </Text>
           </TouchableOpacity>
         </View>
@@ -123,53 +167,150 @@ export function WorldHubScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>🌍 {t({ en: 'World', zh: '世界' })}</Text>
         <Text style={styles.subtitle}>
-          {t({ en: 'Scan reality. Build a world.', zh: '扫现实,造世界。' })}
+          {t({ en: 'Aeon — a living world you build with your AI.', zh: '永曜城 · 和你的 AI 一起共建的活世界' })}
         </Text>
       </View>
 
-      {/* Top banners — Phase 1 placeholder; live data wiring in T3.x */}
-      <View style={styles.bannerStack}>
+      {/* HERO — 永曜城 是 World tab 的核心体验入口。
+          进去就能在真实地球地图上圈地、建造、社交、和 AI 一起经营,参与感最强。 */}
+      <Pressable
+        style={({ pressed }) => [styles.aeonHero, pressed && styles.heroPressed]}
+        onPress={onAeon}
+        testID="world-hero-aeon"
+      >
+        <Text style={styles.heroEmoji}>🏙️</Text>
+        <Text style={styles.heroTitle}>
+          {t({ en: 'Enter Aeon — the shared living world', zh: '进入永曜城 · 大家共建的活世界' })}
+        </Text>
+        <Text style={styles.heroSub}>
+          {t({
+            en: 'Claim land on the real map, build your place, meet neighbors, run a business with your AI.',
+            zh: '在真实地图上圈地、建造、串门、和你的 AI 一起开店经营',
+          })}
+        </Text>
+        <View style={styles.heroBtn}>
+          <Text style={styles.heroBtnText}>{t({ en: 'Enter Aeon', zh: '进入永曜城' })}</Text>
+        </View>
+      </Pressable>
+
+      {/* 次级:把现实变成角色,带进永曜城 */}
+      <Pressable
+        style={({ pressed }) => [styles.scanStrip, pressed && styles.heroPressed]}
+        onPress={() => onScan('quick')}
+        onLongPress={() => onScan('detail')}
+        testID="world-hero-scan"
+      >
+        <Text style={styles.scanStripEmoji}>📷</Text>
+        <View style={styles.worldFeedTextWrap}>
+          <Text style={styles.scanStripTitle}>
+            {t({ en: 'Scan anything → a character for your world', zh: '拍一下身边的东西 → 变成你世界里的角色' })}
+          </Text>
+          <Text style={styles.worldFeedSub}>
+            {t({ en: 'AI gives it a name, stats & skills in seconds. Long-press for Detail / Room.', zh: '拍 1 张,AI 几秒给它名字属性技能。长按选 精细 / 房间扫描' })}
+          </Text>
+        </View>
+        <Text style={styles.worldFeedArrow}>→</Text>
+      </Pressable>
+
+      {/* 已有角色 → 角色卷轴 + 玩法入口; 新用户 → 不展示空的战斗/副本 */}
+      {hasAssets ? (
+        <>
+          {/* 我的世界(角色动态)—— 永曜城里"你不在时角色们在忙什么"的剧情线 */}
+          <Pressable
+            style={({ pressed }) => [styles.worldFeedEntry, pressed && styles.heroPressed]}
+            onPress={onWorldFeed}
+            testID="world-feed-entry"
+          >
+            <Text style={styles.worldFeedEmoji}>📖</Text>
+            <View style={styles.worldFeedTextWrap}>
+              <Text style={styles.worldFeedTitle}>
+                {t({ en: 'My characters’ stories', zh: '我的角色动态' })}
+              </Text>
+              <Text style={styles.worldFeedSub}>
+                {t({ en: 'See what your residents did in Aeon while you were away', zh: '看看你不在时,你在永曜城的居民们经历了什么' })}
+              </Text>
+            </View>
+            <Text style={styles.worldFeedArrow}>→</Text>
+          </Pressable>
+
+          <View style={styles.rosterHeader}>
+            <Text style={styles.sectionHeader}>
+              🎒 {t({ en: 'My Characters', zh: '我的角色' })}
+            </Text>
+            <TouchableOpacity onPress={onInventory}>
+              <Text style={styles.seeAll}>{t({ en: 'See all', zh: '查看全部' })} →</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rosterRow}>
+            {assets.map((a) => (
+              <Pressable
+                key={a.id}
+                style={styles.rosterCard}
+                onPress={onInventory}
+              >
+                <View style={styles.rosterThumb}>
+                  {a.portraitUrl || a.styledMeshUrl ? (
+                    <Image
+                      source={{ uri: (a.styledMeshUrl as string) || (a.portraitUrl as string) }}
+                      style={styles.rosterThumbImg}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Text style={styles.rosterThumbEmoji}>
+                      {a.generationStatus && a.generationStatus !== 'complete' && a.generationStatus !== 'card_ready' ? '⏳' : '🦊'}
+                    </Text>
+                  )}
+                </View>
+                <Text style={styles.rosterName} numberOfLines={1}>{a.name}</Text>
+                <Text style={styles.rosterMeta}>Lv.{a.level} · {a.battleWins}W</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          <View style={styles.actionRow}>
+            <CTACard
+              emoji="⚔️"
+              title={t({ en: 'Battle', zh: '战斗' })}
+              subtitle={t({ en: 'Challenge or replay', zh: '挑战 / 回放' })}
+              onPress={onBattle}
+              testID="world-cta-battle"
+            />
+            <CTACard
+              emoji="🏰"
+              title={t({ en: 'Dungeon', zh: '副本' })}
+              subtitle={t({ en: 'Share code / scan room', zh: '分享码 / 扫房间' })}
+              onPress={onDungeon}
+              testID="world-cta-dungeon"
+            />
+          </View>
+
+          <View style={styles.actionRow}>
+            <CTACard
+              emoji="🎮"
+              title={t({ en: 'Decision Battle', zh: '决策对战' })}
+              subtitle={t({ en: 'You call the moves', zh: '你来出招' })}
+              onPress={onBattle}
+              testID="world-cta-decision-battle"
+            />
+            <CTACard
+              emoji="🛠️"
+              title={t({ en: 'My Game Modes', zh: '我的玩法' })}
+              subtitle={t({ en: 'Create & share', zh: '创建并分享' })}
+              onPress={onUgc}
+              testID="world-cta-ugc"
+            />
+          </View>
+        </>
+      ) : (
         <View style={[styles.banner, styles.bannerInfo]}>
           <Text style={styles.bannerText}>
             {t({
-              en: 'Tap below to scan your first object',
-              zh: '点下面任意按钮,试试扫描身边物品',
+              en: '💡 Scan your first object to get a character, then bring it into Aeon — claim land, build, and let it live & work there.',
+              zh: '💡 先拍一个东西得到你的第一个角色,再把它带进永曜城 —— 圈地、建造,让它在城里生活和工作。',
             })}
           </Text>
         </View>
-      </View>
-
-      {/* 2x2 main CTA grid */}
-      <View style={styles.ctaGrid}>
-        <CTACard
-          emoji="📷"
-          title={t({ en: 'Scan Object', zh: '扫描物体' })}
-          subtitle={t({ en: 'Quick · long-press for Detail / Room', zh: '快速 · 长按选精细/房间' })}
-          onPress={() => onScan('quick')}
-          onLongPress={() => onScan('detail')}
-          testID="world-cta-scan"
-        />
-        <CTACard
-          emoji="🎒"
-          title={t({ en: 'My Inventory', zh: '我的资产' })}
-          onPress={onInventory}
-          testID="world-cta-inventory"
-        />
-        <CTACard
-          emoji="⚔️"
-          title={t({ en: 'Battle', zh: '战斗' })}
-          subtitle={t({ en: 'Challenge or replay', zh: '挑战 / 回放' })}
-          onPress={onBattle}
-          testID="world-cta-battle"
-        />
-        <CTACard
-          emoji="🏰"
-          title={t({ en: 'Dungeon', zh: '副本' })}
-          subtitle={t({ en: 'Share code or scan room', zh: '分享码 / 扫房间' })}
-          onPress={onDungeon}
-          testID="world-cta-dungeon"
-        />
-      </View>
+      )}
 
       {/* Create-digital-character section (R3.2 — moved from Home drawer) */}
       <Text style={styles.sectionHeader}>
@@ -192,7 +333,7 @@ export function WorldHubScreen() {
         />
       </View>
 
-      {/* Bottom: marketplace entry (Phase 1 stub) */}
+      {/* Bottom: marketplace entry (real browse/buy screen) */}
       <TouchableOpacity
         style={styles.marketplaceEntry}
         onPress={() => navigation.navigate('WorldAssetMarketplace')}
@@ -245,6 +386,90 @@ const styles = StyleSheet.create({
   ctaTitle: { fontSize: 15, fontWeight: '600', color: colors.textPrimary, marginBottom: 2 },
   ctaSubtitle: { fontSize: 11, color: colors.textMuted },
 
+  // HERO
+  hero: {
+    backgroundColor: 'rgba(99,102,241,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.35)',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  // Aeon hero (primary World entry)
+  aeonHero: {
+    backgroundColor: 'rgba(99,102,241,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.4)',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  // Secondary scan strip (row style)
+  scanStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+  },
+  scanStripEmoji: { fontSize: 30, marginRight: 12 },
+  scanStripTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary, marginBottom: 2 },
+  heroPressed: { opacity: 0.85 },
+  heroEmoji: { fontSize: 48, marginBottom: 8 },
+  heroTitle: { fontSize: 19, fontWeight: '800', color: colors.textPrimary, textAlign: 'center', marginBottom: 6 },
+  heroSub: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginBottom: 16, lineHeight: 19 },
+  heroBtn: { backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 32 },
+  heroBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  heroHint: { fontSize: 11, color: colors.textMuted, marginTop: 10 },
+
+  // Roster
+  rosterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  seeAll: { fontSize: 13, color: colors.accent, fontWeight: '600' },
+
+  // World feed entry
+  worldFeedEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(52,211,153,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(52,211,153,0.30)',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+  },
+  worldFeedEmoji: { fontSize: 32, marginRight: 12 },
+  aeonEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(99,102,241,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.30)',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+  },
+  worldFeedTextWrap: { flex: 1 },
+  worldFeedTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginBottom: 2 },
+  worldFeedSub: { fontSize: 12, color: colors.textMuted, lineHeight: 16 },
+  worldFeedArrow: { fontSize: 20, color: colors.accent, fontWeight: '700', marginLeft: 8 },
+
+  rosterRow: { marginBottom: 16 },
+  rosterCard: { width: 96, marginRight: 10, alignItems: 'center' },
+  rosterThumb: {
+    width: 96, height: 96, borderRadius: 14, backgroundColor: colors.bgCard,
+    borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: 6, overflow: 'hidden',
+  },
+  rosterThumbEmoji: { fontSize: 40 },
+  rosterThumbImg: { width: '100%', height: '100%' },
+  rosterName: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, maxWidth: 96 },
+  rosterMeta: { fontSize: 11, color: colors.textMuted },
+  actionRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+
   sectionHeader: {
     fontSize: 13,
     fontWeight: '600',
@@ -274,5 +499,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 24,
   },
+  waitlistBtnJoined: { backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.accent },
   waitlistBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
 });

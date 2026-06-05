@@ -25,20 +25,20 @@ describe('Legacy deep-link resolver', () => {
       ['agentrix://agent/chat', 'agentrix://summon'],
       ['agentrix://agent/chat/session-123', 'agentrix://summon/session-123'],
       ['agentrix://agent/voice-chat', 'agentrix://summon/voice'],
-      ['agentrix://agent/console', 'agentrix://home'],
-      ['agentrix://agent/console/anything', 'agentrix://home'],
-      ['agentrix://agent/memory', 'agentrix://home/pet/memory'],
-      ['agentrix://agent/memory-management', 'agentrix://home/pet/memory'],
-      ['agentrix://agent/dreaming', 'agentrix://home/pet/memory/dreaming'],
-      ['agentrix://agent/logs', 'agentrix://home/pet/memory/logs'],
-      ['agentrix://agent/workflow', 'agentrix://home/pet/skills/workflow'],
-      ['agentrix://agent/workflow/42', 'agentrix://home/pet/skills/workflow/42'],
-      ['agentrix://agent/tools', 'agentrix://home/pet/skills'],
-      ['agentrix://agent/account', 'agentrix://home/pet/wallet'],
-      ['agentrix://agent/balance', 'agentrix://home/pet/wallet/balance'],
-      ['agentrix://agent/permissions', 'agentrix://home/pet/permissions'],
-      ['agentrix://agent/agent-space', 'agentrix://home/pet/space'],
-      ['agentrix://agent/agent-space/foo', 'agentrix://home/pet/space/foo'],
+      ['agentrix://agent/console', 'agentrix://world'],
+      ['agentrix://agent/console/anything', 'agentrix://world'],
+      ['agentrix://agent/memory', 'agentrix://me/pet/memory'],
+      ['agentrix://agent/memory-management', 'agentrix://me/pet/memory'],
+      ['agentrix://agent/dreaming', 'agentrix://me/pet/memory'],
+      ['agentrix://agent/logs', 'agentrix://me/pet/memory'],
+      ['agentrix://agent/workflow', 'agentrix://me/skills/workflow'],
+      ['agentrix://agent/workflow/42', 'agentrix://me/skills/workflow/42'],
+      ['agentrix://agent/tools', 'agentrix://me/skills'],
+      ['agentrix://agent/account', 'agentrix://me/wallet/connect'],
+      ['agentrix://agent/balance', 'agentrix://me/wallet/connect'],
+      ['agentrix://agent/permissions', 'agentrix://me'],
+      ['agentrix://agent/agent-space', 'agentrix://me'],
+      ['agentrix://agent/agent-space/foo', 'agentrix://me'],
     ])('%s → %s', (input, expected) => {
       expect(resolveLegacyRoute(input)).toBe(expected);
     });
@@ -79,18 +79,18 @@ describe('Legacy deep-link resolver', () => {
     });
   });
 
-  describe('Pet → Home drawer', () => {
+  describe('Pet → Me drawer (Q1 re-home)', () => {
     it.each([
-      ['agentrix://pet', 'agentrix://home'],
-      ['agentrix://pet/companion', 'agentrix://home'],
-      ['agentrix://pet/creator', 'agentrix://home/pet/creator'],
-      ['agentrix://pet/wardrobe', 'agentrix://home/pet/wardrobe'],
-      ['agentrix://pet/soul-picker', 'agentrix://home/pet/soul'],
-      ['agentrix://pet/breed', 'agentrix://home/pet/breed'],
-      ['agentrix://pet/pet-team', 'agentrix://home/pet/team'],
-      ['agentrix://pet/team', 'agentrix://home/pet/team'],
-      ['agentrix://pet/playground', 'agentrix://home/pet/play'],
-      ['agentrix://pet/skin-marketplace', 'agentrix://plaza/pets/skins'],
+      ['agentrix://pet', 'agentrix://world'],
+      ['agentrix://pet/companion', 'agentrix://me'],
+      ['agentrix://pet/creator', 'agentrix://world/create/text'],
+      ['agentrix://pet/wardrobe', 'agentrix://me/pet/wardrobe'],
+      ['agentrix://pet/soul-picker', 'agentrix://me/pet/soul'],
+      ['agentrix://pet/breed', 'agentrix://me/pet/breed'],
+      ['agentrix://pet/pet-team', 'agentrix://me/pet/playground'],
+      ['agentrix://pet/team', 'agentrix://me/pet/playground'],
+      ['agentrix://pet/playground', 'agentrix://me/pet/playground'],
+      ['agentrix://pet/skin-marketplace', 'agentrix://me/pet/skins'],
     ])('%s → %s', (input, expected) => {
       expect(resolveLegacyRoute(input)).toBe(expected);
     });
@@ -220,7 +220,7 @@ describe('Legacy deep-link resolver', () => {
 
   describe('Edge: longest-prefix match wins', () => {
     it('agent/agent-space (more specific) beats agent (less specific)', () => {
-      expect(resolveLegacyRoute('agentrix://agent/agent-space')).toBe('agentrix://home/pet/space');
+      expect(resolveLegacyRoute('agentrix://agent/agent-space')).toBe('agentrix://me');
     });
     it('agent/wearable-monitor/:id beats agent/wearable', () => {
       expect(resolveLegacyRoute('agentrix://agent/wearable-monitor/d-99')).toBe(

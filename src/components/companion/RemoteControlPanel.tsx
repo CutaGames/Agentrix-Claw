@@ -194,10 +194,13 @@ export function RemoteControlPanel({ originDeviceId, isNight }: RemoteControlPan
                   device.online ? styles.devicePillTextOnline : null,
                 ]}
               >
-                {device.online ? '在线' : '离线'}
+                {device.online ? '已配对' : '未配对'}
               </Text>
             </View>
           </View>
+          <Text style={styles.deviceHint}>
+            发送后若桌面端在线会立即执行;无响应会提示「对方设备未响应」。
+          </Text>
           <View style={styles.commandsRow}>
             {device.commands.map((cmd) => {
               const isBusy = busy === `${device.id}:${cmd}`;
@@ -239,6 +242,7 @@ const styles = StyleSheet.create({
   emptyText: { color: colors.textMuted, fontSize: 12 },
   deviceBlock: { paddingVertical: 8 },
   deviceHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  deviceHint: { color: colors.textMuted, fontSize: 10, marginTop: 4, marginBottom: 2 },
   deviceEmoji: { fontSize: 18 },
   deviceName: { color: colors.textPrimary, fontSize: 13, fontWeight: '600', flex: 1 },
   devicePill: {

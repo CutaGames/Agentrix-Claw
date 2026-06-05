@@ -208,6 +208,35 @@ export const COMPANION_MODES: readonly CompanionMode[] = [
 ] as const;
 
 /**
+ * P1b — per-CompanionMode accent color for the ball's ring/border so the
+ * 8 high-level modes are visually distinguishable (the sprite map alone
+ * collapses them into ~4 sprites). Tuned to match the spec's intent:
+ *   signing = purple pulse, nudge = orange alert, whisper = pink, etc.
+ */
+export const COMPANION_MODE_COLOR: Record<CompanionMode, string> = {
+  companion: '#6C5CE7', // brand purple (ambient default)
+  vigil:     '#64748B', // slate — quiet waiting
+  journey:   '#22C55E', // green — moving together
+  whisper:   '#EC4899', // pink — private greeting moment
+  slumber:   '#3B4252', // deep night
+  nudge:     '#F97316', // orange — attention needed
+  signing:   '#A855F7', // bright purple pulse — Trust3 signing
+  working:   '#3B82F6', // blue — work variant
+};
+
+/** Whether the mode should pulse its ring (signing + nudge draw attention). */
+export const COMPANION_MODE_PULSES: Record<CompanionMode, boolean> = {
+  companion: false,
+  vigil: false,
+  journey: false,
+  whisper: false,
+  slumber: false,
+  nudge: true,
+  signing: true,
+  working: false,
+};
+
+/**
  * CompanionMode → PetMode (sprite resolver). Each high-level mode picks
  * its primary sprite. Renderers can override (e.g. `journey` defaults
  * to `walk` but flips to `jump` on a step milestone) by setting PetMode

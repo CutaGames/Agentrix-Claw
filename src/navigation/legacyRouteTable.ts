@@ -30,22 +30,22 @@ export const LEGACY_ROUTE_MAP: Record<string, string> = {
   'agentrix://agent/chat/*': 'agentrix://summon/*',
   'agentrix://agent/voice-chat': 'agentrix://summon/voice',
   // AgentConsole废除 — 回家
-  'agentrix://agent/console': 'agentrix://home',
-  'agentrix://agent/console/*': 'agentrix://home',
-  // Pet-owned features → Home pet drawer
-  'agentrix://agent/memory': 'agentrix://home/pet/memory',
-  'agentrix://agent/memory-management': 'agentrix://home/pet/memory',
-  'agentrix://agent/dreaming': 'agentrix://home/pet/memory/dreaming',
-  'agentrix://agent/logs': 'agentrix://home/pet/memory/logs',
-  'agentrix://agent/workflow': 'agentrix://home/pet/skills/workflow',
-  'agentrix://agent/workflow/*': 'agentrix://home/pet/skills/workflow/*',
-  'agentrix://agent/tools': 'agentrix://home/pet/skills',
-  'agentrix://agent/account': 'agentrix://home/pet/wallet',
-  'agentrix://agent/balance': 'agentrix://home/pet/wallet/balance',
-  'agentrix://agent/permissions': 'agentrix://home/pet/permissions',
-  'agentrix://agent/agent-space': 'agentrix://home/pet/space',
-  'agentrix://agent/agent-space/*': 'agentrix://home/pet/space/*',
-  'agentrix://agent/agent-tools': 'agentrix://home/pet/skills',
+  'agentrix://agent/console': 'agentrix://world',
+  'agentrix://agent/console/*': 'agentrix://world',
+  // Pet-owned features → re-homed under Me (Q1) or closest real destination
+  'agentrix://agent/memory': 'agentrix://me/pet/memory',
+  'agentrix://agent/memory-management': 'agentrix://me/pet/memory',
+  'agentrix://agent/dreaming': 'agentrix://me/pet/memory',
+  'agentrix://agent/logs': 'agentrix://me/pet/memory',
+  'agentrix://agent/workflow': 'agentrix://me/skills/workflow',
+  'agentrix://agent/workflow/*': 'agentrix://me/skills/workflow/*',
+  'agentrix://agent/tools': 'agentrix://me/skills',
+  'agentrix://agent/account': 'agentrix://me/wallet/connect',
+  'agentrix://agent/balance': 'agentrix://me/wallet/connect',
+  'agentrix://agent/permissions': 'agentrix://me',
+  'agentrix://agent/agent-space': 'agentrix://me',
+  'agentrix://agent/agent-space/*': 'agentrix://me',
+  'agentrix://agent/agent-tools': 'agentrix://me/skills',
   // Advanced features → Me·Advanced
   'agentrix://agent/plugin-hub': 'agentrix://me/advanced/plugin',
   'agentrix://agent/memory-wiki': 'agentrix://me/advanced/memory-wiki',
@@ -77,17 +77,17 @@ export const LEGACY_ROUTE_MAP: Record<string, string> = {
   'agentrix://agent/skill-install/*': 'agentrix://plaza/skills/install/*',
 
   // ========== Pet → Home (pet drawer) ==========
-  'agentrix://pet': 'agentrix://home',
-  'agentrix://pet/companion': 'agentrix://home',
-  'agentrix://pet/creator': 'agentrix://home/pet/creator',
-  'agentrix://pet/wardrobe': 'agentrix://home/pet/wardrobe',
-  'agentrix://pet/soul-picker': 'agentrix://home/pet/soul',
-  'agentrix://pet/breed': 'agentrix://home/pet/breed',
-  'agentrix://pet/pet-team': 'agentrix://home/pet/team',
-  'agentrix://pet/team': 'agentrix://home/pet/team',
-  'agentrix://pet/playground': 'agentrix://home/pet/play',
-  // Pet skin market now lives in Plaza·Pets·Skins
-  'agentrix://pet/skin-marketplace': 'agentrix://plaza/pets/skins',
+  'agentrix://pet': 'agentrix://world',
+  'agentrix://pet/companion': 'agentrix://me',
+  'agentrix://pet/creator': 'agentrix://world/create/text',
+  'agentrix://pet/wardrobe': 'agentrix://me/pet/wardrobe',
+  'agentrix://pet/soul-picker': 'agentrix://me/pet/soul',
+  'agentrix://pet/breed': 'agentrix://me/pet/breed',
+  'agentrix://pet/pet-team': 'agentrix://me/pet/playground',
+  'agentrix://pet/team': 'agentrix://me/pet/playground',
+  'agentrix://pet/playground': 'agentrix://me/pet/playground',
+  // Pet skin market — re-homed under Me (Q1); Plaza still has the auction view
+  'agentrix://pet/skin-marketplace': 'agentrix://me/pet/skins',
 
   // ========== Market → Plaza ==========
   'agentrix://market': 'agentrix://plaza/skills',
@@ -188,42 +188,43 @@ export const LEGACY_ROUTE_MAP: Record<string, string> = {
   // longest-prefix match. The single bare `agentrix://home` falls back to
   // the new default tab (World).
   'agentrix://home': 'agentrix://world',
-  // Pet drawer entries — most go to PetDetailSheet (deep path under Me)
-  'agentrix://home/pet/companion': 'agentrix://me/companion',
+  // Pet drawer entries — re-homed under Me (Q1 T6.7). These now resolve to
+  // the real registered Me-stack routes added in App.tsx linking config.
+  'agentrix://home/pet/companion': 'agentrix://me',
   'agentrix://home/pet/skills': 'agentrix://me/skills',
   'agentrix://home/pet/tasks': 'agentrix://plaza/tasks',
-  'agentrix://home/pet/wallet': 'agentrix://me/wallet',
-  'agentrix://home/pet/wallet/balance': 'agentrix://me/wallet',
-  'agentrix://home/pet/memory': 'agentrix://me/companion/memory',
-  'agentrix://home/pet/memory/dreaming': 'agentrix://me/companion/memory/dreaming',
-  'agentrix://home/pet/memory/logs': 'agentrix://me/companion/memory/logs',
-  'agentrix://home/pet/play': 'agentrix://me/companion/play',
-  'agentrix://home/pet/wardrobe': 'agentrix://me/companion/wardrobe',
-  'agentrix://home/pet/soul': 'agentrix://me/companion/soul',
-  'agentrix://home/pet/breed': 'agentrix://me/companion/breed',
-  'agentrix://home/pet/identity': 'agentrix://me/companion/identity',
+  'agentrix://home/pet/wallet': 'agentrix://me/wallet/connect',
+  'agentrix://home/pet/wallet/balance': 'agentrix://me/wallet/connect',
+  'agentrix://home/pet/memory': 'agentrix://me/pet/memory',
+  'agentrix://home/pet/memory/dreaming': 'agentrix://me/pet/memory',
+  'agentrix://home/pet/memory/logs': 'agentrix://me/pet/memory',
+  'agentrix://home/pet/play': 'agentrix://me/pet/playground',
+  'agentrix://home/pet/wardrobe': 'agentrix://me/pet/wardrobe',
+  'agentrix://home/pet/soul': 'agentrix://me/pet/soul',
+  'agentrix://home/pet/breed': 'agentrix://me/pet/breed',
+  'agentrix://home/pet/identity': 'agentrix://me',
   // Creator + camera-scan now live under World tab (T2.1)
   'agentrix://home/pet/creator': 'agentrix://world/create/text',
   'agentrix://home/pet/camera-scan': 'agentrix://world/create/photo',
-  'agentrix://home/pet/permissions': 'agentrix://me/companion/permissions',
-  'agentrix://home/pet/space': 'agentrix://me/companion/space',
-  'agentrix://home/pet/space/*': 'agentrix://me/companion/space/*',
-  'agentrix://home/pet/team': 'agentrix://me/companion/team',
+  'agentrix://home/pet/permissions': 'agentrix://me',
+  'agentrix://home/pet/space': 'agentrix://me',
+  'agentrix://home/pet/space/*': 'agentrix://me',
+  'agentrix://home/pet/team': 'agentrix://me/pet/playground',
   'agentrix://home/pet/skills/workflow': 'agentrix://me/skills/workflow',
   'agentrix://home/pet/skills/workflow/*': 'agentrix://me/skills/workflow/*',
   // World Engine (already under WorldStack but legacy used home/pet/world-*)
   'agentrix://home/pet/world-scan': 'agentrix://world/scan',
   'agentrix://home/pet/world-assets': 'agentrix://world/inventory',
-  // Co-Raising → Me/companion entry (T6.8 wires)
-  'agentrix://home/co-raising': 'agentrix://me/companion/co-raising',
-  'agentrix://home/co-raising/landing': 'agentrix://me/companion/co-raising/landing',
-  'agentrix://home/co-raising/landing/*': 'agentrix://me/companion/co-raising/landing/*',
-  'agentrix://home/co-raising/invite': 'agentrix://me/companion/co-raising/invite',
-  'agentrix://home/co-raising/activity': 'agentrix://me/companion/co-raising/activity',
+  // Co-Raising → Plaza co-raising entry (where the screens are registered)
+  'agentrix://home/co-raising': 'agentrix://plaza/co-raising/invite',
+  'agentrix://home/co-raising/landing': 'agentrix://plaza/co-raising/invite',
+  'agentrix://home/co-raising/landing/*': 'agentrix://plaza/co-raising/invite',
+  'agentrix://home/co-raising/invite': 'agentrix://plaza/co-raising/invite',
+  'agentrix://home/co-raising/activity': 'agentrix://plaza/co-raising/invite',
   // Plan Approval reused via global Inbox modal
   'agentrix://home/approvals': 'agentrix://inbox',
-  // NFT Mint → Me/companion
-  'agentrix://home/nft-mint': 'agentrix://me/companion/nft-mint',
+  // NFT Mint → World create (closest real destination)
+  'agentrix://home/nft-mint': 'agentrix://world',
   // Catch-all for anything else under home/* (lowest specificity)
   'agentrix://home/*': 'agentrix://world',
 

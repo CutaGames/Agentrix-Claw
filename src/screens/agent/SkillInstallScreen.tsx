@@ -117,6 +117,8 @@ export function SkillInstallScreen() {
       const result = await installSkillToInstance(activeInstance!.id, skillId);
       void queryClient.invalidateQueries({ queryKey: ['instance-skills', activeInstance!.id] });
       void queryClient.invalidateQueries({ queryKey: ['my-skills', activeInstance!.id] });
+      // 同时失效裸 key(我的技能屏用的是 ['my-skills'] 无 id),否则列表不刷新。
+      void queryClient.invalidateQueries({ queryKey: ['my-skills'] });
       const isActiveNow = (result as any)?.skillActive || (result as any)?.platformHosted;
       const pendingMsg = (result as any)?.pendingDeploy
         ? `\n\n${t({ en: 'Note: The skill will auto-deploy when your agent reconnects.', zh: '注意：技能将在 Agent 重新连接后自动部署。' })}`

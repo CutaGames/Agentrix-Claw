@@ -62,8 +62,8 @@ function SummonChatRoot() {
     <View style={{ flex: 1 }}>
       <ChatScreenErrorBoundary>
         <AgentChatScreen />
+        <LlmBudgetBar />
       </ChatScreenErrorBoundary>
-      <LlmBudgetBar />
     </View>
   );
 }

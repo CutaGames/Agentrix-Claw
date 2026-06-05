@@ -36,6 +36,38 @@ export const PET_CLAN_LABELS: Record<PetClan, { zh: string; en: string }> = {
   F_family: { zh: '家庭亲情', en: 'Family Care' },
 };
 
+/**
+ * Single-letter clan code (A..F) used by visual renderers (sprite gradients,
+ * Rive asset keys) that predate the canonical `A_office..F_family` slugs.
+ * This is the ONE authoritative bridge between the two representations so we
+ * don't scatter ad-hoc `as 'A'|'B'|'C'` casts across the mobile/web/desktop
+ * clients (see audit: clan dual-track P1).
+ */
+export type PetClanShortCode = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+
+const CLAN_SHORT_CODE: Record<PetClan, PetClanShortCode> = {
+  A_office: 'A',
+  B_life: 'B',
+  C_learn: 'C',
+  D_play: 'D',
+  E_web3: 'E',
+  F_family: 'F',
+};
+
+/**
+ * Map a canonical PetClan (or anything that starts with a known prefix, or
+ * an already-short 'A'..'F') to its single-letter renderer code. Falls back
+ * to 'A' (the default office/kitsune clan) for unknown/missing input so
+ * renderers never receive an invalid key.
+ */
+export function clanShortCode(clan: string | null | undefined): PetClanShortCode {
+  if (!clan) return 'A';
+  if (clan in CLAN_SHORT_CODE) return CLAN_SHORT_CODE[clan as PetClan];
+  const first = clan.charAt(0).toUpperCase();
+  if (first >= 'A' && first <= 'F') return first as PetClanShortCode;
+  return 'A';
+}
+
 // ============================================================
 // §2 灵魂模板（SoulTemplate）
 // ============================================================

@@ -153,6 +153,7 @@
           "nfcPermission": "Agentrix uses NFC to redeem blind box cards and pair toy devices."
         }
       ],
+      "@maplibre/maplibre-react-native",
       [
         "./plugins/withLlamaRN",
         {
@@ -165,6 +166,7 @@
       "expo-localization"
     ],
     "extra": {
+      "mapTilerKey": "Zhuyc4mco01wIrd8qd96",
       "wakeWord": {
         "enabled": true,
         "fallbackPhrases": [

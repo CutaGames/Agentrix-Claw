@@ -56,9 +56,30 @@ export interface PredictQualityResponse {
   suggestions: string[];
 }
 
+export interface CharacterCard {
+  name: string;
+  stats: Record<string, number>;
+  skills: { name: string; type?: string; description?: string }[];
+  personalityTraits: string[];
+  backstory: string;
+  category: string;
+  thumbnailUrl?: string;
+}
+
+export type GenerationStatus =
+  | 'card_ready'
+  | 'mesh_pending'
+  | 'card_only'
+  | 'complete'
+  | 'mesh_failed';
+
 export interface GenerateFromScanResponse {
   jobId: string;
   estimatedSeconds: number;
+  /** 方案 B: 角色卡秒出 — generate 时已创建的 card_ready 资产 */
+  assetId?: string;
+  characterCard?: CharacterCard;
+  generationStatus?: GenerationStatus;
 }
 
 export type ReconstructionJobStatus =
@@ -86,11 +107,20 @@ export interface WorldAssetSummary {
   level: number;
   battleWins: number;
   battleLosses: number;
-  styledMeshUrl: string;
-  meshUrl?: string;
+  styledMeshUrl: string | null;
+  meshUrl?: string | null;
+  /** 2D 立绘兜底: 角色形象图(扫描照片), 100% 有图不依赖 3D */
+  portraitUrl?: string | null;
   styleType: string;
   boundAgentId: string | null;
-  source: 'scanned' | 'purchased' | 'gifted';
+  source: 'scanned' | 'purchased' | 'gifted' | 'guest_trial';
+  /** 方案 B: 生成生命周期状态 */
+  generationStatus?: GenerationStatus;
+  /** AI 属性(card_ready 起即可用) */
+  stats?: Record<string, number>;
+  skills?: { name: string; type?: string; description?: string }[];
+  personalityTraits?: string[];
+  backstory?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -500,4 +530,289 @@ export async function fetchWorldEngineFlag(): Promise<WorldEngineFlagStatus> {
     // 401/network → optimistic enabled, let other API calls handle gating.
     return { enabled: true };
   }
+}
+
+// ============================================================
+// Living World feed (Phase A2)
+// ============================================================
+
+export type WorldEventType =
+  | 'work'
+  | 'social'
+  | 'greet'
+  | 'reflect'
+  | 'explore'
+  | 'conflict'
+  | 'levelup';
+
+export type WorldEventOutcome = 'positive' | 'neutral' | 'negative';
+
+export interface WorldEventItem {
+  id: string;
+  actorAssetId: string;
+  actorName: string;
+  type: WorldEventType;
+  summary: string;
+  outcome: WorldEventOutcome;
+  deltaAxp: number;
+  deltaXp: number;
+  relatedAssetId?: string | null;
+  createdAt: string;
+}
+
+/** 居民在世界里的实时状态(后端 WorldResidentState) */
+export interface WorldResidentSummary {
+  assetId: string;
+  name: string;
+  level: number;
+  portraitUrl?: string | null;
+  state: {
+    job?: string;
+    mood?: string;
+    location?: string;
+    activity?: string;
+    axp?: number;
+    lastTickBucket?: number;
+  };
+}
+
+export interface WorldNpc {
+  id: string;
+  name: string;
+  emoji: string;
+  role: 'merchant' | 'guard' | 'guide' | 'trainer';
+  location: string;
+  line: string;
+  actions: Array<'talk' | 'train' | 'trade' | 'quest'>;
+}
+
+export interface WorldFeedResponse {
+  /** 本次请求离线补算新生成的事件数(用于"你不在时发生了 N 件事"提示) */
+  newEventCount: number;
+  /** 倒序事件流(最新在前) */
+  events: WorldEventItem[];
+  /** 各居民当前状态摘要 */
+  residents: WorldResidentSummary[];
+  /** 常驻系统 NPC */
+  npcs: WorldNpc[];
+  /** 小镇整体信息 */
+  town: {
+    name: string;
+    population: number;
+    mainPet?: { name: string; intimacyLevel: number; emotion: string } | null;
+  };
+}
+
+/**
+ * 获取活世界时间线。打开 World tab 即调用 —— 后端会先离线补算(tick)再返回。
+ */
+export function fetchWorldFeed(
+  query: { limit?: number } = {},
+): Promise<WorldFeedResponse> {
+  const params = new URLSearchParams();
+  if (typeof query.limit === 'number') params.set('limit', String(query.limit));
+  const qs = params.toString();
+  return apiFetch<WorldFeedResponse>(
+    `/v1/world-engine/world/feed${qs ? `?${qs}` : ''}`,
+  );
+}
+
+/** 手动推进世界一步(下拉刷新)。 */
+export function tickWorld(): Promise<{ newEventCount: number }> {
+  return apiFetch<{ newEventCount: number }>('/v1/world-engine/world/tick', {
+    method: 'POST',
+  });
+}
+
+// ============================================================
+// Interactive (player-decision) battle — Phase B
+// ============================================================
+
+export type BattleActionType = 'attack' | 'charge' | 'defend';
+
+export interface BattleDecision {
+  action: BattleActionType;
+  skillIndex?: number;
+}
+
+export interface BattleResourceState {
+  hp: number;
+  energy: number;
+  charge: number;
+  defending: boolean;
+}
+
+export interface InteractiveBattleState {
+  round: number;
+  challenger: BattleResourceState;
+  defender: BattleResourceState;
+  status: 'active' | 'completed';
+  winnerSide?: 'challenger' | 'defender';
+}
+
+export interface InteractiveRound {
+  round: number;
+  challengerAction: BattleActionType;
+  defenderAction: BattleActionType;
+  challengerSkill?: string;
+  defenderSkill?: string;
+  challengerDamageDealt: number;
+  defenderDamageDealt: number;
+  challengerCrit: boolean;
+  defenderCrit: boolean;
+  hpAfter: { challenger: number; defender: number };
+  energyAfter: { challenger: number; defender: number };
+  chargeAfter: { challenger: number; defender: number };
+}
+
+export interface StartInteractiveBattleResponse {
+  battleId: string;
+  seed: string;
+  state: InteractiveBattleState;
+  challengerSkills: { name: string; type: string; damageBase?: number }[];
+  defenderSkills: { name: string; type: string; damageBase?: number }[];
+}
+
+export interface StepInteractiveBattleResponse {
+  round: InteractiveRound;
+  state: InteractiveBattleState;
+  result?: {
+    winnerSide: 'challenger' | 'defender';
+    totalRounds: number;
+    xpAwarded: { challenger: number; defender: number };
+  };
+}
+
+/** 开始一场玩家决策战斗。 */
+export function startInteractiveBattle(body: {
+  challengerAssetId: string;
+  defenderAssetId: string;
+  ruleSetShareCode?: string;
+}): Promise<StartInteractiveBattleResponse> {
+  return apiFetch<StartInteractiveBattleResponse>(
+    '/v1/world-engine/battles/interactive/start',
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+}
+
+/** 单人 PvE: 跟系统训练假人打一场(不需要第二个角色/不需要别人在线)。 */
+export function startTrainingBattle(body: {
+  challengerAssetId: string;
+  difficulty?: 'easy' | 'normal' | 'hard';
+  ruleSetShareCode?: string;
+}): Promise<StartInteractiveBattleResponse & { isTrainingDummy: boolean; dummyName: string }> {
+  return apiFetch<StartInteractiveBattleResponse & { isTrainingDummy: boolean; dummyName: string }>(
+    '/v1/world-engine/battles/interactive/train',
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+}
+
+/** 提交本回合决策(攻击/蓄力/防御),返回本回合结算 + 新局面。 */
+export function stepInteractiveBattle(
+  battleId: string,
+  decision: BattleDecision,
+): Promise<StepInteractiveBattleResponse> {
+  return apiFetch<StepInteractiveBattleResponse>(
+    `/v1/world-engine/battles/interactive/${battleId}/step`,
+    { method: 'POST', body: JSON.stringify({ decision }) },
+  );
+}
+
+// ============================================================
+// Phase C — 统一灵魂(化身主宠)
+// ============================================================
+
+export interface IncarnateResponse {
+  assetId: string;
+  soulId: string;
+  petName: string;
+  intimacyLevel: number;
+  emotion: string;
+  incarnationCount: number;
+}
+
+export interface SoulStatusResponse {
+  linked: boolean;
+  soulId: string | null;
+  petName?: string;
+  intimacyLevel?: number;
+  emotion?: string;
+  isActiveIncarnation?: boolean;
+}
+
+/** 把扫描角色化身为主宠的世界形态(灵魂连续)。 */
+export function incarnateAsset(assetId: string): Promise<IncarnateResponse> {
+  return apiFetch<IncarnateResponse>(`/v1/world-engine/assets/${assetId}/incarnate`, {
+    method: 'POST',
+  });
+}
+
+/** 解除化身。 */
+export function unincarnateAsset(assetId: string): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>(`/v1/world-engine/assets/${assetId}/incarnate`, {
+    method: 'DELETE',
+  });
+}
+
+/** 查询资产灵魂链接状态。 */
+export function getSoulStatus(assetId: string): Promise<SoulStatusResponse> {
+  return apiFetch<SoulStatusResponse>(`/v1/world-engine/assets/${assetId}/soul-status`);
+}
+
+// ============================================================
+// Phase D — UGC 规则集
+// ============================================================
+
+export interface WorldGameRuleSet {
+  id: string;
+  creatorUserId: string;
+  name: string;
+  description: string;
+  shareCode: string;
+  rules: {
+    maxRounds?: number;
+    energyMax?: number;
+    chargeMax?: number;
+    damageMultiplier?: number;
+    critEnabled?: boolean;
+    winCondition?: 'ko' | 'hp_majority' | 'rounds_survival';
+  };
+  playCount: number;
+  isPublic: boolean;
+  createdAt: string;
+}
+
+export interface CreateRuleSetInput {
+  name: string;
+  description?: string;
+  isPublic?: boolean;
+  rules?: WorldGameRuleSet['rules'];
+}
+
+export function createRuleSet(input: CreateRuleSetInput): Promise<WorldGameRuleSet> {
+  return apiFetch<WorldGameRuleSet>('/v1/world-engine/ugc/rulesets', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function listMyRuleSets(): Promise<{ items: WorldGameRuleSet[] }> {
+  return apiFetch<{ items: WorldGameRuleSet[] }>('/v1/world-engine/ugc/rulesets');
+}
+
+export function getRuleSetByCode(code: string): Promise<WorldGameRuleSet> {
+  return apiFetch<WorldGameRuleSet>(`/v1/world-engine/ugc/rulesets/${code}`);
+}
+
+export function playRuleSet(code: string): Promise<{ ruleSet: WorldGameRuleSet; effectiveRules: Record<string, unknown> }> {
+  return apiFetch<{ ruleSet: WorldGameRuleSet; effectiveRules: Record<string, unknown> }>(
+    `/v1/world-engine/ugc/rulesets/${code}/play`,
+    { method: 'POST' },
+  );
+}
+
+export function deleteRuleSet(id: string): Promise<{ success: boolean }> {
+  return apiFetch<{ success: boolean }>(`/v1/world-engine/ugc/rulesets/${id}`, {
+    method: 'DELETE',
+  });
 }

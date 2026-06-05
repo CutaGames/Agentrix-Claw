@@ -23,17 +23,18 @@ import React, {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
 } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import {
   BottomSheetBackdrop,
   BottomSheetModal,
-  BottomSheetView,
+  BottomSheetScrollView,
 } from '@gorhom/bottom-sheet';
-import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useActivePet } from '../../services/activePet.service';
 import { useAuthStore } from '../../stores/authStore';
+import { navRefNavigate } from '../../navigation/navigationRef';
 import { getCompanionMode } from '../../services/petMode';
 import { companionEvents } from '../../services/companionEvents.service';
 import {
@@ -47,11 +48,28 @@ const SNAP_POINTS = ['85%'];
 export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
   function PetDetailSheet(_props, externalRef) {
     const sheetRef = useRef<BottomSheetModal>(null);
-    const scrollRef = useRef<ScrollView>(null);
-    const navigation = useNavigation<any>();
+    const scrollRef = useRef<React.ComponentRef<typeof BottomSheetScrollView>>(null);
+    // Navigate via shared navigationRef — NOT useNavigation() (which throws
+    // at the CompanionLayer sibling position; root cause of the dead ball).
+    const navigation = useMemo(
+      () => ({ navigate: (...args: any[]) => navRefNavigate(...args) }),
+      [],
+    );
     const pet = useActivePet();
     const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
     const instances = useAuthStore((s) => s.user?.openClawInstances ?? []);
+
+    // P1a — real data for hero / wallet / skills (was hardcoded placeholders).
+    const [detail, setDetail] = useState<import('../../services/petDetail.api').PetDetailData | null>(null);
+    const loadDetail = useCallback(async () => {
+      try {
+        const { fetchPetDetailData } = await import('../../services/petDetail.api');
+        const data = await fetchPetDetailData();
+        setDetail(data);
+      } catch (err) {
+        console.warn('[PetDetailSheet] loadDetail failed:', err);
+      }
+    }, []);
 
     const present = useCallback(() => {
       // P-9 wave 14 (T24.2): perf budget is P95 ≤ 250ms from emit →
@@ -82,7 +100,9 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
       }
       sheetRef.current?.present();
       perfMod.endMark(perfTok);
-    }, [isAuthenticated, navigation]);
+      // Kick off real-data fetch (best-effort, non-blocking).
+      void loadDetail();
+    }, [isAuthenticated, navigation, loadDetail]);
 
     const dismiss = useCallback(() => {
       sheetRef.current?.dismiss();
@@ -153,24 +173,26 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
         handleIndicatorStyle={styles.handleIndicator}
         enableDismissOnClose
       >
-        <BottomSheetView style={styles.container}>
-          <ScrollView
-            ref={scrollRef}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
-            <HeroBlock
-              pet={pet}
+        <BottomSheetScrollView
+          ref={scrollRef}
+          style={styles.container}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <HeroBlock
+            pet={pet}
+              detail={detail}
               hasMultiplePets={instances.length > 1}
               onSwitchPet={() =>
                 navigateAndDismiss(() => navigation.navigate('MyAgents'))
               }
             />
 
-            <StatusOverviewSection />
+            <StatusOverviewSection detail={detail} />
 
             <View onLayout={onSectionLayout('wallet')}>
               <WalletCardSection
+                detail={detail}
                 onOpenWallet={() =>
                   navigateAndDismiss(() =>
                     navigation.navigate('Main', {
@@ -239,6 +261,7 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
 
             <View onLayout={onSectionLayout('skills')}>
               <SkillsCardSection
+                detail={detail}
                 onOpenInstall={() =>
                   navigateAndDismiss(() =>
                     navigation.navigate('Main', {
@@ -261,6 +284,7 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
             <View onLayout={onSectionLayout('cross-device')}>
               <CrossDeviceCardSection
                 originDeviceId={pet.id}
+                instances={instances}
                 onManageDevices={() =>
                   navigateAndDismiss(() =>
                     navigation.navigate('Main', {
@@ -306,8 +330,7 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
             </View>
 
             <View style={{ height: 32 }} />
-          </ScrollView>
-        </BottomSheetView>
+        </BottomSheetScrollView>
       </BottomSheetModal>
     );
   },
@@ -317,18 +340,34 @@ export const PetDetailSheet = forwardRef<PetDetailSheetHandle>(
 
 interface HeroBlockProps {
   pet: ReturnType<typeof useActivePet>;
+  detail: import('../../services/petDetail.api').PetDetailData | null;
   hasMultiplePets: boolean;
   onSwitchPet: () => void;
 }
 const HeroBlock = React.memo(function HeroBlock({
   pet,
+  detail,
   hasMultiplePets,
   onSwitchPet,
 }: HeroBlockProps) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+  const { xpProgress, emotionEmoji } = require('../../services/petDetail.api') as typeof import('../../services/petDetail.api');
+  const ps = detail?.pet ?? null;
+  const level = ps?.intimacy_level ?? null;
+  const xp = ps?.intimacy_xp ?? 0;
+  const energy = detail?.energy ?? null;
+  const prog = level != null ? xpProgress(level, xp) : null;
+
+  const metaText =
+    ps == null
+      ? '加载中…'
+      : `Lv ${level} · 心情${emotionEmoji(ps.emotion)}` +
+        (energy != null ? ` · 能量 ${Math.round(energy)}%` : '');
+
   return (
     <View style={styles.hero}>
       <View style={styles.heroAvatar}>
-        <Text style={styles.heroAvatarEmoji}>🐾</Text>
+        <PetSpriteImageOrEmoji clan={pet.clan} />
       </View>
       <View style={{ flex: 1, marginLeft: 16 }}>
         <View style={styles.heroNameRow}>
@@ -339,22 +378,49 @@ const HeroBlock = React.memo(function HeroBlock({
             </TouchableOpacity>
           ) : null}
         </View>
-        <Text style={styles.heroMeta}>Lv 12 · 心情😊 · 能量 78%</Text>
+        <Text style={styles.heroMeta}>{metaText}</Text>
         <View style={styles.xpBarBg}>
-          <View style={[styles.xpBarFill, { width: '64%' }]} />
+          <View style={[styles.xpBarFill, { width: `${prog?.pct ?? 0}%` }]} />
         </View>
       </View>
     </View>
   );
 });
 
-const StatusOverviewSection = React.memo(function StatusOverviewSection() {
+/**
+ * Renders the real idle pet sprite (matching the ball), falling back to a
+ * 🐾 emoji only if the sprite render throws — never blanks the hero.
+ */
+function PetSpriteImageOrEmoji({ clan }: { clan?: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' }) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    const { PetSpriteImage } = require('../PetSpriteImage') as typeof import('../PetSpriteImage');
+    return <PetSpriteImage sprite="idle" size={72} clan={clan} testID="pet-detail-hero-sprite" />;
+  } catch {
+    return <Text style={styles.heroAvatarEmoji}>🐾</Text>;
+  }
+}
+
+const StatusOverviewSection = React.memo(function StatusOverviewSection({
+  detail,
+}: {
+  detail: import('../../services/petDetail.api').PetDetailData | null;
+}) {
+  const emotion = detail?.pet?.emotion ?? null;
+  const action =
+    emotion === 'sleepy' || emotion === 'tired'
+      ? '它有点累了,在休息'
+      : emotion === 'focused'
+        ? '它正在专注工作'
+        : emotion === 'excited' || emotion === 'happy'
+          ? '它心情不错,陪着你'
+          : '它正陪你逛集市';
   return (
     <View style={styles.statusOverview}>
-      <Text style={styles.statusActionText}>它在做什么:正陪你逛集市</Text>
+      <Text style={styles.statusActionText}>它在做什么:{action}</Text>
       <View style={styles.statusDeviceRow}>
-        <Text style={styles.statusDeviceEmoji}>🖥</Text>
         <Text style={styles.statusDeviceEmoji}>📱</Text>
+        <Text style={styles.statusDeviceEmojiDim}>🖥</Text>
         <Text style={styles.statusDeviceEmojiDim}>⌚</Text>
         <Text style={styles.statusDeviceEmojiDim}>👓</Text>
       </View>
@@ -363,15 +429,23 @@ const StatusOverviewSection = React.memo(function StatusOverviewSection() {
 });
 
 interface WalletCardProps {
+  detail: import('../../services/petDetail.api').PetDetailData | null;
   onOpenWallet: () => void;
   onTransfer: () => void;
   onTrust3Demo: () => void;
 }
 const WalletCardSection = React.memo(function WalletCardSection({
+  detail,
   onOpenWallet,
   onTransfer,
   onTrust3Demo,
 }: WalletCardProps) {
+  const axp = detail?.axp ?? null;
+  const axpText = axp ? String(axp.balance) : '—';
+  const usdText =
+    axp && typeof axp.usd_value_cents === 'number'
+      ? `$${(axp.usd_value_cents / 100).toFixed(2)}`
+      : '—';
   return (
     <SectionCard
       title="💰 钱包"
@@ -379,15 +453,15 @@ const WalletCardSection = React.memo(function WalletCardSection({
     >
       <View style={styles.walletRow}>
         <View style={styles.walletCol}>
-          <Text style={styles.walletLabel}>USDC</Text>
-          <Text style={styles.walletValue}>—</Text>
-        </View>
-        <View style={styles.walletCol}>
           <Text style={styles.walletLabel}>AXP</Text>
-          <Text style={styles.walletValue}>—</Text>
+          <Text style={styles.walletValue}>{axpText}</Text>
         </View>
         <View style={styles.walletCol}>
-          <Text style={styles.walletLabel}>BTC</Text>
+          <Text style={styles.walletLabel}>≈ USD</Text>
+          <Text style={styles.walletValue}>{usdText}</Text>
+        </View>
+        <View style={styles.walletCol}>
+          <Text style={styles.walletLabel}>USDC</Text>
           <Text style={styles.walletValue}>—</Text>
         </View>
       </View>
@@ -401,20 +475,48 @@ const WalletCardSection = React.memo(function WalletCardSection({
 });
 
 interface SkillsCardProps {
+  detail: import('../../services/petDetail.api').PetDetailData | null;
   onOpenInstall: () => void;
   onMySkills: () => void;
 }
 const SkillsCardSection = React.memo(function SkillsCardSection({
+  detail,
   onOpenInstall,
   onMySkills,
 }: SkillsCardProps) {
+  const skins = detail?.skins ?? [];
+  const skills = detail?.skills ?? [];
+  // P1a + 2026-05-31 fix — surface REAL installed skills (capabilities) AND
+  // owned skins. Previously this only showed skins, so a skill the user just
+  // installed never appeared here and looked "lost".
+  const skillPills = skills.slice(0, 3);
+  const skinPills = skins.slice(0, 3);
   return (
-    <SectionCard title="🧠 技能" subtitle="已装 / 安装新的">
+    <SectionCard title="🧠 技能 / 皮肤" subtitle="已装技能 / 已拥有皮肤">
+      {/* 已装技能 */}
       <View style={styles.skillRow}>
-        <Text style={styles.skillItemText}>🎯 任务接单</Text>
-        <Text style={styles.skillItemText}>📚 翻译</Text>
-        <Text style={styles.skillItemText}>📷 视觉问答</Text>
+        {skillPills.length > 0 ? (
+          skillPills.map((s) => (
+            <Text key={s.id} style={styles.skillItemText} numberOfLines={1}>
+              ⚡ {s.name}
+            </Text>
+          ))
+        ) : (
+          <Text style={styles.skillItemText}>
+            {detail == null ? '加载中…' : '还没装技能,点"装新的"去技能市场'}
+          </Text>
+        )}
       </View>
+      {/* 已拥有皮肤 */}
+      {skinPills.length > 0 ? (
+        <View style={styles.skillRow}>
+          {skinPills.map((s) => (
+            <Text key={s.id} style={styles.skillItemText} numberOfLines={1}>
+              {s.format === 'vrm' ? '🧸' : '🎨'} {s.display_name}
+            </Text>
+          ))}
+        </View>
+      ) : null}
       <View style={styles.cardActionRow}>
         <ActionButton label="装新的" onPress={onOpenInstall} />
         <ActionButton label="我的技能" onPress={onMySkills} variant="ghost" />
@@ -426,19 +528,29 @@ const SkillsCardSection = React.memo(function SkillsCardSection({
 interface CrossDeviceCardProps {
   onManageDevices: () => void;
   originDeviceId: string;
+  instances: Array<{ id: string; name: string; status?: string }>;
 }
 const CrossDeviceCardSection = React.memo(function CrossDeviceCardSection({
   onManageDevices,
   originDeviceId,
+  instances,
 }: CrossDeviceCardProps) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
   const { RemoteControlPanel } = require('./RemoteControlPanel') as typeof import('./RemoteControlPanel');
+  // `presence:device.list` backend API doesn't exist yet (T0 audit), so we
+  // surface the user's real OpenClaw instances as the cross-device list +
+  // always show 📱 (this device) online. Phase 2 swaps to the live topic.
+  const activeInstances = instances.filter((i) => i.status === 'active');
   return (
     <SectionCard title="🔗 跨端" subtitle="同一只宠物 · 同一份记忆">
       <View style={styles.deviceListRow}>
-        <DevicePill emoji="🖥" name="桌面" online />
+        <DevicePill emoji="📱" name="本机" online />
+        {activeInstances.length > 0 ? (
+          <DevicePill emoji="🖥" name={`实例 ×${activeInstances.length}`} online />
+        ) : (
+          <DevicePill emoji="🖥" name="桌面" online={false} />
+        )}
         <DevicePill emoji="⌚" name="手表" online={false} />
-        <DevicePill emoji="🔊" name="音箱" online={false} />
       </View>
       <RemoteControlPanel originDeviceId={originDeviceId} />
       <View style={styles.cardActionRow}>
@@ -456,23 +568,43 @@ const CompanionActionsGridSection = React.memo(function CompanionActionsGridSect
   onAction,
   navigation,
 }: CompanionActionsGridProps) {
-  const items: Array<{ emoji: string; label: string; target: () => void }> = [
+  // P-9 Q1 — nav targets now point at the registered Me-stack routes
+  // (T6.7 re-home). `inPlace` actions (feed / greet) run without
+  // dismissing the sheet so the user sees the pet react immediately.
+  const meRoute = (screen: string) => () =>
+    navigation.navigate('Main', { screen: 'Me', params: { screen } });
+
+  const items: Array<{
+    emoji: string;
+    label: string;
+    inPlace?: boolean;
+    target: () => void;
+  }> = [
     {
       emoji: '🍖',
       label: '喂食',
+      inPlace: true,
       target: () => {
-        // Phase 1: stub — fire mode change so ball reacts; T7 wires API.
+        // Q1: real backend call — POST /v1/pet/intimacy { xp }. Optimistic
+        // mode-change so the ball reacts instantly; failure is non-fatal
+        // (it's an enhancement, not a blocking flow).
         companionEvents.emit({
           type: 'mode-changed',
           from: 'companion',
           to: 'whisper',
           source: 'feed-action',
         });
+        // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+        const { feedPet } = require('../../services/mobilePetSdk') as typeof import('../../services/mobilePetSdk');
+        void feedPet(5).catch(() => {
+          /* enhancement only — surfacing an error toast is out of Q1 scope */
+        });
       },
     },
     {
       emoji: '🎙',
       label: '打招呼',
+      inPlace: true,
       target: () => {
         // P-9 wave 6 — call backend /v1/pet/greet via scheduler so the
         // text is Bedrock-generated when possible (fallback templates
@@ -482,31 +614,11 @@ const CompanionActionsGridSection = React.memo(function CompanionActionsGridSect
         void triggerVoiceGreet('manual');
       },
     },
-    {
-      emoji: '👕',
-      label: '衣柜',
-      target: () => navigation.navigate('PetWardrobe'),
-    },
-    {
-      emoji: '💫',
-      label: '灵魂',
-      target: () => navigation.navigate('SoulPicker'),
-    },
-    {
-      emoji: '🧬',
-      label: '繁育',
-      target: () => navigation.navigate('PetBreed'),
-    },
-    {
-      emoji: '🧠',
-      label: '记忆',
-      target: () => navigation.navigate('MemoryManagement'),
-    },
-    {
-      emoji: '🎮',
-      label: '玩乐',
-      target: () => navigation.navigate('PetPlayground'),
-    },
+    { emoji: '👕', label: '衣柜', target: meRoute('PetWardrobe') },
+    { emoji: '💫', label: '灵魂', target: meRoute('SoulPicker') },
+    { emoji: '🧬', label: '繁育', target: meRoute('PetBreed') },
+    { emoji: '🧠', label: '记忆', target: meRoute('MemoryManagement') },
+    { emoji: '🎮', label: '玩乐', target: meRoute('PetPlayground') },
     {
       emoji: '✨',
       label: '创造新',
@@ -524,7 +636,7 @@ const CompanionActionsGridSection = React.memo(function CompanionActionsGridSect
           <TouchableOpacity
             key={it.label}
             style={styles.actionGridItem}
-            onPress={() => onAction(it.target)}
+            onPress={() => (it.inPlace ? it.target() : onAction(it.target))}
             accessibilityLabel={it.label}
           >
             <Text style={styles.actionGridEmoji}>{it.emoji}</Text>
