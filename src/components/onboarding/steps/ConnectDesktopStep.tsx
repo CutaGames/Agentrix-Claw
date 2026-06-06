@@ -18,7 +18,7 @@
  *     以 fire-and-forget 发起并吞掉失败,随后立即 `onComplete()`;心跳失败不影响推进
  *     (主界面常驻心跳会后续重试)。
  *
- * 跳过语义区分(镜像 FirstWordsStep / FirstTaskStep):
+ * 跳过语义区分(镜像 FirstWordsStep):
  *   - 顶部 StepScaffold「跳过」= `onSkip` → 结束整条 Soul_Birth 主线(R1.5)。
  *   - banner 内「稍后连接」= `onLater` → 仅完成本步并推进到 settle_aeon(R7.6)。
  *

@@ -7,9 +7,15 @@
  *
  * **Validates: Requirements 1.5, 3.4, 3.6**
  *
- * Property 1(主线必达):无论 provision / TTS / 定位 / 天气 / OAuth / presence
+ * Property 1(主线必达):无论 provision / TTS / 定位 / 天气 / presence
  * 任一外部依赖失败,Soul_Birth 主线都不会卡死——`currentStep` 始终能因「真实完成」
  * 或「用户跳过」而推进或终止。
+ *
+ * 2026-06 产品决策:邮箱/日历 OAuth「连接」(原 first_task 段)已从首跑主线移除,
+ * 改为「连接器中心」按需触发。故步骤集由 5 步收敛为 4 步(birth → first_words →
+ * connect_desktop → settle_aeon)。本测试不再硬编码步数:状态空间穷举的掩码上限由
+ * `SOUL_BIRTH_STEPS.length` 推导(MASK_COUNT = 2^N、FULL_MASK = 2^N − 1),从而对
+ * 任意步数都成立、且随步骤增删自动适配。
  *
  * 在 **store 层** 证明状态机始终存在前进路径:
  *   - 从任一可达的 completed-set,反复对 `complete(currentStep)` 施加,必在有限步内
@@ -18,9 +24,9 @@
  *   - 即便 `recompute` 被喂入「全部外部事实失败(all-false)」,指针仍能解析到某一步,
  *     `complete()` / `skip()` 仍可推进 / 终止;任意 facts 组合都不破坏可终止性。
  *
- * 测试手段:fast-check 未安装于移动端 root(仅 backend 有),因此对 5 步的**有限**
- * 状态空间做**穷举**(2^5 = 32 个 completed-set),并用**带种子的确定性 RNG** 做
- * 随机动作序列模糊测试,等价覆盖「任意输入下不变式成立」。
+ * 测试手段:fast-check 未安装于移动端 root(仅 backend 有),因此对有限状态空间做
+ * **穷举**(2^N 个 completed-set),并用**带种子的确定性 RNG** 做随机动作序列模糊测试,
+ * 等价覆盖「任意输入下不变式成立」。
  *
  * 放在 `src/services/__tests__/` 以匹配 jest.config 的 testMatch;`react-native-mmkv`
  * 经 moduleNameMapper 走内存 mock,store 可在 node 环境直接驱动。
@@ -38,15 +44,17 @@ import {
 
 type Completed = Record<OnboardingStep, boolean>;
 
-const ALL_FALSE: Completed = {
-  birth: false,
-  first_words: false,
-  first_task: false,
-  connect_desktop: false,
-  settle_aeon: false,
-};
+/** 步骤数驱动的穷举边界:对任意步数都成立(移除 first_task 后 N=4 → 16 个掩码)。 */
+const STEP_COUNT = SOUL_BIRTH_STEPS.length;
+const MASK_COUNT = 1 << STEP_COUNT; // 2^N
+const FULL_MASK = MASK_COUNT - 1; // 全部完成的掩码(全 1)
 
-/** 把 0..31 的位掩码映射为一个 completed-set(穷举有限状态空间)。 */
+const ALL_FALSE: Completed = SOUL_BIRTH_STEPS.reduce((acc, step) => {
+  acc[step] = false;
+  return acc;
+}, {} as Completed);
+
+/** 把 0..(2^N-1) 的位掩码映射为一个 completed-set(穷举有限状态空间)。 */
 function subsetFromMask(mask: number): Completed {
   const out = { ...ALL_FALSE };
   SOUL_BIRTH_STEPS.forEach((step, i) => {
@@ -108,7 +116,7 @@ beforeEach(() => {
 
 describe('纯函数:指针总能解析(Property 1 基石)', () => {
   it('currentStep 永远返回固定顺序中第一个未完成的步骤;全 true 返回 null', () => {
-    for (let mask = 0; mask < 32; mask++) {
+    for (let mask = 0; mask < MASK_COUNT; mask++) {
       const c = subsetFromMask(mask);
       const step = currentStep(c);
       const firstFalse = SOUL_BIRTH_STEPS.find((s) => !c[s]) ?? null;
@@ -124,16 +132,16 @@ describe('纯函数:指针总能解析(Property 1 基石)', () => {
   });
 
   it('allStepsComplete 当且仅当全部为真', () => {
-    for (let mask = 0; mask < 32; mask++) {
+    for (let mask = 0; mask < MASK_COUNT; mask++) {
       const c = subsetFromMask(mask);
-      expect(allStepsComplete(c)).toBe(mask === 31);
+      expect(allStepsComplete(c)).toBe(mask === FULL_MASK);
     }
   });
 });
 
 describe('Property 1:complete(currentStep) 从任一状态都能终止', () => {
-  it('穷举全部 32 个起始 completed-set:有限步内到达终止', () => {
-    for (let mask = 0; mask < 32; mask++) {
+  it('穷举全部 2^N 个起始 completed-set:有限步内到达终止', () => {
+    for (let mask = 0; mask < MASK_COUNT; mask++) {
       const start = subsetFromMask(mask);
       resetStoreTo(start);
 
@@ -164,8 +172,8 @@ describe('Property 1:complete(currentStep) 从任一状态都能终止', () => {
 });
 
 describe('Property 1:skip() 从任一状态都立即终止', () => {
-  it('穷举全部 32 个起始 completed-set:skip 后 terminated 为真', () => {
-    for (let mask = 0; mask < 32; mask++) {
+  it('穷举全部 2^N 个起始 completed-set:skip 后 terminated 为真', () => {
+    for (let mask = 0; mask < MASK_COUNT; mask++) {
       resetStoreTo(subsetFromMask(mask));
       useSoulBirthStore.getState().skip();
       expect(useSoulBirthStore.getState().terminated).toBe(true);
@@ -182,7 +190,7 @@ describe('Property 1:外部依赖失败(recompute all-false)不卡主线', () =>
       desktopPairedBefore: false,
       hasClaimedPlot: false,
     };
-    for (let mask = 0; mask < 32; mask++) {
+    for (let mask = 0; mask < MASK_COUNT; mask++) {
       const start = subsetFromMask(mask);
       resetStoreTo(start);
 
@@ -202,8 +210,8 @@ describe('Property 1:外部依赖失败(recompute all-false)不卡主线', () =>
     }
   });
 
-  it('任意 facts 组合下 recompute 后仍可终止(穷举 32×8)', () => {
-    for (let mask = 0; mask < 32; mask++) {
+  it('任意 facts 组合下 recompute 后仍可终止(穷举 2^N × 8)', () => {
+    for (let mask = 0; mask < MASK_COUNT; mask++) {
       for (let f = 0; f < 8; f++) {
         const facts: ExternalFacts = {
           hasInstance: (f & 1) !== 0,
@@ -232,7 +240,7 @@ describe('Property 1:随机动作序列模糊测试(确定性种子)', () => {
     for (const seed of SEEDS) {
       const rng = mulberry32(seed);
       // 随机起始 completed-set。
-      resetStoreTo(subsetFromMask(Math.floor(rng() * 32)));
+      resetStoreTo(subsetFromMask(Math.floor(rng() * MASK_COUNT)));
 
       const ops = 12 + Math.floor(rng() * 12);
       for (let k = 0; k < ops; k++) {
@@ -266,7 +274,7 @@ describe('Property 1:随机动作序列模糊测试(确定性种子)', () => {
   it('随机插入 skip:无论何时跳过都立即终止', () => {
     for (const seed of SEEDS) {
       const rng = mulberry32(seed ^ 0x5a5a5a5a);
-      resetStoreTo(subsetFromMask(Math.floor(rng() * 32)));
+      resetStoreTo(subsetFromMask(Math.floor(rng() * MASK_COUNT)));
 
       const stepsBeforeSkip = Math.floor(rng() * SOUL_BIRTH_STEPS.length);
       for (let k = 0; k < stepsBeforeSkip; k++) {

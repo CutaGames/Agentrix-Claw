@@ -26,7 +26,7 @@ jest.mock('../../stores/soulBirthStore', () => ({
   useSoulBirthStore: { getState: () => getState() },
   // 真实的 currentStep 纯函数语义:固定顺序第一个未完成。
   currentStep: (completed: Record<string, boolean>) => {
-    const order = ['birth', 'first_words', 'first_task', 'connect_desktop', 'settle_aeon'];
+    const order = ['birth', 'first_words', 'connect_desktop', 'settle_aeon'];
     for (const step of order) {
       if (!completed[step]) return step;
     }
@@ -39,7 +39,6 @@ import { buildCompanionChatContext, withCompanionContext } from '../companionCon
 const ALL_FALSE = {
   birth: false,
   first_words: false,
-  first_task: false,
   connect_desktop: false,
   settle_aeon: false,
 };
@@ -86,7 +85,6 @@ describe('buildCompanionChatContext', () => {
       completed: {
         birth: true,
         first_words: true,
-        first_task: true,
         connect_desktop: true,
         settle_aeon: true,
       },

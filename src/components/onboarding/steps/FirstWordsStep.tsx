@@ -11,7 +11,7 @@
  *   - Weather_Garnish(可选追加,**绝不阻塞/延迟主句**,C4):主句已入队后才发起定位+天气
  *     (各 5s 超时),成功则追加播报并显示气泡;任一失败静默跳过(R3.5/R3.6)。
  *   - 第一句话(含可选天气句)**播报结束** 或 用户在本段**跳过这句** → onComplete()
- *     推进到 first_task(R3.7)。右上角「跳过」为全局跳过整条主线(R1.5)。
+ *     推进到 connect_desktop(R3.7)。右上角「跳过」为全局跳过整条主线(R1.5)。
  *   - 兜底:即使音频从不播放(静音设备/原生不可用),也有总超时强制推进(主线必达,
  *     Correctness Property 1)。
  *
@@ -124,7 +124,7 @@ export function FirstWordsStep({ onComplete, onSkip }: SoulBirthStepProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 用户在本段主动「跳过这句」→ 直接推进到 first_task(R3.7「被用户跳过」)。
+  // 用户在本段主动「跳过这句」→ 直接推进到 connect_desktop(R3.7「被用户跳过」)。
   // 注意:这与右上角全局「跳过」(onSkip → 结束整条主线,R1.5)语义不同。
   const handleSkipLine = useCallback(() => {
     advance();

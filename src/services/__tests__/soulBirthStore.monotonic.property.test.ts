@@ -21,10 +21,16 @@
  *     抑制回填使重看从 birth 重启)。
  *     **Validates: Requirements 1.2, 1.4**
  *
- * 测试手段:fast-check 未安装于移动端 root(仅 backend 有),因此对 5 步的**有限**
- * 状态空间做**穷举**(2^5 = 32 个 completed-set;facts 组合 2^3 = 8),并辅以**带种子
- * 的确定性 RNG** 做**小规模**随机动作序列模糊测试(≤3 种子、≤15 次/种子),等价覆盖
- * 「任意输入下不变式成立」而保持套件快速。
+ * 2026-06 产品决策:邮箱/日历 OAuth「连接」(原 first_task 段)已从首跑主线移除,
+ * 改为「连接器中心」按需触发。步骤集由 5 步收敛为 4 步:
+ *   birth → first_words → connect_desktop → settle_aeon
+ * 本测试不再硬编码步数:穷举掩码上限由 `SOUL_BIRTH_STEPS.length` 推导(MASK_COUNT、
+ * FULL_MASK),对任意步数都成立。
+ *
+ * 测试手段:fast-check 未安装于移动端 root(仅 backend 有),因此对有限状态空间做
+ * **穷举**(2^N 个 completed-set;facts 组合 2^3 = 8),并辅以**带种子的确定性 RNG** 做
+ * **小规模**随机动作序列模糊测试(≤3 种子、≤15 次/种子),等价覆盖「任意输入下不变式
+ * 成立」而保持套件快速。
  *
  * 放在 `src/services/__tests__/` 以匹配 jest.config 的 testMatch;`react-native-mmkv`
  * 经 moduleNameMapper 走内存 mock,store 可在 node 环境直接驱动。
@@ -42,15 +48,22 @@ import {
 
 type Completed = Record<OnboardingStep, boolean>;
 
-const ALL_FALSE: Completed = {
-  birth: false,
-  first_words: false,
-  first_task: false,
-  connect_desktop: false,
-  settle_aeon: false,
-};
+/** 步骤数驱动的穷举边界(移除 first_task 后 N=4 → 16 个掩码)。 */
+const STEP_COUNT = SOUL_BIRTH_STEPS.length;
+const MASK_COUNT = 1 << STEP_COUNT; // 2^N
+const FULL_MASK = MASK_COUNT - 1; // 全部完成的掩码(全 1)
 
-/** 把 0..31 的位掩码映射为一个 completed-set(穷举有限状态空间)。 */
+/** 步骤在固定顺序中的下标(用于构造"只差最后一步"等掩码,随步骤增删自动适配)。 */
+const idxOf = (step: OnboardingStep): number => SOUL_BIRTH_STEPS.indexOf(step);
+/** 仅给定步骤为 false、其余全为 true 的掩码。 */
+const allTrueExcept = (step: OnboardingStep): number => FULL_MASK & ~(1 << idxOf(step));
+
+const ALL_FALSE: Completed = SOUL_BIRTH_STEPS.reduce((acc, step) => {
+  acc[step] = false;
+  return acc;
+}, {} as Completed);
+
+/** 把 0..(2^N-1) 的位掩码映射为一个 completed-set(穷举有限状态空间)。 */
 function subsetFromMask(mask: number): Completed {
   const out = { ...ALL_FALSE };
   SOUL_BIRTH_STEPS.forEach((step, i) => {
@@ -112,8 +125,8 @@ beforeEach(() => {
 // Property 3:步骤单调推进(Validates: Requirements 1.3, 1.7)
 // ──────────────────────────────────────────────────────────────────────────
 describe('Property 3:complete() 幂等且单调,只置真不回退', () => {
-  it('穷举 32×5:complete(step) 仅把目标步骤置真,其余位不变,已为真的位绝不回退', () => {
-    for (let mask = 0; mask < 32; mask++) {
+  it('穷举 2^N × N:complete(step) 仅把目标步骤置真,其余位不变,已为真的位绝不回退', () => {
+    for (let mask = 0; mask < MASK_COUNT; mask++) {
       for (const step of SOUL_BIRTH_STEPS) {
         const start = subsetFromMask(mask);
         resetStoreTo(start);
@@ -149,10 +162,10 @@ describe('Property 3:complete() 幂等且单调,只置真不回退', () => {
 
   it('重复多次 complete 同一步骤:完成计数只增长一次', () => {
     resetStoreTo(ALL_FALSE);
-    useSoulBirthStore.getState().complete('first_task');
+    useSoulBirthStore.getState().complete('first_words');
     const once = countTrue(useSoulBirthStore.getState().completed);
-    useSoulBirthStore.getState().complete('first_task');
-    useSoulBirthStore.getState().complete('first_task');
+    useSoulBirthStore.getState().complete('first_words');
+    useSoulBirthStore.getState().complete('first_words');
     const thrice = countTrue(useSoulBirthStore.getState().completed);
     expect(once).toBe(1);
     expect(thrice).toBe(1);
@@ -160,8 +173,8 @@ describe('Property 3:complete() 幂等且单调,只置真不回退', () => {
 });
 
 describe('Property 3:recompute() 单调回填,只置真不置假', () => {
-  it('穷举 32×8:recompute 后任何原本为真的步骤仍为真(永不回退)', () => {
-    for (let mask = 0; mask < 32; mask++) {
+  it('穷举 2^N × 8:recompute 后任何原本为真的步骤仍为真(永不回退)', () => {
+    for (let mask = 0; mask < MASK_COUNT; mask++) {
       for (let f = 0; f < 8; f++) {
         const start = subsetFromMask(mask);
         resetStoreTo(start);
@@ -179,7 +192,10 @@ describe('Property 3:recompute() 单调回填,只置真不置假', () => {
 
 describe('Property 3:只有 reset() 能整体清空(其它动作不清除已完成位)', () => {
   it('skip / markTerminated / recompute(all-false) / setBirth 均不清空已完成步骤', () => {
-    const start = subsetFromMask(0b10101); // birth, first_task, settle_aeon = true
+    // birth + connect_desktop + settle_aeon = true(任取一个非平凡子集即可)。
+    const start = subsetFromMask(
+      (1 << idxOf('birth')) | (1 << idxOf('connect_desktop')) | (1 << idxOf('settle_aeon')),
+    );
     const allFalseFacts: ExternalFacts = {
       hasInstance: false,
       desktopPairedBefore: false,
@@ -203,8 +219,8 @@ describe('Property 3:只有 reset() 能整体清空(其它动作不清除已完�
     expect(useSoulBirthStore.getState().completed).toEqual(start);
   });
 
-  it('穷举 32:reset() 把任意 completed-set 整体清空为全 false', () => {
-    for (let mask = 0; mask < 32; mask++) {
+  it('穷举 2^N:reset() 把任意 completed-set 整体清空为全 false', () => {
+    for (let mask = 0; mask < MASK_COUNT; mask++) {
       resetStoreTo(subsetFromMask(mask));
       useSoulBirthStore.getState().reset();
       expect(useSoulBirthStore.getState().completed).toEqual(ALL_FALSE);
@@ -216,20 +232,20 @@ describe('Property 3:只有 reset() 能整体清空(其它动作不清除已完�
 // Property 4:指针 = 第一个未完成(Validates: Requirements 1.1, 1.2, 1.6)
 // ──────────────────────────────────────────────────────────────────────────
 describe('Property 4:currentStep 返回固定顺序第一个未完成,全 true 返回 null', () => {
-  it('穷举 32:currentStep === 固定顺序中第一个 false;全 true → null', () => {
-    for (let mask = 0; mask < 32; mask++) {
+  it('穷举 2^N:currentStep === 固定顺序中第一个 false;全 true → null', () => {
+    for (let mask = 0; mask < MASK_COUNT; mask++) {
       const c = subsetFromMask(mask);
       const expected = SOUL_BIRTH_STEPS.find((s) => !c[s]) ?? null;
       expect(currentStep(c)).toBe(expected);
-      if (mask === 31) {
+      if (mask === FULL_MASK) {
         expect(currentStep(c)).toBeNull();
         expect(allStepsComplete(c)).toBe(true);
       }
     }
   });
 
-  it('指针在 store 上与纯函数一致(穷举 32)', () => {
-    for (let mask = 0; mask < 32; mask++) {
+  it('指针在 store 上与纯函数一致(穷举 2^N)', () => {
+    for (let mask = 0; mask < MASK_COUNT; mask++) {
       const c = subsetFromMask(mask);
       resetStoreTo(c);
       expect(currentStep(useSoulBirthStore.getState().completed)).toBe(currentStep(c));
@@ -238,7 +254,7 @@ describe('Property 4:currentStep 返回固定顺序第一个未完成,全 true �
 
   it('complete 推进到全 true 时:currentStep 为 null 且自动 terminated(R1.6)', () => {
     // 仅差最后一步 settle_aeon。
-    resetStoreTo(subsetFromMask(0b01111));
+    resetStoreTo(subsetFromMask(allTrueExcept('settle_aeon')));
     expect(currentStep(useSoulBirthStore.getState().completed)).toBe('settle_aeon');
     useSoulBirthStore.getState().complete('settle_aeon');
     const after = useSoulBirthStore.getState();
@@ -272,14 +288,14 @@ describe('Property 5:recompute 回填后,指针跳过较早但已达成的步骤
     });
     // 第一个未完成仍是 birth(connect_desktop 在更后)。
     expect(currentStep(useSoulBirthStore.getState().completed)).toBe('birth');
-    // 真实完成 birth/first_words/first_task 后,指针跳过已回填的 connect_desktop。
-    ['birth', 'first_words', 'first_task'].forEach((s) =>
+    // 真实完成 birth/first_words 后,指针跳过已回填的 connect_desktop,落到 settle_aeon。
+    ['birth', 'first_words'].forEach((s) =>
       useSoulBirthStore.getState().complete(s as OnboardingStep),
     );
     expect(currentStep(useSoulBirthStore.getState().completed)).toBe('settle_aeon');
   });
 
-  it('三事实全真:仅剩 first_words/first_task 需走,2 步后终止', () => {
+  it('三事实全真:仅剩 first_words 需走,1 步后终止', () => {
     resetStoreTo(ALL_FALSE);
     useSoulBirthStore.getState().recompute({
       hasInstance: true,
@@ -290,11 +306,9 @@ describe('Property 5:recompute 回填后,指针跳过较早但已达成的步骤
     expect(c.birth).toBe(true);
     expect(c.connect_desktop).toBe(true);
     expect(c.settle_aeon).toBe(true);
-    // 指针跳过较早已达成的 birth,落到 first_words。
+    // 指针跳过较早已达成的 birth,落到唯一未完成的 first_words。
     expect(currentStep(c)).toBe('first_words');
     useSoulBirthStore.getState().complete('first_words');
-    expect(currentStep(useSoulBirthStore.getState().completed)).toBe('first_task');
-    useSoulBirthStore.getState().complete('first_task');
     expect(currentStep(useSoulBirthStore.getState().completed)).toBeNull();
     expect(useSoulBirthStore.getState().terminated).toBe(true);
   });
@@ -311,8 +325,8 @@ describe('Property 5:recompute 回填后,指针跳过较早但已达成的步骤
 });
 
 describe('Property 5:续跑(resume)— 从部分完成集恢复到第一个未完成', () => {
-  it('穷举 32:重进后 currentStep 恢复到固定顺序第一个未完成(R1.4)', () => {
-    for (let mask = 0; mask < 32; mask++) {
+  it('穷举 2^N:重进后 currentStep 恢复到固定顺序第一个未完成(R1.4)', () => {
+    for (let mask = 0; mask < MASK_COUNT; mask++) {
       const persisted = subsetFromMask(mask);
       // 模拟「杀进程后重进」:store 以持久化的 completed 重新水合。
       resetStoreTo(persisted);
@@ -322,16 +336,20 @@ describe('Property 5:续跑(resume)— 从部分完成集恢复到第一个未�
     }
   });
 
-  it('典型续跑:已完成 birth+first_words → 从 first_task 续跑', () => {
+  it('典型续跑:已完成 birth+first_words → 从 connect_desktop 续跑', () => {
     resetStoreTo({ ...ALL_FALSE, birth: true, first_words: true });
-    expect(currentStep(useSoulBirthStore.getState().completed)).toBe('first_task');
+    expect(currentStep(useSoulBirthStore.getState().completed)).toBe('connect_desktop');
   });
 });
 
 describe('Property 5:reset() 回到 birth 并置 replaying,抑制 recompute 回填(R1.7)', () => {
   it('reset 后:全清空、未终止、replaying=true、currentStep=birth', () => {
-    // 起始为一个"已大半完成"的状态。
-    resetStoreTo(subsetFromMask(0b00111));
+    // 起始为一个"已大半完成"的状态(birth + first_words + connect_desktop)。
+    resetStoreTo(
+      subsetFromMask(
+        (1 << idxOf('birth')) | (1 << idxOf('first_words')) | (1 << idxOf('connect_desktop')),
+      ),
+    );
     useSoulBirthStore.getState().reset();
     const s = useSoulBirthStore.getState();
     expect(s.completed).toEqual(ALL_FALSE);
@@ -384,7 +402,7 @@ describe('随机动作序列模糊测试(确定性种子,小规模)', () => {
   it('交错 complete/recompute 下:已完成位永不回退(Property 3),指针恒等于第一个未完成(Property 4)', () => {
     for (const seed of SEEDS) {
       const rng = mulberry32(seed);
-      resetStoreTo(subsetFromMask(Math.floor(rng() * 32)));
+      resetStoreTo(subsetFromMask(Math.floor(rng() * MASK_COUNT)));
 
       const ops = 10 + Math.floor(rng() * 5); // 10..14 次,保持快速
       for (let k = 0; k < ops; k++) {

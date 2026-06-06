@@ -6,7 +6,11 @@
  *
  * 由旧的 4 步 `firstRunStore`(含 battle)改造而来:
  *   - 砍掉「拍照 → 3D → 回合战斗」的 wow 主线,移除 `battle` 步骤(C1/C8/R1.8)。
- *   - 五段固定顺序:birth → first_words → first_task → connect_desktop → settle_aeon(R1.2)。
+ *   - 固定顺序:birth → first_words → connect_desktop → settle_aeon(R1.2)。
+ *   - 2026-06 产品决策:邮箱/日历 OAuth「连接」从首跑主线中**移除**(Google 敏感权限审核 /
+ *     access_denied / 回跳摩擦过于脆弱,不适合放进 90s 首跑)。原 `first_task` 段(内联
+ *     OAuth + 播报 + AXP)已删除;连接日历/邮箱改为「连接器中心」(ConnectorHub)内的
+ *     **按需**动作,由用户主动触发(后端幂等奖励路径保留,只是不再由首跑调用)。
  *   - 新增 `terminated` 终止标志(完成或跳过后不再自动触发,R1.6/C9)。
  *   - 新增 `recompute(ExternalFacts)`:用外部事实回填已达成的较后步骤,实现
  *     "skip-earlier-if-later-done"(R1.2a)。
@@ -25,11 +29,10 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { mmkvStorage } from './mmkvStorage';
 
-/** Soul_Birth 五段之一(不含 battle,R1.8)。 */
+/** Soul_Birth 四段之一(不含 battle R1.8;不含已移除的 first_task OAuth 段)。 */
 export type OnboardingStep =
   | 'birth'
   | 'first_words'
-  | 'first_task'
   | 'connect_desktop'
   | 'settle_aeon';
 
@@ -37,7 +40,6 @@ export type OnboardingStep =
 export const SOUL_BIRTH_STEPS: OnboardingStep[] = [
   'birth',
   'first_words',
-  'first_task',
   'connect_desktop',
   'settle_aeon',
 ];
@@ -141,7 +143,6 @@ interface SoulBirthState extends BirthArtifacts {
 const EMPTY_COMPLETED: Record<OnboardingStep, boolean> = {
   birth: false,
   first_words: false,
-  first_task: false,
   connect_desktop: false,
   settle_aeon: false,
 };

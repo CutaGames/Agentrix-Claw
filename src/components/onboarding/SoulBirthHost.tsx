@@ -12,7 +12,7 @@
  *   if (terminated) return null                    // C9 完成/跳过后不再自动触发
  *   step = currentStep(completed)
  *   if (step == null) { markTerminated(); return null }   // 全部完成 → 终止(R1.6)
- *   switch(step): birth/first_words/first_task/connect_desktop/settle_aeon
+ *   switch(step): birth/first_words/connect_desktop/settle_aeon
  *
  * 挂载时拉取 ExternalFacts(getMyInstances / relay 历史 / listMyPlots)并 `recompute`,
  * 实现 skip-earlier-if-later-done(R1.2a / Design Correctness Property 5)。事实拉取失败
@@ -41,7 +41,6 @@ import { fetchExternalFacts } from './externalFacts';
 import type { SoulBirthStepProps } from './types';
 import { BirthStep } from './steps/BirthStep';
 import { FirstWordsStep } from './steps/FirstWordsStep';
-import { FirstTaskStep } from './steps/FirstTaskStep';
 import { ConnectDesktopStep } from './steps/ConnectDesktopStep';
 import { SettleAeonStep } from './steps/SettleAeonStep';
 
@@ -62,7 +61,6 @@ const AWAY_ROUTES = new Set<string>(['WorldEngineScanner', 'PetsSkins']);
 const STEP_REGISTRY: Record<OnboardingStep, React.ComponentType<SoulBirthStepProps>> = {
   birth: BirthStep,
   first_words: FirstWordsStep,
-  first_task: FirstTaskStep,
   connect_desktop: ConnectDesktopStep,
   settle_aeon: SettleAeonStep,
 };

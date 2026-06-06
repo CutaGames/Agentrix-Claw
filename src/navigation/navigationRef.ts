@@ -47,6 +47,34 @@ export function navRefNavigate(...args: any[]): void {
 }
 
 /**
+ * Reset the whole navigation tree to a single top-level route through the
+ * shared container ref. Safe no-op (with a console warning) if the container
+ * isn't ready yet.
+ *
+ * Used by AuthCallbackScreen (Change 2, 2026-06): the "Authentication
+ * successful!" landing screen must NEVER be a dead-end. After committing /
+ * confirming auth (or if the user is already authenticated when the screen is
+ * reached via a stray deep link), it resets to `Main` so the user always
+ * proceeds into the app — regardless of whether the screen was entered from a
+ * login redirect or any other OAuth callback. Routing through the shared ref
+ * (not `useNavigation`) lets it jump across navigator boundaries (Auth stack →
+ * root `Main`), which the Auth-stack navigator cannot do on its own.
+ */
+export function navRefReset(routeName: string, params?: object): void {
+  try {
+    if (navigationRef.isReady()) {
+      navigationRef.reset({ index: 0, routes: [{ name: routeName, params }] });
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn('[navigationRef] reset before ready:', routeName);
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[navigationRef] reset failed:', (e as Error)?.message);
+  }
+}
+
+/**
  * Name of the deepest currently-active route (e.g. `WorldHub`, `Plaza`,
  * `AgentChat`), or null if the container isn't ready yet.
  *

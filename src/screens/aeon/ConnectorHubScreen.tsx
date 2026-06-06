@@ -14,9 +14,12 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import { colors } from '../../theme/colors';
 import {
   listConnectors, installConnector, uninstallConnector, runConnectorErrand,
+  getOAuthAuthorizeUrl, listInstalledConnectors,
 } from '../../services/connectorApi';
 import type { ConnectorCatalogItem } from '../../../shared/types/connector';
 
@@ -27,6 +30,11 @@ const CATEGORY_LABEL: Record<string, string> = {
 const AUTH_LABEL: Record<string, string> = {
   none: '免鉴权', api_key: '需 API Key', bearer: '需 Token', oauth: '需 OAuth 授权',
 };
+
+/** OAuth 回跳后轮询安装态的尝试次数与间隔(回跳→后端落库通常瞬时,留少量重试容错)。 */
+const OAUTH_INSTALL_POLL_ATTEMPTS = 4;
+const OAUTH_INSTALL_POLL_DELAY_MS = 1_200;
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export default function ConnectorHubScreen() {
   const navigation = useNavigation<any>();
@@ -74,6 +82,50 @@ export default function ConnectorHubScreen() {
     }
   }, [load]);
 
+  /**
+   * OAuth 连接器(google-calendar / gmail 等)按需授权安装(2026-06 从首跑主线下放到此处)。
+   * 流程:取授权 URL → WebBrowser 打开 provider 授权页 → 回跳后端 `oauth/callback`(后端校验
+   * state 并落库)→ 浏览器会话结束后轮询 `/connectors/installed`,该连接器出现即视为授权成功
+   * (取消/失败则不出现)。后端未配置 provider 凭据 / 不支持 OAuth 时抛描述性错误 → 提示用户。
+   *
+   * 注意:连接器 OAuth 的 returnUrl 用独立 deep link `connectors/oauth`,与登录 OAuth 的
+   * `auth/callback` 解耦——后者会被路由到 AuthCallbackScreen,二者绝不共用回跳屏。
+   */
+  const doOAuthInstall = useCallback(async (c: ConnectorCatalogItem) => {
+    setBusy(true);
+    try {
+      const { url } = await getOAuthAuthorizeUrl(c.id);
+      const returnUrl = Linking.createURL('connectors/oauth');
+      try {
+        await WebBrowser.openAuthSessionAsync(url, returnUrl, { showInRecents: true });
+      } catch {
+        /* 打开/关闭浏览器异常不致命:仍以轮询安装态判定结果。 */
+      }
+      // 浏览器会话结束后轮询「我已安装」:出现该连接器即授权成功。
+      let installed = false;
+      for (let i = 0; i < OAUTH_INSTALL_POLL_ATTEMPTS; i++) {
+        try {
+          const list = await listInstalledConnectors();
+          if (list.some((x) => x.id === c.id)) { installed = true; break; }
+        } catch {
+          /* 轮询瞬时失败:重试 */
+        }
+        if (i < OAUTH_INSTALL_POLL_ATTEMPTS - 1) await sleep(OAUTH_INSTALL_POLL_DELAY_MS);
+      }
+      if (installed) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        await load();
+        Alert.alert('已连接', `「${c.name}」已授权连接,你的 agent 现在可以用它办事了。`);
+      } else {
+        Alert.alert('授权未完成', '没有检测到授权完成,你可以重试。如果刚刚取消了授权,可再点一次「连接」。');
+      }
+    } catch (e: any) {
+      Alert.alert('暂时无法连接', e?.message ?? '稍后再试,或在桌面端完成 Google 授权。');
+    } finally {
+      setBusy(false);
+    }
+  }, [load]);
+
   const onInstallPress = useCallback((c: ConnectorCatalogItem) => {
     if (c.status === 'coming_soon') {
       Alert.alert('即将上线', `「${c.name}」即将上线,敬请期待。`);
@@ -82,14 +134,14 @@ export default function ConnectorHubScreen() {
     if (c.authKind === 'none') {
       void doInstall(c);
     } else if (c.authKind === 'oauth') {
-      Alert.alert('OAuth 授权', 'OAuth 连接器即将支持一键授权,敬请期待。');
+      void doOAuthInstall(c);
     } else {
       // 需要 key/token → 打开鉴权向导
       setApiKey('');
       setToken('');
       setWizard(c);
     }
-  }, [doInstall]);
+  }, [doInstall, doOAuthInstall]);
 
   const onUninstall = useCallback((c: ConnectorCatalogItem) => {
     Alert.alert('卸载', `卸载「${c.name}」?`, [
