@@ -93,6 +93,33 @@ interface SoulBirthState extends BirthArtifacts {
    */
   suspended: boolean;
 
+  /**
+   * 本次 Soul_Birth 进度所归属的用户 id(R1.6/C9 的「每用户一次性」语义落地点)。
+   *
+   * 为何需要(2026-06 生产真机 Bug 修复):`terminated`/`completed` 通过 MMKV
+   * (key `agentrix-soul-birth-v1`)按**安装**持久化,而非按**用户**。于是只要本机上
+   * 任一账号曾完成/跳过 Soul_Birth(terminated=true),之后**任何新登录的用户**——包括
+   * 全新 Google 账号——都会被该残留 terminated 直接抑制,引导永不出现。这正是真机测试
+   * 「登录后不进入 birth/90s 语音」的根因之一。
+   *
+   * 修复:记录进度所属用户;`bindUser(userId)` 在登录用户变化时把进度重置为全新,
+   * 使「未自己完成/终止过的新用户」必得引导(R1.1),同时**不破坏**同一用户的
+   * 「完成后不再触发」(R1.6/C9)与 recompute 的 skip-earlier(R1.2a)。
+   *
+   * null = 尚未绑定(全新安装 / 旧版本升级):此时**不清空**已有进度,只认领当前用户,
+   * 避免升级用户在 birth 途中被误重置。
+   */
+  boundUserId: string | null;
+
+  /**
+   * 将当前 Soul_Birth 进度绑定到指定用户。登录后由 `SoulBirthHost` 调用:
+   *   - boundUserId 为 null(全新/升级)→ 仅认领,不清空既有进度。
+   *   - boundUserId === userId(同一用户)→ no-op,保留其 completed/terminated(R1.6/C9)。
+   *   - boundUserId !== userId(本机换了账号)→ 为新用户开启全新 Soul_Birth(清空进度/终止/
+   *     重放/挂起与 birth 产出),使其必得引导(R1.1)。
+   */
+  bindUser: (userId: string | null) => void;
+
   /** 幂等标记一步完成并推进;全部完成时自动终止(R1.3/R1.6)。 */
   complete: (step: OnboardingStep) => void;
   /** 结束 Soul_Birth 主线(用户在任一步选择"跳过",R1.5)。 */
@@ -146,9 +173,34 @@ export const useSoulBirthStore = create<SoulBirthState>()(
       terminated: false,
       replaying: false,
       suspended: false,
+      boundUserId: null,
       instanceId: null,
       petName: null,
       avatarId: null,
+
+      bindUser: (userId) =>
+        set((s) => {
+          if (!userId) return s;
+          // 全新安装 / 旧版本升级(从未绑定):只认领当前用户,保留既有进度,
+          // 避免把正处于 birth 途中的升级用户误重置。
+          if (s.boundUserId == null) {
+            return { boundUserId: userId };
+          }
+          // 同一用户重新进入:保留其 completed/terminated(完成后不再触发,R1.6/C9)。
+          if (s.boundUserId === userId) return s;
+          // 本机切换到另一账号:为新用户开启全新 Soul_Birth(R1.1),
+          // 不沿用上一账号的 terminated/completed(这正是真机 Bug 的根因)。
+          return {
+            boundUserId: userId,
+            completed: { ...EMPTY_COMPLETED },
+            terminated: false,
+            replaying: false,
+            suspended: false,
+            instanceId: null,
+            petName: null,
+            avatarId: null,
+          };
+        }),
 
       complete: (step) =>
         set((s) => {
@@ -222,6 +274,7 @@ export const useSoulBirthStore = create<SoulBirthState>()(
         completed: s.completed,
         terminated: s.terminated,
         replaying: s.replaying,
+        boundUserId: s.boundUserId,
         instanceId: s.instanceId,
         petName: s.petName,
         avatarId: s.avatarId,

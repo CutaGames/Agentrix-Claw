@@ -70,6 +70,7 @@ const STEP_REGISTRY: Record<OnboardingStep, React.ComponentType<SoulBirthStepPro
 export function SoulBirthHost() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isGuest = useAuthStore((s) => s.isGuest);
+  const userId = useAuthStore((s) => s.user?.id ?? null);
 
   const completed = useSoulBirthStore((s) => s.completed);
   const terminated = useSoulBirthStore((s) => s.terminated);
@@ -80,6 +81,18 @@ export function SoulBirthHost() {
   const resume = useSoulBirthStore((s) => s.resume);
   const markTerminated = useSoulBirthStore((s) => s.markTerminated);
   const recompute = useSoulBirthStore((s) => s.recompute);
+  const bindUser = useSoulBirthStore((s) => s.bindUser);
+
+  // 把持久化的 Soul_Birth 进度绑定到当前登录用户(2026-06 真机 Bug 修复)。
+  // MMKV 进度是按安装持久化的:若本机上一账号曾 terminated,新登录用户会被错误抑制。
+  // 这里在登录用户变化时调用 bindUser:换了账号 → 为新用户开启全新引导(R1.1);
+  // 同一用户 → 保留其 terminated/completed(R1.6/C9)。必须在 active/step 计算「之前」
+  // 生效,因此放在最靠前的 effect(状态变更会触发重渲染,下一帧即按新进度门控)。
+  useEffect(() => {
+    if (isAuthenticated && !isGuest && userId) {
+      bindUser(userId);
+    }
+  }, [isAuthenticated, isGuest, userId, bindUser]);
 
   // 仅对「已登录、非游客、未终止」的用户激活引导(C3 / C9)。
   const active = isAuthenticated && !isGuest && !terminated;

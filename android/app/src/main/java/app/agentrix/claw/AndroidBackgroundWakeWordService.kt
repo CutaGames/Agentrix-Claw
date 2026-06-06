@@ -9,6 +9,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.PixelFormat
 import android.media.AudioFormat
 import android.media.AudioRecord
@@ -320,10 +322,29 @@ class AndroidBackgroundWakeWordService : Service() {
       elevation = 18f
       // 尺寸由下方 WindowManager.LayoutParams(ballSize,ballSize) 决定;
       // ImageView 没有 setWidth/setHeight,直接给 width/height 会编译报错('val' cannot be reassigned)。
+      //
+      // P-9 overlay sprite-sheet hotfix: the bundled pet drawables are
+      // horizontal sprite SHEETS (N frames × 256px laid side-by-side, e.g.
+      // idle.png is 1024×256 = 4 frames). Feeding the whole sheet to a square
+      // ImageView with FIT_CENTER squeezed every frame into the circle → a
+      // "row of tiny pets". Decode the drawable and crop the leftmost square
+      // frame so the overlay shows ONE pet, matching the in-app PetSpriteImage
+      // which clips the sheet to a single frame. The bundled
+      // companion_ball_default.png is now already a single 256×256 frame, but
+      // this crop keeps the overlay correct even if a multi-frame sheet is
+      // dropped in again.
       try {
-        setImageResource(
-          resources.getIdentifier("companion_ball_default", "drawable", packageName)
-        )
+        val spriteResId = resources.getIdentifier("companion_ball_default", "drawable", packageName)
+        if (spriteResId != 0) {
+          val sheet = BitmapFactory.decodeResource(resources, spriteResId)
+          when {
+            sheet == null -> setImageResource(spriteResId)
+            sheet.width > sheet.height ->
+              // Horizontal strip → crop frame 0 (leftmost square).
+              setImageBitmap(Bitmap.createBitmap(sheet, 0, 0, sheet.height, sheet.height))
+            else -> setImageBitmap(sheet)
+          }
+        }
       } catch (e: Exception) {
         Log.w(TAG, "companion_ball_default drawable missing, falling back to blank ball", e)
       }

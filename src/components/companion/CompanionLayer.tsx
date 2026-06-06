@@ -42,7 +42,7 @@ import { SkillInstallCard } from './SkillInstallCard';
 import { WalletCapsule } from './WalletCapsule';
 import { ApprovalAlertCapsule } from './ApprovalAlertCapsule';
 import { VoiceGreetCapsule } from './VoiceGreetCapsule';
-import { companionSheets } from './sheetRefRegistry';
+import { companionSheets, conversationBubbleRef, petDetailSheetRef } from './sheetRefRegistry';
 import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
 
 /**
@@ -299,19 +299,31 @@ function CompanionFallbackBall({ navigationRef }: { navigationRef?: any }) {
     }
   }, [navigationRef]);
 
-  // Long-press still tries to open the PetDetailSheet via the imperative
-  // registry (it lives in its own IsolatedBoundary, so it may still be
-  // alive even if the ball subtree crashed). Falls back to navigating to
-  // World if the sheet isn't mounted.
-  const openDetail = React.useCallback(() => {
-    try {
-      companionSheets.petDetail.present();
-    } catch {
+  // P-9 spec (mobile-pet-companion-redesign R2.1 / R4.1): single-tap surfaces
+  // the ConversationBubble and long-press surfaces the PetDetailSheet — the
+  // SAME contract as the real ball. Even in this degraded fallback we honor it
+  // instead of the old "tap → World" behavior (which was exactly the user
+  // report: "tap just navigates to World, no conversation bubble; long-press
+  // does nothing"). The sheets live in their own IsolatedBoundary, so they are
+  // usually alive even when the ball subtree crashed; we only fall back to
+  // navigating to World when the target sheet truly isn't mounted, so the user
+  // is never stranded.
+  const openConversation = React.useCallback(() => {
+    if (conversationBubbleRef.current) {
+      companionSheets.conversation.present({ autoActivateVoice: true });
+    } else {
       goWorld();
     }
   }, [goWorld]);
 
-  // Try to render the real idle sprite; if even that throws (asset/render
+  const openDetail = React.useCallback(() => {
+    if (petDetailSheetRef.current) {
+      companionSheets.petDetail.present();
+    } else {
+      goWorld();
+    }
+  }, [goWorld]);
+
   // Render the real idle sprite as a SINGLE icon. If the sprite render
   // throws (asset/native issue), the IsolatedBoundary swaps to the 🦊 emoji
   // — they never stack, so the fallback ball shows exactly one icon.
@@ -319,7 +331,7 @@ function CompanionFallbackBall({ navigationRef }: { navigationRef?: any }) {
     <View style={fallbackStyles.wrap} pointerEvents="box-none">
       <TouchableOpacity
         style={fallbackStyles.ball}
-        onPress={goWorld}
+        onPress={openConversation}
         onLongPress={openDetail}
         delayLongPress={400}
         activeOpacity={0.8}
