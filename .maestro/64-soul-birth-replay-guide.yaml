@@ -1,0 +1,75 @@
+appId: app.agentrix.claw
+name: Soul_Birth — Re-watch guide (Me → 重看引导) re-opens at birth (R1.7)
+# ─────────────────────────────────────────────────────────────
+# Test 64: soul-companion-onboarding — 重看引导 (replay onboarding).
+#
+# Spec: .kiro/specs/soul-companion-onboarding/{requirements,design}.md
+#   Requirement 1.7: 编排器提供「重看引导」入口;用户主动触发重看时,
+#     重置 Soul_Birth 进度并从 `birth` 步骤重新开始。
+#   ProfileScreen.handleReplaySoulBirth → soulBirthStore.reset() → SoulBirthHost
+#     remounts the overlay at the first step (birth).
+#
+# Flow:
+#   Me tab → 重看引导 (testID me-replay-onboarding) → confirm dialog
+#   → tap 重看 / Replay → Soul_Birth overlay re-appears at the `birth` step
+#     ("诞生你的 AI").
+#
+# This flow is fully deterministic — it does NOT depend on cloud provision; it
+# only verifies the replay entry resets and re-mounts the overlay at birth.
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 8000
+
+# ── Defensive: if a prior run left a Soul_Birth step overlay up, end it via
+#    the global 跳过 (R1.5) so the Me tab + replay entry are reachable. ──
+- runFlow:
+    when:
+      visible: "^跳过$"
+    commands:
+      - tapOn:
+          text: "^跳过$"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# ── Open the Me tab ────────────────────────────────────────────
+- tapOn:
+    text: "Me"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: "64-me-tab"
+
+# ── Tap 重看引导 (R1.7 entry) ──────────────────────────────────
+# The menu item lives under Settings; scroll it into view if needed.
+- scrollUntilVisible:
+    element:
+      id: "me-replay-onboarding"
+    direction: DOWN
+    timeout: 8000
+    optional: true
+- assertVisible:
+    id: "me-replay-onboarding"
+- tapOn:
+    id: "me-replay-onboarding"
+
+# ── Confirm dialog → tap confirm (重看 / Replay), not 取消 / Cancel ──
+- assertVisible:
+    text: "重看引导|Replay onboarding"
+    optional: true
+- takeScreenshot: "64-replay-confirm-dialog"
+- tapOn:
+    text: "重看|Replay"
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# ── Assert Soul_Birth overlay re-appears at the `birth` step (R1.7) ──
+- assertVisible:
+    text: "诞生你的 AI"
+- assertVisible:
+    text: "灵狐"
+    optional: true
+- takeScreenshot: "64-replayed-birth-step"
