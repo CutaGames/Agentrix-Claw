@@ -2008,8 +2008,21 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       vadRef.current?.stop();
       isRecordingRef.current = false;
       setIsRecording(false);
-      setVoicePhase('transcribing');
       triggerHapticImpact(Haptics?.ImpactFeedbackStyle?.Light);
+
+      // Guard: if there is no active expo-av recording (user released before
+      // Audio.Recording.createAsync resolved — e.g. during the first-run mic
+      // permission dialog — or a prior stuck turn left isRecordingRef set so a
+      // new recording never started), do NOT strand the UI in 'transcribing'.
+      // The old code set 'transcribing' unconditionally and the outer
+      // `if (recordingRef.current)` had no else, so the phase never left
+      // 'transcribing' → the 48s watchdog surfaced a false "转写超时" and the
+      // next press was skipped (isRecordingRef still truthy) → vicious cycle.
+      if (!recordingRef.current) {
+        setVoicePhase('idle');
+        return;
+      }
+      setVoicePhase('transcribing');
 
       if (recordingRef.current) {
         await recordingRef.current.stopAndUnloadAsync();

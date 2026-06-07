@@ -33,7 +33,7 @@
  * of a Companion bug.
  */
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, PanResponder, Dimensions } from 'react-native';
 import { CompanionBall } from './CompanionBall';
 import { ConversationBubble } from './ConversationBubble';
 import { PetDetailSheet } from './PetDetailSheet';
@@ -44,6 +44,7 @@ import { ApprovalAlertCapsule } from './ApprovalAlertCapsule';
 import { VoiceGreetCapsule } from './VoiceGreetCapsule';
 import { companionSheets, conversationBubbleRef, petDetailSheetRef } from './sheetRefRegistry';
 import { addVoiceDiagnostic } from '../../services/voiceDiagnostics';
+import { useCompanionLayoutStore } from '../../stores/companionLayoutStore';
 
 /**
  * Shared crash recorder for the companion boundaries. Writes to BOTH a
@@ -299,15 +300,6 @@ function CompanionFallbackBall({ navigationRef }: { navigationRef?: any }) {
     }
   }, [navigationRef]);
 
-  // P-9 spec (mobile-pet-companion-redesign R2.1 / R4.1): single-tap surfaces
-  // the ConversationBubble and long-press surfaces the PetDetailSheet — the
-  // SAME contract as the real ball. Even in this degraded fallback we honor it
-  // instead of the old "tap → World" behavior (which was exactly the user
-  // report: "tap just navigates to World, no conversation bubble; long-press
-  // does nothing"). The sheets live in their own IsolatedBoundary, so they are
-  // usually alive even when the ball subtree crashed; we only fall back to
-  // navigating to World when the target sheet truly isn't mounted, so the user
-  // is never stranded.
   const openConversation = React.useCallback(() => {
     if (conversationBubbleRef.current) {
       companionSheets.conversation.present({ autoActivateVoice: true });
@@ -324,28 +316,101 @@ function CompanionFallbackBall({ navigationRef }: { navigationRef?: any }) {
     }
   }, [goWorld]);
 
+  // Draggable fallback: the static fallback ball was the actual "can't move"
+  // bug — when the rich GlobalFloatingBall crashes on mount (navigator-hook
+  // throw, asset failure, etc.) this fallback is what the user sees, and it had
+  // no gesture handling. Give it the same drag + edge-snap + persistence as the
+  // real ball so the visible ball is always movable regardless of the crash.
+  const FALL_BALL = 48;
+  const FALL_MARGIN = 16;
+  const { width: screenW, height: screenH } = Dimensions.get('window');
+
+  const initialPos = React.useRef(((): { x: number; y: number } => {
+    try {
+      const st = useCompanionLayoutStore.getState();
+      const onLeft = st.lastCorner === 'top-left' || st.lastCorner === 'bottom-left';
+      const x = onLeft ? FALL_MARGIN : screenW - FALL_BALL - FALL_MARGIN;
+      const y = typeof st.y === 'number' && st.y > 0
+        ? Math.max(60, Math.min(st.y, screenH - FALL_BALL - 100))
+        : screenH - 200;
+      return { x, y };
+    } catch {
+      return { x: screenW - FALL_BALL - FALL_MARGIN, y: screenH - 200 };
+    }
+  })()).current;
+
+  const pan = React.useRef(new Animated.ValueXY(initialPos)).current;
+  const dragging = React.useRef(false);
+  const longPressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const panResponder = React.useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 5 || Math.abs(g.dy) > 5,
+      onPanResponderGrant: () => {
+        dragging.current = false;
+        longPressTimer.current = setTimeout(() => {
+          if (!dragging.current) openDetail();
+        }, 400);
+        pan.extractOffset();
+      },
+      onPanResponderMove: (_, g) => {
+        if (Math.abs(g.dx) > 5 || Math.abs(g.dy) > 5) {
+          dragging.current = true;
+          if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+          }
+        }
+        Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false })(_, g);
+      },
+      onPanResponderRelease: () => {
+        if (longPressTimer.current) {
+          clearTimeout(longPressTimer.current);
+          longPressTimer.current = null;
+        }
+        pan.flattenOffset();
+        const curX = (pan.x as any)._value ?? initialPos.x;
+        const curY = (pan.y as any)._value ?? initialPos.y;
+        const onLeft = curX < screenW / 2;
+        const snapX = onLeft ? FALL_MARGIN : screenW - FALL_BALL - FALL_MARGIN;
+        const clampedY = Math.max(60, Math.min(curY, screenH - FALL_BALL - 100));
+        Animated.spring(pan, { toValue: { x: snapX, y: clampedY }, useNativeDriver: false, friction: 7 }).start();
+        try {
+          const corner = `${clampedY < screenH / 2 ? 'top' : 'bottom'}-${onLeft ? 'left' : 'right'}` as
+            | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+          const st = useCompanionLayoutStore.getState();
+          st.setLastCorner(corner);
+          st.setPosition(snapX, clampedY);
+        } catch {
+          /* best-effort */
+        }
+        if (!dragging.current) openConversation();
+        dragging.current = false;
+      },
+    }),
+  ).current;
+
   // Render the real idle sprite as a SINGLE icon. If the sprite render
   // throws (asset/native issue), the IsolatedBoundary swaps to the 🦊 emoji
   // — they never stack, so the fallback ball shows exactly one icon.
   return (
-    <View style={fallbackStyles.wrap} pointerEvents="box-none">
-      <TouchableOpacity
-        style={fallbackStyles.ball}
-        onPress={openConversation}
-        onLongPress={openDetail}
-        delayLongPress={400}
-        activeOpacity={0.8}
-        accessibilityLabel="companion"
-        testID="companion-fallback-ball"
-      >
+    <Animated.View
+      style={[
+        fallbackStyles.wrap,
+        { transform: [{ translateX: pan.x }, { translateY: pan.y }] },
+      ]}
+      {...panResponder.panHandlers}
+    >
+      <View style={fallbackStyles.ball} accessibilityLabel="companion" testID="companion-fallback-ball">
         <IsolatedBoundary
           label="fallback-sprite"
           fallback={<Text style={fallbackStyles.emoji}>🦊</Text>}
         >
           <FallbackSprite />
         </IsolatedBoundary>
-      </TouchableOpacity>
-    </View>
+      </View>
+    </Animated.View>
   );
 }
 
@@ -359,9 +424,10 @@ function FallbackSprite() {
 const fallbackStyles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    right: 16,
-    bottom: 120,
+    top: 0,
+    left: 0,
     zIndex: 9999,
+    elevation: 10,
   },
   ball: {
     width: 48,
