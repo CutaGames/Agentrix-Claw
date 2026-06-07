@@ -22,6 +22,7 @@ import {
 } from '../services/liveSpeech.service';
 import { API_BASE, WS_BASE } from '../config/env';
 import type { UploadedChatAttachment } from '../services/api';
+import { readUriAsBase64 } from '../utils/readBase64';
 import { BackgroundVoiceService } from '../services/backgroundVoice.service';
 import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 import { RealtimeVoiceService, type RealtimeVoiceState } from '../services/realtimeVoice.service';
@@ -1903,17 +1904,22 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         let pcmTranscribeTimedOut = false;
         let pcmTranscribeFailed = false;
         let pcmTranscribeErrorDetail = '';
-        const pcmFormData = new FormData();
-        pcmFormData.append('audio', { uri: wavUri, name: 'voice.wav', type: 'audio/wav' } as any);
+        // Reliable upload via base64 JSON (see m4a path) — multipart fetch hung on Android.
+        let pcmAudioBase64 = '';
+        try {
+          pcmAudioBase64 = await readUriAsBase64(wavUri);
+        } catch (readErr: any) {
+          addVoiceDiagnostic('voice-session', 'hold-pcm-read-base64-failed', { error: String(readErr?.message || readErr) });
+        }
         const pcmAc = new AbortController();
         const TRANSCRIBE_TIMEOUT_MS = 45_000;
         const pcmTimeout = setTimeout(() => pcmAc.abort(), TRANSCRIBE_TIMEOUT_MS);
         try {
           const resp = await Promise.race([
-            fetch(`${API_BASE}/voice/transcribe?lang=${voiceLanguageHint}`, {
+            fetch(`${API_BASE}/voice/transcribe-json?lang=${voiceLanguageHint}`, {
               method: 'POST',
-              headers: { Authorization: `Bearer ${token}` },
-              body: pcmFormData,
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ audioBase64: pcmAudioBase64, mimeType: 'audio/wav', lang: voiceLanguageHint }),
               signal: pcmAc.signal,
             }),
             new Promise<never>((_, reject) =>
@@ -2071,8 +2077,19 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           let transcribeTimedOut = false;
           let transcribeFailed = false;
           let transcribeErrorDetail = '';
-          const formData = new FormData();
-          formData.append('audio', { uri, name: 'voice.m4a', type: 'audio/m4a' } as any);
+          // Reliable upload: read the recording as base64 and POST it as JSON.
+          // The previous fetch+FormData multipart upload silently hung on
+          // Android (the request never reached the backend — confirmed via
+          // server logs), which surfaced as the "转写超时" the user kept hitting.
+          // A plain JSON POST is reliable (same mechanism used elsewhere). The
+          // backend /voice/transcribe-json decodes the base64 and runs the
+          // exact same (server-verified) transcription pipeline.
+          let audioBase64 = '';
+          try {
+            audioBase64 = await readUriAsBase64(uri);
+          } catch (readErr: any) {
+            addVoiceDiagnostic('voice-session', 'hold-read-base64-failed', { error: String(readErr?.message || readErr) });
+          }
           const ac = new AbortController();
           // Upper bound tolerant of worst case: Gemini STT chain (3 keys × ~15s) → AWS fallback.
           // We intentionally race an independent timeout promise because some RN builds do not
@@ -2082,10 +2099,10 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           const timeout = setTimeout(() => ac.abort(), TRANSCRIBE_TIMEOUT_MS);
           try {
             const resp = await Promise.race([
-              fetch(`${API_BASE}/voice/transcribe?lang=${voiceLanguageHint}`, {
+              fetch(`${API_BASE}/voice/transcribe-json?lang=${voiceLanguageHint}`, {
                 method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-                body: formData,
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ audioBase64, mimeType: 'audio/m4a', lang: voiceLanguageHint }),
                 signal: ac.signal,
               }),
               new Promise<never>((_, reject) =>
