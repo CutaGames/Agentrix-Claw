@@ -77,6 +77,25 @@ function recordCompanionCrash(slot: string, error: Error, info: React.ErrorInfo)
   } catch {
     /* ignore */
   }
+  // Best-effort remote telemetry so the actual mount-throw root cause is
+  // visible server-side (in-app voiceDiagnostics are local-only). Fire-and-
+  // forget; never let reporting throw into the boundary.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    const { API_BASE } = require('../../config/env') as { API_BASE: string };
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    const { useAuthStore } = require('../../stores/authStore') as typeof import('../../stores/authStore');
+    const token = useAuthStore.getState?.().token;
+    if (API_BASE && token) {
+      void fetch(`${API_BASE}/voice/companion-crash`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ slot, message: error?.message, stack, platform: 'mobile' }),
+      }).catch(() => {});
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 interface CompanionLayerProps {
