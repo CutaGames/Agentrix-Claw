@@ -23,6 +23,30 @@ import {
 import { API_BASE, WS_BASE } from '../config/env';
 import type { UploadedChatAttachment } from '../services/api';
 import { readUriAsBase64 } from '../utils/readBase64';
+
+// ── TEMP remote breadcrumb for diagnosing hold-to-talk hangs on RELEASE ──────
+// Release Hermes strips console.*, and voiceDiagnostics (MMKV) aren't readable
+// on a non-debuggable APK. We fire-and-forget tiny POSTs to the proven-reachable
+// /voice/companion-crash endpoint so each hold-to-talk milestone shows up
+// server-side as `[COMPANION-CRASH] slot=vhold msg=<step>`. After a repro,
+// `grep COMPANION-CRASH | grep vhold` on prod reveals the LAST milestone =
+// exactly where the flow hangs. The body is tiny, so it still arrives even if
+// the large transcribe upload itself is what's stalling. Remove once BUG-002
+// is root-caused.
+function reportHoldDiag(apiBase: string, token: string | null | undefined, step: string, extra?: Record<string, unknown>): void {
+  try {
+    if (!apiBase || !token) return;
+    void fetch(`${apiBase}/voice/companion-crash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        slot: 'vhold',
+        message: step + (extra ? ' ' + JSON.stringify(extra) : ''),
+        platform: 'mobile',
+      }),
+    }).catch(() => {});
+  } catch { /* never throw from a breadcrumb */ }
+}
 import { BackgroundVoiceService } from '../services/backgroundVoice.service';
 import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 import { RealtimeVoiceService, type RealtimeVoiceState } from '../services/realtimeVoice.service';
@@ -1756,6 +1780,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         );
         recordingRef.current = recording;
         setIsRecording(true);
+        reportHoldDiag(API_BASE, token, 'm4a:recording-started');
         triggerHapticImpact(Haptics?.ImpactFeedbackStyle?.Medium);
 
         // Start VAD monitoring on the recording for volume feedback
@@ -1809,6 +1834,13 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     ) {
       return;
     }
+
+    reportHoldDiag(API_BASE, token, 'stop-called', {
+      branch: localDirectAudioCaptureRef.current ? 'directPcm'
+        : localHoldSpeechRef.current ? 'localSpeech'
+        : recordingRef.current ? 'expoAv'
+        : (!Audio ? 'noAudio' : 'none-recordingRef-null'),
+    });
 
     try {
       if (localDirectAudioCaptureRef.current) {
@@ -2025,15 +2057,18 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
       // 'transcribing' → the 48s watchdog surfaced a false "转写超时" and the
       // next press was skipped (isRecordingRef still truthy) → vicious cycle.
       if (!recordingRef.current) {
+        reportHoldDiag(API_BASE, token, 'm4a:no-recording-ref (idle)');
         setVoicePhase('idle');
         return;
       }
       setVoicePhase('transcribing');
 
       if (recordingRef.current) {
+        reportHoldDiag(API_BASE, token, 'm4a:stop-begin');
         await recordingRef.current.stopAndUnloadAsync();
         const uri = recordingRef.current.getURI();
         recordingRef.current = null;
+        reportHoldDiag(API_BASE, token, 'm4a:stopped', { hasUri: !!uri });
         if (uri) {
           // ── On-device STT (whisper.rn) ────────────────────────
           // When the whisper-base encoder is downloaded, transcribe locally
@@ -2086,9 +2121,12 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           // exact same (server-verified) transcription pipeline.
           let audioBase64 = '';
           try {
+            reportHoldDiag(API_BASE, token, 'm4a:b64-begin');
             audioBase64 = await readUriAsBase64(uri);
+            reportHoldDiag(API_BASE, token, 'm4a:b64-done', { len: audioBase64.length });
           } catch (readErr: any) {
             addVoiceDiagnostic('voice-session', 'hold-read-base64-failed', { error: String(readErr?.message || readErr) });
+            reportHoldDiag(API_BASE, token, 'm4a:b64-failed', { err: String(readErr?.message || readErr).slice(0, 80) });
           }
           const ac = new AbortController();
           // Upper bound tolerant of worst case: Gemini STT chain (3 keys × ~15s) → AWS fallback.
@@ -2098,6 +2136,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
           const TRANSCRIBE_TIMEOUT_MS = 45_000;
           const timeout = setTimeout(() => ac.abort(), TRANSCRIBE_TIMEOUT_MS);
           try {
+            reportHoldDiag(API_BASE, token, 'm4a:fetch-begin', { bodyLen: audioBase64.length });
             const resp = await Promise.race([
               fetch(`${API_BASE}/voice/transcribe-json?lang=${voiceLanguageHint}`, {
                 method: 'POST',
@@ -2115,6 +2154,7 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
             if (resp.ok) {
               const data = await resp.json();
               transcript = data?.text || data?.transcript || '';
+              reportHoldDiag(API_BASE, token, 'm4a:fetch-ok', { chars: transcript.length });
             } else {
               transcribeFailed = true;
               // Capture server response body so the alert (and logs) show the
@@ -2122,11 +2162,13 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
               // "model unavailable", auth errors). Without this the user just
               // sees a generic "转写失败" with no way to triage.
               try { transcribeErrorDetail = await resp.text(); } catch { /* ignore */ }
+              reportHoldDiag(API_BASE, token, 'm4a:fetch-http-error', { status: resp.status });
               console.warn('Transcription HTTP error', resp.status, transcribeErrorDetail.slice(0, 300));
             }
           } catch (err: any) {
             if (err?.message === 'transcribe-timeout' || err?.name === 'AbortError') {
               transcribeTimedOut = true;
+              reportHoldDiag(API_BASE, token, 'm4a:fetch-timeout');
             } else {
               transcribeFailed = true;
               transcribeErrorDetail = String(err?.message || err);
