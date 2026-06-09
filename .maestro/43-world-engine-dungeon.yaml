@@ -4,7 +4,8 @@ appId: app.agentrix.claw
 name: World Engine — Dungeon Smoke
 ---
 - launchApp
-- tapOn: "萌宠"
+- tapOn:
+    id: "tab-world"
 
 # 副本入口需要从战斗或库存进入（V5 增加 Pet Hub 卡片入口前先验证扫描器入口可用）
 - scrollUntilVisible:

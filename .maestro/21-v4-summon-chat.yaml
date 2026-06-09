@@ -6,7 +6,8 @@ appId: app.agentrix.claw
 ---
 - launchApp
 
-- tapOn: "Summon"
+- tapOn:
+    id: "tab-summon"
 
 - waitForAnimationToEnd:
     timeout: 5000

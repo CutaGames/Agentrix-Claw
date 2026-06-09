@@ -6,7 +6,8 @@ appId: app.agentrix.claw
 ---
 - launchApp
 
-- tapOn: "Plaza"
+- tapOn:
+    id: "tab-plaza"
 
 - waitForAnimationToEnd:
     timeout: 5000

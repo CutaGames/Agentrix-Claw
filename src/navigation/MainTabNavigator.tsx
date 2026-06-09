@@ -86,6 +86,7 @@ export function MainTabNavigator() {
         component={WorldStackNavigator}
         options={{
           title: t({ en: 'World', zh: '世界' }),
+          tabBarButtonTestID: 'tab-world',
           tabBarIcon: ({ focused }) => <TabIcon emoji="🌍" focused={focused} />,
         }}
       />
@@ -94,6 +95,7 @@ export function MainTabNavigator() {
         component={SummonStackNavigator}
         options={{
           title: t({ en: 'Summon', zh: '召唤' }),
+          tabBarButtonTestID: 'tab-summon',
           tabBarIcon: ({ focused }) => <TabIcon emoji="🔮" focused={focused} />,
         }}
       />
@@ -102,6 +104,7 @@ export function MainTabNavigator() {
         component={PlazaStackNavigator}
         options={{
           title: t({ en: 'Plaza', zh: '集市' }),
+          tabBarButtonTestID: 'tab-plaza',
           tabBarIcon: ({ focused }) => <TabIcon emoji="🎪" focused={focused} />,
         }}
       />
@@ -110,6 +113,7 @@ export function MainTabNavigator() {
         component={MeStackNavigator}
         options={{
           title: t({ en: 'Me', zh: '我' }),
+          tabBarButtonTestID: 'tab-me',
           tabBarIcon: ({ focused }) => (
             <TabIcon emoji="👤" focused={focused} badge={unreadCount + approvalCount} />
           ),

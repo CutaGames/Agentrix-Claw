@@ -4,7 +4,8 @@ appId: app.agentrix.claw
 name: World Engine — Battle Smoke
 ---
 - launchApp
-- tapOn: "萌宠"
+- tapOn:
+    id: "tab-world"
 - scrollUntilVisible:
     element:
       text: "世界资产"

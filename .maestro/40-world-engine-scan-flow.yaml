@@ -4,11 +4,14 @@ appId: app.agentrix.claw
 name: World Engine — Scan Flow Smoke
 ---
 - launchApp
-- assertVisible: "Home"
+- assertVisible:
+    id: "tab-world"
 
 # 进入 Pet Tab
-- tapOn: "萌宠"
-- assertVisible: "萌宠"
+- tapOn:
+    id: "tab-world"
+- assertVisible:
+    id: "tab-world"
 
 # 滚动到底部找到 World Engine 入口
 - scrollUntilVisible:
@@ -39,4 +42,5 @@ name: World Engine — Scan Flow Smoke
 
 # 测试取消按钮
 - tapOn: "取消"
-- assertVisible: "萌宠"
+- assertVisible:
+    id: "tab-world"

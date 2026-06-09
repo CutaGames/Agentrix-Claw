@@ -21,7 +21,7 @@ appId: app.agentrix.claw
 
 # ── Step 1: confirm we're on Home (or any main tab post-auth) ──
 - assertVisible:
-    text: "Home"
+    id: "tab-world"
     optional: true
 
 # ── Step 2: floating ball sprite IS mounted in production ──
@@ -36,7 +36,7 @@ appId: app.agentrix.claw
 
 # ── Step 3: navigate to another tab, ball must persist ──
 - tapOn:
-    text: "Plaza"
+    id: "tab-plaza"
     optional: true
 
 - waitForAnimationToEnd:
@@ -50,7 +50,7 @@ appId: app.agentrix.claw
 
 # ── Step 4: tap back to Home, sprite still mounted ──
 - tapOn:
-    text: "Home"
+    id: "tab-world"
     optional: true
 
 - waitForAnimationToEnd:

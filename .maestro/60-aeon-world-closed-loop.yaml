@@ -8,7 +8,8 @@ appId: app.agentrix.claw
 - launchApp
 
 # ── 进入 World Tab ──────────────────────────────────────
-- tapOn: "World"
+- tapOn:
+    id: "tab-world"
 - waitForAnimationToEnd:
     timeout: 5000
 - takeScreenshot: "60-world-landing"

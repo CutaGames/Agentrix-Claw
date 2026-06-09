@@ -64,7 +64,8 @@ appId: app.agentrix.claw
 - back
 
 # ── M24: NFC 盲盒入口 ────────────────────────────────────
-- tapOn: "Home"
+- tapOn:
+    id: "tab-world"
 
 - scroll
 

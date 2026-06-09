@@ -9,10 +9,11 @@ appId: app.agentrix.claw
 
 # ── Home Tab ─────────────────────────────────────────────
 - assertVisible:
-    text: "Home"
+    id: "tab-world"
     optional: true
 
-- tapOn: "Home"
+- tapOn:
+    id: "tab-world"
 
 # HomeScreen: pet switcher + scan + bell + summon CTA
 - assertVisible:
@@ -22,7 +23,8 @@ appId: app.agentrix.claw
 - takeScreenshot: "10-home-visible"
 
 # ── Summon Tab ───────────────────────────────────────────
-- tapOn: "Summon"
+- tapOn:
+    id: "tab-summon"
 
 - waitForAnimationToEnd:
     timeout: 5000
@@ -30,13 +32,14 @@ appId: app.agentrix.claw
 - takeScreenshot: "10-summon-visible"
 
 # ── Plaza Tab ────────────────────────────────────────────
-- tapOn: "Plaza"
+- tapOn:
+    id: "tab-plaza"
 
 - waitForAnimationToEnd:
     timeout: 5000
 
 - assertVisible:
-    text: "Plaza"
+    id: "tab-plaza"
     optional: true
 
 - takeScreenshot: "10-plaza-visible"
@@ -59,7 +62,8 @@ appId: app.agentrix.claw
     optional: true
 
 # ── Me Tab ───────────────────────────────────────────────
-- tapOn: "Me"
+- tapOn:
+    id: "tab-me"
 
 - waitForAnimationToEnd:
     timeout: 5000

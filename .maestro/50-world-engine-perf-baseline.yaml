@@ -19,7 +19,8 @@ name: World Engine — Performance Baseline
 # ─────────────────────────────────────────────────────────────
 # Phase 1: Pet Tab navigation perf
 # ─────────────────────────────────────────────────────────────
-- tapOn: "萌宠"
+- tapOn:
+    id: "tab-world"
 - waitForAnimationToEnd:
     timeout: 5000
 

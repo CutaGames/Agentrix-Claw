@@ -4,7 +4,8 @@ appId: app.agentrix.claw
 name: World Engine — Inventory Smoke
 ---
 - launchApp
-- tapOn: "萌宠"
+- tapOn:
+    id: "tab-world"
 
 # 找到世界资产入口
 - scrollUntilVisible:

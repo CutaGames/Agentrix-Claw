@@ -40,7 +40,7 @@ name: Soul_Birth — Resume after process death (R1.4)
 
 # ── Bootstrap to a known `birth` state (R1.7) ──────────────────
 - tapOn:
-    text: "Me"
+    id: "tab-me"
     optional: true
 - waitForAnimationToEnd:
     timeout: 3000

@@ -7,7 +7,8 @@ appId: app.agentrix.claw
 - launchApp
 
 # From Home, tap the bell icon
-- tapOn: "Home"
+- tapOn:
+    id: "tab-world"
 
 - waitForAnimationToEnd:
     timeout: 5000
@@ -39,7 +40,8 @@ appId: app.agentrix.claw
 - back
 
 # Same from Me tab
-- tapOn: "Me"
+- tapOn:
+    id: "tab-me"
 
 - waitForAnimationToEnd:
     timeout: 3000

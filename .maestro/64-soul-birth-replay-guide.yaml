@@ -37,7 +37,7 @@ name: Soul_Birth — Re-watch guide (Me → 重看引导) re-opens at birth (R1.
 
 # ── Open the Me tab ────────────────────────────────────────────
 - tapOn:
-    text: "Me"
+    id: "tab-me"
     optional: true
 - waitForAnimationToEnd:
     timeout: 3000

@@ -44,7 +44,7 @@ name: Soul_Birth — first_task OAuth fallback connectors (R6.6)
 
 # ── Bootstrap to `birth` (R1.7) ────────────────────────────────
 - tapOn:
-    text: "Me"
+    id: "tab-me"
     optional: true
 - waitForAnimationToEnd:
     timeout: 3000
