@@ -583,7 +583,11 @@ jobs:
 
           run_maestro_suite() {
             echo "--- Running Maestro suite: .maestro ---"
-            MAESTRO_CLI_NO_ANALYTICS=1 maestro test .maestro --output "maestro-output/maestro-report.xml" --format junit 2>&1 | tee "maestro-output/maestro.log"
+            # MAESTRO_DRIVER_STARTUP_TIMEOUT: the default (~15s) is too short on
+            # the CI emulator and intermittently throws "Maestro Android driver
+            # did not start up in time" → the whole suite is skipped as an infra
+            # flake (0 ran). Give the driver up to 120s to come up.
+            MAESTRO_DRIVER_STARTUP_TIMEOUT=120000 MAESTRO_CLI_NO_ANALYTICS=1 maestro test .maestro --output "maestro-output/maestro-report.xml" --format junit 2>&1 | tee "maestro-output/maestro.log"
           }
 
           reset_maestro_driver() {
