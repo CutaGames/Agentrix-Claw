@@ -7,6 +7,7 @@ import { View, ActivityIndicator, Text, AppState, AppStateStatus, Platform } fro
 import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
 import { useAuthStore } from './src/stores/authStore';
+import { useSoulBirthStore } from './src/stores/soulBirthStore';
 import { setApiConfig, loadTokenFromStorage, apiFetch } from './src/services/api';
 import { fetchCurrentUser } from './src/services/auth';
 import { getMyInstances } from './src/services/openclaw.service';
@@ -130,6 +131,22 @@ function seedMaestroE2ESession(): void {
       activeInstance: instance as any,
     } as any);
     setApiConfig({ token: 'e2e-token' });
+    // The SoulBirthHost overlay is mounted UNCONDITIONALLY over the Main
+    // (tabs) branch and self-gates on the SEPARATE `soulBirthStore`. A freshly
+    // seeded authenticated user has terminated=false → SoulBirthHost computes
+    // active=true, step='birth' and renders the BirthStep as a full-screen
+    // absoluteFill overlay that COVERS the tab bar — so Maestro never finds
+    // `tab-world/...` and every authenticated flow fails. Mark Soul_Birth as
+    // terminated (and bind it to the seeded user id so SoulBirthHost's
+    // bindUser('e2e-user-1') sees the SAME user → no-op → keeps terminated)
+    // so the overlay returns null and the real tabs render.
+    useSoulBirthStore.setState({
+      boundUserId: 'e2e-user-1',
+      terminated: true,
+      replaying: false,
+      suspended: false,
+      completed: { birth: true, first_words: true, connect_desktop: true, settle_aeon: true },
+    } as any);
   } catch (e) {
     console.warn('[maestro-e2e] seed session failed:', e);
   }
