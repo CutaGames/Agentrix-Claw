@@ -24,6 +24,15 @@ import { SpeechWakeWordService } from '../services/speechWakeWord.service';
 import { LocalWakeWordService, hasLocalWakeWordModel, thresholdFromSensitivity } from '../services/localWakeWord.service';
 import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 import { isVoiceUiE2EEnabled } from '../testing/e2e';
+
+// When running under Maestro/E2E automation, the companion ball's perpetual
+// Animated.loop animations (breathing/pulse/orbit/ring) keep the Android
+// accessibility tree from ever reaching "idle", which makes UiAutomator-based
+// drivers (incl. Maestro and `uiautomator dump`) hang on launch/screenshot.
+// Gate the decorative loops off in automation so per-element UI tests can run.
+// Production users are unaffected (flag is false in normal builds).
+const REDUCE_MOTION_FOR_AUTOMATION =
+  isVoiceUiE2EEnabled() || process.env.EXPO_PUBLIC_MAESTRO_E2E === '1';
 import {
   resolveSpriteForMode,
   subscribePetMode,
@@ -67,6 +76,7 @@ function OrbitingParticles({ active }: { active: boolean }) {
 
   useEffect(() => {
     if (!active) { rotation.setValue(0); return; }
+    if (REDUCE_MOTION_FOR_AUTOMATION) { rotation.setValue(0); return; }
     const spin = Animated.loop(
       Animated.timing(rotation, { toValue: 1, duration: 2000, useNativeDriver: true }),
     );
@@ -341,6 +351,7 @@ export function GlobalFloatingBall({
 
   // ── Core breathing animation (always runs) ──
   useEffect(() => {
+    if (REDUCE_MOTION_FOR_AUTOMATION) { coreBreathAnim.setValue(1); return; }
     const breath = Animated.loop(
       Animated.sequence([
         Animated.timing(coreBreathAnim, { toValue: 1, duration: 1800, useNativeDriver: true }),
@@ -353,6 +364,7 @@ export function GlobalFloatingBall({
 
   // ── Pulse for non-idle states ──
   useEffect(() => {
+    if (REDUCE_MOTION_FOR_AUTOMATION) { pulseAnim.setValue(1); return; }
     if (ballState !== 'idle') {
       const pulse = Animated.loop(
         Animated.sequence([
@@ -369,7 +381,7 @@ export function GlobalFloatingBall({
 
   // ── P1b CompanionMode ring pulse (signing / nudge) ──
   useEffect(() => {
-    if (companionModePulse) {
+    if (companionModePulse && !REDUCE_MOTION_FOR_AUTOMATION) {
       const loop = Animated.loop(
         Animated.sequence([
           Animated.timing(modeRingPulse, { toValue: 0.35, duration: 650, useNativeDriver: true }),

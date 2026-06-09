@@ -1560,6 +1560,16 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         const canUseLocalSpeechForHold = !duplexModeRef.current
           && !shouldPreferDirectLocalAudioForHold
           && preferLocalSpeechRecognition
+          // BUG-002 fix: on-device speech recognition (ExpoSpeechRecognition)
+          // is only reliable for LOCAL-model offline use. On cloud-model users
+          // it routed hold-to-talk into the on-device recognizer, which on
+          // devices without a working Google SpeechRecognizer backend (e.g.
+          // Huawei / no-GMS) reports isRecognitionAvailable()=true but then
+          // hangs in controller.stop() → 48s "transcribing" watchdog → the
+          // recurring "转写超时". Cloud-model users must use the reliable
+          // record → /voice/transcribe-json path (server-verified). Keep the
+          // on-device path for local models (offline) and E2E mocks only.
+          && (localModelSelected || isVoiceUiE2E)
           && (isVoiceUiE2E || isLiveSpeechRecognitionAvailable());
 
         // When the local model can't handle audio directly (e.g. Gemma text+vision),
@@ -2017,11 +2027,22 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
         setLiveVoiceVolume(-2);
         setVoicePhase('transcribing');
         triggerHapticImpact(Haptics?.ImpactFeedbackStyle?.Light);
+        reportHoldDiag(API_BASE, token, 'localSpeech:stop-begin');
         let stopResultTranscript = '';
         try {
-          const stopResult = await controller.stop();
+          // Defense (BUG-002): controller.stop() can hang indefinitely when the
+          // platform SpeechRecognizer never delivers a final result (observed on
+          // no-GMS Huawei). Race a timeout so we never strand voicePhase on
+          // 'transcribing' until the 48s watchdog fires a false "转写超时".
+          const stopResult = await Promise.race([
+            controller.stop(),
+            new Promise<{ transcript?: string }>((resolve) =>
+              setTimeout(() => resolve({ transcript: '' }), 8_000),
+            ),
+          ]);
           stopResultTranscript = stopResult?.transcript?.trim() || '';
         } catch {}
+        reportHoldDiag(API_BASE, token, 'localSpeech:stop-done', { chars: (stopResultTranscript || localHoldTranscriptRef.current).trim().length });
 
         const transcript = stopResultTranscript || localHoldTranscriptRef.current.trim();
         localHoldTranscriptRef.current = '';
