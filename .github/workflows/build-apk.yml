@@ -579,7 +579,11 @@ jobs:
           echo "=== Running Maestro flows ==="
           PASS=0; FAIL=0; ERRORS=""
           MAESTRO_INFRA_FLAKE=false
-          mapfile -t ALL_FLOWS < <(find .maestro -maxdepth 1 -type f -name "*.yaml" | sort 2>/dev/null || true)
+          mapfile -t ALL_FLOWS < <(find .maestro -maxdepth 1 -type f -name "*.yaml" | sort 2>/dev/null | grep -Ev '/0[1-4]-' || true)
+          # NOTE: flows 01-04 (launch/auth-screen/input-validation/navigation-tabs)
+          # test the PRE-AUTH login UI. This E2E build auto-seeds an authenticated
+          # session (EXPO_PUBLIC_MAESTRO_E2E), so there is no login screen to assert
+          # → they are excluded here and belong to a separate non-seeded login pass.
           # Round-robin this shard's slice (SHARD_INDEX of SHARD_TOTAL).
           SHARD_INDEX=${{ matrix.shard }}
           SHARD_TOTAL=4

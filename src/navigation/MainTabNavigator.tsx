@@ -34,9 +34,9 @@ import { useI18n } from '../stores/i18nStore';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-function TabIcon({ emoji, focused, badge }: { emoji: string; focused: boolean; badge?: number }) {
+function TabIcon({ emoji, focused, badge, testID }: { emoji: string; focused: boolean; badge?: number; testID?: string }) {
   return (
-    <View style={{ alignItems: 'center', paddingTop: 4 }}>
+    <View style={{ alignItems: 'center', paddingTop: 4 }} testID={testID} accessibilityLabel={testID}>
       <View>
         <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.55 }}>{emoji}</Text>
         {badge && badge > 0 ? (
@@ -87,7 +87,7 @@ export function MainTabNavigator() {
         options={{
           title: t({ en: 'World', zh: '世界' }),
           tabBarButtonTestID: 'tab-world',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🌍" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🌍" focused={focused} testID="tab-world" />,
         }}
       />
       <Tab.Screen
@@ -96,7 +96,7 @@ export function MainTabNavigator() {
         options={{
           title: t({ en: 'Summon', zh: '召唤' }),
           tabBarButtonTestID: 'tab-summon',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🔮" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🔮" focused={focused} testID="tab-summon" />,
         }}
       />
       <Tab.Screen
@@ -105,7 +105,7 @@ export function MainTabNavigator() {
         options={{
           title: t({ en: 'Plaza', zh: '集市' }),
           tabBarButtonTestID: 'tab-plaza',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🎪" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🎪" focused={focused} testID="tab-plaza" />,
         }}
       />
       <Tab.Screen
@@ -115,7 +115,7 @@ export function MainTabNavigator() {
           title: t({ en: 'Me', zh: '我' }),
           tabBarButtonTestID: 'tab-me',
           tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="👤" focused={focused} badge={unreadCount + approvalCount} />
+            <TabIcon emoji="👤" focused={focused} badge={unreadCount + approvalCount} testID="tab-me" />
           ),
         }}
       />
