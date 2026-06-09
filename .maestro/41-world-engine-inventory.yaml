@@ -11,7 +11,6 @@ name: World Engine — Inventory Smoke
     element:
       text: "世界资产"
     direction: DOWN
-    timeout: 5000
 
 - tapOn: "世界资产"
 

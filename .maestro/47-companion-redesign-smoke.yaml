@@ -15,6 +15,7 @@
 # Spec: requirements.md R12.3, R12.10.
 
 appId: app.agentrix.claw
+---
 
 # ── Pre-flight: launch app cold ──────────────────────────────────────
 - launchApp:

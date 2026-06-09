@@ -49,7 +49,6 @@ name: Soul_Birth — Re-watch guide (Me → 重看引导) re-opens at birth (R1.
     element:
       id: "me-replay-onboarding"
     direction: DOWN
-    timeout: 8000
     optional: true
 - assertVisible:
     id: "me-replay-onboarding"

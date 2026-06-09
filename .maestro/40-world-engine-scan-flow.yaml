@@ -15,12 +15,12 @@ name: World Engine — Scan Flow Smoke
     element:
       text: "世界扫描"
     direction: DOWN
-    timeout: 5000
 
 # 点击 World Scanner 入口
 - tapOn: "世界扫描"
-- assertVisible:
-    text: "快速扫描"
+- extendedWaitUntil:
+    visible:
+      text: "快速扫描"
     timeout: 10000
 
 # 检查三模式选择器
@@ -32,8 +32,9 @@ name: World Engine — Scan Flow Smoke
 - tapOn: "精细扫描"
 
 # 检查 8 位置环引导出现
-- assertVisible:
-    id: "frameCounter"
+- extendedWaitUntil:
+    visible:
+      id: "frameCounter"
     timeout: 5000
 
 # 测试取消按钮
