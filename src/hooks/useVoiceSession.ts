@@ -933,7 +933,16 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
   const speakText = useCallback((text: string) => {
     if (!text || text.startsWith('⚠️') || text.startsWith('Error:')) return;
     if (duplexModeRef.current) {
-      stopLiveSpeech(true, false);
+      // BUG-005 barge-in: keep the realtime mic ALIVE (muted) during TTS so the
+      // user can interrupt by speaking over the agent. muteForEchoCancel runs
+      // speech detection with an echo cooldown + higher threshold and fires
+      // onBargeIn → stopAll()+sendInterrupt. Only fully stop when there's no
+      // realtime mic (on-device recognizer would otherwise transcribe the TTS).
+      if (realtimeMicrophoneRef.current) {
+        realtimeMicrophoneRef.current.muteForEchoCancel();
+      } else {
+        stopLiveSpeech(true, false);
+      }
     }
     // Strip markdown formatting before TTS
     const cleanText = text
@@ -996,7 +1005,14 @@ export function useVoiceSession(options: UseVoiceSessionOptions): UseVoiceSessio
     if (!(duplexModeRef.current || autoSpeak)) return;
 
     if (duplexModeRef.current) {
-      stopLiveSpeech(true, false);
+      // BUG-005 barge-in: keep the realtime mic alive (muted) during streamed
+      // TTS instead of stopping it, so the user can talk over the agent and
+      // trigger onBargeIn. Fully stop only when no realtime mic is running.
+      if (realtimeMicrophoneRef.current) {
+        realtimeMicrophoneRef.current.muteForEchoCancel();
+      } else {
+        stopLiveSpeech(true, false);
+      }
     }
 
     if (chunk) {

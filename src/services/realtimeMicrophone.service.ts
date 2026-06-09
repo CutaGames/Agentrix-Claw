@@ -335,6 +335,11 @@ export class RealtimeMicrophoneService {
 
   /** Mute audio sending but keep speech detection active for barge-in */
   muteForEchoCancel(): void {
+    // Idempotent: if already muted, do NOT reset the barge-in cooldown. Streamed
+    // TTS calls this once per sentence chunk; resetting bargeInActiveAfter every
+    // chunk (chunks arrive faster than BARGE_IN_COOLDOWN_MS) would keep barge-in
+    // perpetually disarmed → user could never interrupt a multi-sentence reply.
+    if (this.muted) return;
     this.muted = true;
     this.mutedLoudFrames = 0;
     this.bargeInActiveAfter = Date.now() + BARGE_IN_COOLDOWN_MS;
