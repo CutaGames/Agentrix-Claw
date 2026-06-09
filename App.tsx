@@ -84,6 +84,57 @@ const queryClient = new QueryClient({
 
 const isMaestroE2E = process.env.EXPO_PUBLIC_MAESTRO_E2E === '1';
 
+/**
+ * Maestro E2E auto-login seed (native, device-side).
+ *
+ * The Maestro UI-test APK (built with EXPO_PUBLIC_MAESTRO_E2E=1) is a fresh
+ * install with NO persisted session, so it boots to the Login screen. Every
+ * `.maestro` flow that exercises an authenticated surface (tabs / drawer /
+ * sheets) then fails its non-optional assertVisible because the tab bar isn't
+ * present. We seed a synthetic authenticated session so the full RootNavigator
+ * renders and flows can drive the real screens.
+ *
+ * STRICTLY gated on the compile-time EXPO_PUBLIC_MAESTRO_E2E flag — production
+ * APKs are built WITHOUT it, so this is dead code there (never auto-logs-in a
+ * real user). Unlike applyVoiceUiE2EBootstrap (web/Playwright, window-based),
+ * this is native-safe: it seeds the zustand stores directly, no `window`.
+ */
+let __maestroSeeded = false;
+function seedMaestroE2ESession(): void {
+  if (__maestroSeeded) return;
+  __maestroSeeded = true;
+  try {
+    const instance = {
+      id: 'e2e-instance-1',
+      name: 'QA Agent',
+      instanceUrl: 'https://agentrix.top/e2e',
+      status: 'active' as const,
+      deployType: 'cloud' as const,
+    };
+    useAuthStore.setState({
+      user: {
+        id: 'e2e-user-1',
+        agentrixId: 'maestro-e2e',
+        nickname: 'Maestro E2E',
+        roles: ['tester'],
+        provider: 'email',
+        activeInstanceId: instance.id,
+        openClawInstances: [instance],
+      } as any,
+      token: 'e2e-token',
+      isAuthenticated: true,
+      isLoading: false,
+      isInitialized: true,
+      hasCompletedOnboarding: true,
+      hasValidInvitation: true,
+      activeInstance: instance as any,
+    } as any);
+    setApiConfig({ token: 'e2e-token' });
+  } catch (e) {
+    console.warn('[maestro-e2e] seed session failed:', e);
+  }
+}
+
 function SplashScreen() {
   // P-9 wave 12 (T23.1): brand the splash with the active pet sprite
   // instead of the placeholder "AX" tile. Pure require — no network.
@@ -278,6 +329,15 @@ function AppNavigator() {
     }
 
     if (isVoiceUiE2E && applyVoiceUiE2EBootstrap()) {
+      setInitialized(true);
+      return;
+    }
+
+    if (isMaestroE2E) {
+      // Seed a synthetic authenticated session so the Maestro UI-test build
+      // boots into the full authenticated app (tabs/drawer present) instead of
+      // the Login screen. Gated on the compile-time flag — no-op in prod.
+      seedMaestroE2ESession();
       setInitialized(true);
       return;
     }
