@@ -42,7 +42,6 @@ appId: app.agentrix.claw
 # ── Step 3: Long-press ball → PetDetailSheet ─────────────────────────
 - longPressOn:
     id: "floating-ball-sprite"
-    duration: 600
     optional: true
 - waitForAnimationToEnd
 - assertVisible:

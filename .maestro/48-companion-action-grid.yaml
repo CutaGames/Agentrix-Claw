@@ -28,7 +28,6 @@ appId: app.agentrix.claw
 - waitForAnimationToEnd
 - longPressOn:
     id: "floating-ball-sprite"
-    duration: 600
     optional: true
 - waitForAnimationToEnd
 - assertVisible:
@@ -49,7 +48,6 @@ appId: app.agentrix.claw
 # Re-open the sheet between each action (navigating away dismisses it).
 - longPressOn:
     id: "floating-ball-sprite"
-    duration: 600
     optional: true
 - waitForAnimationToEnd
 
@@ -62,7 +60,6 @@ appId: app.agentrix.claw
 - waitForAnimationToEnd
 - longPressOn:
     id: "floating-ball-sprite"
-    duration: 600
     optional: true
 - waitForAnimationToEnd
 
@@ -75,7 +72,6 @@ appId: app.agentrix.claw
 - waitForAnimationToEnd
 - longPressOn:
     id: "floating-ball-sprite"
-    duration: 600
     optional: true
 - waitForAnimationToEnd
 
@@ -88,7 +84,6 @@ appId: app.agentrix.claw
 - waitForAnimationToEnd
 - longPressOn:
     id: "floating-ball-sprite"
-    duration: 600
     optional: true
 - waitForAnimationToEnd
 
@@ -101,7 +96,6 @@ appId: app.agentrix.claw
 - waitForAnimationToEnd
 - longPressOn:
     id: "floating-ball-sprite"
-    duration: 600
     optional: true
 - waitForAnimationToEnd
 
