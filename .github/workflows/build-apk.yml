@@ -471,7 +471,15 @@ jobs:
     runs-on: ubuntu-latest     # Linux runner (10x cheaper than macOS)
     needs: build
     if: ${{ always() && needs.build.outputs.artifact-ready == 'true' }}
-    timeout-minutes: 40
+    timeout-minutes: 60
+    # Shard the 35-flow suite across parallel jobs. A single serial run can't
+    # finish inside the job timeout (some flows take many minutes), so we
+    # round-robin the sorted flow list across 4 shards (each shard boots its own
+    # emulator). fail-fast:false so one shard's failure doesn't cancel the rest.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
 
     steps:
       - name: Checkout (for .maestro/ flows)
@@ -571,7 +579,17 @@ jobs:
           echo "=== Running Maestro flows ==="
           PASS=0; FAIL=0; ERRORS=""
           MAESTRO_INFRA_FLAKE=false
-          mapfile -t FLOWS < <(find .maestro -maxdepth 1 -type f -name "*.yaml" | sort 2>/dev/null || true)
+          mapfile -t ALL_FLOWS < <(find .maestro -maxdepth 1 -type f -name "*.yaml" | sort 2>/dev/null || true)
+          # Round-robin this shard's slice (SHARD_INDEX of SHARD_TOTAL).
+          SHARD_INDEX=${{ matrix.shard }}
+          SHARD_TOTAL=4
+          FLOWS=()
+          for i in "${!ALL_FLOWS[@]}"; do
+            if [ "$(( i % SHARD_TOTAL ))" -eq "$SHARD_INDEX" ]; then
+              FLOWS+=("${ALL_FLOWS[$i]}")
+            fi
+          done
+          echo "Shard ${SHARD_INDEX}/${SHARD_TOTAL}: ${#FLOWS[@]} flows"
 
           if [ "${#FLOWS[@]}" -eq 0 ]; then
             echo "No Maestro flows found; launch smoke test only" | tee maestro-output/no-flows.log
@@ -582,12 +600,12 @@ jobs:
           done
 
           run_maestro_suite() {
-            echo "--- Running Maestro suite: .maestro ---"
+            echo "--- Running Maestro shard ${SHARD_INDEX}: ${#FLOWS[@]} flows ---"
             # MAESTRO_DRIVER_STARTUP_TIMEOUT: the default (~15s) is too short on
             # the CI emulator and intermittently throws "Maestro Android driver
             # did not start up in time" → the whole suite is skipped as an infra
             # flake (0 ran). Give the driver up to 120s to come up.
-            MAESTRO_DRIVER_STARTUP_TIMEOUT=120000 MAESTRO_CLI_NO_ANALYTICS=1 maestro test .maestro --output "maestro-output/maestro-report.xml" --format junit 2>&1 | tee "maestro-output/maestro.log"
+            MAESTRO_DRIVER_STARTUP_TIMEOUT=120000 MAESTRO_CLI_NO_ANALYTICS=1 maestro test "${FLOWS[@]}" --output "maestro-output/maestro-report.xml" --format junit 2>&1 | tee "maestro-output/maestro.log"
           }
 
           reset_maestro_driver() {
@@ -671,7 +689,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: maestro-results-build-${{ github.run_number }}
+          name: maestro-results-build-${{ github.run_number }}-shard-${{ matrix.shard }}
           path: maestro-output/
           if-no-files-found: warn
           retention-days: 14
