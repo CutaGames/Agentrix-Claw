@@ -1,6 +1,6 @@
 ## World Engine 扫描流程冒烟测试
 ## Tests: 14.1 scan UI + 14.2-14.5 quality gates + 18.1 face detection
-appId: com.agentrix.claw
+appId: app.agentrix.claw
 name: World Engine — Scan Flow Smoke
 ---
 - launchApp

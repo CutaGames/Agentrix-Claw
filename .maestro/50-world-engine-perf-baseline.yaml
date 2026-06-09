@@ -9,7 +9,7 @@
 ##   - Profile A: 4GB RAM Android (min-spec full mode)
 ##   - Profile B: 2GB RAM Android (degraded mode)
 ##
-appId: com.agentrix.claw
+appId: app.agentrix.claw
 name: World Engine — Performance Baseline
 ---
 - launchApp:

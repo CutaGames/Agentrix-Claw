@@ -1,6 +1,6 @@
 ## World Engine 战斗流程测试
 ## Tests: 6.1-6.3 Battle Engine + 15.2 Battle UI
-appId: com.agentrix.claw
+appId: app.agentrix.claw
 name: World Engine — Battle Smoke
 ---
 - launchApp

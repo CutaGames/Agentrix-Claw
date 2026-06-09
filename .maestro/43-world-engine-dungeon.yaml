@@ -1,6 +1,6 @@
 ## World Engine 副本探索测试
 ## Tests: 4.1-4.7 Dungeon Builder + 15.2 Dungeon UI
-appId: com.agentrix.claw
+appId: app.agentrix.claw
 name: World Engine — Dungeon Smoke
 ---
 - launchApp

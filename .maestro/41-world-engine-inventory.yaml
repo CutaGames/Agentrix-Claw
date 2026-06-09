@@ -1,6 +1,6 @@
 ## World Engine 库存冒烟测试
 ## Tests: 12.1 Inventory API + 15.1 Inventory UI
-appId: com.agentrix.claw
+appId: app.agentrix.claw
 name: World Engine — Inventory Smoke
 ---
 - launchApp

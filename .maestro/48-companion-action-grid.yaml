@@ -14,7 +14,7 @@
 #
 # Spec: requirements.md R4.2 / R4.4 / R12.3. Audit: MOBILE_PET_SYSTEM_AUDIT.
 
-appId: com.cutagames.agentrix
+appId: app.agentrix.claw
 
 - launchApp:
     clearState: false
