@@ -750,13 +750,13 @@ const linking = {
           // found"), so a bad id never crashes.
           World: {
             screens: {
-              WorldRoot: 'world',
               WorldMap: 'world/map',
               LandPlots: 'world/plots',
               WorldCreationMarketplace: 'world/market',
               PlotCreator: 'world/create/:substrateTier/:plotId',
               PlotExperience: 'world/plot/:plotId',
               CreationTaskStatus: 'world/task/:taskId',
+              WorldRoot: 'world',
             },
           },
           Summon: {

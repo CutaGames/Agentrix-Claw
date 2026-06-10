@@ -16,7 +16,7 @@ name: World Creation — load-budget perf smoke
 - openLink: agentrix://world/map
 - extendedWaitUntil:
     visible:
-      text: "世界地图"
+      id: "world-map-screen"
     timeout: 8000
 - takeScreenshot: "78-perf-map"
 

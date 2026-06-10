@@ -130,8 +130,15 @@ export function WorldHubScreen() {
   const onLandPlots = useCallback(() => navigation.navigate('LandPlots'), [navigation]);
   const onPlotMarket = useCallback(() => navigation.navigate('WorldCreationMarketplace'), [navigation]);
 
-  // Phase 1: feature flag off → render coming-soon panel
-  if (flagQ.data && !flagQ.data.enabled) {
+  // Phase 1: feature flag off → render coming-soon panel.
+  // E2E exception: the Maestro UI-test build runs against a seeded synthetic
+  // session whose backend cohort flag is off, which would hide the entire hub
+  // (and all `world-cta-*` entries) behind the coming-soon panel — making the
+  // World surfaces untestable. Under the compile-time EXPO_PUBLIC_MAESTRO_E2E
+  // flag (dead code in production) we bypass the cohort gate so the real hub
+  // CTAs render.
+  const isMaestroE2E = process.env.EXPO_PUBLIC_MAESTRO_E2E === '1';
+  if (!isMaestroE2E && flagQ.data && !flagQ.data.enabled) {
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <View style={styles.comingSoon}>

@@ -14,12 +14,13 @@ name: World Creation — World Map deep link
 # Validate the new deep-link route resolves into the World_Map host.
 - openLink: agentrix://world/map
 
-# Map host renders its header (hard-coded "🌍 世界地图").
+# Map host renders (assert the stable container testID — language/encoding
+# independent, and present immediately regardless of viewport data / GL state).
 - extendedWaitUntil:
     visible:
-      text: "世界地图"
+      id: "world-map-screen"
     timeout: 12000
 - assertVisible:
-    text: "世界地图"
+    id: "world-map-screen"
 
 - takeScreenshot: "77-world-map-deep"

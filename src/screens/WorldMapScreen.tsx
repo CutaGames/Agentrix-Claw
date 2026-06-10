@@ -177,7 +177,7 @@ export default function WorldMapScreen() {
 
   // ─── Render ────────────────────────────────────────────────────────────
   return (
-    <View style={styles.container}>
+    <View style={styles.container} testID="world-map-screen">
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack?.()}>
           <Text style={styles.backText}>←</Text>
