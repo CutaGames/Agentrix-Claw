@@ -406,7 +406,8 @@ export type WorldCreationErrorCode =
   | 'RESOURCE_EXCEEDED'
   | 'MODERATION_REJECTED'
   | 'QUOTA_EXCEEDED'
-  | 'LOAD_TIMEOUT';
+  | 'LOAD_TIMEOUT'
+  | 'NOT_ORIGINAL_CREATOR';
 
 /** A structured error returned by the platform (design §Error Handling). */
 export interface WorldCreationError {
@@ -467,3 +468,69 @@ export const PLOT_LOAD_TIMEOUT_MS = 10_000;
 /** FREE monthly cost cap (USD) and soft-reminder threshold (R12.2/12.3). */
 export const FREE_MONTHLY_COST_CAP_USD = 5;
 export const COST_SOFT_REMINDER_RATIO = 0.8;
+
+// ============================================================
+// §11 Generation metering & quota (R12.1/12.4/12.5)
+// ============================================================
+
+/**
+ * Kind of generation operation metered against `agent_cost_records` (R12.1).
+ *  - scene_graph: Tier_A declarative scene-graph generation.
+ *  - dsl:         Tier_B Substrate_DSL (event→action rules) generation.
+ *  - model_3d:    3D model reconstruction via the pluggable provider strategy
+ *                 (Hunyuan3D primary, Meshy backup — R12.5).
+ *  - video:       Replay / experience video rendering.
+ */
+export type GenerationKind = 'scene_graph' | 'dsl' | 'model_3d' | 'video';
+
+/** Cost soft/hard warning level derived from the FREE monthly cost ceiling. */
+export type GenerationWarningLevel = 'none' | 'soft_warning' | 'hard_block';
+
+/**
+ * User-facing cost-ceiling notice surfaced to generation callers (R12.2/12.3).
+ *
+ * Emitted ONLY when the FREE monthly cost ceiling is in a non-`none` state:
+ *  - `soft_warning` — accumulated cost is at or above 80% of the cap; generation
+ *    still proceeds but the caller should display the soft reminder.
+ *  - `hard_block`   — accumulated cost reached 100% of the cap; generation is
+ *    blocked until the next billing cycle or an upgrade.
+ */
+export interface GenerationQuotaWarning {
+  /** Non-`none` ceiling state (soft 80% reminder / hard 100% block). */
+  warningLevel: Exclude<GenerationWarningLevel, 'none'>;
+  /** Accumulated monthly cost (USD) for the user this UTC month. */
+  currentCost: number;
+  /** Monthly cost ceiling (USD). */
+  ceiling: number;
+  /** Fraction of the ceiling consumed (clamped to ≥ 0; ≥ 1 means at/over cap). */
+  ratioUsed: number;
+  /** User-facing reminder / block message. */
+  message: string;
+}
+
+/**
+ * Result of a pre-generation quota check (design §13, R12.4). Combines the
+ * world-engine monthly cost ceiling (FREE $5/mo, R12.2/12.3) with the optional
+ * per-event daily quota. `allowed=false` blocks the generation.
+ */
+export interface GenerationQuotaResult {
+  /** Whether the generation may proceed. */
+  allowed: boolean;
+  /** Cost-ceiling warning level (none / soft 80% / hard 100%). */
+  warningLevel: GenerationWarningLevel;
+  /** Accumulated monthly cost (USD) for the user this UTC month. */
+  currentCost: number;
+  /** Monthly cost ceiling (USD); Infinity for non-FREE tiers. */
+  ceiling: number;
+  /** Optional daily-quota view when an event type was supplied. */
+  daily?: {
+    allowed: boolean;
+    remaining: number;
+    limit: number;
+    resetTime: string;
+  };
+  /** Present when the FREE cost ceiling is in a soft/hard state (R12.2/12.3). */
+  warning?: GenerationQuotaWarning;
+  /** Present when allowed=false; structured QUOTA_EXCEEDED error. */
+  error?: WorldCreationError;
+}

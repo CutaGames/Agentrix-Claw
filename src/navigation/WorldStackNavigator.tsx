@@ -36,6 +36,8 @@ import WorldBattleArenaScreen from '../screens/WorldBattleArenaScreen';
 import WorldInteractiveBattleScreen from '../screens/world/WorldInteractiveBattleScreen';
 import WorldUgcRuleSetsScreen from '../screens/world/WorldUgcRuleSetsScreen';
 import WorldDungeonExplorerScreen from '../screens/WorldDungeonExplorerScreen';
+// AI World Creation Platform (v6) — shared World_Map outer layer (Task 10.3)
+import WorldMapScreen from '../screens/WorldMapScreen';
 import { PetCreatorScreen } from '../screens/pet/PetCreatorScreen';
 import { CameraScanScreen } from '../screens/pet/CameraScanScreen';
 // Aeon(永曜城)— 实时多人共建世界(Phase 1)
@@ -92,6 +94,8 @@ export type WorldStackParamList = {
   WorldBattlePicker: { ruleSetShareCode?: string; ruleSetName?: string; preselectChallengerId?: string } | undefined;
   WorldDungeonExplorer: { shareCode?: string };
   WorldUgcRuleSets: undefined;
+  /** AI World Creation Platform (v6) — shared World_Map outer layer (Task 10.3). */
+  WorldMap: undefined;
   ReconstructionProgress: {
     jobId: string;
     estimatedSeconds?: number;
@@ -189,6 +193,11 @@ export function WorldStackNavigator() {
         name="WorldUgcRuleSets"
         component={WorldUgcRuleSetsScreen}
         options={{ title: t({ en: 'Game Modes', zh: '我的玩法' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldMap"
+        component={WorldMapScreen}
+        options={{ title: t({ en: 'World Map', zh: '世界地图' }), headerShown: false }}
       />
       <Stack.Screen
         name="ReconstructionProgress"

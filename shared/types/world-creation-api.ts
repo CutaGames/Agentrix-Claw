@@ -18,6 +18,7 @@ import type {
   CreationTaskTarget,
   EcsDiff,
   EcsWorld,
+  GenerationQuotaWarning,
   JsonPatchOp,
   PlotListingStatus,
   PlotSaleType,
@@ -213,6 +214,80 @@ export interface TransferPlotResponse {
 /** Creation mode along the prompt-drive / co-edit / hand-build continuum. */
 export type CreationMode = 'promptDrive' | 'coEdit' | 'handBuild';
 
+/**
+ * The surface a creation request originates from (R3.7, R8.7, R13.4).
+ * Drives Mobile Tier_C dispatch routing: Mobile may author Tier_A/B locally but
+ * Tier_C authoring is routed off-device to Desktop or a bound Agent_Builder.
+ */
+export type CreationSurface = 'mobile' | 'desktop' | 'web';
+
+/**
+ * A routing decision for a creation request that cannot run on its originating
+ * surface (R3.7, R8.7). When `mustDispatch` is true the unified continuum entry
+ * does NOT edit locally; instead the creation is dispatched as a Creation_Task
+ * to `target` (the full queue lands in task 20.x).
+ */
+export interface CreationDispatchDecision {
+  /** Whether the creation must be dispatched off the originating surface. */
+  mustDispatch: boolean;
+  /** Effective dispatch target (`self` when local, `desktop`/`agent` when dispatched). */
+  target: CreationTaskTarget;
+  /** The substrate tier that drove the routing decision. */
+  substrateTier: SubstrateTier;
+  /** Human-readable explanation of the decision. */
+  reason: string;
+}
+
+/**
+ * POST /api/v1/world-creation/plots/:plotId/continue — Unified continuum edit
+ * request (R3.4). Lets a creator switch among prompt-drive / co-edit / hand-build
+ * on the SAME ECS_World without data loss: every mode builds on the Plot's latest
+ * committed version and appends through the shared diff/version channel.
+ *
+ * The mode-specific payload is carried inline:
+ *  - `promptDrive` → `prompt`
+ *  - `coEdit`      → `instruction` (NL) or `ops` (direct manipulation)
+ *  - `handBuild`   → `ops`
+ */
+export interface ContinuumEditRequest {
+  /** Active creation mode for this step. */
+  mode: CreationMode;
+  /** Originating surface; drives Tier_C dispatch routing (R3.7). Defaults to desktop. */
+  surface?: CreationSurface;
+  /** Natural-language prompt (promptDrive). */
+  prompt?: string;
+  /** Natural-language edit instruction (coEdit). */
+  instruction?: string;
+  /** Direct-manipulation JSON Patch ops (coEdit / handBuild). */
+  ops?: JsonPatchOp[];
+  /** Explicit base version; defaults to the Plot's latest committed version. */
+  baseVersionId?: string;
+  /** Preferred target when Tier_C must be dispatched off Mobile (R3.7). */
+  dispatchTarget?: 'desktop' | 'agent';
+}
+
+/**
+ * POST /api/v1/world-creation/plots/:plotId/continue — Response.
+ * Either an edit was applied on the shared ECS_World (`applied`) or the creation
+ * was routed off-surface as a Creation_Task (`dispatched`, Mobile Tier_C, R3.7).
+ */
+export interface ContinuumEditResponse {
+  /** `applied` = edited locally on the shared ECS_World; `dispatched` = routed off-surface. */
+  outcome: 'applied' | 'dispatched';
+  /** The mode that produced this result. */
+  mode: CreationMode;
+  /** Resulting version id (present when outcome='applied' and committed). */
+  versionId?: string;
+  /** Resulting world (present when outcome='applied'). */
+  ecsWorld?: EcsWorld;
+  /** Diff produced by an NL/direct edit (present for coEdit/handBuild commits). */
+  diff?: EcsDiff;
+  /** Routing decision (present when outcome='dispatched', R3.7). */
+  dispatch?: CreationDispatchDecision;
+  /** Structured error when the edit/generation was rejected (tier violation, etc.). */
+  error?: WorldCreationError;
+}
+
 /** POST /api/v1/world-creation/plots/:plotId/generate — Request (R3.1). */
 export interface GenerateEcsWorldRequest {
   /** Natural-language prompt. */
@@ -229,6 +304,12 @@ export interface GenerateEcsWorldResponse {
   ecsWorld: EcsWorld;
   /** Present when generation was rejected for a tier violation. */
   error?: WorldCreationError;
+  /**
+   * Present when the FREE monthly cost ceiling is in a soft-reminder state
+   * (≥ 80% of the $5 cap, R12.2). Hard-block (100%, R12.3) is surfaced as a
+   * QUOTA_EXCEEDED error response instead and never reaches this success path.
+   */
+  quotaWarning?: GenerationQuotaWarning;
 }
 
 /** POST /api/v1/world-creation/plots/:plotId/edit/nl — Request (R3.2). */
@@ -303,6 +384,13 @@ export interface SubmitCreationTaskRequest {
   /** Desired dispatch target; Tier_C from Mobile is re-routed server-side (R8.7). */
   target: CreationTaskTarget;
   substrateTier: SubstrateTier;
+  /**
+   * Originating surface (mobile/desktop/web). Drives R8.7 forced routing: a
+   * Mobile-originated Tier_C task is routed to Desktop or a bound Agent_Builder
+   * and never executed on Mobile (reuses `resolveCreationRouting`). Optional;
+   * absent / non-mobile surfaces honor the requested `target`.
+   */
+  surface?: CreationSurface;
   /** Task input (prompt + parameters), retained on failure for retry. */
   input: Record<string, unknown>;
 }
@@ -359,6 +447,17 @@ export interface EconomyBridgeResponse {
   authoritativeAmount?: number;
   /** Platform revenue share deducted (present when ok=true). */
   platformCut?: number;
+  /**
+   * Authoritative per-line breakdown computed server-side (present on a
+   * successful charge). Drives sales aggregation for the daily report (R15.5);
+   * every `lineAxp`/`unitAxp` is the server-recomputed amount, never a sandbox value.
+   */
+  lineItems?: Array<{
+    entityId: string;
+    quantity: number;
+    unitAxp: number;
+    lineAxp: number;
+  }>;
   /** Structured error when ok=false; no balance was altered. */
   error?: WorldCreationError;
 }
@@ -444,6 +543,28 @@ export interface PurchasePlotListingResponse {
   error?: WorldCreationError;
 }
 
+/**
+ * GET /api/v1/world-creation/marketplace/share/:shareCode — Response (R11.5, R11.6).
+ *
+ * Resolves a shareable Plot `share_code` (reuses the v5 dungeon share model) into
+ * an app deep link plus a web-preview fallback for users without the app installed.
+ */
+export interface ResolvePlotShareResponse {
+  /** Whether the share code resolves to an existing, shareable Plot. */
+  available: boolean;
+  plotId?: string;
+  title?: string;
+  substrateTier?: SubstrateTier;
+  /** App deep link (reuses the v5 dungeon scheme: agentrix://world-engine/dungeon/{code}). */
+  deepLink?: string;
+  /** Web preview page shown when the app is not installed (R11.6). */
+  webPreviewUrl: string;
+  /** App download prompt link presented on the web preview page (R11.6). */
+  appDownloadLink: string;
+  /** Human-readable message (e.g. when the Plot is no longer available). */
+  message?: string;
+}
+
 /** POST /api/v1/world-creation/plots/:plotId/publish — Response (R10.1, R11.1). */
 export interface PublishPlotResponse {
   /** Whether the Plot passed moderation and is now discoverable. */
@@ -452,4 +573,48 @@ export interface PublishPlotResponse {
   shareCode?: string;
   /** Present when moderation rejected publication; reports stage + reason (R10.3). */
   error?: WorldCreationError;
+}
+
+// ============================================================
+// §10 Moderation — post-publish report / takedown / audit (R10.4–R10.6)
+
+/** POST /api/v1/world-creation/moderation/plots/:plotId/report — Request (R10.4). */
+export interface ReportPlotRequest {
+  /** Machine/user-facing reason category or free text for the report. */
+  reason: string;
+  /** Optional additional detail describing the violation. */
+  detail?: string;
+}
+
+/** POST /api/v1/world-creation/moderation/plots/:plotId/report — Response (R10.4). */
+export interface ReportPlotResponse {
+  /** The id of the recorded post-publish report decision (for SLA tracking). */
+  reportId: string;
+  /** Echoes the moderation pipeline stage the report was filed under. */
+  stage: 'post_publish_report';
+}
+
+/** A single moderation decision audit entry (R10.6). */
+export interface PlotModerationDecisionEntry {
+  id: string;
+  plotId: string;
+  /** Pipeline stage: v5 5-stage pre-publish + cn-region + C-tier scan + report. */
+  stage:
+    | 'pre_publish'
+    | 'cn_region'
+    | 'static_code_scan'
+    | 'post_publish_report';
+  decision: 'approved' | 'rejected' | 'pending';
+  /** Human-readable reason (stage + specific violating item). */
+  reason: string | null;
+  /** Human reviewer id (null for automated decisions). */
+  reviewerId: string | null;
+  /** Decision time (Unix epoch millis as string). */
+  ts: string;
+}
+
+/** GET /api/v1/world-creation/moderation/plots/:plotId/decisions — Response (R10.6). */
+export interface PlotModerationDecisionsResponse {
+  plotId: string;
+  decisions: PlotModerationDecisionEntry[];
 }

@@ -690,6 +690,15 @@ function CompanionLayerGate() {
   // AppNavigator for a stripped-down PetSoulE2EApp / VoiceUiE2EApp that
   // doesn't expose Main / World / Plaza routes.
   if (isPetSoulE2EOnce || isVoiceUiE2EOnce) return null;
+  // Maestro UI-test build: the CompanionLayer mounts the always-on animated
+  // floating ball + PetSprite (and pulls in heavy graphics deps). On the
+  // resource-starved x86_64 CI emulator (software GPU, 2 vCPU) that extra
+  // always-running render work is enough to push the whole system into ANR
+  // territory during boot, so the authenticated tab shell never settles and
+  // Maestro can't find `tab-world`. Skip it under E2E so the shell renders
+  // fast and tab navigation is testable. (Companion-specific flows run on a
+  // real device / separate pass; the ball isn't needed for tab nav.)
+  if (isMaestroE2E) return null;
   if (!isAuthenticated) return null;
   return <CompanionLayer navigationRef={navigationRef} />;
 }

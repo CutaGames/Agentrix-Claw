@@ -555,7 +555,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           force-avd-creation: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096
           emulator-boot-timeout: 900
           disable-animations: true
           script: echo "AVD created and cached"
@@ -609,6 +609,20 @@ jobs:
             LAUNCH_CRASH=false
             echo "LAUNCH_CRASH=false" >> "$GITHUB_ENV"
           fi
+
+          # ── Boot-settle + diagnostics ──────────────────────────────────────
+          # The authenticated E2E shell is heavy and the CI emulator is slow, so
+          # give the app a long settle window BEFORE Maestro starts and grab a
+          # screenshot + fresh logcat at the end. The screenshot proves whether
+          # the tab shell actually rendered (vs a black/splash hang) and the
+          # logcat (captured DURING boot, not just the 8s smoke window) shows any
+          # late JS error / ANR. Both land in the uploaded artifact for review.
+          echo "=== Boot settle (let heavy authenticated shell render) ==="
+          adb logcat -c || true
+          sleep 45
+          adb exec-out screencap -p > maestro-output/boot-state-after-settle.png 2>/dev/null || true
+          adb logcat -d > maestro-output/boot-settle-logcat.log 2>&1 || true
+          echo "Captured boot-state-after-settle.png + boot-settle-logcat.log"
 
           echo "=== Running Maestro flows ==="
           PASS=0; FAIL=0; ERRORS=""
@@ -717,7 +731,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096
           emulator-boot-timeout: 900
           disable-animations: true
           script: ./run_tests.sh
