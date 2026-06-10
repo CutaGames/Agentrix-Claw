@@ -379,11 +379,45 @@ jobs:
               print('[patched] Ensured reactNativeArchitectures x86_64 in gradle.properties')
           PYEOF
 
+      # The arm64 release build above warmed Metro's transform cache while
+      # EXPO_PUBLIC_MAESTRO_E2E was UNSET, so App.tsx got
+      # `process.env.EXPO_PUBLIC_MAESTRO_E2E` inlined as `undefined`.
+      # babel-preset-expo inlines EXPO_PUBLIC_* at transform time, but Metro's
+      # transform-cache key does NOT include the env var value — so even with
+      # `--rerun-tasks` (which only forces *gradle* tasks to rerun) the E2E
+      # bundle below reuses the stale `undefined` transform. Result: the
+      # Maestro auto-login seed (gated on `isMaestroE2E`) is dead code, the app
+      # boots straight to the LOGIN screen, and every authenticated flow fails
+      # with "Element not found: tab-world". Bust all Metro caches here so the
+      # E2E bundle is re-transformed with EXPO_PUBLIC_MAESTRO_E2E='1' inlined.
+      - name: Clear Metro cache before E2E bundle (inline EXPO_PUBLIC_MAESTRO_E2E)
+        run: |
+          set -x
+          rm -rf node_modules/.cache .expo 2>/dev/null || true
+          for d in "${TMPDIR:-/tmp}" /tmp "${RUNNER_TEMP:-/tmp}"; do
+            find "$d" -maxdepth 1 -name 'metro-*' -exec rm -rf {} + 2>/dev/null || true
+            find "$d" -maxdepth 1 -name 'metro-cache*' -exec rm -rf {} + 2>/dev/null || true
+            find "$d" -maxdepth 1 -name 'haste-map-*' -exec rm -rf {} + 2>/dev/null || true
+          done
+          # Also point the E2E bundle at a brand-new TMPDIR so Metro's
+          # FileStore (rooted at os.tmpdir()/metro-cache) starts empty even if
+          # the wipe above missed a location. `expo export:embed` ignores
+          # --reset-cache under CI (it force-disables it when CI=true), so a
+          # fresh TMPDIR is the only reliable way to guarantee a cold cache.
+          rm -rf "${RUNNER_TEMP:-/tmp}/metro-e2e" 2>/dev/null || true
+          mkdir -p "${RUNNER_TEMP:-/tmp}/metro-e2e"
+          echo "[ci] Metro caches cleared + fresh TMPDIR prepared for E2E bundle"
+
       - name: Build x86_64 UI test APK
         working-directory: android
         run: ./gradlew assembleRelease --rerun-tasks --no-daemon --parallel --build-cache -PreactNativeArchitectures=x86_64
         env:
           EXPO_PUBLIC_MAESTRO_E2E: '1'
+          # Fresh TMPDIR → Metro's transform cache (os.tmpdir()/metro-cache) is
+          # empty → App.tsx is re-transformed with the flag set, so the Maestro
+          # auto-login seed is live and the app boots authenticated (tabs, not
+          # the login screen). See the cache-clear step above for the why.
+          TMPDIR: ${{ runner.temp }}/metro-e2e
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true'
 
       - name: Stage UI test APK
