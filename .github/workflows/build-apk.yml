@@ -560,6 +560,23 @@ jobs:
           curl -Ls "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> $GITHUB_PATH
 
+      # The GitHub-hosted ubuntu runner ships /dev/kvm but the runner user is
+      # NOT in the kvm group, so android-emulator-runner auto-falls back to
+      # `-accel off` (pure software TCG emulation). That makes the x86_64
+      # emulator ~10-20x slower: this heavy RN app (three/VRM + skia +
+      # reanimated + many TurboModules) then needs ~77s of NATIVE init before
+      # JS even runs ("Displayed ... +1m20s"), so every flow's launchApp cold
+      # start blows past the tab-world assertion timeout. Granting KVM access
+      # via a udev rule flips the emulator to hardware acceleration and brings
+      # cold start down to a few seconds — the single biggest perf lever.
+      - name: Enable KVM hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm || true
+
       - name: AVD cache
         uses: actions/cache@v4
         id: avd-cache
