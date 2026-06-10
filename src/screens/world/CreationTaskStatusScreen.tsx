@@ -17,6 +17,11 @@ import type { CreationTaskDto } from '../../../shared/types/world-creation-api';
 
 const POLL_MS = 3000;
 
+// Maestro E2E: synthetic taskId hits an empty backend → getCreationTask fails.
+// A blocking Alert would cover `creation-task-scroll`, so suppress it under the
+// compile-time flag (dead code in production); the scroll shell stays assertable.
+const isMaestroE2E = process.env.EXPO_PUBLIC_MAESTRO_E2E === '1';
+
 /** Whether a task status is still in-flight and therefore worth polling. */
 function isPolling(status?: CreationTaskDto['status']): boolean {
   return status === 'queued' || status === 'running';
@@ -65,10 +70,12 @@ export default function CreationTaskStatusScreen() {
         } catch (e: any) {
           if (cancelled) return;
           clearPoll();
-          Alert.alert(
-            t({ en: 'Load failed', zh: '加载失败' }),
-            e?.message || t({ en: 'Could not load the creation task.', zh: '无法加载创作任务。' }),
-          );
+          if (!isMaestroE2E) {
+            Alert.alert(
+              t({ en: 'Load failed', zh: '加载失败' }),
+              e?.message || t({ en: 'Could not load the creation task.', zh: '无法加载创作任务。' }),
+            );
+          }
         } finally {
           if (!cancelled) {
             setLoading(false);

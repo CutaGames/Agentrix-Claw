@@ -22,6 +22,13 @@ import type { MapPlotSummary } from '../../../shared/types/world-creation-api';
 // Viewport window pulled on focus (R1.1) — a centered 17×17 grid around origin.
 const VIEWPORT = { minX: -8, minY: -8, maxX: 8, maxY: 8 };
 
+// Maestro E2E build: the seeded session talks to an empty/synthetic backend,
+// so the focus fetch below fails — and a blocking Alert would sit ON TOP of
+// `land-plots-scroll`, hiding it from the UI driver. Suppress the failure
+// alert under the compile-time flag (dead code in production) so the screen's
+// empty-state + scroll surface stay assertable.
+const isMaestroE2E = process.env.EXPO_PUBLIC_MAESTRO_E2E === '1';
+
 // Tiers a creator may declare when acquiring an empty Plot (R2.7).
 const TIERS: SubstrateTier[] = ['A', 'B', 'C'];
 
@@ -49,10 +56,12 @@ export default function LandPlotsScreen() {
         } catch (e: any) {
           if (!cancelled) {
             setPlots([]);
-            Alert.alert(
-              t({ en: 'Failed to load map', zh: '地图加载失败' }),
-              e?.message || t({ en: 'Please try again later.', zh: '请稍后再试。' }),
-            );
+            if (!isMaestroE2E) {
+              Alert.alert(
+                t({ en: 'Failed to load map', zh: '地图加载失败' }),
+                e?.message || t({ en: 'Please try again later.', zh: '请稍后再试。' }),
+              );
+            }
           }
         } finally {
           if (!cancelled) setLoading(false);

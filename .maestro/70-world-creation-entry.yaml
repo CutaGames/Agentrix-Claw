@@ -10,6 +10,10 @@ name: World Creation — Entry → World Map
 - tapOn:
     id: "tab-world"
 
+# Diagnostic: capture the World hub so we can confirm it renders the v6 CTAs
+# (vs the cohort coming-soon panel) before we scroll for them.
+- takeScreenshot: "70-world-hub"
+
 # Scroll the World hub to the v6 "World Creation Platform" section.
 - scrollUntilVisible:
     element:
