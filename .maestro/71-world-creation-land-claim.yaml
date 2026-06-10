@@ -1,0 +1,26 @@
+## AI World Creation Platform (v6) — Land economy entry (R2)
+## World hub → "Claim Land" → LandPlots screen (acquire/list plots).
+appId: app.agentrix.claw
+name: World Creation — Claim Land
+---
+- launchApp
+- assertVisible:
+    id: "tab-world"
+- tapOn:
+    id: "tab-world"
+
+- scrollUntilVisible:
+    element:
+      id: "world-cta-landplots"
+    direction: DOWN
+    timeout: 10000
+
+- tapOn:
+    id: "world-cta-landplots"
+
+# LandPlots screen mounts (its root ScrollView testID).
+- extendedWaitUntil:
+    visible:
+      id: "land-plots-scroll"
+    timeout: 10000
+- takeScreenshot: "71-land-plots-open"

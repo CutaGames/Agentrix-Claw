@@ -1,0 +1,36 @@
+## AI World Creation Platform (v6) — Plot experience Marketplace (R11)
+## World hub → "Plot Market" → browse listings + tier filters.
+appId: app.agentrix.claw
+name: World Creation — Plot Marketplace
+---
+- launchApp
+- assertVisible:
+    id: "tab-world"
+- tapOn:
+    id: "tab-world"
+
+- scrollUntilVisible:
+    element:
+      id: "world-cta-plotmarket"
+    direction: DOWN
+    timeout: 10000
+
+- tapOn:
+    id: "world-cta-plotmarket"
+
+# Marketplace screen mounts; tier filter chips are present.
+- extendedWaitUntil:
+    visible:
+      id: "market-filter-tier-all"
+    timeout: 10000
+- assertVisible:
+    id: "market-filter-tier-A"
+- assertVisible:
+    id: "market-filter-tier-B"
+- assertVisible:
+    id: "market-filter-tier-C"
+
+# Switch to Tier_C filter (smoke: filter is interactive).
+- tapOn:
+    id: "market-filter-tier-C"
+- takeScreenshot: "72-plot-marketplace-open"

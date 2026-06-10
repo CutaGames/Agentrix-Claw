@@ -125,6 +125,10 @@ export function WorldHubScreen() {
   const onUgc = useCallback(() => navigation.navigate('WorldUgcRuleSets'), [navigation]);
   const onPetCreator = useCallback(() => navigation.navigate('PetCreator'), [navigation]);
   const onPhotoToPet = useCallback(() => navigation.navigate('PetCameraScan'), [navigation]);
+  // AI World Creation Platform (v6) entries — make the World_Map + creation surfaces reachable.
+  const onWorldMap = useCallback(() => navigation.navigate('WorldMap'), [navigation]);
+  const onLandPlots = useCallback(() => navigation.navigate('LandPlots'), [navigation]);
+  const onPlotMarket = useCallback(() => navigation.navigate('WorldCreationMarketplace'), [navigation]);
 
   // Phase 1: feature flag off → render coming-soon panel
   if (flagQ.data && !flagQ.data.enabled) {
@@ -211,6 +215,46 @@ export function WorldHubScreen() {
         </View>
         <Text style={styles.worldFeedArrow}>→</Text>
       </Pressable>
+
+      {/* AI World Creation Platform (v6) — open-world build/play surfaces. */}
+      <Text style={styles.sectionHeader}>
+        🌐 {t({ en: 'World Creation Platform', zh: '世界创作平台' })}
+      </Text>
+      <Pressable
+        style={({ pressed }) => [styles.aeonHero, pressed && styles.heroPressed]}
+        onPress={onWorldMap}
+        testID="world-cta-worldmap"
+      >
+        <Text style={styles.heroEmoji}>🗺️</Text>
+        <Text style={styles.heroTitle}>
+          {t({ en: 'Explore the shared World Map', zh: '探索共享世界地图' })}
+        </Text>
+        <Text style={styles.heroSub}>
+          {t({
+            en: 'Walk the map, enter player-built Plots — galleries, shops, arenas, tower-defense.',
+            zh: '在地图上行走,进入玩家共建的 Plot —— 展厅、商店、竞技场、塔防。',
+          })}
+        </Text>
+        <View style={styles.heroBtn}>
+          <Text style={styles.heroBtnText}>{t({ en: 'Open World Map', zh: '打开世界地图' })}</Text>
+        </View>
+      </Pressable>
+      <View style={styles.actionRow}>
+        <CTACard
+          emoji="🪧"
+          title={t({ en: 'Claim Land', zh: '圈地创作' })}
+          subtitle={t({ en: 'Acquire a plot & build', zh: '获取地块并建造' })}
+          onPress={onLandPlots}
+          testID="world-cta-landplots"
+        />
+        <CTACard
+          emoji="🏝️"
+          title={t({ en: 'Plot Market', zh: 'Plot 市场' })}
+          subtitle={t({ en: 'Browse & buy experiences', zh: '浏览购买体验' })}
+          onPress={onPlotMarket}
+          testID="world-cta-plotmarket"
+        />
+      </View>
 
       {/* 已有角色 → 角色卷轴 + 玩法入口; 新用户 → 不展示空的战斗/副本 */}
       {hasAssets ? (

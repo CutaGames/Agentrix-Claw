@@ -1,0 +1,25 @@
+## AI World Creation Platform (v6) — World Map via deep link (R1 / R13)
+## Complements 70 (hub-CTA entry) by validating the new `agentrix://world/map`
+## deep link AND the shared-map outer layer renders its header + device-tier
+## surface. Plot select→preview→enter needs live viewport plots (empty E2E
+## backend) so those are not asserted; the map host + header are deterministic
+## (the header string is hard-coded, language-independent).
+appId: app.agentrix.claw
+name: World Creation — World Map deep link
+---
+- launchApp
+- assertVisible:
+    id: "tab-world"
+
+# Validate the new deep-link route resolves into the World_Map host.
+- openLink: agentrix://world/map
+
+# Map host renders its header (hard-coded "🌍 世界地图").
+- extendedWaitUntil:
+    visible:
+      text: "世界地图"
+    timeout: 12000
+- assertVisible:
+    text: "世界地图"
+
+- takeScreenshot: "77-world-map-deep"

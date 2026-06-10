@@ -1,0 +1,29 @@
+## AI World Creation Platform (v6) — World tab entry → World Map
+## Verifies the previously-unreachable World_Map surface is now reachable
+## from the World hub CTA (fixes the "wired but no entry point" gap).
+appId: app.agentrix.claw
+name: World Creation — Entry → World Map
+---
+- launchApp
+- assertVisible:
+    id: "tab-world"
+- tapOn:
+    id: "tab-world"
+
+# Scroll the World hub to the v6 "World Creation Platform" section.
+- scrollUntilVisible:
+    element:
+      id: "world-cta-worldmap"
+    direction: DOWN
+    timeout: 10000
+
+# Open the shared World Map.
+- tapOn:
+    id: "world-cta-worldmap"
+
+# World Map screen renders (header / map surface).
+- extendedWaitUntil:
+    visible:
+      text: "世界地图"
+    timeout: 10000
+- takeScreenshot: "70-world-map-open"

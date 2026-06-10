@@ -38,6 +38,12 @@ import WorldUgcRuleSetsScreen from '../screens/world/WorldUgcRuleSetsScreen';
 import WorldDungeonExplorerScreen from '../screens/WorldDungeonExplorerScreen';
 // AI World Creation Platform (v6) — shared World_Map outer layer (Task 10.3)
 import WorldMapScreen from '../screens/WorldMapScreen';
+// AI World Creation Platform (v6) — creation/economy/experience surfaces (mobile UI)
+import LandPlotsScreen from '../screens/world/LandPlotsScreen';
+import PlotCreatorScreen from '../screens/world/PlotCreatorScreen';
+import PlotExperienceScreen from '../screens/world/PlotExperienceScreen';
+import CreationTaskStatusScreen from '../screens/world/CreationTaskStatusScreen';
+import WorldCreationMarketplaceScreen from '../screens/world/WorldCreationMarketplaceScreen';
 import { PetCreatorScreen } from '../screens/pet/PetCreatorScreen';
 import { CameraScanScreen } from '../screens/pet/CameraScanScreen';
 // Aeon(永曜城)— 实时多人共建世界(Phase 1)
@@ -96,6 +102,16 @@ export type WorldStackParamList = {
   WorldUgcRuleSets: undefined;
   /** AI World Creation Platform (v6) — shared World_Map outer layer (Task 10.3). */
   WorldMap: undefined;
+  /** v6 — Land_Economy: acquire / list scarce plots (R2). */
+  LandPlots: undefined;
+  /** v6 — Plot creator (prompt-drive / co-edit / hand-build) (R3). */
+  PlotCreator: { plotId: string; substrateTier: import('../../shared/types/world-creation').SubstrateTier; title?: string };
+  /** v6 — Plot inner-experience host (enter / checkout) (R1.4/R15). */
+  PlotExperience: { plotId: string; title?: string };
+  /** v6 — Creation_Task status / retry (R8). */
+  CreationTaskStatus: { taskId: string };
+  /** v6 — Plot experience Marketplace (browse / purchase) (R11). */
+  WorldCreationMarketplace: undefined;
   ReconstructionProgress: {
     jobId: string;
     estimatedSeconds?: number;
@@ -198,6 +214,31 @@ export function WorldStackNavigator() {
         name="WorldMap"
         component={WorldMapScreen}
         options={{ title: t({ en: 'World Map', zh: '世界地图' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="LandPlots"
+        component={LandPlotsScreen}
+        options={{ title: t({ en: 'Plots', zh: '地块' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="PlotCreator"
+        component={PlotCreatorScreen}
+        options={{ title: t({ en: 'Plot Creator', zh: 'Plot 创作器' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="PlotExperience"
+        component={PlotExperienceScreen}
+        options={{ title: t({ en: 'Experience', zh: '体验' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="CreationTaskStatus"
+        component={CreationTaskStatusScreen}
+        options={{ title: t({ en: 'Creation Task', zh: '创作任务' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldCreationMarketplace"
+        component={WorldCreationMarketplaceScreen}
+        options={{ title: t({ en: 'Plot Market', zh: 'Plot 体验市场' }), headerShown: false }}
       />
       <Stack.Screen
         name="ReconstructionProgress"

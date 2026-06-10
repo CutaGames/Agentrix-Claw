@@ -377,6 +377,30 @@ jobs:
               with open(gradle_props, 'w') as f:
                   f.write(props)
               print('[patched] Ensured reactNativeArchitectures x86_64 in gradle.properties')
+
+          # Disable expo-updates' on-launch remote check for the E2E build.
+          # AndroidManifest defaults to CHECK_ON_LAUNCH=ALWAYS + LAUNCH_WAIT_MS=5000,
+          # so every cold start BLOCKS the splash up to 5s waiting for an OTA
+          # download from u.expo.dev — which on the network-less CI emulator
+          # fails slowly (repeated "Failed to download remote update"), padding
+          # an already-heavy boot until the app ANRs and never reaches the tab
+          # shell. Force NEVER + 0ms so the E2E app boots straight from the
+          # embedded bundle. (Production keeps ALWAYS/5000 untouched.)
+          manifest = 'android/app/src/main/AndroidManifest.xml'
+          if os.path.exists(manifest):
+              with open(manifest) as f:
+                  mf = f.read()
+              mf = re.sub(
+                  r'(expo\.modules\.updates\.EXPO_UPDATES_CHECK_ON_LAUNCH"\s+android:value=")[^"]*(")',
+                  r'\1NEVER\2', mf, count=1,
+              )
+              mf = re.sub(
+                  r'(expo\.modules\.updates\.EXPO_UPDATES_LAUNCH_WAIT_MS"\s+android:value=")[^"]*(")',
+                  r'\g<1>0\2', mf, count=1,
+              )
+              with open(manifest, 'w') as f:
+                  f.write(mf)
+              print('[patched] expo-updates CHECK_ON_LAUNCH=NEVER + LAUNCH_WAIT_MS=0 for E2E')
           PYEOF
 
       # The arm64 release build above warmed Metro's transform cache while

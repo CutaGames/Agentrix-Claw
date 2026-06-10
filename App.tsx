@@ -740,6 +740,25 @@ const linking = {
       },
       Main: {
         screens: {
+          // AI World Creation Platform (v6) — World tab deep links. The World
+          // stack previously had NO linking entries, so its v6 surfaces
+          // (map / land / market / creator / experience / task) were only
+          // reachable by in-app navigation — unreachable to deep links, Siri/
+          // Assistant intents, share links, and Maestro E2E. Add canonical
+          // `agentrix://world/*` paths. Screens all handle missing/synthetic
+          // ids gracefully (empty state / 10s enter-timeout fallback / "not
+          // found"), so a bad id never crashes.
+          World: {
+            screens: {
+              WorldRoot: 'world',
+              WorldMap: 'world/map',
+              LandPlots: 'world/plots',
+              WorldCreationMarketplace: 'world/market',
+              PlotCreator: 'world/create/:substrateTier/:plotId',
+              PlotExperience: 'world/plot/:plotId',
+              CreationTaskStatus: 'world/task/:taskId',
+            },
+          },
           Summon: {
             screens: {
               SummonRoot: 'summon',

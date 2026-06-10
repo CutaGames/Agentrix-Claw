@@ -1,0 +1,48 @@
+## AI World Creation Platform (v6) — Plot Marketplace deep (R11)
+## Deepens 72 (entry-only) by exercising the real user path (World hub CTA)
+## and cycling every Substrate_Tier filter chip, asserting the listings scroll
+## container mounts. Listing rows (`plot-listing-*`) and the purchase modal
+## (`plot-purchase-confirm`) are data-dependent (empty E2E catalog) so they are
+## not asserted here; the filter UI + scroll surface are deterministic.
+appId: app.agentrix.claw
+name: World Creation — Marketplace deep
+---
+- launchApp
+- assertVisible:
+    id: "tab-world"
+- tapOn:
+    id: "tab-world"
+
+# Real path: scroll the World hub to the v6 section and open the Plot Market.
+- scrollUntilVisible:
+    element:
+      id: "world-cta-plotmarket"
+    direction: DOWN
+- tapOn:
+    id: "world-cta-plotmarket"
+
+# Marketplace mounts: tier filter chips + listings scroll surface.
+- extendedWaitUntil:
+    visible:
+      id: "market-filter-tier-all"
+    timeout: 12000
+- assertVisible:
+    id: "market-filter-tier-A"
+- assertVisible:
+    id: "market-filter-tier-B"
+- assertVisible:
+    id: "market-filter-tier-C"
+- assertVisible:
+    id: "plot-marketplace-scroll"
+
+# Cycle every tier filter — each chip is interactive (discovery by tier, R11).
+- tapOn:
+    id: "market-filter-tier-A"
+- tapOn:
+    id: "market-filter-tier-B"
+- tapOn:
+    id: "market-filter-tier-C"
+- tapOn:
+    id: "market-filter-tier-all"
+
+- takeScreenshot: "76-marketplace-deep"

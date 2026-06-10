@@ -34,7 +34,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 import { useDeviceTier } from '../world-creation/useDeviceTier';
 import { WorldMapRenderer } from '../world-creation/WorldMapRenderer';
-import { getMapViewport, enterPlot, submitCreationTask } from '../services/worldCreationApi';
+import { getMapViewport, submitCreationTask } from '../services/worldCreationApi';
 import type { MapPlotSummary } from '../../shared/types/world-creation-api';
 
 // Default viewport window fetched on focus.
@@ -97,17 +97,25 @@ export default function WorldMapScreen() {
           plotId: plot.plotId,
           target: 'desktop',
           substrateTier: plot.substrateTier,
+          surface: 'mobile',
           input: { intent: 'playTierC', plotId: plot.plotId },
         });
+        const taskId = res.task?.taskId;
         Alert.alert(
           '已派发到桌面端',
-          `“${plot.title}”已作为创作/体验任务派发(目标:${res.effectiveTarget})。在桌面端打开 Agentrix 即可继续。`,
+          `“${plot.title}”已作为创作/体验任务派发(目标:${res.effectiveTarget})。`,
+          taskId
+            ? [
+                { text: '好', style: 'cancel' },
+                { text: '查看任务', onPress: () => navigation.navigate('CreationTaskStatus', { taskId }) },
+              ]
+            : undefined,
         );
       } catch (err: any) {
         Alert.alert('派发失败', err?.message || '请稍后再试,或在桌面端直接打开。');
       }
     },
-    [],
+    [navigation],
   );
 
   // ─── Enter action (R1.4) + device-tier launch planning (R13.4/R13.5) ────
@@ -158,26 +166,13 @@ export default function WorldMapScreen() {
     [planLaunch, dispatchToDesktop],
   );
 
-  // Actual enter call. On failure, stay on the map view (R1.7-aligned fallback).
+  // Actual enter call → navigate into the inner-experience host (R1.4).
+  // The PlotExperienceScreen owns the enterPlot call + 10s timeout fallback (R1.7).
   const doEnter = useCallback(
     async (plot: MapPlotSummary) => {
-      setEntering(true);
-      try {
-        const res = await enterPlot(plot.plotId);
-        // Route into the appropriate inner-experience screen by isolation level.
-        // Battle/B-tier arenas reuse the shipped interactive battle surface;
-        // others land on the generic experience host (filled in by later tasks).
-        Alert.alert(
-          '进入体验',
-          `已实例化「${plot.title}」(隔离级 ${res.isolationLevel})。`,
-        );
-      } catch (err: any) {
-        Alert.alert('进入失败', err?.message || '体验加载失败,已返回地图。');
-      } finally {
-        setEntering(false);
-      }
+      navigation.navigate('PlotExperience', { plotId: plot.plotId, title: plot.title });
     },
-    [],
+    [navigation],
   );
 
   // ─── Render ────────────────────────────────────────────────────────────
