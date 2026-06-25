@@ -1,0 +1,254 @@
+﻿{
+    "fail":  0,
+    "base":  "https://agentrix.top",
+    "pass":  35,
+    "total":  35,
+    "date":  "2026-05-16T15:31:44.8344205+08:00",
+    "results":  [
+                    {
+                        "ok":  true,
+                        "path":  "/",
+                        "code":  200,
+                        "name":  "home",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/pricing",
+                        "code":  200,
+                        "name":  "pricing",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/download",
+                        "code":  200,
+                        "name":  "download",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/market",
+                        "code":  200,
+                        "name":  "market",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/market/leaderboard",
+                        "code":  200,
+                        "name":  "market-leaderboard",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/market/sell",
+                        "code":  200,
+                        "name":  "market-sell",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/market/auction/dummy-id",
+                        "code":  200,
+                        "name":  "market-auction",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/market/creator/dummy-user",
+                        "code":  200,
+                        "name":  "market-creator",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/help",
+                        "code":  200,
+                        "name":  "help-index",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/help/desktop",
+                        "code":  200,
+                        "name":  "help-desktop",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/help/desktop/faq",
+                        "code":  200,
+                        "name":  "help-faq",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/privacy",
+                        "code":  200,
+                        "name":  "privacy",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/terms",
+                        "code":  200,
+                        "name":  "terms",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/clan",
+                        "code":  308,
+                        "name":  "clan",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/clans",
+                        "code":  200,
+                        "name":  "clans",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/blog",
+                        "code":  200,
+                        "name":  "blog",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/500",
+                        "code":  500,
+                        "name":  "500-direct",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/this-does-not-exist-zxy",
+                        "code":  404,
+                        "name":  "404-unknown",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/showcase",
+                        "code":  307,
+                        "name":  "showcase",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/about",
+                        "code":  200,
+                        "name":  "about",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/.well-known/assetlinks.json",
+                        "code":  200,
+                        "name":  "assetlinks",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/.well-known/apple-app-site-association",
+                        "code":  200,
+                        "name":  "aasa",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/api/v1/marketplace/pets",
+                        "code":  200,
+                        "name":  "pets-browse",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/api/v1/marketplace/leaderboard?board=gmv",
+                        "code":  200,
+                        "name":  "pets-leaderboard",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/api/v1/marketplace/pets/00000000-0000-0000-0000-000000000000",
+                        "code":  200,
+                        "name":  "pets-detail-fake",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/api/v1/axp/redeem/catalog",
+                        "code":  401,
+                        "name":  "axp-redeem-cat",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/api/v1/checkout/session",
+                        "code":  401,
+                        "name":  "checkout-session",
+                        "method":  "POST"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/api/v1/checkout/payment-intent",
+                        "code":  401,
+                        "name":  "checkout-pi",
+                        "method":  "POST"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/api/v1/axp/balance",
+                        "code":  401,
+                        "name":  "axp-balance",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/api/v1/payment/iap-webhook",
+                        "code":  401,
+                        "name":  "iap-webhook",
+                        "method":  "POST"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/api/v1/mobile/analytics",
+                        "code":  202,
+                        "name":  "mobile-analytics",
+                        "method":  "POST"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/api/desktop/analytics",
+                        "code":  202,
+                        "name":  "desktop-analytics",
+                        "method":  "POST"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/api/desktop/crashes",
+                        "code":  202,
+                        "name":  "desktop-crashes",
+                        "method":  "POST"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/api/desktop/update/win/x64/0.1.0",
+                        "code":  204,
+                        "name":  "desktop-update",
+                        "method":  "GET"
+                    },
+                    {
+                        "ok":  true,
+                        "path":  "/api/v1/marketplace/pets/00000000-0000-0000-0000-000000000000/bids",
+                        "code":  200,
+                        "name":  "pets-bids-fake",
+                        "method":  "GET"
+                    }
+                ]
+}

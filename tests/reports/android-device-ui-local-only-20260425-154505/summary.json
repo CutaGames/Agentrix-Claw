@@ -1,0 +1,93 @@
+﻿[
+    {
+        "id":  "device-online",
+        "title":  "Android device online",
+        "status":  "passed",
+        "notes":  "MDX0220309000133       device product:ELS-AN00 model:ELS_AN00 device:HWELS transport_id:6",
+        "snapshot":  ""
+    },
+    {
+        "id":  "foreground-app",
+        "title":  "Agentrix foreground",
+        "status":  "passed",
+        "notes":  "app.agentrix.claw",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-or-auth",
+        "title":  "Wait chat-or-auth",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "01-wait-chat-or-auth"
+    },
+    {
+        "id":  "wait-interactive-chat-after-launch",
+        "title":  "Wait interactive-chat-after-launch",
+        "status":  "passed",
+        "notes":  "chat controls stable",
+        "snapshot":  "06-wait-interactive-chat-after-launch"
+    },
+    {
+        "id":  "crash-launch",
+        "title":  "Crash scan after launch",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-me tab for local model",
+        "title":  "Tap me tab for local model",
+        "status":  "passed",
+        "notes":  "我的 [900,2445][1200,2486]",
+        "snapshot":  "07-before-me-tab-for-local-model"
+    },
+    {
+        "id":  "tap-scroll-settings menu",
+        "title":  "Tap scroll settings menu",
+        "status":  "passed",
+        "notes":  "设置 [234,1957][1035,2024]",
+        "snapshot":  "09-scroll-settings-menu-1"
+    },
+    {
+        "id":  "wait-settings screen",
+        "title":  "Wait settings screen",
+        "status":  "passed",
+        "notes":  "设置",
+        "snapshot":  "10-wait-settings-screen"
+    },
+    {
+        "id":  "tap-scroll-local ai model",
+        "title":  "Tap scroll local ai model",
+        "status":  "passed",
+        "notes":  "本地 AI 模型 [56,340][1144,394]",
+        "snapshot":  "13-scroll-local-ai-model-2"
+    },
+    {
+        "id":  "wait-local ai model screen",
+        "title":  "Wait local ai model screen",
+        "status":  "passed",
+        "notes":  "local-ai-model-screen",
+        "snapshot":  "14-wait-local-ai-model-screen"
+    },
+    {
+        "id":  "wait-local ai ready model",
+        "title":  "Wait local ai ready model",
+        "status":  "passed",
+        "notes":  "local-ai-ready-model",
+        "snapshot":  "15-wait-local-ai-ready-model"
+    },
+    {
+        "id":  "crash-local-ai-model",
+        "title":  "Crash scan after local-ai-model",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "crash-final",
+        "title":  "Crash scan after final",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    }
+]

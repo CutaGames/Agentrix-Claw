@@ -1,0 +1,43 @@
+{
+  "_description": "Snapshot of the GET /api/v1/agents/:id/status response shape BEFORE World Engine fields are added. This fixture documents the backwards-compatibility contract: existing mobile/desktop/wearable clients rely on this exact shape. Any new World Engine fields MUST be additive and opt-in via ?includeWorldEngine=true query parameter.",
+  "_requirement": "11.4 — existing clients SHALL continue to function without changes after world-engine fields are added",
+  "_captured_at": "2026-05-17T00:00:00.000Z",
+
+  "agent_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "name": "My Assistant Agent",
+  "status": "active",
+  "personality": "Friendly and helpful, always eager to assist with tasks",
+  "system_prompt": "You are a helpful assistant that manages daily tasks and provides recommendations.",
+  "delegation_level": "assistant",
+  "capabilities": ["chat", "task_management", "recommendations"],
+  "channel_bindings": [
+    {
+      "platform": "telegram",
+      "channel_id": "123456789",
+      "channel_name": "My Telegram Bot",
+      "bound_at": "2026-04-15T10:30:00.000Z",
+      "config": {}
+    }
+  ],
+  "memory_config": {
+    "scope": "private",
+    "retention_days": 90,
+    "max_entries": 1000,
+    "auto_promote": true
+  },
+  "avatar_url": "https://cdn.agentrix.io/avatars/agent-a1b2c3d4.png",
+  "default_model": "gpt-4o",
+  "is_published": false,
+  "metadata": {
+    "source": "user_created",
+    "version": "1.0"
+  },
+  "stats": {
+    "total_calls": 1234,
+    "total_earnings": 420,
+    "currency": "USDC",
+    "last_active_at": "2026-05-16T14:22:00.000Z"
+  },
+  "created_at": "2026-03-01T08:00:00.000Z",
+  "updated_at": "2026-05-16T14:22:00.000Z"
+}

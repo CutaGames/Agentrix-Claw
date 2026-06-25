@@ -1,0 +1,53 @@
+appId: app.agentrix.claw
+name: Soul_Birth — Re-watch guide (Me → 重看引导) re-opens at birth (R1.7)
+# ─────────────────────────────────────────────────────────────
+# Test 64: soul-companion-onboarding — 重看引导 (replay onboarding) R1.7.
+# 强断言(CI 实证):deep-link 进 Me/Profile(tab-me 点击在 shard 内不可靠),
+# 再滚到「重看引导」(testID me-replay-onboarding,已确认存在于 ProfileScreen)。
+# 触发后 Soul_Birth 覆盖层在 birth 步重新出现。
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 8000
+
+# ── 防御:若前序遗留 Soul_Birth 步骤覆盖层,先用全局「跳过」(R1.5)关掉 ──
+- runFlow:
+    when:
+      visible: "^跳过$"
+    commands:
+      - tapOn:
+          text: "^跳过$"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# ── deep-link 进 Me/Profile,确定性可达 ────────────────────────
+- openLink: agentrix://me
+- waitForAnimationToEnd:
+    timeout: 6000
+- takeScreenshot: "64-me-tab"
+
+# ── 滚到「重看引导」(R1.7 入口,Settings 区)并断言 ─────────────
+- scrollUntilVisible:
+    element:
+      id: "me-replay-onboarding"
+    direction: DOWN
+    timeout: 20000
+- assertVisible:
+    id: "me-replay-onboarding"
+- tapOn:
+    id: "me-replay-onboarding"
+
+# ── 确认弹窗 → 点「重看 / Replay」(非取消)────────────────────
+- takeScreenshot: "64-replay-confirm-dialog"
+- tapOn:
+    text: "重看|Replay"
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# ── 断言 Soul_Birth 覆盖层在 birth 步重现(R1.7)──────────────
+- assertVisible:
+    text: "诞生你的 AI"
+- takeScreenshot: "64-replayed-birth-step"

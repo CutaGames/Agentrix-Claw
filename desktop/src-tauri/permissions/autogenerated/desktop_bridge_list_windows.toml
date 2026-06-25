@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-bridge-list-windows"
+description = "Enables the desktop_bridge_list_windows command without any pre-configured scope."
+commands.allow = ["desktop_bridge_list_windows"]
+
+[[permission]]
+identifier = "deny-desktop-bridge-list-windows"
+description = "Denies the desktop_bridge_list_windows command without any pre-configured scope."
+commands.deny = ["desktop_bridge_list_windows"]

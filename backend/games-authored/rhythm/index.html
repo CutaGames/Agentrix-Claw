@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>霓虹节奏 · Neon Beat</title>
+<style>
+  html,body{margin:0;height:100%;background:#0c0a1e;overflow:hidden;touch-action:none;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#fff}
+  #wrap{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  canvas{display:block;touch-action:none}
+  #hud{position:fixed;top:max(10px,env(safe-area-inset-top));left:0;right:0;text-align:center;pointer-events:none}
+  #hud .sc{font-size:28px;font-weight:900;background:linear-gradient(90deg,#c084fc,#22d3ee);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  #hud .cb{font-size:15px;color:#ffd166;font-weight:800;height:20px}
+  #judge{position:fixed;left:0;right:0;text-align:center;font-size:24px;font-weight:900;pointer-events:none;opacity:0;transition:opacity .1s}
+  #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(12,10,30,.9);text-align:center;padding:24px}
+  #overlay h1{font-size:30px;margin:0 0 6px;background:linear-gradient(90deg,#c084fc,#22d3ee,#ffd166);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  #overlay p{color:#b3a6d6;font-size:14px;margin:4px 0}
+  #obtn{margin-top:18px;padding:14px 34px;border:none;border-radius:14px;background:linear-gradient(135deg,#c084fc,#22d3ee);color:#fff;font-size:18px;font-weight:900}
+  .hide{display:none!important}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<div id="hud"><div class="sc"><span id="score">0</span></div><div class="cb"><span id="combo"></span></div></div>
+<div id="judge"></div>
+<div id="overlay"><h1>霓虹节奏</h1><p>音符落到判定线时点对应轨道<br>连击越长得分越高</p><button id="obtn">开始</button></div>
+<script>
+(function(){
+"use strict";
+var CFG=(typeof window!=="undefined"&&window.__GAME_CONFIG)||{};
+if(CFG.title){try{document.title=CFG.title;var h=document.querySelector("#overlay h1");if(h)h.textContent=CFG.title;}catch(e){}}
+var DIFF=CFG.difficulty||"normal";
+var D={easy:{fall:3.2,gap:62,life:6},normal:{fall:4.4,gap:46,life:5},hard:{fall:6.2,gap:32,life:4}}[DIFF]||{fall:4.4,gap:46,life:5};
+var DPR=Math.min(window.devicePixelRatio||1,2),cv=document.getElementById("c"),ctx=cv.getContext("2d");
+var LANES=4,W=0,H=0,laneW=0,hitY=0;
+function resize(){W=Math.min(window.innerWidth,460);H=window.innerHeight;laneW=W/LANES;hitY=H-Math.max(110,H*0.16);cv.width=W*DPR;cv.height=H*DPR;cv.style.width=W+"px";cv.style.height=H+"px";ctx.setTransform(DPR,0,0,DPR,0,0);}
+window.addEventListener("resize",resize);resize();
+var COLORS=["#c084fc","#22d3ee","#7be0a0","#ffd166"];
+var elScore=document.getElementById("score"),elCombo=document.getElementById("combo"),judge=document.getElementById("judge"),overlay=document.getElementById("overlay"),obtn=document.getElementById("obtn");
+var notes,score,combo,maxCombo,life,spawnT,speed,running,flashes;
+function reset(){notes=[];score=0;combo=0;maxCombo=0;life=D.life;spawnT=0;speed=D.fall;running=true;flashes=[0,0,0,0];elScore.textContent=0;elCombo.textContent="";}
+function spawn(){var lane=Math.floor(Math.random()*LANES);notes.push({lane:lane,y:-30,hit:false});}
+function showJudge(txt,color,y){judge.textContent=txt;judge.style.color=color;judge.style.top=(y-40)+"px";judge.style.opacity=1;setTimeout(function(){judge.style.opacity=0;},220);}
+function tapLane(lane){
+  if(!running)return;
+  flashes[lane]=10;
+  // 找该轨道最接近判定线的未击中音符
+  var best=null,bd=1e9;
+  notes.forEach(function(n){if(n.lane===lane&&!n.hit){var d=Math.abs(n.y-hitY);if(d<bd){bd=d;best=n;}}});
+  var win=laneW*0.9;
+  if(best&&bd<win){
+    best.hit=true;combo++;maxCombo=Math.max(maxCombo,combo);
+    var pts,txt,col;
+    if(bd<22){pts=100;txt="PERFECT";col="#ffd166";}
+    else if(bd<48){pts=60;txt="GREAT";col="#7be0a0";}
+    else{pts=30;txt="GOOD";col="#22d3ee";}
+    score+=pts+Math.floor(combo*1.5);
+    elScore.textContent=score;elCombo.textContent=combo>1?(combo+" COMBO"):"";
+    showJudge(txt,col,hitY);
+  } else {
+    combo=0;elCombo.textContent="";showJudge("MISS","#ff7b9c",hitY);
+  }
+}
+function laneFromX(x){return Math.max(0,Math.min(LANES-1,Math.floor(x/laneW)));}
+cv.addEventListener("touchstart",function(e){var r=cv.getBoundingClientRect();for(var i=0;i<e.changedTouches.length;i++){tapLane(laneFromX(e.changedTouches[i].clientX-r.left));}e.preventDefault&&e.preventDefault();},{passive:false});
+cv.addEventListener("mousedown",function(e){var r=cv.getBoundingClientRect();tapLane(laneFromX(e.clientX-r.left));});
+window.addEventListener("keydown",function(e){var m={"a":0,"s":1,"k":2,"l":3,"1":0,"2":1,"3":2,"4":3};if(m[e.key]!==undefined)tapLane(m[e.key]);});
+function step(){
+  if(!running)return;
+  spawnT++;
+  var gap=Math.max(20,D.gap-Math.floor(score/600));
+  if(spawnT>=gap){spawnT=0;spawn();}
+  speed=D.fall+score/2500;
+  for(var i=notes.length-1;i>=0;i--){
+    var n=notes[i];if(n.hit){notes.splice(i,1);continue;}
+    n.y+=speed;
+    if(n.y>H+20){notes.splice(i,1);combo=0;elCombo.textContent="";life--;showJudge("MISS","#ff7b9c",hitY);
+      if(life<=0){gameOver();return;}}
+  }
+  for(var f=0;f<4;f++)if(flashes[f]>0)flashes[f]--;
+}
+function draw(){
+  var g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,"#140f2e");g.addColorStop(1,"#0c0a1e");ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  for(var i=0;i<LANES;i++){
+    ctx.strokeStyle="rgba(255,255,255,.06)";ctx.beginPath();ctx.moveTo(i*laneW,0);ctx.lineTo(i*laneW,H);ctx.stroke();
+    if(flashes[i]>0){ctx.fillStyle="rgba("+(i===0?"192,132,252":i===1?"34,211,238":i===2?"123,224,160":"255,209,102")+","+(flashes[i]/22)+")";ctx.fillRect(i*laneW,0,laneW,H);}
+  }
+  // 判定线
+  ctx.strokeStyle="rgba(255,255,255,.5)";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(0,hitY);ctx.lineTo(W,hitY);ctx.stroke();ctx.lineWidth=1;
+  for(var l=0;l<LANES;l++){ctx.strokeStyle=COLORS[l];ctx.globalAlpha=0.5;ctx.beginPath();ctx.arc(l*laneW+laneW/2,hitY,laneW*0.32,0,6.28);ctx.stroke();ctx.globalAlpha=1;}
+  // 音符
+  notes.forEach(function(n){var x=n.lane*laneW+laneW/2;var r=laneW*0.34;ctx.fillStyle=COLORS[n.lane];ctx.shadowColor=COLORS[n.lane];ctx.shadowBlur=14;
+    ctx.beginPath();ctx.arc(x,n.y,r,0,6.28);ctx.fill();ctx.shadowBlur=0;ctx.fillStyle="rgba(255,255,255,.35)";ctx.beginPath();ctx.arc(x,n.y,r*0.5,0,6.28);ctx.fill();});
+  // 生命
+  for(var hh=0;hh<life;hh++){ctx.fillStyle="#ff7b9c";ctx.beginPath();ctx.arc(16+hh*20,H-26,6,0,6.28);ctx.fill();}
+}
+function gameOver(){running=false;try{window.render_game_to_text=function(){return JSON.stringify({score:score,maxCombo:maxCombo,over:true});};if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'gameover',score:Math.max(0,Math.floor(score))}));}catch(e){}overlay.classList.remove("hide");overlay.querySelector("h1").textContent="结束!";overlay.querySelector("p").innerHTML=score+" 分 · 最高连击 "+maxCombo;obtn.textContent="再来";}
+function loop(){step();draw();requestAnimationFrame(loop);}
+obtn.addEventListener("click",function(){overlay.classList.add("hide");reset();});
+reset();running=false;draw();requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

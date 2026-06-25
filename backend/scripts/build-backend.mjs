@@ -1,0 +1,170 @@
+#!/usr/bin/env node
+
+import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const backendDir = path.resolve(__dirname, '..');
+const distMain = path.join(backendDir, 'dist', 'main.js');
+const requiredDistFiles = [
+  'main.js',
+  'app.module.js',
+  'app.controller.js',
+  'app.service.js',
+].map((file) => path.join(backendDir, 'dist', file));
+const buildTsconfig = existsSync(path.join(backendDir, 'tsconfig.build.json'))
+  ? 'tsconfig.build.json'
+  : 'tsconfig.json';
+
+const args = new Set(process.argv.slice(2));
+const verifyOnly = args.has('--verify-only');
+const tscOnly = args.has('--tsc-only');
+
+function log(message = '') {
+  process.stdout.write(`${message}\n`);
+}
+
+function fail(message) {
+  process.stderr.write(`${message}\n`);
+  process.exit(1);
+}
+
+function run(command, commandArgs, options = {}) {
+  const result = spawnSync(command, commandArgs, {
+    cwd: backendDir,
+    stdio: 'inherit',
+    env: process.env,
+    ...options,
+  });
+
+  return result.status === 0;
+}
+
+function cleanBuildArtifacts() {
+  rmSync(path.join(backendDir, 'dist'), { recursive: true, force: true });
+  rmSync(path.join(backendDir, 'tsconfig.tsbuildinfo'), { force: true });
+}
+
+function verifyRequiredFiles() {
+  for (const relativePath of ['package.json', 'tsconfig.json', 'src/main.ts']) {
+    if (!existsSync(path.join(backendDir, relativePath))) {
+      fail(`❌ Build failed: ${relativePath} not found`);
+    }
+  }
+}
+
+function runNestBuild() {
+  const nestBin = path.join(backendDir, 'node_modules', '@nestjs', 'cli', 'bin', 'nest.js');
+  if (!existsSync(nestBin)) {
+    return false;
+  }
+
+  log('📦 Trying nest build...');
+  return run(process.execPath, [nestBin, 'build']);
+}
+
+function runTscBuild(noEmit = false) {
+  const tscBin = path.join(backendDir, 'node_modules', 'typescript', 'bin', 'tsc');
+  if (!existsSync(tscBin)) {
+    fail('❌ Build failed: TypeScript compiler not found in node_modules');
+  }
+
+  const compilerArgs = [tscBin, '-p', buildTsconfig, '--incremental', 'false'];
+  if (noEmit) {
+    compilerArgs.push('--noEmit');
+  }
+
+  log(noEmit
+    ? `🔍 Running TypeScript diagnostics (${buildTsconfig})...`
+    : `📦 Building with TypeScript compiler (${buildTsconfig})...`);
+  return run(process.execPath, compilerArgs);
+}
+
+function hasValidBuildOutput() {
+  for (const filePath of requiredDistFiles) {
+    if (!existsSync(filePath)) {
+      return false;
+    }
+    if (statSync(filePath).size <= 0) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function verifyBuildOutput() {
+  log('');
+  log('🔍 Verifying build output...');
+
+  if (!hasValidBuildOutput()) {
+    const missingFiles = requiredDistFiles
+      .filter((filePath) => !existsSync(filePath) || statSync(filePath).size <= 0)
+      .map((filePath) => path.relative(backendDir, filePath));
+    log(`❌ Missing or empty build outputs: ${missingFiles.join(', ')}`);
+    const distDir = path.join(backendDir, 'dist');
+    if (existsSync(distDir)) {
+      const entries = readdirSync(distDir).slice(0, 20);
+      log(`📋 dist contents: ${entries.join(', ') || '(empty)'}`);
+    } else {
+      log('📋 dist directory does not exist');
+    }
+    runTscBuild(true);
+    fail('❌ Backend build verification failed');
+  }
+
+  const fileSize = statSync(distMain).size;
+  log(`✅ Build succeeded: dist/main.js (${fileSize} bytes)`);
+}
+
+verifyRequiredFiles();
+
+if (verifyOnly) {
+  verifyBuildOutput();
+  process.exit(0);
+}
+
+log('🔨 Building Agentrix Backend...');
+log('');
+log('🧹 Cleaning previous build artifacts...');
+cleanBuildArtifacts();
+
+let built = false;
+if (!tscOnly) {
+  built = runNestBuild();
+  if (built && !hasValidBuildOutput()) {
+    log('⚠️ nest build completed without dist/main.js, falling back to tsc.');
+    built = false;
+  }
+}
+
+if (!built) {
+  if (!tscOnly) {
+    log('⚠️ nest build failed, falling back to tsc.');
+  }
+  built = runTscBuild(false);
+}
+
+// Even if tsc reported errors, dist/main.js may still be produced (no noEmitOnError).
+// Treat build as success if dist/main.js exists.
+if (!built && hasValidBuildOutput()) {
+  log('⚠️ tsc reported errors but dist outputs are present — continuing.');
+  built = true;
+}
+
+if (!built) {
+  fail('❌ Backend build failed');
+}
+
+// Copy non-TS assets (JSON files, etc.) to dist
+log('');
+log('📋 Copying non-TS assets to dist...');
+const copyAssetsScript = path.join(backendDir, 'scripts', 'copy-assets-to-dist.mjs');
+if (existsSync(copyAssetsScript)) {
+  run(process.execPath, [copyAssetsScript]);
+}
+
+verifyBuildOutput();

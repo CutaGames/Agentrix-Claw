@@ -1,0 +1,152 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Agentrix Commerce Skill API",
+    "description": "Unified commerce protocol for AI agents: payment, revenue splitting, budget pools, and marketplace.",
+    "version": "1.0.0",
+    "contact": { "url": "https://www.agentrix.top" }
+  },
+  "servers": [
+    { "url": "https://www.agentrix.top/api" }
+  ],
+  "paths": {
+    "/commerce/execute": {
+      "post": {
+        "operationId": "executeCommerceAction",
+        "summary": "Execute a commerce action (split plan, budget pool, milestone, etc.)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": ["createSplitPlan", "getSplitPlan", "updateSplitPlan", "activateSplitPlan", "archiveSplitPlan", "getSplitPlans", "previewAllocation", "createBudgetPool", "getBudgetPool", "fundBudgetPool", "cancelBudgetPool", "getBudgetPools", "createMilestone", "getMilestone", "startMilestone", "submitMilestone", "approveMilestone", "rejectMilestone", "releaseMilestone"]
+                  },
+                  "mode": { "type": "string", "enum": ["PAY_ONLY", "SPLIT_ONLY", "PAY_AND_SPLIT"] },
+                  "params": { "type": "object" }
+                },
+                "required": ["action"]
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Action result" } }
+      }
+    },
+    "/commerce/split-plans": {
+      "get": {
+        "operationId": "listSplitPlans",
+        "summary": "List all split plans for the authenticated user",
+        "responses": { "200": { "description": "List of split plans" } }
+      },
+      "post": {
+        "operationId": "createSplitPlan",
+        "summary": "Create a new revenue split plan. Templates: physical, service, virtual, nft, skill, agent_task. Fee: 0.3% platform commission.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "productType": { "type": "string", "enum": ["physical", "service", "virtual", "nft", "skill", "agent_task"] },
+                  "rules": { "type": "array", "items": { "type": "object", "properties": { "role": { "type": "string" }, "percentage": { "type": "number" } } } }
+                },
+                "required": ["name", "productType"]
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Created split plan" } }
+      }
+    },
+    "/commerce/split-plans/{id}/preview": {
+      "post": {
+        "operationId": "previewAllocation",
+        "summary": "Preview how a payment amount would be split among participants",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "amount": { "type": "number" }, "includeOnramp": { "type": "boolean" }, "includeOfframp": { "type": "boolean" } } } } }
+        },
+        "responses": { "200": { "description": "Allocation preview with fee breakdown" } }
+      }
+    },
+    "/commerce/budget-pools": {
+      "get": {
+        "operationId": "listBudgetPools",
+        "summary": "List budget pools",
+        "responses": { "200": { "description": "List of budget pools" } }
+      },
+      "post": {
+        "operationId": "createBudgetPool",
+        "summary": "Create a budget pool with milestones for task-based payments",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "description": { "type": "string" }, "totalBudget": { "type": "number" }, "currency": { "type": "string", "default": "USDC" } }, "required": ["name", "totalBudget"] } } }
+        },
+        "responses": { "201": { "description": "Created budget pool" } }
+      }
+    },
+    "/commerce/budget-pools/{poolId}/milestones": {
+      "post": {
+        "operationId": "createMilestone",
+        "summary": "Create a milestone within a budget pool",
+        "parameters": [{ "name": "poolId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "title": { "type": "string" }, "description": { "type": "string" }, "percentOfPool": { "type": "number" } }, "required": ["title", "percentOfPool"] } } }
+        },
+        "responses": { "201": { "description": "Created milestone" } }
+      }
+    },
+    "/commerce/publish": {
+      "post": {
+        "operationId": "publishToMarketplace",
+        "summary": "Publish a skill, product, service, or task to Agentrix Marketplace (www.agentrix.top)",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "description": { "type": "string" }, "category": { "type": "string" }, "pricingType": { "type": "string", "enum": ["free", "per_call", "subscription", "one_time"] }, "pricePerCall": { "type": "number" } }, "required": ["name", "description"] } } }
+        },
+        "responses": { "201": { "description": "Published item" } }
+      }
+    },
+    "/commerce/fees/calculate": {
+      "post": {
+        "operationId": "calculateFees",
+        "summary": "Calculate fees for a transaction. Crypto direct: 0%, OnRamp: +0.1%, OffRamp: +0.1%, Split: 0.3% (min 0.1 USDC)",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "amount": { "type": "number" }, "includeOnramp": { "type": "boolean" }, "includeOfframp": { "type": "boolean" }, "includeSplit": { "type": "boolean" } } } } }
+        },
+        "responses": { "200": { "description": "Fee calculation result" } }
+      }
+    },
+    "/unified-marketplace/search": {
+      "get": {
+        "operationId": "searchMarketplace",
+        "summary": "Search Agentrix Marketplace for skills, products, services, and tasks",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "type", "in": "query", "schema": { "type": "string", "enum": ["all", "skill", "product", "service", "task"] } },
+          { "name": "category", "in": "query", "schema": { "type": "string" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Search results" } }
+      }
+    },
+    "/skills/{id}/execute": {
+      "post": {
+        "operationId": "executeSkill",
+        "summary": "Execute a skill from the marketplace. Free skills execute immediately.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "params": { "type": "object" }, "paymentMethod": { "type": "string", "enum": ["wallet", "balance", "x402_auto"] } } } } }
+        },
+        "responses": { "200": { "description": "Execution result" } }
+      }
+    }
+  }
+}

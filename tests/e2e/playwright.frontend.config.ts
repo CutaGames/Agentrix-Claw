@@ -1,0 +1,42 @@
+import path from 'path';
+import { defineConfig, devices } from '@playwright/test';
+
+const workspaceRoot = path.resolve(__dirname, '..', '..');
+const frontendRoot = path.join(workspaceRoot, 'frontend');
+
+export default defineConfig({
+  testDir: './frontend',
+  timeout: 60000,
+  retries: 0,
+  reporter: [['line'], ['html', { outputFolder: 'tests/reports/frontend-pet-html', open: 'never' }]],
+  use: {
+    baseURL: process.env.WEB_BASE_URL || 'https://agentrix.top',
+    trace: 'retain-on-failure',
+  },
+  // webServer only needed for local dev — skip when testing production
+  ...(process.env.WEB_LOCAL === '1' ? {
+    webServer: {
+      command: 'npm run dev',
+      cwd: frontendRoot,
+      url: 'http://127.0.0.1:3000',
+      reuseExistingServer: true,
+      timeout: 120000,
+      env: {
+        BACKEND_URL: 'https://api.agentrix.top',
+        NEXT_PUBLIC_API_URL: 'https://api.agentrix.top/api',
+        NODE_ENV: 'development',
+      },
+    },
+  } : {}),
+  projects: [
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1440, height: 960 },
+        channel: 'chrome',
+        headless: true,
+      },
+    },
+  ],
+});

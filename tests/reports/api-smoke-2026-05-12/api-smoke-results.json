@@ -1,0 +1,172 @@
+{
+  "date": "2026-05-12T13:13:44.063Z",
+  "target": "https://api.agentrix.top/api",
+  "hasToken": false,
+  "summary": "18/23 passed (78%)",
+  "passed": 18,
+  "failed": 5,
+  "total": 23,
+  "results": [
+    {
+      "section": "Health",
+      "name": "Server health check",
+      "passed": true,
+      "detail": "Status: 200",
+      "timestamp": "2026-05-12T13:13:40.546Z"
+    },
+    {
+      "section": "Auth",
+      "name": "Auth verify endpoint exists",
+      "passed": false,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:41.777Z"
+    },
+    {
+      "section": "Pet",
+      "name": "GET /v1/pet/skins (wardrobe)",
+      "passed": true,
+      "detail": "Status: 401",
+      "timestamp": "2026-05-12T13:13:41.860Z"
+    },
+    {
+      "section": "Pet",
+      "name": "GET /v1/pet-generation/tasks",
+      "passed": false,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:41.973Z"
+    },
+    {
+      "section": "Pet",
+      "name": "GET /v1/pet/souls",
+      "passed": true,
+      "detail": "Status: 401",
+      "timestamp": "2026-05-12T13:13:42.059Z"
+    },
+    {
+      "section": "AXP",
+      "name": "GET /v1/axp/balance",
+      "passed": true,
+      "detail": "Status: 401",
+      "timestamp": "2026-05-12T13:13:42.136Z"
+    },
+    {
+      "section": "AXP",
+      "name": "POST /v1/axp/checkin",
+      "passed": true,
+      "detail": "Status: 401",
+      "timestamp": "2026-05-12T13:13:42.223Z"
+    },
+    {
+      "section": "AXP",
+      "name": "GET /v1/axp/redeem/catalog",
+      "passed": true,
+      "detail": "Status: 404 ⚠️ NEEDS IMPL",
+      "timestamp": "2026-05-12T13:13:42.316Z"
+    },
+    {
+      "section": "Market",
+      "name": "GET /v1/market/skins",
+      "passed": true,
+      "detail": "Status: 200",
+      "timestamp": "2026-05-12T13:13:42.859Z"
+    },
+    {
+      "section": "Market",
+      "name": "GET /v1/subscription/catalog",
+      "passed": true,
+      "detail": "Status: 200",
+      "timestamp": "2026-05-12T13:13:43.018Z"
+    },
+    {
+      "section": "Market",
+      "name": "GET /v1/marketplace/skills",
+      "passed": true,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:43.098Z"
+    },
+    {
+      "section": "Market",
+      "name": "GET /v1/marketplace/tasks",
+      "passed": true,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:43.175Z"
+    },
+    {
+      "section": "Device",
+      "name": "GET /v1/clawcore/devices",
+      "passed": false,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:43.255Z"
+    },
+    {
+      "section": "Device",
+      "name": "POST /v1/clawcore/nfc/redeem",
+      "passed": true,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:43.341Z"
+    },
+    {
+      "section": "Device",
+      "name": "GET /v1/clawcore/ota/manifest",
+      "passed": true,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:43.422Z"
+    },
+    {
+      "section": "Chat",
+      "name": "GET /v1/chat/history",
+      "passed": false,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:43.501Z"
+    },
+    {
+      "section": "Notif",
+      "name": "GET /v1/notifications",
+      "passed": true,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:43.581Z"
+    },
+    {
+      "section": "User",
+      "name": "GET /v1/user/profile",
+      "passed": false,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:43.656Z"
+    },
+    {
+      "section": "Sub",
+      "name": "GET /v1/subscription/status",
+      "passed": true,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:43.738Z"
+    },
+    {
+      "section": "Social",
+      "name": "GET /v1/co-raising/invites",
+      "passed": true,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:43.816Z"
+    },
+    {
+      "section": "Social",
+      "name": "GET /v1/greeting/inbox",
+      "passed": true,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:43.902Z"
+    },
+    {
+      "section": "Economy",
+      "name": "GET /v1/agent/cost-records",
+      "passed": true,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:43.981Z"
+    },
+    {
+      "section": "Presence",
+      "name": "GET /v1/presence/devices",
+      "passed": true,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:13:44.062Z"
+    }
+  ]
+}

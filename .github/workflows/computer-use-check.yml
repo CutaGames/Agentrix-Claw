@@ -1,0 +1,52 @@
+name: Computer Use - cargo check (Win/Mac)
+
+on:
+  push:
+    branches: [main, 'build*', 'build/**', 'v3-*']
+    paths:
+      - 'desktop/src-tauri/Cargo.toml'
+      - 'desktop/src-tauri/src/computer_use/**'
+      - 'desktop/src-tauri/src/lib.rs'
+      - '.github/workflows/computer-use-check.yml'
+  pull_request:
+    paths:
+      - 'desktop/src-tauri/Cargo.toml'
+      - 'desktop/src-tauri/src/computer_use/**'
+      - 'desktop/src-tauri/src/lib.rs'
+  workflow_dispatch:
+
+# A focused matrix that only runs `cargo check` + the computer_use unit tests.
+# Full bundling lives in build-desktop.yml; this one is the fast feedback loop
+# for cross-platform Computer Use changes (enigo / xcap / CDP).
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            label: windows
+          - platform: macos-latest
+            label: macos-arm64
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+
+      # Linux-only system deps would go here; this workflow targets Win+Mac
+      # because Computer Use is currently only implemented for those two.
+
+      - name: cargo check
+        working-directory: desktop/src-tauri
+        run: cargo check --message-format short
+
+      - name: cargo test (computer_use::redlines)
+        working-directory: desktop/src-tauri
+        run: cargo test --lib computer_use::redlines -- --nocapture

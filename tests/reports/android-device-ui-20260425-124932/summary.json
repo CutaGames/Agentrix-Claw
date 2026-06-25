@@ -1,0 +1,23 @@
+﻿[
+    {
+        "id":  "device-online",
+        "title":  "Android device online",
+        "status":  "passed",
+        "notes":  "MDX0220309000133       device product:ELS-AN00 model:ELS_AN00 device:HWELS transport_id:5",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-or-auth",
+        "title":  "Wait chat-or-auth",
+        "status":  "failed",
+        "notes":  "timeout 35s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "fatal",
+        "title":  "Fatal test runner error",
+        "status":  "failed",
+        "notes":  "App did not reach chat or auth screen.",
+        "snapshot":  ""
+    }
+]
