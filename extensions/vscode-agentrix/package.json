@@ -1,0 +1,104 @@
+{
+  "name": "agentrix",
+  "displayName": "Agentrix — AI 协作伙伴",
+  "description": "Inject Agentrix's cross-tool memory, long-running tasks, and cross-device collaboration into your VS Code / Cursor / Windsurf workflow. C_Path collaboration with your IDE — not a replacement.",
+  "version": "0.1.0",
+  "publisher": "agentrix",
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "license": "MIT",
+  "categories": ["AI", "Chat", "Other"],
+  "keywords": ["agent", "agentrix", "ai", "chat", "cross-tool", "memory", "long-task"],
+  "homepage": "https://agentrix.top",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CutaGames/Agentrix.git",
+    "directory": "extensions/vscode-agentrix"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "agentrix.openChat",
+        "title": "Agentrix: Open Chat",
+        "category": "Agentrix"
+      },
+      {
+        "command": "agentrix.signIn",
+        "title": "Agentrix: Sign In",
+        "category": "Agentrix"
+      },
+      {
+        "command": "agentrix.signOut",
+        "title": "Agentrix: Sign Out",
+        "category": "Agentrix"
+      },
+      {
+        "command": "agentrix.createAgentTask",
+        "title": "Agentrix: Create Long-Running Task",
+        "category": "Agentrix"
+      },
+      {
+        "command": "agentrix.recallMemory",
+        "title": "Agentrix: Recall Cross-Tool Memory",
+        "category": "Agentrix"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agentrix",
+          "title": "Agentrix",
+          "icon": "$(sparkle)"
+        }
+      ]
+    },
+    "views": {
+      "agentrix": [
+        {
+          "type": "webview",
+          "id": "agentrix.chat",
+          "name": "Chat",
+          "icon": "$(comment-discussion)"
+        },
+        {
+          "id": "agentrix.tasks",
+          "name": "Background Tasks",
+          "icon": "$(checklist)"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Agentrix",
+      "properties": {
+        "agentrix.apiBaseUrl": {
+          "type": "string",
+          "default": "https://api.agentrix.top",
+          "description": "Agentrix backend base URL. Override only for self-hosted deployments."
+        },
+        "agentrix.preferredMode": {
+          "type": "string",
+          "enum": ["simple", "standard", "pro"],
+          "default": "pro",
+          "description": "User mode. Pro is recommended for IDE workflows so you see raw diffs and tool calls."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.92.0",
+    "typescript": "^5.4.0"
+  }
+}

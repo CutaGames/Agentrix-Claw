@@ -1,0 +1,429 @@
+{
+  "total_count": 2,
+  "jobs": [
+    {
+      "id": 72276110277,
+      "run_id": 24711220265,
+      "workflow_name": "Build → Test → Release APK",
+      "head_branch": "build142-phase0-hardening",
+      "run_url": "https://api.github.com/repos/CutaGames/Agentrix-Claw/actions/runs/24711220265",
+      "run_attempt": 1,
+      "node_id": "CR_kwDORJIxmc8AAAAQ0_3rxQ",
+      "head_sha": "5545a50efbb359b79b72170128b2ec578f9e2fee",
+      "url": "https://api.github.com/repos/CutaGames/Agentrix-Claw/actions/jobs/72276110277",
+      "html_url": "https://github.com/CutaGames/Agentrix-Claw/actions/runs/24711220265/job/72276110277",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-04-21T08:03:47Z",
+      "started_at": "2026-04-21T08:03:50Z",
+      "completed_at": "2026-04-21T08:16:44Z",
+      "name": "build-apk / 🔨 Build APK",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-04-21T08:03:51Z",
+          "completed_at": "2026-04-21T08:03:55Z"
+        },
+        {
+          "name": "Checkout",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-04-21T08:03:55Z",
+          "completed_at": "2026-04-21T08:03:56Z"
+        },
+        {
+          "name": "Node.js 20",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-04-21T08:03:56Z",
+          "completed_at": "2026-04-21T08:04:00Z"
+        },
+        {
+          "name": "Java 17",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-04-21T08:04:00Z",
+          "completed_at": "2026-04-21T08:04:00Z"
+        },
+        {
+          "name": "Install Android SDK packages",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-04-21T08:04:00Z",
+          "completed_at": "2026-04-21T08:04:07Z"
+        },
+        {
+          "name": "npm install",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-04-21T08:04:07Z",
+          "completed_at": "2026-04-21T08:04:23Z"
+        },
+        {
+          "name": "Verify native animation packages",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7,
+          "started_at": "2026-04-21T08:04:23Z",
+          "completed_at": "2026-04-21T08:04:23Z"
+        },
+        {
+          "name": "Patch expo-image for Kotlin 2.x compatibility",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-04-21T08:04:23Z",
+          "completed_at": "2026-04-21T08:04:23Z"
+        },
+        {
+          "name": "Expo prebuild",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9,
+          "started_at": "2026-04-21T08:04:23Z",
+          "completed_at": "2026-04-21T08:04:28Z"
+        },
+        {
+          "name": "Verify generated Android config",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10,
+          "started_at": "2026-04-21T08:04:28Z",
+          "completed_at": "2026-04-21T08:04:28Z"
+        },
+        {
+          "name": "Skip legacy React Native path patch",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11,
+          "started_at": "2026-04-21T08:04:28Z",
+          "completed_at": "2026-04-21T08:04:28Z"
+        },
+        {
+          "name": "Patch build.gradle — add signingConfig (only when keystore is available)",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12,
+          "started_at": "2026-04-21T08:04:28Z",
+          "completed_at": "2026-04-21T08:04:28Z"
+        },
+        {
+          "name": "Patch android/app/build.gradle — restrict ABI targets",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13,
+          "started_at": "2026-04-21T08:04:28Z",
+          "completed_at": "2026-04-21T08:04:28Z"
+        },
+        {
+          "name": "Grant Gradle execute permission",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14,
+          "started_at": "2026-04-21T08:04:28Z",
+          "completed_at": "2026-04-21T08:04:28Z"
+        },
+        {
+          "name": "Free disk space",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15,
+          "started_at": "2026-04-21T08:04:28Z",
+          "completed_at": "2026-04-21T08:04:31Z"
+        },
+        {
+          "name": "Cache Gradle",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16,
+          "started_at": "2026-04-21T08:04:31Z",
+          "completed_at": "2026-04-21T08:04:58Z"
+        },
+        {
+          "name": "Setup release signing (if keystore secrets are present)",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17,
+          "started_at": "2026-04-21T08:04:58Z",
+          "completed_at": "2026-04-21T08:04:58Z"
+        },
+        {
+          "name": "Build APK",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 18,
+          "started_at": "2026-04-21T08:04:58Z",
+          "completed_at": "2026-04-21T08:14:59Z"
+        },
+        {
+          "name": "Set build tag and APK paths",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 19,
+          "started_at": "2026-04-21T08:14:59Z",
+          "completed_at": "2026-04-21T08:14:59Z"
+        },
+        {
+          "name": "Stage APK",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 20,
+          "started_at": "2026-04-21T08:14:59Z",
+          "completed_at": "2026-04-21T08:14:59Z"
+        },
+        {
+          "name": "Check deploy secret",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21,
+          "started_at": "2026-04-21T08:14:59Z",
+          "completed_at": "2026-04-21T08:14:59Z"
+        },
+        {
+          "name": "Upload APK to download server",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 22,
+          "started_at": "2026-04-21T08:14:59Z",
+          "completed_at": "2026-04-21T08:15:40Z"
+        },
+        {
+          "name": "Create GitHub Release",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23,
+          "started_at": "2026-04-21T08:15:40Z",
+          "completed_at": "2026-04-21T08:15:51Z"
+        },
+        {
+          "name": "Delete old artifacts (free quota)",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 24,
+          "started_at": "2026-04-21T08:15:51Z",
+          "completed_at": "2026-04-21T08:16:35Z"
+        },
+        {
+          "name": "Upload APKs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 25,
+          "started_at": "2026-04-21T08:16:35Z",
+          "completed_at": "2026-04-21T08:16:40Z"
+        },
+        {
+          "name": "Record artifact status",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 26,
+          "started_at": "2026-04-21T08:16:40Z",
+          "completed_at": "2026-04-21T08:16:40Z"
+        },
+        {
+          "name": "Post Cache Gradle",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 49,
+          "started_at": "2026-04-21T08:16:40Z",
+          "completed_at": "2026-04-21T08:16:40Z"
+        },
+        {
+          "name": "Post Java 17",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 50,
+          "started_at": "2026-04-21T08:16:40Z",
+          "completed_at": "2026-04-21T08:16:40Z"
+        },
+        {
+          "name": "Post Node.js 20",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 51,
+          "started_at": "2026-04-21T08:16:40Z",
+          "completed_at": "2026-04-21T08:16:41Z"
+        },
+        {
+          "name": "Post Checkout",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 52,
+          "started_at": "2026-04-21T08:16:41Z",
+          "completed_at": "2026-04-21T08:16:41Z"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 53,
+          "started_at": "2026-04-21T08:16:41Z",
+          "completed_at": "2026-04-21T08:16:41Z"
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/CutaGames/Agentrix-Claw/check-runs/72276110277",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "runner_id": 1000001826,
+      "runner_name": "GitHub Actions 1000001826",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    },
+    {
+      "id": 72277895646,
+      "run_id": 24711220265,
+      "workflow_name": "Build → Test → Release APK",
+      "head_branch": "build142-phase0-hardening",
+      "run_url": "https://api.github.com/repos/CutaGames/Agentrix-Claw/actions/runs/24711220265",
+      "run_attempt": 1,
+      "node_id": "CR_kwDORJIxmc8AAAAQ1Bkp3g",
+      "head_sha": "5545a50efbb359b79b72170128b2ec578f9e2fee",
+      "url": "https://api.github.com/repos/CutaGames/Agentrix-Claw/actions/jobs/72277895646",
+      "html_url": "https://github.com/CutaGames/Agentrix-Claw/actions/runs/24711220265/job/72277895646",
+      "status": "in_progress",
+      "conclusion": null,
+      "created_at": "2026-04-21T08:16:45Z",
+      "started_at": "2026-04-21T08:16:48Z",
+      "completed_at": null,
+      "name": "build-apk / 🤖 UI Automation (Maestro)",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1,
+          "started_at": "2026-04-21T08:16:49Z",
+          "completed_at": "2026-04-21T08:16:54Z"
+        },
+        {
+          "name": "Checkout (for .maestro/ flows)",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2,
+          "started_at": "2026-04-21T08:16:54Z",
+          "completed_at": "2026-04-21T08:16:56Z"
+        },
+        {
+          "name": "Java 17",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3,
+          "started_at": "2026-04-21T08:16:56Z",
+          "completed_at": "2026-04-21T08:16:56Z"
+        },
+        {
+          "name": "Download APKs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4,
+          "started_at": "2026-04-21T08:16:56Z",
+          "completed_at": "2026-04-21T08:16:59Z"
+        },
+        {
+          "name": "Install Maestro CLI",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5,
+          "started_at": "2026-04-21T08:16:59Z",
+          "completed_at": "2026-04-21T08:17:03Z"
+        },
+        {
+          "name": "AVD cache",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6,
+          "started_at": "2026-04-21T08:17:03Z",
+          "completed_at": "2026-04-21T08:17:50Z"
+        },
+        {
+          "name": "Create AVD (if not cached)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "number": 7,
+          "started_at": "2026-04-21T08:17:50Z",
+          "completed_at": "2026-04-21T08:17:50Z"
+        },
+        {
+          "name": "Prepare test script",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8,
+          "started_at": "2026-04-21T08:17:50Z",
+          "completed_at": "2026-04-21T08:17:51Z"
+        },
+        {
+          "name": "Run Maestro tests on emulator",
+          "status": "in_progress",
+          "conclusion": null,
+          "number": 9,
+          "started_at": "2026-04-21T08:17:51Z",
+          "completed_at": null
+        },
+        {
+          "name": "Upload test artifacts",
+          "status": "pending",
+          "conclusion": null,
+          "number": 10,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "name": "Failure report",
+          "status": "pending",
+          "conclusion": null,
+          "number": 11,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "name": "Success summary",
+          "status": "pending",
+          "conclusion": null,
+          "number": 12,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "name": "Post AVD cache",
+          "status": "pending",
+          "conclusion": null,
+          "number": 22,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "name": "Post Java 17",
+          "status": "pending",
+          "conclusion": null,
+          "number": 23,
+          "started_at": null,
+          "completed_at": null
+        },
+        {
+          "name": "Post Checkout (for .maestro/ flows)",
+          "status": "pending",
+          "conclusion": null,
+          "number": 24,
+          "started_at": null,
+          "completed_at": null
+        }
+      ],
+      "check_run_url": "https://api.github.com/repos/CutaGames/Agentrix-Claw/check-runs/72277895646",
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "runner_id": 1000001827,
+      "runner_name": "GitHub Actions 1000001827",
+      "runner_group_id": 0,
+      "runner_group_name": "GitHub Actions"
+    }
+  ]
+}

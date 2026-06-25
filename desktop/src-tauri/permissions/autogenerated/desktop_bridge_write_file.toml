@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-bridge-write-file"
+description = "Enables the desktop_bridge_write_file command without any pre-configured scope."
+commands.allow = ["desktop_bridge_write_file"]
+
+[[permission]]
+identifier = "deny-desktop-bridge-write-file"
+description = "Denies the desktop_bridge_write_file command without any pre-configured scope."
+commands.deny = ["desktop_bridge_write_file"]

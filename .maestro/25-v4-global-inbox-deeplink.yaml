@@ -1,0 +1,36 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 25: Deep Link 接收路由 (M31)
+# 验证 agentrix:// 深链能被 app 解析且不崩溃(market/skin、co-raising、greeting)。
+# 旧版的 home 顶栏铃铛/扫码/NFC 抽屉入口已随 hub 重写移除,已剔除。
+# 深链目标屏对合成 token/id 优雅降级(空态/not-found),不崩。
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+- assertVisible:
+    id: "tab-world"
+
+# ── Deep link: skin marketplace ──────────────────────────
+- openLink: "agentrix://market/skin/skin-001"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: "25-deeplink-skin"
+
+# ── Deep link: co-raising 邀请 ───────────────────────────
+- openLink: "agentrix://co-raising/test-token"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: "25-deeplink-coraising"
+
+# ── Deep link: greeting 贺卡 ─────────────────────────────
+- openLink: "agentrix://greeting/test-token"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: "25-deeplink-greeting"
+
+# ── 回主界面确认未崩溃(底栏可达)───────────────────────
+- openLink: agentrix://world
+- extendedWaitUntil:
+    visible:
+      id: "tab-world"
+    timeout: 8000

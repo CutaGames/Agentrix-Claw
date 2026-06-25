@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>霓虹酷跑 · Neon Runner</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0716;overflow:hidden;touch-action:none;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  canvas{display:block;position:fixed;inset:0;width:100%;height:100%;touch-action:none}
+  #hud{position:fixed;top:10px;left:0;right:0;text-align:center;color:#ffd6f2;font-size:15px;font-weight:800;text-shadow:0 1px 4px #000;pointer-events:none}
+  #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,7,22,.85);color:#fff;text-align:center;padding:24px}
+  #overlay h1{font-size:30px;margin:0 0 6px;background:linear-gradient(90deg,#ff5d8f,#ffd166,#22d3ee);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  #overlay p{color:#b6acd8;font-size:14px;margin:4px 0}
+  #btn{margin-top:18px;padding:14px 32px;border:none;border-radius:14px;background:linear-gradient(135deg,#ff5d8f,#ffd166);color:#231;font-size:18px;font-weight:900}
+  .hide{display:none!important}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><span id="score">0</span> m · 💰<span id="coins">0</span></div>
+<div id="overlay"><h1>霓虹酷跑</h1><p>点击/空格跳跃(可二段跳) · 躲避障碍、吃金币</p><button id="btn">开始</button></div>
+<script>
+(function(){
+"use strict";
+var CFG=(typeof window!=="undefined"&&window.__GAME_CONFIG)||{};
+var DIFF=({easy:0.8,normal:1,hard:1.3}[CFG.difficulty])||1;
+if(CFG.title){try{document.title=CFG.title;var hT=document.querySelector("#overlay h1");if(hT)hT.textContent=CFG.title;}catch(e){}}
+var DPR=Math.min(window.devicePixelRatio||1,2),cv=document.getElementById("c"),ctx=cv.getContext("2d"),W=0,H=0,GY=0;
+function resize(){W=window.innerWidth;H=window.innerHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);GY=H*0.78;}
+window.addEventListener("resize",resize);resize();
+var el={score:document.getElementById("score"),coins:document.getElementById("coins")};
+var overlay=document.getElementById("overlay"),btn=document.getElementById("btn");
+var S,player,obs,coins,parts,bg,running;
+function newGame(){S={dist:0,coins:0,speed:6*DIFF,t:0};player={x:W*0.22,y:GY,vy:0,r:20,jumps:0,onGround:true};obs=[];coins=[];parts=[];bg=[];for(var i=0;i<20;i++)bg.push({x:Math.random()*W,y:Math.random()*GY*0.8,z:Math.random()});running=true;spawnT=0;coinT=30;upd();}
+var spawnT=0,coinT=30;
+function upd(){el.score.textContent=Math.floor(S.dist);el.coins.textContent=S.coins;}
+function jump(){if(!running)return;if(player.onGround){player.vy=-15;player.onGround=false;player.jumps=1;}else if(player.jumps<2){player.vy=-13;player.jumps++;}}
+cv.addEventListener("touchstart",function(e){jump();e.preventDefault&&e.preventDefault();},{passive:false});
+cv.addEventListener("mousedown",jump);window.addEventListener("keydown",function(e){if(e.key===" "||e.key==="ArrowUp")jump();});
+function over(){running=false;try{window.render_game_to_text=function(){return JSON.stringify({score:Math.floor(S.dist),coins:S.coins,over:true});};if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'gameover',score:Math.max(0,Math.floor(S.dist))}));}catch(e){}overlay.classList.remove("hide");overlay.innerHTML='<h1>撞上了!</h1><p>'+Math.floor(S.dist)+' m · 💰'+S.coins+'</p><button id="btn">再来</button>';document.getElementById("btn").onclick=function(){overlay.classList.add("hide");newGame();};}
+function step(){
+  if(!running)return;S.t++;S.speed+=0.0016*DIFF;S.dist+=S.speed*0.1;
+  player.vy+=1.1;player.y+=player.vy;if(player.y>=GY){player.y=GY;player.vy=0;player.onGround=true;player.jumps=0;}
+  spawnT--;if(spawnT<=0){spawnT=Math.max(38,(90-S.dist*0.04)/DIFF);var tall=Math.random()<0.4;obs.push({x:W+40,w:24+Math.random()*22,h:tall?70:40,col:tall?"#ff5d8f":"#c792ff"});}
+  coinT--;if(coinT<=0){coinT=40+Math.random()*60;var cy=GY-40-Math.random()*120;coins.push({x:W+30,y:cy});}
+  for(var i=obs.length-1;i>=0;i--){var o=obs[i];o.x-=S.speed;if(o.x+o.w<-10){obs.splice(i,1);continue;}
+    if(player.x+player.r>o.x&&player.x-player.r<o.x+o.w&&player.y+player.r>GY-o.h){over();return;}}
+  for(var c=coins.length-1;c>=0;c--){var cn=coins[c];cn.x-=S.speed;if(cn.x<-20){coins.splice(c,1);continue;}
+    if(Math.hypot(cn.x-player.x,cn.y-player.y)<player.r+12){S.coins++;coins.splice(c,1);for(var p=0;p<6;p++)parts.push({x:cn.x,y:cn.y,vx:(Math.random()-.5)*5,vy:(Math.random()-.5)*5,life:1});}}
+  bg.forEach(function(s){s.x-=S.speed*(0.2+s.z*0.4);if(s.x<0){s.x=W;s.y=Math.random()*GY*0.8;}});
+  upd();
+}
+function draw(){
+  var g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,"#1a0b2e");g.addColorStop(0.6,"#2a1140");g.addColorStop(1,"#0a0716");ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="rgba(255,255,255,.5)";bg.forEach(function(s){ctx.globalAlpha=0.3+s.z*0.5;ctx.fillRect(s.x,s.y,2+s.z*2,2+s.z*2);});ctx.globalAlpha=1;
+  // ground
+  ctx.fillStyle="#1c2740";ctx.fillRect(0,GY+player.r,W,H-GY);ctx.strokeStyle="#5b8cff";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,GY+player.r);ctx.lineTo(W,GY+player.r);ctx.stroke();
+  // coins
+  coins.forEach(function(cn){ctx.fillStyle="#ffd166";ctx.shadowColor="#ffd166";ctx.shadowBlur=10;ctx.beginPath();ctx.arc(cn.x,cn.y,9,0,6.28);ctx.fill();ctx.shadowBlur=0;});
+  // obstacles
+  obs.forEach(function(o){ctx.fillStyle=o.col;ctx.shadowColor=o.col;ctx.shadowBlur=8;ctx.fillRect(o.x,GY-o.h+player.r,o.w,o.h);ctx.shadowBlur=0;});
+  // player
+  ctx.save();ctx.translate(player.x,player.y);ctx.fillStyle="#22d3ee";ctx.shadowColor="#22d3ee";ctx.shadowBlur=14;ctx.beginPath();ctx.arc(0,0,player.r,0,6.28);ctx.fill();ctx.shadowBlur=0;ctx.fillStyle="#06121a";ctx.fillRect(-6,-6,5,5);ctx.fillRect(3,-6,5,5);ctx.restore();
+  for(var p=parts.length-1;p>=0;p--){var P=parts[p];P.x+=P.vx;P.y+=P.vy;P.life-=0.05;if(P.life<=0){parts.splice(p,1);continue;}ctx.globalAlpha=P.life;ctx.fillStyle="#ffd166";ctx.fillRect(P.x-2,P.y-2,4,4);}ctx.globalAlpha=1;
+}
+function loop(){step();draw();requestAnimationFrame(loop);}
+btn.onclick=function(){overlay.classList.add("hide");newGame();};newGame();running=false;loop();
+})();
+</script>
+</body>
+</html>

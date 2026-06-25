@@ -1,0 +1,22 @@
+name: Build → Test → Release APK
+
+# NOTE: Auto push trigger removed.
+#   The mobile APK build runs on the public CutaGames/Agentrix-Claw repo
+#   (mirrored by sync-mobile-build-repo.yml). The private Agentrix repo
+#   has restricted Actions minutes, so we keep this workflow as
+#   workflow_dispatch only — for emergency manual runs against the
+#   private mirror of the mobile source. Day-to-day mobile builds are
+#   triggered automatically when sync-mobile-build-repo.yml pushes
+#   mobile changes to Agentrix-Claw, which then runs its own
+#   build-apk-trigger.yml (sourced from .github/public-workflows/).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  checks: write
+
+jobs:
+  build-apk:
+    uses: ./.github/workflows/build-apk.yml
+    secrets: inherit

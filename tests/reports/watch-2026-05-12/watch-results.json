@@ -1,0 +1,49 @@
+{
+  "date": "2026-05-12T13:15:03.510Z",
+  "device": "Watch (ADB)",
+  "summary": "4/6 passed (67%)",
+  "results": [
+    {
+      "testId": "SETUP",
+      "name": "Watch device detection",
+      "passed": true,
+      "detail": "Device: ERROR: Command failed: adb  devices",
+      "timestamp": "2026-05-12T13:14:56.599Z"
+    },
+    {
+      "testId": "Wa1",
+      "name": "Living Tile — companion app installed",
+      "passed": false,
+      "detail": "Not installed",
+      "timestamp": "2026-05-12T13:14:56.921Z"
+    },
+    {
+      "testId": "Wa2",
+      "name": "L1 approval notification sent",
+      "passed": true,
+      "detail": "Screenshot captured",
+      "timestamp": "2026-05-12T13:15:00.424Z"
+    },
+    {
+      "testId": "Wa3",
+      "name": "L1 approval tap simulated",
+      "passed": true,
+      "detail": "Tapped approve area",
+      "timestamp": "2026-05-12T13:15:01.829Z"
+    },
+    {
+      "testId": "Wa4",
+      "name": "AXP balance update broadcast",
+      "passed": true,
+      "detail": "Balance: 2450",
+      "timestamp": "2026-05-12T13:15:03.384Z"
+    },
+    {
+      "testId": "Wa5",
+      "name": "Voice command — microphone permission",
+      "passed": false,
+      "detail": "Permission not granted",
+      "timestamp": "2026-05-12T13:15:03.509Z"
+    }
+  ]
+}

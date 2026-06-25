@@ -1,0 +1,45 @@
+## AI World Creation Platform (v6) — load-budget perf smoke (R13)
+## Maestro/UiAutomator cannot measure fps or frame budget (those need the
+## instrumented harness, cf. 50-world-engine-perf-baseline). What it CAN gate
+## deterministically is "each v6 surface becomes interactive within a budget":
+## every screen below must render its anchor element within 8s of deep-linking,
+## or the assertion fails. This catches startup/navigation perf regressions
+## (e.g. a blocking call re-introduced on a hot path) as a coarse but real gate.
+appId: app.agentrix.claw
+name: World Creation — load-budget perf smoke
+---
+- launchApp
+- assertVisible:
+    id: "tab-world"
+
+# World Map must render within budget.
+- openLink: agentrix://world/map
+- extendedWaitUntil:
+    visible:
+      id: "world-map-screen"
+    timeout: 8000
+- takeScreenshot: "78-perf-map"
+
+# Land plots within budget.
+- openLink: agentrix://world/plots
+- extendedWaitUntil:
+    visible:
+      id: "land-plots-scroll"
+    timeout: 8000
+- takeScreenshot: "78-perf-landplots"
+
+# Plot marketplace within budget.
+- openLink: agentrix://world/market
+- extendedWaitUntil:
+    visible:
+      id: "market-filter-tier-all"
+    timeout: 8000
+- takeScreenshot: "78-perf-market"
+
+# Plot creator (Tier_A) within budget.
+- openLink: agentrix://world/create/A/e2e-plot-1
+- extendedWaitUntil:
+    visible:
+      id: "plot-creator-scroll"
+    timeout: 8000
+- takeScreenshot: "78-perf-creator"

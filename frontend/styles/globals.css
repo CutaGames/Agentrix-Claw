@@ -1,0 +1,259 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import '../components/ui/ScrollbarHide.css';
+
+/* ===== Agentrix v4 unified design tokens (Sprint 1) ===== */
+:root {
+  /* Background scale (darkest -> lightest) */
+  --ax-bg-base: #07080B;
+  --ax-bg-surface: #0B0F19;
+  --ax-bg-elevated: #0E1118;
+  --ax-bg-panel: #141925;
+  --ax-bg-overlay: rgba(7, 8, 11, 0.85);
+
+  /* Border scale */
+  --ax-border: #1C2230;
+  --ax-border-strong: #2D3748;
+
+  /* Text scale */
+  --ax-text-primary: #F1F5F9;
+  --ax-text-secondary: #CBD5E1;
+  --ax-text-muted: #94A3B8;
+  --ax-text-inverted: #07080B;
+
+  /* Brand accents */
+  --ax-accent: #22D3FF;          /* electric cyan — primary CTA / data */
+  --ax-accent-soft: #7EE9FF;
+  --ax-accent-warm: #F59E0B;     /* solar — Auto-Earn / warm CTA */
+  --ax-accent-warm-soft: #FBBF24;
+  --ax-purple: #7C3AED;          /* soul / pet */
+  --ax-purple-soft: #A78BFA;
+
+  /* Semantic */
+  --ax-success: #34D399;
+  --ax-warning: #FBBF24;
+  --ax-danger: #F87171;
+
+  /* Radii */
+  --ax-radius-sm: 8px;
+  --ax-radius-md: 12px;
+  --ax-radius-lg: 16px;
+  --ax-radius-xl: 20px;
+
+  /* ===== Legacy compat (PayMind V3.0) — DO NOT use in new code ===== */
+  --primary-blue: #3B82F6;
+  --primary-cyan: #06B6D4;
+  --ai-neon-blue: #4FD1FF;
+  --gray-900: #0F1115;
+  --gray-800: #17191E;
+  --gray-700: #1E2228;
+  --gray-600: #2A2F36;
+  --gray-100: #F5F7FA;
+  --pay-green: #22C55E;
+  --warning-yellow: #EAB308;
+  --error-red: #EF4444;
+  --ai-gradient: linear-gradient(135deg, #3B82F6 0%, #06B6D4 100%);
+  --chain-gradient: linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%);
+}
+
+body {
+  color: var(--ax-text-primary);
+  background: var(--ax-bg-base);
+  font-family: var(--font-inter), 'Inter', 'PingFang SC', 'SF Pro SC', 'OPPOSans', 'HarmonyOS Sans', '思源黑体', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Subtle noise overlay via SVG data URI — adds analog warmth to flat dark surfaces */
+  background-image:
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-attachment: fixed;
+}
+
+/* ===== v4 utility classes ===== */
+.ax-glass {
+  background: rgba(20, 25, 37, 0.55);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ax-text-gradient {
+  background: linear-gradient(120deg, var(--ax-accent) 0%, var(--ax-purple-soft) 50%, var(--ax-accent-warm) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: ax-shimmer 4s ease-in-out infinite;
+}
+
+.ax-text-cyan {
+  background: linear-gradient(120deg, #7EE9FF 0%, #22D3FF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Mesh gradient backdrop for hero / important sections */
+.ax-mesh-bg {
+  background-color: var(--ax-bg-base);
+  background-image:
+    radial-gradient(at 27% 37%, rgba(124, 58, 237, 0.22) 0px, transparent 50%),
+    radial-gradient(at 97% 21%, rgba(34, 211, 255, 0.16) 0px, transparent 50%),
+    radial-gradient(at 52% 99%, rgba(245, 158, 11, 0.10) 0px, transparent 50%),
+    radial-gradient(at 10% 90%, rgba(34, 211, 255, 0.08) 0px, transparent 50%);
+}
+
+/* Grid lines decoration */
+.ax-grid-bg {
+  background-image:
+    linear-gradient(rgba(34, 211, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 255, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Soft focus ring for accessibility */
+.ax-focus-ring:focus-visible {
+  outline: 2px solid var(--ax-accent);
+  outline-offset: 2px;
+  border-radius: var(--ax-radius-sm);
+}
+
+/* 全局输入控件默认可读性 */
+input,
+textarea,
+select {
+  color: #0f172a;
+  background-color: #ffffff;
+  caret-color: #0f172a;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #94a3b8;
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled {
+  color: #94a3b8;
+  background-color: #f1f5f9;
+}
+
+/* 玻璃拟态效果 */
+.glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-strong {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* AI光晕效果 */
+.ai-glow {
+  box-shadow: 0 0 20px rgba(79, 209, 255, 0.5);
+  transition: box-shadow 0.3s ease;
+}
+
+.ai-glow:hover {
+  box-shadow: 0 0 30px rgba(79, 209, 255, 0.8), 0 0 40px rgba(79, 209, 255, 0.6);
+}
+
+/* 网格背景 */
+.grid-background {
+  background-image: 
+    linear-gradient(rgba(79, 209, 255, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79, 209, 255, 0.1) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* 思考动画点阵 */
+.thinking-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.thinking-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ai-neon-blue);
+  animation: thinking 1.4s infinite ease-in-out;
+}
+
+.thinking-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.thinking-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes thinking {
+  0%, 80%, 100% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Toast Animations */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
+
+/* Skeleton Loading */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 0px,
+    #e0e0e0 40px,
+    #f0f0f0 80px
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Mobile Optimizations */
+@media (max-width: 768px) {
+  .toast-container {
+    top: 1rem;
+    right: 1rem;
+    left: 1rem;
+    max-width: none;
+  }
+  
+  .toast-item {
+    min-width: auto;
+    width: 100%;
+  }
+}

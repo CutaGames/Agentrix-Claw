@@ -1,0 +1,25 @@
+{
+  "apps": [
+    {
+      "name": "agentrix-backend",
+      "script": "/home/ubuntu/Agentrix/backend/dist/main.js",
+      "cwd": "/home/ubuntu/Agentrix/backend",
+      "exec_mode": "fork",
+      "instances": 1,
+      "autorestart": true,
+      "_comment_max_memory": "Was 1G — too low for tool-calling + multi-agent + Bedrock streaming workloads which can spike to 1.5GB. Bumped to 4G; if even that gets exceeded the process is genuinely leaking and warrants investigation, not a silent restart loop that murders user task streams.",
+      "max_memory_restart": "4G",
+      "_comment_kill_timeout": "Was 1600ms (PM2 default) — graceful SSE drain in main.ts needs at least 6s to walk the registry. 8000ms gives 25% headroom for the drain + app.close().",
+      "kill_timeout": 8000,
+      "min_uptime": "30s",
+      "max_restarts": 100,
+      "listen_timeout": 30000,
+      "wait_ready": false,
+      "env": {
+        "NODE_ENV": "production",
+        "_comment_node_options": "Node default heap is ~2GB on Linux x64 (--max-old-space-size=2048 effective). Raise to 3GB so V8 can allocate before OS-killed; max_memory_restart still catches genuine leaks at 4GB.",
+        "NODE_OPTIONS": "--max-old-space-size=3072"
+      }
+    }
+  ]
+}

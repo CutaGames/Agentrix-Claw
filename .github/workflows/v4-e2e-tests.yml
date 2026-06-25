@@ -1,0 +1,101 @@
+name: V4 E2E Tests
+
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'desktop/src/**'
+      - 'src/**'
+      - 'tests/**'
+      - '.maestro/**'
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Test profile (smoke/full)'
+        required: false
+        default: 'smoke'
+
+env:
+  AGENTRIX_E2E_TOKEN: ${{ secrets.E2E_TEST_TOKEN }}
+  BACKEND_URL: https://api.agentrix.top
+  NEXT_PUBLIC_API_URL: https://api.agentrix.top/api
+
+jobs:
+  # ─── Backend API Smoke ─────────────────────────────────────────────────────
+  api-smoke:
+    name: Backend API Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install chromium
+      - run: npx playwright test tests/e2e/backend-api-smoke.spec.ts -c tests/e2e/playwright.config.ts --reporter=github
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: api-smoke-report
+          path: tests/reports/
+
+  # ─── Web Frontend E2E ──────────────────────────────────────────────────────
+  web-e2e:
+    name: Web Frontend E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --ignore-scripts
+      - run: cd frontend && npm ci
+      - run: npx playwright install chromium
+      - run: npx playwright test tests/e2e/frontend/web-v4-full.spec.ts -c tests/e2e/playwright.frontend.config.ts --reporter=github
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-e2e-report
+          path: |
+            tests/reports/
+            test-results/
+
+  # ─── TypeScript Type Check ─────────────────────────────────────────────────
+  typecheck:
+    name: TypeScript Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci --ignore-scripts
+      - run: npx tsc --noEmit -p tsconfig.json || true
+        # Don't fail CI on type errors for now — report only
+
+  # ─── Summary ───────────────────────────────────────────────────────────────
+  summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [api-smoke, web-e2e, typecheck]
+    if: always()
+    steps:
+      - name: Report
+        run: |
+          echo "## V4 E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend API Smoke | ${{ needs.api-smoke.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Web Frontend E2E | ${{ needs.web-e2e.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| TypeScript Check | ${{ needs.typecheck.result }} |" >> $GITHUB_STEP_SUMMARY

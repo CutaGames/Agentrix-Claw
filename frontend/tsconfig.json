@@ -1,0 +1,47 @@
+{
+  "compilerOptions": {
+    "target": "es5",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "strictNullChecks": false,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "src/app.controller.ts",
+    "src/app.module.ts",
+    "src/app.service.ts",
+    "src/main.ts",
+    "src/main-admin.ts",
+    "src/entities/**/*",
+    "src/modules/**/*",
+    "src/config/**/*",
+    "src/common/**/*",
+    "src/integrations/**/*",
+    "src/migrations/**/*",
+    "src/scripts/**/*",
+    "src/test/**/*",
+    "src/backend.tar.gz"
+  ]
+}

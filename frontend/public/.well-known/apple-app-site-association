@@ -1,0 +1,28 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAM_ID.com.agentrix.claw",
+        "paths": [
+          "/co-raising/*",
+          "/greeting/*",
+          "/market/skin/*",
+          "/market/skills/*",
+          "/market/tasks/*",
+          "/p/*",
+          "/checkout/success*",
+          "/checkout/cancel*",
+          "/invite/*",
+          "/auth/callback*"
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "TEAM_ID.com.agentrix.claw"
+    ]
+  },
+  "appclips": {}
+}
