@@ -1,0 +1,70 @@
+{
+  "date": "2026-05-12T13:14:13.374Z",
+  "device": "ESP32-S3 (ClawCore v1)",
+  "summary": "6/9 passed (67%)",
+  "results": [
+    {
+      "testId": "T1",
+      "name": "BLE discovery — device list API",
+      "passed": false,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:14:11.967Z"
+    },
+    {
+      "testId": "T2",
+      "name": "6-digit pairing — ticket API",
+      "passed": false,
+      "detail": "Status: 404, Error: Cannot POST /api/v1/clawcore/pair",
+      "timestamp": "2026-05-12T13:14:12.295Z"
+    },
+    {
+      "testId": "T3",
+      "name": "pet.state.sync frame format",
+      "passed": "skin-default-001",
+      "detail": "Frame: {\"type\":\"pet.state.sync\",\"ts\":1778591652297,\"seq\":1,\"payload\":{\"emotion\":\"happy\",\"emotion_intensity\":2,\"skin_id\":\"skin-d",
+      "timestamp": "2026-05-12T13:14:12.300Z"
+    },
+    {
+      "testId": "T4",
+      "name": "pet.interaction frame format",
+      "passed": "hug",
+      "detail": "Action: hug, Duration: 2000ms",
+      "timestamp": "2026-05-12T13:14:12.309Z"
+    },
+    {
+      "testId": "T5",
+      "name": "NFC redeem API",
+      "passed": true,
+      "detail": "Status: 404, Message: Cannot POST /api/v1/clawcore/nfc/redeem",
+      "timestamp": "2026-05-12T13:14:12.414Z"
+    },
+    {
+      "testId": "T6",
+      "name": "OTA manifest check",
+      "passed": false,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:14:13.360Z"
+    },
+    {
+      "testId": "T7",
+      "name": "HMAC verification — wrong signature rejected",
+      "passed": true,
+      "detail": "Correct: abe2f09d88624d89..., Wrong: 8e3fc40658c9946f...",
+      "timestamp": "2026-05-12T13:14:13.371Z"
+    },
+    {
+      "testId": "PROTO",
+      "name": "All required frame types defined",
+      "passed": true,
+      "detail": "Types: hello, auth, pet.state.sync, pet.interaction, ota.check, ota.chunk",
+      "timestamp": "2026-05-12T13:14:13.372Z"
+    },
+    {
+      "testId": "PROTO",
+      "name": "State machine transitions valid",
+      "passed": true,
+      "detail": "Transitions: powered→pairing, pairing→bound, bound→active, active→bound",
+      "timestamp": "2026-05-12T13:14:13.373Z"
+    }
+  ]
+}

@@ -1,0 +1,615 @@
+@import "tailwindcss";
+
+/*
+ * Sprint Pre-launch P-2 (2026-05-23) — full theme variable system.
+ *
+ * Every semantic color used by components has BOTH a dark and a light
+ * value. The codemod (`desktop/scripts/migrate-light-theme-colors.mjs`)
+ * rewrites hard-coded literals in inline `style={{}}` to use these
+ * variables, which lets us delete the giant `[style*=]` cascade that
+ * P-5/P-7 had been growing.
+ *
+ * Naming convention:
+ *   --bg-*       background surfaces (canvas, card, input, overlay)
+ *   --border-*   border colors
+ *   --text-*     text colors at different emphasis levels
+ *   --accent-*   brand accent + sky/cyan semantic accents
+ *   --tone-{semantic}-{role} for status pills:
+ *      tone = info | success | warning | danger | neutral
+ *      role = bg | border | text
+ */
+
+:root, [data-theme="dark"] {
+  /* Brand */
+  --accent: #6C5CE7;
+  --accent-light: #A29BFE;
+
+  /* Surfaces */
+  --bg-dark: #1a1a2e;
+  --bg-app: #1a1a2e;          /* page-level canvas */
+  --bg-panel: #16213e;
+  --bg-panel-deep: rgba(15, 23, 42, 0.62);  /* inset cards inside panels */
+  --bg-elevated: rgba(255, 255, 255, 0.04); /* card on top of panel */
+  --bg-card: rgba(255, 255, 255, 0.04);     /* alias of elevated */
+  --bg-card-hover: rgba(255, 255, 255, 0.08);
+  --bg-input: #0f3460;
+  --bg-overlay-light: rgba(255, 255, 255, 0.04);
+  --bg-overlay-medium: rgba(255, 255, 255, 0.08);
+  --surface: #1a2235;
+  --surface-2: rgba(255, 255, 255, 0.04);
+
+  /* Borders */
+  --border: rgba(255, 255, 255, 0.08);
+  --border-light: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --border-subtle: rgba(255, 255, 255, 0.10);
+
+  /* Text */
+  --text: #e8e8e8;
+  --text-strong: #f8fafc;
+  --text-card: #e5e7eb;
+  --text-muted: #9ca3af;
+  --text-dim: #8892b0;
+  --text-on-accent: #ffffff;
+
+  /* Accent semantic (sky family) */
+  --accent-eyebrow: #7dd3fc;
+  --accent-card-title: #e0f2fe;
+  --accent-card-text: #cbd5e1;
+  --accent-card-action: #bae6fd;
+
+  /* Status tones */
+  --tone-info-bg: rgba(125, 211, 252, 0.12);
+  --tone-info-border: rgba(125, 211, 252, 0.3);
+  --tone-info-text: #7dd3fc;
+  --tone-success-bg: rgba(34, 197, 94, 0.12);
+  --tone-success-border: rgba(34, 197, 94, 0.24);
+  --tone-success-text: #86efac;
+  --tone-warning-bg: rgba(251, 191, 36, 0.12);
+  --tone-warning-border: rgba(251, 191, 36, 0.3);
+  --tone-warning-text: #fcd34d;
+  --tone-danger-bg: rgba(239, 68, 68, 0.12);
+  --tone-danger-border: rgba(239, 68, 68, 0.3);
+  --tone-danger-text: #fca5a5;
+  --tone-neutral-bg: rgba(148, 163, 184, 0.12);
+  --tone-neutral-border: rgba(148, 163, 184, 0.18);
+  --tone-neutral-text: #cbd5e1;
+
+  /* Functional palette aliases */
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  /* v0.7.6 — panel-specific shadow alias.
+     Dark: deep drop shadow + subtle inset highlight.
+     Light: softer shadow, no inset (would look like a smudge on white). */
+  --shadow-panel: 0 8px 40px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255,255,255,0.06);
+  --scrollbar-track: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb: rgba(162, 155, 254, 0.7);
+  --scrollbar-thumb-hover: rgba(162, 155, 254, 0.92);
+
+  /* Code */
+  --code-bg: rgba(13, 17, 23, 0.85);
+  --code-fg: #adbac7;
+
+  --radius: 16px;
+  --radius-sm: 10px;
+
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-theme="light"] {
+  /* Brand */
+  --accent: #6C5CE7;
+  --accent-light: #7C6FF0;
+
+  /* Surfaces */
+  --bg-dark: #f0f2f5;
+  --bg-app: #f0f2f5;
+  --bg-panel: #ffffff;
+  --bg-panel-deep: #f9fafb;
+  --bg-elevated: #fafbfc;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f3f4f6;
+  --bg-input: #f5f5f7;
+  --bg-overlay-light: rgba(0, 0, 0, 0.04);
+  --bg-overlay-medium: rgba(0, 0, 0, 0.08);
+  --surface: #ffffff;
+  --surface-2: rgba(15, 23, 42, 0.04);
+
+  /* Borders */
+  --border: rgba(0, 0, 0, 0.1);
+  --border-light: rgba(0, 0, 0, 0.10);
+  --border-strong: rgba(0, 0, 0, 0.22);
+  --border-subtle: rgba(0, 0, 0, 0.14);
+
+  /* Text */
+  --text: #1a1a2e;
+  --text-strong: #0f172a;
+  --text-card: #1a1a2e;
+  --text-muted: #4b5563;
+  --text-dim: #6b7280;
+  --text-on-accent: #ffffff;
+
+  /* Accent semantic (sky family) — darker on light */
+  --accent-eyebrow: #075985;       /* sky-800 */
+  --accent-card-title: #0c4a6e;    /* sky-900 */
+  --accent-card-text: #1f2937;     /* gray-800 */
+  --accent-card-action: #0369a1;   /* sky-700 */
+
+  /* Status tones — punchier on light bg */
+  --tone-info-bg: rgba(2, 132, 199, 0.16);
+  --tone-info-border: rgba(2, 132, 199, 0.45);
+  --tone-info-text: #075985;
+  --tone-success-bg: rgba(22, 163, 74, 0.16);
+  --tone-success-border: rgba(22, 163, 74, 0.45);
+  --tone-success-text: #14532d;
+  --tone-warning-bg: rgba(180, 83, 9, 0.16);
+  --tone-warning-border: rgba(180, 83, 9, 0.45);
+  --tone-warning-text: #92400e;
+  --tone-danger-bg: rgba(220, 38, 38, 0.14);
+  --tone-danger-border: rgba(220, 38, 38, 0.45);
+  --tone-danger-text: #991b1b;
+  --tone-neutral-bg: rgba(75, 85, 99, 0.12);
+  --tone-neutral-border: rgba(75, 85, 99, 0.3);
+  --tone-neutral-text: #1f2937;
+
+  /* Functional palette */
+  --warning: #b45309;
+  --danger: #dc2626;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  /* v0.7.6 — light theme: gentle ambient + subtle 1px hairline border instead
+     of a heavy drop shadow. Avoids the "harsh black halo" look in screenshots. */
+  --shadow-panel: 0 4px 16px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --scrollbar-track: rgba(15, 23, 42, 0.08);
+  --scrollbar-thumb: rgba(108, 92, 231, 0.5);
+  --scrollbar-thumb-hover: rgba(108, 92, 231, 0.78);
+
+  /* Code */
+  --code-bg: #f3f4f6;
+  --code-fg: #111827;
+
+  color-scheme: light;
+}
+
+
+[data-theme="light"] body,
+[data-theme="light"] #root {
+  color: var(--text);
+}
+
+
+/*
+ * Sprint Pre-launch P-2 (2026-05-23) — Light theme rules.
+ *
+ * After the codemod migrated all hard-coded inline literals to CSS
+ * variables (see desktop/scripts/migrate-light-theme-colors.mjs), the
+ * giant [style*=] cascade that used to live here was no longer needed.
+ *
+ * The remaining rules below target real DOM selectors (not inline-style
+ * substrings) and survive because they:
+ *   - Apply general typography (pre/code/table)
+ *   - Force the task-workbench banner dark on light theme by design
+ *   - Provide the pet right-click menu its always-dark styling
+ *   - Set up form input contrast on light theme
+ */
+
+html[data-theme="light"] pre,
+html[data-theme="light"] code {
+  background: var(--code-bg) !important;
+  color: var(--code-fg) !important;
+}
+
+html[data-theme="light"] pre code {
+  background: transparent !important;
+}
+
+html[data-theme="light"] table {
+  background: var(--bg-card) !important;
+}
+
+html[data-theme="light"] table th,
+html[data-theme="light"] table td {
+  border-color: rgba(0, 0, 0, 0.12) !important;
+  color: var(--text) !important;
+}
+
+/*
+ * Sprint Pre-launch P-2 round 2 (2026-05-23) — Task Workbench banner now
+ * follows the active theme. Previously it was forced dark on light theme;
+ * user QA flagged that as an intrusion. Now uses semantic surface tokens
+ * so it lifts above the page on both themes.
+ */
+html[data-theme="light"] [data-task-workbench] {
+  background: linear-gradient(180deg, var(--bg-elevated), var(--bg-card-hover)) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+}
+
+html[data-theme="light"] [data-task-workbench] *:not([style*="color:"]) {
+  color: var(--text);
+}
+
+html[data-theme="light"]:not([data-pet-window="1"]) [role="dialog"] {
+  background: var(--bg-card) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border-strong) !important;
+}
+
+[role="menu"]:not([data-keep-light]) {
+  background: rgba(20, 20, 28, 0.96) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+}
+
+[role="menu"]:not([data-keep-light]) [role="menuitem"],
+[role="menu"]:not([data-keep-light]) > div {
+  color: #ffffff !important;
+}
+
+[role="menu"]:not([data-keep-light]) [role="menuitem"]:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.pet-menu-item,
+.pet-menu-item *,
+[role="menu"] .pet-menu-item,
+[role="menu"] .pet-menu-item * {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.pet-menu-item[data-danger],
+.pet-menu-item[data-danger] * {
+  color: #ff6b6b !important;
+  -webkit-text-fill-color: #ff6b6b !important;
+}
+
+html[data-theme="light"] input,
+html[data-theme="light"] textarea,
+html[data-theme="light"] select {
+  background: var(--bg-input) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder {
+  color: var(--text-dim) !important;
+}
+
+/*
+ * Sprint P-7+ (2026-05-26) — Light theme inline-color audit.
+ *
+ * Components ship with hard-coded accent colors (sky, violet, amber, etc.)
+ * that read fine on dark bg but lose contrast on white. Variabilizing
+ * each component (the "right" fix) is multi-day work; the targeted
+ * attribute-selector overrides below give us 90% of the readability win
+ * for hot-path components without touching component code.
+ *
+ * Each rule maps a dark-theme accent literal -> a darker variant whose
+ * WCAG AA ratio against #ffffff stays >= 4.5:1.
+ */
+
+/* Violet accent (#a78bfa, A29BFE) — used in chips, tier pills, links */
+html[data-theme="light"] [style*="color: #a78bfa"],
+html[data-theme="light"] [style*="color:#a78bfa"],
+html[data-theme="light"] [style*="color: #A29BFE"],
+html[data-theme="light"] [style*="color:#A29BFE"] {
+  color: #6d28d9 !important; /* violet-700 */
+}
+
+/* Amber/yellow accent (#fbbf24, #fcd34d) — used in warning chips */
+html[data-theme="light"] [style*="color: #fbbf24"],
+html[data-theme="light"] [style*="color:#fbbf24"],
+html[data-theme="light"] [style*="color: #fcd34d"],
+html[data-theme="light"] [style*="color:#fcd34d"] {
+  color: #92400e !important; /* amber-800 */
+}
+
+/* Red error (#f87171, #fca5a5, #fecaca, #ff6b6b, #ef4444, #e74c3c) */
+html[data-theme="light"] [style*="color: #f87171"],
+html[data-theme="light"] [style*="color:#f87171"],
+html[data-theme="light"] [style*="color: #fca5a5"],
+html[data-theme="light"] [style*="color:#fca5a5"],
+html[data-theme="light"] [style*="color: #fecaca"],
+html[data-theme="light"] [style*="color:#fecaca"],
+html[data-theme="light"] [style*="color: #ff6b6b"],
+html[data-theme="light"] [style*="color:#ff6b6b"],
+html[data-theme="light"] [style*="color: #ef4444"],
+html[data-theme="light"] [style*="color:#ef4444"],
+html[data-theme="light"] [style*="color: #e74c3c"],
+html[data-theme="light"] [style*="color:#e74c3c"] {
+  color: #b91c1c !important; /* red-700 */
+}
+
+/* Blue accent (#60a5fa, #93c5fd, #bfdbfe, #38bdf8) */
+html[data-theme="light"] [style*="color: #60a5fa"],
+html[data-theme="light"] [style*="color:#60a5fa"],
+html[data-theme="light"] [style*="color: #93c5fd"],
+html[data-theme="light"] [style*="color:#93c5fd"],
+html[data-theme="light"] [style*="color: #bfdbfe"],
+html[data-theme="light"] [style*="color:#bfdbfe"],
+html[data-theme="light"] [style*="color: #38bdf8"],
+html[data-theme="light"] [style*="color:#38bdf8"] {
+  color: #1d4ed8 !important; /* blue-700 */
+}
+
+/* Cyan / sky accent (#7dd3fc, #8fd3ff, #22d3ee) */
+html[data-theme="light"] [style*="color: #7dd3fc"],
+html[data-theme="light"] [style*="color:#7dd3fc"],
+html[data-theme="light"] [style*="color: #8fd3ff"],
+html[data-theme="light"] [style*="color:#8fd3ff"],
+html[data-theme="light"] [style*="color: #22d3ee"],
+html[data-theme="light"] [style*="color:#22d3ee"] {
+  color: #075985 !important; /* sky-800 */
+}
+
+/* Green success (#86efac, #34d399, #bbf7d0, #10b981) */
+html[data-theme="light"] [style*="color: #86efac"],
+html[data-theme="light"] [style*="color:#86efac"],
+html[data-theme="light"] [style*="color: #34d399"],
+html[data-theme="light"] [style*="color:#34d399"],
+html[data-theme="light"] [style*="color: #bbf7d0"],
+html[data-theme="light"] [style*="color:#bbf7d0"] {
+  color: #166534 !important; /* green-800 */
+}
+
+/* Pink/magenta accent (#e879f9) */
+html[data-theme="light"] [style*="color: #e879f9"],
+html[data-theme="light"] [style*="color:#e879f9"] {
+  color: #a21caf !important; /* fuchsia-700 */
+}
+
+/* Orange (#f59e0b) */
+html[data-theme="light"] [style*="color: #f59e0b"],
+html[data-theme="light"] [style*="color:#f59e0b"] {
+  color: #c2410c !important; /* orange-700 */
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-dark);
+}
+
+/*
+ * Pet Companion floating window — fullscreen transparent overlay.
+ *
+ * 2026-05-20 v5 (final):
+ *   - The pet window now spans the entire primary monitor as a fully
+ *     transparent overlay (Rust-side `transparent: true`, fullscreen size).
+ *   - Page background MUST be transparent on every platform — Mac uses
+ *     WebKit's native transparency, Windows works thanks to fullscreen
+ *     surface + GPU hardware acceleration (set via WEBVIEW2_ADDITIONAL_
+ *     BROWSER_ARGUMENTS in main.rs).
+ *   - The pet sprite floats at a CSS-positioned spot inside this overlay;
+ *     everywhere else is fully transparent and click-through (Rust-side
+ *     `set_ignore_cursor_events(true)` by default, JS toggles when pointer
+ *     enters/leaves the pet hit-box).
+ *
+ * Sprites: v9 RGBA PNGs with binary alpha — pet body never has black
+ * holes (per-pixel threshold ≥240 only catches near-pure-white, pet's
+ * lightest fur caps at ~230 so it stays opaque).
+ */
+html[data-pet-window="1"],
+html[data-pet-window="1"] body,
+html[data-pet-window="1"] #root {
+  /* v0.6.4: fullscreen transparent overlay (restored from 9d5824d02).
+   * Window is sized to cover entire monitor, transparent everywhere
+   * except the pet sprite element. WebView2 transparent + fullscreen
+   * surface stays GPU-stable (small transparent windows trigger
+   * tauri#4881 checkerboard, but full-monitor surface doesn't). */
+  background: transparent !important;
+  overflow: hidden !important;
+  border: none !important;
+  outline: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  /* v0.3.2: pet window is now a small 200×240 follow-along window that
+   * covers exactly the pet sprite area. Events delivered to this window
+   * always belong to the pet — accept them everywhere. (Previously this
+   * was `pointer-events: none` because the pet was a fullscreen overlay
+   * that needed to fall through to the desktop.) */
+  pointer-events: auto;
+}
+
+/*
+ * GPU surface keep-alive — anti-snow guard.
+ *
+ * tauri#4881: WebView2 transparent windows render snow / checkerboard
+ * when the GPU compositor's surface is "static" (two consecutive frames
+ * identical). Idle/sit pet sprites change very little frame-to-frame
+ * which can trip the bug. We force a perpetually-changing 1px element
+ * that's positioned offscreen (so users never see it) but which the GPU
+ * still has to recomposite each frame. Cost: < 0.1 ms per frame.
+ */
+html[data-pet-window="1"]::after {
+  content: "";
+  position: fixed;
+  top: -2px;
+  left: -2px;
+  width: 1px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.001);
+  animation: agentrix-pet-keepalive 60ms linear infinite;
+  pointer-events: none;
+}
+@keyframes agentrix-pet-keepalive {
+  0%   { opacity: 0.001; }
+  50%  { opacity: 0.002; }
+  100% { opacity: 0.001; }
+}
+
+/* Scrollbar */
+* {
+  scrollbar-width: auto;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  min-height: 44px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); background-clip: padding-box; }
+
+/* Animations */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(108, 92, 231, 0.4); }
+  50% { transform: scale(1.08); box-shadow: 0 0 0 12px rgba(108, 92, 231, 0); }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ripple {
+  0% { box-shadow: 0 0 0 0 rgba(108, 92, 231, 0.6); }
+  70% { box-shadow: 0 0 0 16px rgba(108, 92, 231, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(108, 92, 231, 0); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes dotPulse {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes guideFloat {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-6px); }
+}
+
+/* ── Dynamic Orbis animations ────────────────────────── */
+@keyframes orbisBreathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
+@keyframes orbisPulse {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; }
+  50% { box-shadow: 0 0 0 8px transparent; }
+}
+
+@keyframes orbisOrbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes shimmerRibbon {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes hudFadeIn {
+  from { opacity: 0; backdrop-filter: blur(0); }
+  to { opacity: 1; backdrop-filter: blur(20px); }
+}
+
+/* ── Markdown body styles ────────────────────────────── */
+.md-body p { margin: 0 0 8px; }
+.md-body p:last-child { margin-bottom: 0; }
+.md-body ul, .md-body ol { padding-left: 20px; margin: 4px 0 8px; }
+.md-body li { margin: 2px 0; }
+.md-body h1, .md-body h2, .md-body h3, .md-body h4 {
+  margin: 10px 0 6px;
+  font-weight: 600;
+}
+.md-body h1 { font-size: 18px; }
+.md-body h2 { font-size: 16px; }
+.md-body h3 { font-size: 15px; }
+.md-body blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 4px 12px;
+  margin: 6px 0;
+  color: var(--text-dim);
+  background: rgba(255,255,255,0.03);
+  border-radius: 0 6px 6px 0;
+}
+.md-body hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 10px 0;
+}
+
+/* ── Highlight.js dark theme (GitHub Dark Dimmed) ──── */
+.hljs { color: #adbac7; background: transparent; }
+.hljs-comment, .hljs-quote { color: #768390; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-type { color: #f47067; }
+.hljs-string, .hljs-addition { color: #96d0ff; }
+.hljs-number, .hljs-literal { color: #6cb6ff; }
+.hljs-built_in, .hljs-builtin-name { color: #dcbdfb; }
+.hljs-function .hljs-title, .hljs-title.function_ { color: #dcbdfb; }
+.hljs-class .hljs-title, .hljs-title.class_ { color: #f69d50; }
+.hljs-attr, .hljs-attribute { color: #6cb6ff; }
+.hljs-variable, .hljs-template-variable { color: #f69d50; }
+.hljs-regexp { color: #96d0ff; }
+.hljs-symbol, .hljs-bullet { color: #f69d50; }
+.hljs-meta { color: #768390; }
+.hljs-deletion { color: #f47067; background: rgba(244,112,103,0.1); }
+.hljs-addition { background: rgba(150,208,255,0.1); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: bold; }
+
+
+/*
+ * Sprint Pre-launch P-2 round 2 (2026-05-23) — light-mode highlight.js palette.
+ *
+ * The default `:root` palette above ships GitHub Dark Dimmed colors which
+ * are unreadable on a light bg. Override per-token-class on light theme
+ * with the GitHub Light palette.
+ */
+html[data-theme="light"] .hljs { color: #24292e; background: transparent; }
+html[data-theme="light"] .hljs-comment,
+html[data-theme="light"] .hljs-quote { color: #6a737d; }
+html[data-theme="light"] .hljs-keyword,
+html[data-theme="light"] .hljs-selector-tag,
+html[data-theme="light"] .hljs-type { color: #d73a49; }
+html[data-theme="light"] .hljs-string,
+html[data-theme="light"] .hljs-addition { color: #032f62; }
+html[data-theme="light"] .hljs-number,
+html[data-theme="light"] .hljs-literal { color: #005cc5; }
+html[data-theme="light"] .hljs-built_in,
+html[data-theme="light"] .hljs-builtin-name { color: #6f42c1; }
+html[data-theme="light"] .hljs-function .hljs-title,
+html[data-theme="light"] .hljs-title.function_ { color: #6f42c1; }
+html[data-theme="light"] .hljs-class .hljs-title,
+html[data-theme="light"] .hljs-title.class_ { color: #e36209; }
+html[data-theme="light"] .hljs-attr,
+html[data-theme="light"] .hljs-attribute { color: #005cc5; }
+html[data-theme="light"] .hljs-variable,
+html[data-theme="light"] .hljs-template-variable { color: #e36209; }
+html[data-theme="light"] .hljs-regexp { color: #032f62; }
+html[data-theme="light"] .hljs-symbol,
+html[data-theme="light"] .hljs-bullet { color: #e36209; }
+html[data-theme="light"] .hljs-meta { color: #6a737d; }
+html[data-theme="light"] .hljs-deletion { color: #d73a49; background: rgba(215, 58, 73, 0.06); }
+html[data-theme="light"] .hljs-addition { background: rgba(3, 47, 98, 0.06); }

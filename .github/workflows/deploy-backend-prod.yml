@@ -1,0 +1,179 @@
+name: Deploy Backend Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy
+        required: false
+        default: build138
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-backend:
+    name: Deploy backend to production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Resolve deploy target
+        run: |
+          echo "DEPLOY_REF=${{ inputs.ref || github.ref_name || 'main' }}" >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+
+      - name: Prepare SSH key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_SSH_KEY:-}" ]; then
+            echo "DEPLOY_SSH_KEY is not configured"
+            exit 1
+          fi
+          printf '%s\n' "$DEPLOY_SSH_KEY" > /tmp/deploy.pem
+          chmod 600 /tmp/deploy.pem
+
+      - name: Deploy backend on production host
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          TARGET_SHA: ${{ github.sha }}
+          TARGET_REF: ${{ env.DEPLOY_REF }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_HOST:-}" ]; then
+            echo "DEPLOY_HOST is not configured"
+            exit 1
+          fi
+          SSH_OPTS="-o StrictHostKeyChecking=no -i /tmp/deploy.pem"
+          ssh ${SSH_OPTS} ubuntu@${DEPLOY_HOST} "TARGET_SHA=${TARGET_SHA} TARGET_REF=${TARGET_REF} bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /home/ubuntu/Agentrix
+
+          # Capture the currently deployed SHA so we can roll back if health fails.
+          PREVIOUS_SHA="$(git rev-parse HEAD || echo '')"
+          echo "Previous deployed SHA: ${PREVIOUS_SHA}"
+
+          REF="${TARGET_REF:-main}"
+          git fetch origin "${REF}"
+          git checkout "${REF}" 2>/dev/null || git checkout -b "${REF}" "origin/${REF}"
+          git reset --hard "${TARGET_SHA}"
+
+          cd backend
+          npm run build || (rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json)
+
+          # Phase 0: Pre-migration DB backup — kept for 14 days on the prod host
+          # so a failed migration can be rolled back without waiting for cloud backups.
+          BACKUP_DIR="/home/ubuntu/Agentrix/backups"
+          mkdir -p "$BACKUP_DIR"
+          BACKUP_TAG="pre-deploy-$(date +%Y%m%d-%H%M%S)-${TARGET_SHA:0:8}"
+          BACKUP_FILE="${BACKUP_DIR}/${BACKUP_TAG}.sql.gz"
+          echo "=== Taking DB backup → ${BACKUP_FILE} ==="
+          set +e
+          # Honour DATABASE_URL / PG* env from the backend .env so we dump the right DB.
+          set -a; [ -f /home/ubuntu/Agentrix/backend/.env ] && . /home/ubuntu/Agentrix/backend/.env; set +a
+          PG_DB="${DB_NAME:-${POSTGRES_DB:-paymind}}"
+          PG_USER="${DB_USERNAME:-${POSTGRES_USER:-postgres}}"
+          PG_HOST="${DB_HOST:-127.0.0.1}"
+          PG_PORT="${DB_PORT:-5432}"
+          PGPASSWORD="${DB_PASSWORD:-${POSTGRES_PASSWORD:-}}" \
+            pg_dump -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" --no-owner --no-privileges 2>/tmp/pgdump.err | gzip > "${BACKUP_FILE}"
+          DUMP_EXIT=${PIPESTATUS[0]}
+          set -e
+          if [ "$DUMP_EXIT" -ne 0 ]; then
+            echo "⚠️  pg_dump failed (exit=$DUMP_EXIT) — aborting deploy to avoid lossy migration"
+            cat /tmp/pgdump.err || true
+            rm -f "${BACKUP_FILE}"
+            exit 1
+          fi
+          BACKUP_SIZE=$(stat -c%s "${BACKUP_FILE}" 2>/dev/null || echo 0)
+          echo "Backup size: ${BACKUP_SIZE} bytes"
+          # Prune backups older than 14 days
+          find "$BACKUP_DIR" -name 'pre-deploy-*.sql.gz' -type f -mtime +14 -delete || true
+
+          npm run migration:run
+
+          pm2 restart agentrix-backend --update-env
+          HEALTH_OK=0
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if curl -fsS http://127.0.0.1:3000/api/health; then
+              HEALTH_OK=1
+              break
+            fi
+            echo "Health check attempt ${attempt} failed, retrying..."
+            sleep 5
+          done
+
+          echo "=== Deployed backend HEAD ==="
+          cd /home/ubuntu/Agentrix
+          git log --oneline -1
+
+          echo "=== PM2 status ==="
+          pm2 show agentrix-backend | grep -E 'status|script path|uptime|restarts' || true
+
+          echo "=== Health check ==="
+          if [ "$HEALTH_OK" -ne 1 ]; then
+            echo "=== PM2 recent logs ==="
+            pm2 logs agentrix-backend --lines 120 --nostream || true
+            echo "=== Port 3000 listeners ==="
+            ss -ltnp | grep ':3000' || true
+
+            # ── Phase 2.5: Automated rollback ──
+            if [ -n "${PREVIOUS_SHA}" ] && [ "${PREVIOUS_SHA}" != "${TARGET_SHA}" ]; then
+              echo "🛟  Auto-rollback: restoring DB and reverting to ${PREVIOUS_SHA}"
+              echo "   1) Restoring DB from ${BACKUP_FILE}"
+              set +e
+              gunzip -c "${BACKUP_FILE}" | PGPASSWORD="${DB_PASSWORD:-${POSTGRES_PASSWORD:-}}" \
+                psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=0 > /tmp/restore.log 2>&1
+              RESTORE_EXIT=$?
+              set -e
+              if [ "$RESTORE_EXIT" -ne 0 ]; then
+                echo "⚠️  DB restore returned non-zero (${RESTORE_EXIT}). Last 40 lines:"
+                tail -40 /tmp/restore.log || true
+              fi
+              echo "   2) Reverting git to ${PREVIOUS_SHA}"
+              cd /home/ubuntu/Agentrix
+              git reset --hard "${PREVIOUS_SHA}"
+              cd backend
+              echo "   3) Rebuilding previous version"
+              npm run build || (rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json)
+              echo "   4) Restarting pm2"
+              pm2 restart agentrix-backend --update-env
+              ROLLBACK_OK=0
+              for attempt in 1 2 3 4 5 6 7 8 9 10; do
+                if curl -fsS http://127.0.0.1:3000/api/health; then
+                  ROLLBACK_OK=1
+                  break
+                fi
+                echo "   Rollback health attempt ${attempt} failed, retrying..."
+                sleep 5
+              done
+              if [ "$ROLLBACK_OK" -eq 1 ]; then
+                echo "✅ Rolled back to ${PREVIOUS_SHA} successfully"
+              else
+                echo "❌ Rollback also failed health check — manual intervention required"
+              fi
+            else
+              echo "⚠️  No previous SHA recorded; skipping auto-rollback"
+              echo "   Manual rollback hint:"
+              echo "   gunzip -c ${BACKUP_FILE} | psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB}"
+            fi
+            exit 1
+          fi
+
+          curl -fsS http://127.0.0.1:3000/api/health
+
+          # Smoke tests — touch a few critical read endpoints. Failures here are
+          # informative only (we don't roll back) because they often fail due to
+          # auth rather than regressions.
+          echo "=== Smoke tests ==="
+          for ep in /api/health /api/llm/models /api/openclaw/presets; do
+            code=$(curl -o /dev/null -s -w '%{http_code}' "http://127.0.0.1:3000${ep}") || code=000
+            echo "  ${ep} → HTTP ${code}"
+          done
+          REMOTE

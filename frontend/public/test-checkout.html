@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>测试Agentrix电商流程</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #0f172a; color: white; }
+        .container { max-width: 800px; margin: 0 auto; }
+        button { padding: 10px 20px; margin: 5px; background: #3b82f6; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #2563eb; }
+        .result { background: #1e293b; padding: 15px; border-radius: 8px; margin: 10px 0; }
+        .error { background: #7f1d1d; }
+        .success { background: #065f46; }
+        input { padding: 8px; margin: 5px; width: 300px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛍️ Agentrix 电商流程测试</h1>
+        
+        <h2>1. 获取技能信息</h2>
+        <button onclick="getSkill()">获取 Apark 技能</button>
+        <div id="skillResult" class="result" style="display:none;"></div>
+        
+        <h2>2. 创建订单</h2>
+        <button onclick="createOrder()">创建订单（需要登录）</button>
+        <div id="orderResult" class="result" style="display:none;"></div>
+        
+        <h2>3. 登录状态</h2>
+        <button onclick="checkAuth()">检查登录状态</button>
+        <div id="authResult" class="result" style="display:none;"></div>
+    </div>
+    
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+        const SKILL_ID = '918b420a-1239-4918-bde0-5b9fa9076507';
+        let skillData = null;
+        
+        async function getSkill() {
+            try {
+                const response = await fetch(`${API_BASE}/unified-marketplace/skills/${SKILL_ID}`);
+                const data = await response.json();
+                skillData = data;
+                
+                const resultDiv = document.getElementById('skillResult');
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'result success';
+                resultDiv.innerHTML = `
+                    <h3>✅ 技能信息获取成功</h3>
+                    <p><strong>名称:</strong> ${data.displayName || data.name}</p>
+                    <p><strong>Skill ID:</strong> ${data.id}</p>
+                    <p><strong>Product ID:</strong> ${data.productId || '无'}</p>
+                    <p><strong>价格:</strong> $${data.pricing?.pricePerCall || 0} USD</p>
+                    <p><strong>商户ID:</strong> ${data.authorId}</p>
+                    <pre>${JSON.stringify(data.pricing, null, 2)}</pre>
+                `;
+            } catch (error) {
+                showError('skillResult', error);
+            }
+        }
+        
+        async function createOrder() {
+            if (!skillData) {
+                alert('请先获取技能信息');
+                return;
+            }
+            
+            // 使用 Skill ID 而不是 Product ID
+            const orderData = {
+                productId: skillData.id,  // 使用 Skill ID
+                merchantId: skillData.authorId,
+                amount: skillData.pricing?.pricePerCall || 0.1,
+                currency: 'USD',
+                metadata: {
+                    assetType: 'virtual',
+                    productType: 'skill',
+                    skillId: skillData.id
+                }
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/orders`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(orderData)
+                });
+                
+                const data = await response.json();
+                const resultDiv = document.getElementById('orderResult');
+                resultDiv.style.display = 'block';
+                
+                if (response.ok) {
+                    resultDiv.className = 'result success';
+                    resultDiv.innerHTML = `
+                        <h3>✅ 订单创建成功</h3>
+                        <p><strong>订单ID:</strong> ${data.id}</p>
+                        <p><strong>金额:</strong> ${data.amount} ${data.currency}</p>
+                        <p><strong>状态:</strong> ${data.status}</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `
+                        <h3>❌ 订单创建失败</h3>
+                        <p><strong>错误:</strong> ${data.message || JSON.stringify(data)}</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                showError('orderResult', error);
+            }
+        }
+        
+        async function checkAuth() {
+            try {
+                const response = await fetch(`${API_BASE}/auth/me`, {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                
+                const resultDiv = document.getElementById('authResult');
+                resultDiv.style.display = 'block';
+                
+                if (response.ok && data.id) {
+                    resultDiv.className = 'result success';
+                    resultDiv.innerHTML = `
+                        <h3>✅ 已登录</h3>
+                        <p><strong>用户ID:</strong> ${data.id}</p>
+                        <p><strong>用户名:</strong> ${data.username || data.email || '未知'}</p>
+                    `;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `
+                        <h3>❌ 未登录</h3>
+                        <p>请先访问 <a href="http://localhost:3000/auth/login" target="_blank" style="color: #60a5fa;">http://localhost:3000/auth/login</a> 登录</p>
+                    `;
+                }
+            } catch (error) {
+                showError('authResult', error);
+            }
+        }
+        
+        function showError(divId, error) {
+            const resultDiv = document.getElementById(divId);
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result error';
+            resultDiv.innerHTML = `
+                <h3>❌ 错误</h3>
+                <p>${error.message || error}</p>
+            `;
+        }
+        
+        // 页面加载时自动获取技能信息
+        window.onload = () => {
+            getSkill();
+        };
+    </script>
+</body>
+</html>

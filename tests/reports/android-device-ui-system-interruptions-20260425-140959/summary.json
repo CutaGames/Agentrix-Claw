@@ -1,0 +1,380 @@
+﻿[
+    {
+        "id":  "device-online",
+        "title":  "Android device online",
+        "status":  "passed",
+        "notes":  "MDX0220309000133       device product:ELS-AN00 model:ELS_AN00 device:HWELS transport_id:6",
+        "snapshot":  ""
+    },
+    {
+        "id":  "foreground-app",
+        "title":  "Agentrix foreground",
+        "status":  "passed",
+        "notes":  "app.agentrix.claw",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-or-auth",
+        "title":  "Wait chat-or-auth",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "01-wait-chat-or-auth"
+    },
+    {
+        "id":  "crash-launch",
+        "title":  "Crash scan after launch",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-chat tab",
+        "title":  "Tap chat tab",
+        "status":  "passed",
+        "notes":  "对话 [0,2445][300,2486]",
+        "snapshot":  "05-before-chat-tab"
+    },
+    {
+        "id":  "crash-chat tab",
+        "title":  "Crash scan after chat tab",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-discover tab",
+        "title":  "Tap discover tab",
+        "status":  "passed",
+        "notes":  "发现 [300,2445][600,2486]",
+        "snapshot":  "07-before-discover-tab"
+    },
+    {
+        "id":  "crash-discover tab",
+        "title":  "Crash scan after discover tab",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-team tab",
+        "title":  "Tap team tab",
+        "status":  "passed",
+        "notes":  "团队 [600,2445][900,2486]",
+        "snapshot":  "09-before-team-tab"
+    },
+    {
+        "id":  "crash-team tab",
+        "title":  "Crash scan after team tab",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-me tab",
+        "title":  "Tap me tab",
+        "status":  "passed",
+        "notes":  "我的 [900,2445][1200,2486]",
+        "snapshot":  "11-before-me-tab"
+    },
+    {
+        "id":  "crash-me tab",
+        "title":  "Crash scan after me tab",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-chat tab return",
+        "title":  "Tap chat tab return",
+        "status":  "passed",
+        "notes":  "对话 [0,2445][300,2486]",
+        "snapshot":  "13-before-chat-tab-return"
+    },
+    {
+        "id":  "crash-chat tab return",
+        "title":  "Crash scan after chat tab return",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-chat tab for modes",
+        "title":  "Tap chat tab for modes",
+        "status":  "passed",
+        "notes":  "对话 [0,2445][300,2486]",
+        "snapshot":  "15-before-chat-tab-for-modes"
+    },
+    {
+        "id":  "wait-chat input",
+        "title":  "Wait chat input",
+        "status":  "passed",
+        "notes":  "chat-text-input",
+        "snapshot":  "16-wait-chat-input"
+    },
+    {
+        "id":  "tap-mode-local-only",
+        "title":  "Tap mode-local-only",
+        "status":  "passed",
+        "notes":  "execution-mode-local-only [140,2118][344,2202]",
+        "snapshot":  "17-before-mode-local-only"
+    },
+    {
+        "id":  "tap-input-local-only",
+        "title":  "Tap input-local-only",
+        "status":  "passed",
+        "notes":  "chat-text-input [39,2248][690,2389]",
+        "snapshot":  "18-before-input-local-only"
+    },
+    {
+        "id":  "tap-send-local-only",
+        "title":  "Tap send-local-only",
+        "status":  "passed",
+        "notes":  "chat-send-button [1021,2017][1160,2156]",
+        "snapshot":  "19-before-send-local-only"
+    },
+    {
+        "id":  "wait-user-message-local-only",
+        "title":  "Wait user-message-local-only",
+        "status":  "passed",
+        "notes":  "localsmokeping",
+        "snapshot":  "20-wait-user-message-local-only"
+    },
+    {
+        "id":  "chat-local-only",
+        "title":  "Chat turn local-only",
+        "status":  "passed",
+        "notes":  "submitted localsmokeping",
+        "snapshot":  ""
+    },
+    {
+        "id":  "crash-chat-local-only",
+        "title":  "Crash scan after chat-local-only",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-mode-auto",
+        "title":  "Tap mode-auto",
+        "status":  "passed",
+        "notes":  "execution-mode-auto [364,1885][568,1970]",
+        "snapshot":  "22-before-mode-auto"
+    },
+    {
+        "id":  "tap-input-auto",
+        "title":  "Tap input-auto",
+        "status":  "passed",
+        "notes":  "chat-text-input [39,2015][690,2156]",
+        "snapshot":  "23-before-input-auto"
+    },
+    {
+        "id":  "tap-send-auto",
+        "title":  "Tap send-auto",
+        "status":  "passed",
+        "notes":  "chat-send-button [1021,2016][1160,2155]",
+        "snapshot":  "24-before-send-auto"
+    },
+    {
+        "id":  "wait-user-message-auto",
+        "title":  "Wait user-message-auto",
+        "status":  "passed",
+        "notes":  "autosmokeping",
+        "snapshot":  "25-wait-user-message-auto"
+    },
+    {
+        "id":  "chat-auto",
+        "title":  "Chat turn auto",
+        "status":  "passed",
+        "notes":  "submitted autosmokeping",
+        "snapshot":  ""
+    },
+    {
+        "id":  "crash-chat-auto",
+        "title":  "Crash scan after chat-auto",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-mode-cloud-only",
+        "title":  "Tap mode-cloud-only",
+        "status":  "passed",
+        "notes":  "execution-mode-cloud-only [588,1884][792,1968]",
+        "snapshot":  "27-before-mode-cloud-only"
+    },
+    {
+        "id":  "tap-input-cloud-only",
+        "title":  "Tap input-cloud-only",
+        "status":  "passed",
+        "notes":  "chat-text-input [39,2014][690,2155]",
+        "snapshot":  "28-before-input-cloud-only"
+    },
+    {
+        "id":  "tap-send-cloud-only",
+        "title":  "Tap send-cloud-only",
+        "status":  "passed",
+        "notes":  "chat-send-button [1021,2017][1160,2156]",
+        "snapshot":  "29-before-send-cloud-only"
+    },
+    {
+        "id":  "wait-user-message-cloud-only",
+        "title":  "Wait user-message-cloud-only",
+        "status":  "passed",
+        "notes":  "cloudsmokeping",
+        "snapshot":  "30-wait-user-message-cloud-only"
+    },
+    {
+        "id":  "chat-cloud-only",
+        "title":  "Chat turn cloud-only",
+        "status":  "passed",
+        "notes":  "submitted cloudsmokeping",
+        "snapshot":  ""
+    },
+    {
+        "id":  "crash-chat-cloud-only",
+        "title":  "Crash scan after chat-cloud-only",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-chat tab for quick model",
+        "title":  "Tap chat tab for quick model",
+        "status":  "passed",
+        "notes":  "对话 [0,2445][300,2486]",
+        "snapshot":  "32-before-chat-tab-for-quick-model"
+    },
+    {
+        "id":  "tap-quick model switch",
+        "title":  "Tap quick model switch",
+        "status":  "passed",
+        "notes":  "quick-model-switch [0,466][1200,552]",
+        "snapshot":  "33-before-quick-model-switch"
+    },
+    {
+        "id":  "tap-chat settings",
+        "title":  "Tap chat settings",
+        "status":  "passed",
+        "notes":  "agent-chat-settings-button [1041,187][1160,306]",
+        "snapshot":  "35-before-chat-settings"
+    },
+    {
+        "id":  "wait-chat settings sheet",
+        "title":  "Wait chat settings sheet",
+        "status":  "passed",
+        "notes":  "chat-settings-sheet",
+        "snapshot":  "36-wait-chat-settings-sheet"
+    },
+    {
+        "id":  "wait-duplex toggle present",
+        "title":  "Wait duplex toggle present",
+        "status":  "passed",
+        "notes":  "chat-duplex-toggle",
+        "snapshot":  "37-wait-duplex-toggle-present"
+    },
+    {
+        "id":  "tap-voice mode toggle",
+        "title":  "Tap voice mode toggle",
+        "status":  "warning",
+        "notes":  "node not present",
+        "snapshot":  "39-before-voice-mode-toggle"
+    },
+    {
+        "id":  "tap-voice mode toggle-fallback",
+        "title":  "Tap voice mode toggle fallback",
+        "status":  "passed",
+        "notes":  "coordinate 1094,2085",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-realtime voice button",
+        "title":  "Tap realtime voice button",
+        "status":  "warning",
+        "notes":  "node not present",
+        "snapshot":  "44-before-realtime-voice-button"
+    },
+    {
+        "id":  "text-mode-after-voice-controls",
+        "title":  "Text chat mode after-voice-controls",
+        "status":  "passed",
+        "notes":  "chat-text-input",
+        "snapshot":  "49-text-mode-after-voice-controls"
+    },
+    {
+        "id":  "crash-chat-controls",
+        "title":  "Crash scan after chat-controls",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-chat tab for drawer",
+        "title":  "Tap chat tab for drawer",
+        "status":  "passed",
+        "notes":  "对话 [0,2445][300,2486]",
+        "snapshot":  "50-before-chat-tab-for-drawer"
+    },
+    {
+        "id":  "text-mode-before-drawer",
+        "title":  "Text chat mode before-drawer",
+        "status":  "passed",
+        "notes":  "chat-text-input",
+        "snapshot":  "51-text-mode-before-drawer"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-memory",
+        "title":  "Wait chat-ready-before-drawer-memory",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "52-wait-chat-ready-before-drawer-memory"
+    },
+    {
+        "id":  "wait-chat-ready-memory",
+        "title":  "Wait chat-ready-memory",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "53-wait-chat-ready-memory"
+    },
+    {
+        "id":  "tap-drawer-open-memory",
+        "title":  "Tap drawer-open-memory",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "54-before-drawer-open-memory"
+    },
+    {
+        "id":  "wait-drawer-memory",
+        "title":  "Wait drawer-memory",
+        "status":  "warning",
+        "notes":  "timeout 5s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-drawer-memory-retry",
+        "title":  "Wait drawer-memory-retry",
+        "status":  "warning",
+        "notes":  "timeout 5s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-drawer-memory-swipe",
+        "title":  "Wait drawer-memory-swipe",
+        "status":  "warning",
+        "notes":  "timeout 5s",
+        "snapshot":  ""
+    },
+    {
+        "id":  "drawer-memory-open",
+        "title":  "Drawer memory open",
+        "status":  "failed",
+        "notes":  "drawer did not open",
+        "snapshot":  ""
+    },
+    {
+        "id":  "fatal",
+        "title":  "Fatal test runner error",
+        "status":  "failed",
+        "notes":  "Could not open drawer for memory.",
+        "snapshot":  ""
+    }
+]

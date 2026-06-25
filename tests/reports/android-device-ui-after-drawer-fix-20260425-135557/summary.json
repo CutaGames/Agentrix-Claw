@@ -1,0 +1,37 @@
+﻿[
+    {
+        "id":  "device-online",
+        "title":  "Android device online",
+        "status":  "passed",
+        "notes":  "MDX0220309000133       device product:ELS-AN00 model:ELS_AN00 device:HWELS transport_id:6",
+        "snapshot":  ""
+    },
+    {
+        "id":  "foreground-app",
+        "title":  "Agentrix foreground",
+        "status":  "passed",
+        "notes":  "app.agentrix.claw",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-or-auth",
+        "title":  "Wait chat-or-auth",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "01-wait-chat-or-auth"
+    },
+    {
+        "id":  "crash-launch",
+        "title":  "Crash scan after launch",
+        "status":  "failed",
+        "notes":  "see tests\\reports\\android-device-ui-after-drawer-fix-20260425-135557\\logcat-launch.log",
+        "snapshot":  ""
+    },
+    {
+        "id":  "fatal",
+        "title":  "Fatal test runner error",
+        "status":  "failed",
+        "notes":  "Crash pattern found after launch.",
+        "snapshot":  ""
+    }
+]

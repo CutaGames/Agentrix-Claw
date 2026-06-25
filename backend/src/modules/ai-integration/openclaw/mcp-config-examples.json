@@ -1,0 +1,67 @@
+{
+  "_comment": "MCP configuration examples for connecting to Agentrix Commerce Skill across different platforms",
+
+  "cursor_or_windsurf": {
+    "_comment": "Add to .cursor/mcp.json or .windsurf/mcp.json in your project root",
+    "mcpServers": {
+      "agentrix-commerce": {
+        "url": "https://api.agentrix.top/api/mcp",
+        "headers": {
+          "X-API-Key": "YOUR_AGENTRIX_API_KEY"
+        }
+      }
+    }
+  },
+
+  "claude_desktop": {
+    "_comment": "Add to ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) or %APPDATA%/Claude/claude_desktop_config.json (Windows)",
+    "mcpServers": {
+      "agentrix-commerce": {
+        "url": "https://api.agentrix.top/api/mcp",
+        "headers": {
+          "X-API-Key": "YOUR_AGENTRIX_API_KEY"
+        }
+      }
+    }
+  },
+
+  "vscode_copilot": {
+    "_comment": "Add to .vscode/mcp.json in your project root",
+    "servers": {
+      "agentrix-commerce": {
+        "type": "http",
+        "url": "https://api.agentrix.top/api/mcp",
+        "headers": {
+          "X-API-Key": "YOUR_AGENTRIX_API_KEY"
+        }
+      }
+    }
+  },
+
+  "openclaw": {
+    "_comment": "Add to ~/.openclaw/openclaw.json under tools.mcp",
+    "tools": {
+      "mcp": {
+        "agentrix-commerce": {
+          "type": "sse",
+          "url": "https://api.agentrix.top/api/mcp/sse",
+          "headers": {
+            "X-API-Key": "YOUR_AGENTRIX_API_KEY"
+          }
+        }
+      }
+    }
+  },
+
+  "chatgpt_gpts": {
+    "_comment": "Use the OpenAPI schema URL when creating a GPT Action",
+    "openapi_schema_url": "https://api.agentrix.top/api/mcp/openapi.json",
+    "static_schema_url": "https://api.agentrix.top/api/openai/gpts-openapi-schema.json",
+    "ai_plugin_manifest": "https://api.agentrix.top/.well-known/ai-plugin.json"
+  },
+
+  "gemini_extensions": {
+    "_comment": "Use the OpenAPI schema URL when creating a Gemini Extension",
+    "openapi_schema_url": "https://api.agentrix.top/api/mcp/openapi.json"
+  }
+}

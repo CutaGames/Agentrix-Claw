@@ -1,0 +1,56 @@
+{
+  "date": "2026-05-12T13:14:37.781Z",
+  "device": "Glass HUD (ESP32 GATT Simulation)",
+  "summary": "6/7 passed (86%)",
+  "results": [
+    {
+      "testId": "G1",
+      "name": "HUD text push — message received",
+      "passed": true,
+      "detail": "Text: \"你好！今天天气不错 ☀️\", Position: 1",
+      "timestamp": "2026-05-12T13:14:36.404Z"
+    },
+    {
+      "testId": "G2",
+      "name": "Notification priority ordering",
+      "passed": true,
+      "detail": "Order: high > normal > low",
+      "timestamp": "2026-05-12T13:14:36.405Z"
+    },
+    {
+      "testId": "G3",
+      "name": "Daily 5-message limit enforced",
+      "passed": true,
+      "detail": "Accepted: 5, Rejected 6th: true",
+      "timestamp": "2026-05-12T13:14:36.406Z"
+    },
+    {
+      "testId": "G4",
+      "name": "Toy proximity detection via BLE RSSI",
+      "passed": true,
+      "detail": "Avg RSSI: -48.4 dBm, Threshold: -60 dBm, Nearby: true",
+      "timestamp": "2026-05-12T13:14:36.407Z"
+    },
+    {
+      "testId": "PROTO",
+      "name": "HUD frame format valid",
+      "passed": true,
+      "detail": "Type: hud.text, TTL: 5000ms",
+      "timestamp": "2026-05-12T13:14:36.407Z"
+    },
+    {
+      "testId": "PROTO",
+      "name": "Glass GATT service UUID format",
+      "passed": true,
+      "detail": "UUID: 6e400001-b5a3-f393-e0a9-e50e24dcca9e",
+      "timestamp": "2026-05-12T13:14:36.408Z"
+    },
+    {
+      "testId": "API",
+      "name": "Glass notification endpoint reachable",
+      "passed": false,
+      "detail": "Status: 404",
+      "timestamp": "2026-05-12T13:14:37.780Z"
+    }
+  ]
+}

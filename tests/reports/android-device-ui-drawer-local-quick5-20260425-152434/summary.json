@@ -1,0 +1,800 @@
+﻿[
+    {
+        "id":  "device-online",
+        "title":  "Android device online",
+        "status":  "passed",
+        "notes":  "MDX0220309000133       device product:ELS-AN00 model:ELS_AN00 device:HWELS transport_id:6",
+        "snapshot":  ""
+    },
+    {
+        "id":  "foreground-app",
+        "title":  "Agentrix foreground",
+        "status":  "passed",
+        "notes":  "app.agentrix.claw",
+        "snapshot":  ""
+    },
+    {
+        "id":  "wait-chat-or-auth",
+        "title":  "Wait chat-or-auth",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "01-wait-chat-or-auth"
+    },
+    {
+        "id":  "wait-interactive-chat-after-launch",
+        "title":  "Wait interactive-chat-after-launch",
+        "status":  "passed",
+        "notes":  "chat controls stable",
+        "snapshot":  "06-wait-interactive-chat-after-launch"
+    },
+    {
+        "id":  "crash-launch",
+        "title":  "Crash scan after launch",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-chat tab",
+        "title":  "Tap chat tab",
+        "status":  "passed",
+        "notes":  "对话 [0,2445][300,2486]",
+        "snapshot":  "07-before-chat-tab"
+    },
+    {
+        "id":  "crash-chat tab",
+        "title":  "Crash scan after chat tab",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-discover tab",
+        "title":  "Tap discover tab",
+        "status":  "passed",
+        "notes":  "发现 [300,2445][600,2486]",
+        "snapshot":  "09-before-discover-tab"
+    },
+    {
+        "id":  "crash-discover tab",
+        "title":  "Crash scan after discover tab",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-team tab",
+        "title":  "Tap team tab",
+        "status":  "passed",
+        "notes":  "团队 [600,2445][900,2486]",
+        "snapshot":  "11-before-team-tab"
+    },
+    {
+        "id":  "crash-team tab",
+        "title":  "Crash scan after team tab",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-me tab",
+        "title":  "Tap me tab",
+        "status":  "passed",
+        "notes":  "我的 [900,2445][1200,2486]",
+        "snapshot":  "13-before-me-tab"
+    },
+    {
+        "id":  "crash-me tab",
+        "title":  "Crash scan after me tab",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-chat tab return",
+        "title":  "Tap chat tab return",
+        "status":  "passed",
+        "notes":  "对话 [0,2445][300,2486]",
+        "snapshot":  "15-before-chat-tab-return"
+    },
+    {
+        "id":  "crash-chat tab return",
+        "title":  "Crash scan after chat tab return",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "chat-turns",
+        "title":  "Chat turn coverage",
+        "status":  "warning",
+        "notes":  "skipped by -SkipChatTurns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-chat tab for quick model",
+        "title":  "Tap chat tab for quick model",
+        "status":  "passed",
+        "notes":  "对话 [0,2445][300,2486]",
+        "snapshot":  "17-before-chat-tab-for-quick-model"
+    },
+    {
+        "id":  "tap-quick model switch",
+        "title":  "Tap quick model switch",
+        "status":  "passed",
+        "notes":  "quick-model-switch [0,466][1200,552]",
+        "snapshot":  "20-before-quick-model-switch"
+    },
+    {
+        "id":  "tap-chat settings",
+        "title":  "Tap chat settings",
+        "status":  "passed",
+        "notes":  "agent-chat-settings-button [1041,187][1160,306]",
+        "snapshot":  "22-before-chat-settings"
+    },
+    {
+        "id":  "wait-chat settings sheet",
+        "title":  "Wait chat settings sheet",
+        "status":  "passed",
+        "notes":  "chat-settings-sheet",
+        "snapshot":  "23-wait-chat-settings-sheet"
+    },
+    {
+        "id":  "wait-duplex toggle present",
+        "title":  "Wait duplex toggle present",
+        "status":  "passed",
+        "notes":  "chat-duplex-toggle",
+        "snapshot":  "24-wait-duplex-toggle-present"
+    },
+    {
+        "id":  "tap-voice mode toggle",
+        "title":  "Tap voice mode toggle",
+        "status":  "passed",
+        "notes":  "chat-voice-mode-toggle [1028,2256][1160,2388]",
+        "snapshot":  "28-before-voice-mode-toggle"
+    },
+    {
+        "id":  "tap-realtime voice button",
+        "title":  "Tap realtime voice button",
+        "status":  "passed",
+        "notes":  "chat-voice-action-button [40,2243][822,2388]",
+        "snapshot":  "33-before-realtime-voice-button"
+    },
+    {
+        "id":  "wait-text-mode-after-voice-controls-return",
+        "title":  "Wait text-mode-after-voice-controls-return",
+        "status":  "passed",
+        "notes":  "chat-text-input",
+        "snapshot":  "39-wait-text-mode-after-voice-controls-return"
+    },
+    {
+        "id":  "text-mode-after-voice-controls-returned",
+        "title":  "Text chat mode after-voice-controls returned",
+        "status":  "passed",
+        "notes":  "voice mode closed",
+        "snapshot":  ""
+    },
+    {
+        "id":  "crash-chat-controls",
+        "title":  "Crash scan after chat-controls",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "tap-chat tab for drawer",
+        "title":  "Tap chat tab for drawer",
+        "status":  "passed",
+        "notes":  "对话 [0,2445][300,2486]",
+        "snapshot":  "40-before-chat-tab-for-drawer"
+    },
+    {
+        "id":  "text-mode-before-drawer",
+        "title":  "Text chat mode before-drawer",
+        "status":  "passed",
+        "notes":  "chat-text-input",
+        "snapshot":  "41-text-mode-before-drawer"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-memory",
+        "title":  "Wait chat-ready-before-drawer-memory",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "42-wait-chat-ready-before-drawer-memory"
+    },
+    {
+        "id":  "wait-chat-ready-memory",
+        "title":  "Wait chat-ready-memory",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "45-wait-chat-ready-memory"
+    },
+    {
+        "id":  "tap-drawer-open-memory",
+        "title":  "Tap drawer-open-memory",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "46-before-drawer-open-memory"
+    },
+    {
+        "id":  "wait-drawer-memory",
+        "title":  "Wait drawer-memory",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "47-wait-drawer-memory"
+    },
+    {
+        "id":  "tap-drawer-item-memory",
+        "title":  "Tap drawer-item-memory",
+        "status":  "passed",
+        "notes":  "记忆中心 [192,905][831,972]",
+        "snapshot":  "48-before-drawer-item-memory"
+    },
+    {
+        "id":  "crash-drawer-memory",
+        "title":  "Crash scan after drawer-memory",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "return-chat-after-drawer-memory",
+        "title":  "Return to chat after-drawer-memory",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "53-return-chat-after-drawer-memory-0"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-workflows",
+        "title":  "Wait chat-ready-before-drawer-workflows",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "54-wait-chat-ready-before-drawer-workflows"
+    },
+    {
+        "id":  "wait-chat-ready-workflows",
+        "title":  "Wait chat-ready-workflows",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "57-wait-chat-ready-workflows"
+    },
+    {
+        "id":  "tap-drawer-open-workflows",
+        "title":  "Tap drawer-open-workflows",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "58-before-drawer-open-workflows"
+    },
+    {
+        "id":  "wait-drawer-workflows",
+        "title":  "Wait drawer-workflows",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "59-wait-drawer-workflows"
+    },
+    {
+        "id":  "tap-drawer-item-workflows",
+        "title":  "Tap drawer-item-workflows",
+        "status":  "passed",
+        "notes":  "工作流 [192,1073][831,1140]",
+        "snapshot":  "60-before-drawer-item-workflows"
+    },
+    {
+        "id":  "crash-drawer-workflows",
+        "title":  "Crash scan after drawer-workflows",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "return-chat-after-drawer-workflows",
+        "title":  "Return to chat after-drawer-workflows",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "65-return-chat-after-drawer-workflows-0"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-skills",
+        "title":  "Wait chat-ready-before-drawer-skills",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "66-wait-chat-ready-before-drawer-skills"
+    },
+    {
+        "id":  "wait-chat-ready-skills",
+        "title":  "Wait chat-ready-skills",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "69-wait-chat-ready-skills"
+    },
+    {
+        "id":  "tap-drawer-open-skills",
+        "title":  "Tap drawer-open-skills",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "70-before-drawer-open-skills"
+    },
+    {
+        "id":  "wait-drawer-skills",
+        "title":  "Wait drawer-skills",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "71-wait-drawer-skills"
+    },
+    {
+        "id":  "tap-drawer-item-skills",
+        "title":  "Tap drawer-item-skills",
+        "status":  "passed",
+        "notes":  "技能管理 [192,1241][831,1308]",
+        "snapshot":  "72-before-drawer-item-skills"
+    },
+    {
+        "id":  "crash-drawer-skills",
+        "title":  "Crash scan after drawer-skills",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "return-chat-after-drawer-skills",
+        "title":  "Return to chat after-drawer-skills",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "77-return-chat-after-drawer-skills-0"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-logs",
+        "title":  "Wait chat-ready-before-drawer-logs",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "78-wait-chat-ready-before-drawer-logs"
+    },
+    {
+        "id":  "wait-chat-ready-logs",
+        "title":  "Wait chat-ready-logs",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "81-wait-chat-ready-logs"
+    },
+    {
+        "id":  "tap-drawer-open-logs",
+        "title":  "Tap drawer-open-logs",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "82-before-drawer-open-logs"
+    },
+    {
+        "id":  "wait-drawer-logs",
+        "title":  "Wait drawer-logs",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "83-wait-drawer-logs"
+    },
+    {
+        "id":  "tap-drawer-item-logs",
+        "title":  "Tap drawer-item-logs",
+        "status":  "passed",
+        "notes":  "运行日志 [192,1409][831,1476]",
+        "snapshot":  "84-before-drawer-item-logs"
+    },
+    {
+        "id":  "crash-drawer-logs",
+        "title":  "Crash scan after drawer-logs",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "return-chat-after-drawer-logs",
+        "title":  "Return to chat after-drawer-logs",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "89-return-chat-after-drawer-logs-0"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-desktop",
+        "title":  "Wait chat-ready-before-drawer-desktop",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "90-wait-chat-ready-before-drawer-desktop"
+    },
+    {
+        "id":  "wait-chat-ready-desktop",
+        "title":  "Wait chat-ready-desktop",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "93-wait-chat-ready-desktop"
+    },
+    {
+        "id":  "tap-drawer-open-desktop",
+        "title":  "Tap drawer-open-desktop",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "94-before-drawer-open-desktop"
+    },
+    {
+        "id":  "wait-drawer-desktop",
+        "title":  "Wait drawer-desktop",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "95-wait-drawer-desktop"
+    },
+    {
+        "id":  "tap-drawer-item-desktop",
+        "title":  "Tap drawer-item-desktop",
+        "status":  "passed",
+        "notes":  "桌面控制 [192,1711][831,1778]",
+        "snapshot":  "96-before-drawer-item-desktop"
+    },
+    {
+        "id":  "crash-drawer-desktop",
+        "title":  "Crash scan after drawer-desktop",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "return-chat-after-drawer-desktop",
+        "title":  "Return to chat after-drawer-desktop",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "101-return-chat-after-drawer-desktop-0"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-wearables",
+        "title":  "Wait chat-ready-before-drawer-wearables",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "102-wait-chat-ready-before-drawer-wearables"
+    },
+    {
+        "id":  "wait-chat-ready-wearables",
+        "title":  "Wait chat-ready-wearables",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "105-wait-chat-ready-wearables"
+    },
+    {
+        "id":  "tap-drawer-open-wearables",
+        "title":  "Tap drawer-open-wearables",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "106-before-drawer-open-wearables"
+    },
+    {
+        "id":  "wait-drawer-wearables",
+        "title":  "Wait drawer-wearables",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "107-wait-drawer-wearables"
+    },
+    {
+        "id":  "tap-drawer-item-wearables",
+        "title":  "Tap drawer-item-wearables",
+        "status":  "passed",
+        "notes":  "可穿戴设备 [192,1879][831,1946]",
+        "snapshot":  "108-before-drawer-item-wearables"
+    },
+    {
+        "id":  "crash-drawer-wearables",
+        "title":  "Crash scan after drawer-wearables",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "return-chat-after-drawer-wearables",
+        "title":  "Return to chat after-drawer-wearables",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "113-return-chat-after-drawer-wearables-0"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-scan",
+        "title":  "Wait chat-ready-before-drawer-scan",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "114-wait-chat-ready-before-drawer-scan"
+    },
+    {
+        "id":  "wait-chat-ready-scan",
+        "title":  "Wait chat-ready-scan",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "117-wait-chat-ready-scan"
+    },
+    {
+        "id":  "tap-drawer-open-scan",
+        "title":  "Tap drawer-open-scan",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "118-before-drawer-open-scan"
+    },
+    {
+        "id":  "wait-drawer-scan",
+        "title":  "Wait drawer-scan",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "119-wait-drawer-scan"
+    },
+    {
+        "id":  "tap-drawer-item-scan",
+        "title":  "Tap drawer-item-scan",
+        "status":  "passed",
+        "notes":  "扫码连接 [192,2047][831,2114]",
+        "snapshot":  "120-before-drawer-item-scan"
+    },
+    {
+        "id":  "crash-drawer-scan",
+        "title":  "Crash scan after drawer-scan",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "return-chat-after-drawer-scan",
+        "title":  "Return to chat after-drawer-scan",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "125-return-chat-after-drawer-scan-0"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-permissions",
+        "title":  "Wait chat-ready-before-drawer-permissions",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "126-wait-chat-ready-before-drawer-permissions"
+    },
+    {
+        "id":  "wait-chat-ready-permissions",
+        "title":  "Wait chat-ready-permissions",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "129-wait-chat-ready-permissions"
+    },
+    {
+        "id":  "tap-drawer-open-permissions",
+        "title":  "Tap drawer-open-permissions",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "130-before-drawer-open-permissions"
+    },
+    {
+        "id":  "wait-drawer-permissions",
+        "title":  "Wait drawer-permissions",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "131-wait-drawer-permissions"
+    },
+    {
+        "id":  "tap-drawer-item-permissions",
+        "title":  "Tap drawer-item-permissions",
+        "status":  "passed",
+        "notes":  "权限管理 [192,2349][831,2416]",
+        "snapshot":  "132-before-drawer-item-permissions"
+    },
+    {
+        "id":  "crash-drawer-permissions",
+        "title":  "Crash scan after drawer-permissions",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "return-chat-after-drawer-permissions",
+        "title":  "Return to chat after-drawer-permissions",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "137-return-chat-after-drawer-permissions-0"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-agent-account",
+        "title":  "Wait chat-ready-before-drawer-agent-account",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "138-wait-chat-ready-before-drawer-agent-account"
+    },
+    {
+        "id":  "wait-chat-ready-agent-account",
+        "title":  "Wait chat-ready-agent-account",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "141-wait-chat-ready-agent-account"
+    },
+    {
+        "id":  "tap-drawer-open-agent-account",
+        "title":  "Tap drawer-open-agent-account",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "142-before-drawer-open-agent-account"
+    },
+    {
+        "id":  "wait-drawer-agent-account",
+        "title":  "Wait drawer-agent-account",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "143-wait-drawer-agent-account"
+    },
+    {
+        "id":  "tap-drawer-item-agent-account",
+        "title":  "Tap drawer-item-agent-account",
+        "status":  "passed",
+        "notes":  "Agent 账号 [53,2467][907,2486]",
+        "snapshot":  "144-before-drawer-item-agent-account"
+    },
+    {
+        "id":  "crash-drawer-agent-account",
+        "title":  "Crash scan after drawer-agent-account",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "return-chat-after-drawer-agent-account",
+        "title":  "Return to chat after-drawer-agent-account",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "149-return-chat-after-drawer-agent-account-0"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-team-space",
+        "title":  "Wait chat-ready-before-drawer-team-space",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "150-wait-chat-ready-before-drawer-team-space"
+    },
+    {
+        "id":  "wait-chat-ready-team-space",
+        "title":  "Wait chat-ready-team-space",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "153-wait-chat-ready-team-space"
+    },
+    {
+        "id":  "tap-drawer-open-team-space",
+        "title":  "Tap drawer-open-team-space",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "154-before-drawer-open-team-space"
+    },
+    {
+        "id":  "wait-drawer-team-space",
+        "title":  "Wait drawer-team-space",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "155-wait-drawer-team-space"
+    },
+    {
+        "id":  "tap-drawer-item-team-space",
+        "title":  "Tap drawer-item-team-space",
+        "status":  "warning",
+        "notes":  "node not present",
+        "snapshot":  "156-before-drawer-item-team-space"
+    },
+    {
+        "id":  "tap-drawer-item-team-space",
+        "title":  "Tap drawer-item-team-space",
+        "status":  "passed",
+        "notes":  "团队空间 [192,2222][831,2289]",
+        "snapshot":  "157-before-drawer-item-team-space"
+    },
+    {
+        "id":  "crash-drawer-team-space",
+        "title":  "Crash scan after drawer-team-space",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "return-chat-after-drawer-team-space",
+        "title":  "Return to chat after-drawer-team-space",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "162-return-chat-after-drawer-team-space-0"
+    },
+    {
+        "id":  "wait-chat-ready-before-drawer-console",
+        "title":  "Wait chat-ready-before-drawer-console",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "163-wait-chat-ready-before-drawer-console"
+    },
+    {
+        "id":  "wait-chat-ready-console",
+        "title":  "Wait chat-ready-console",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "166-wait-chat-ready-console"
+    },
+    {
+        "id":  "tap-drawer-open-console",
+        "title":  "Tap drawer-open-console",
+        "status":  "passed",
+        "notes":  "agent-chat-drawer-button [40,187][159,306]",
+        "snapshot":  "167-before-drawer-open-console"
+    },
+    {
+        "id":  "wait-drawer-console",
+        "title":  "Wait drawer-console",
+        "status":  "passed",
+        "notes":  "管理",
+        "snapshot":  "168-wait-drawer-console"
+    },
+    {
+        "id":  "tap-drawer-item-console",
+        "title":  "Tap drawer-item-console",
+        "status":  "warning",
+        "notes":  "node not present",
+        "snapshot":  "169-before-drawer-item-console"
+    },
+    {
+        "id":  "tap-drawer-item-console",
+        "title":  "Tap drawer-item-console",
+        "status":  "passed",
+        "notes":  "Agent 完整控制台 [192,2417][831,2484]",
+        "snapshot":  "170-before-drawer-item-console"
+    },
+    {
+        "id":  "crash-drawer-console",
+        "title":  "Crash scan after drawer-console",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "return-chat-after-drawer-console",
+        "title":  "Return to chat after-drawer-console",
+        "status":  "passed",
+        "notes":  "agent-chat-screen",
+        "snapshot":  "175-return-chat-after-drawer-console-0"
+    },
+    {
+        "id":  "tap-me tab for local model",
+        "title":  "Tap me tab for local model",
+        "status":  "passed",
+        "notes":  "我的 [900,2445][1200,2486]",
+        "snapshot":  "176-before-me-tab-for-local-model"
+    },
+    {
+        "id":  "tap-scroll-settings menu",
+        "title":  "Tap scroll settings menu",
+        "status":  "passed",
+        "notes":  "设置 [234,1957][1035,2024]",
+        "snapshot":  "178-scroll-settings-menu-1"
+    },
+    {
+        "id":  "wait-settings screen",
+        "title":  "Wait settings screen",
+        "status":  "passed",
+        "notes":  "设置",
+        "snapshot":  "179-wait-settings-screen"
+    },
+    {
+        "id":  "tap-scroll-local ai model",
+        "title":  "Tap scroll local ai model",
+        "status":  "passed",
+        "notes":  "本地 AI 模型 [56,340][1144,349]",
+        "snapshot":  "182-scroll-local-ai-model-2"
+    },
+    {
+        "id":  "wait-local ai model screen",
+        "title":  "Wait local ai model screen",
+        "status":  "passed",
+        "notes":  "local-ai-model-screen",
+        "snapshot":  "183-wait-local-ai-model-screen"
+    },
+    {
+        "id":  "crash-local-ai-model",
+        "title":  "Crash scan after local-ai-model",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    },
+    {
+        "id":  "crash-final",
+        "title":  "Crash scan after final",
+        "status":  "passed",
+        "notes":  "no fatal patterns",
+        "snapshot":  ""
+    }
+]

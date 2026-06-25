@@ -1,0 +1,43 @@
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import Stripe from 'stripe';
+import { CreatePaymentIntentDto } from './dto/payment.dto';
+
+@Injectable()
+export class StripeService {
+  private stripe: Stripe;
+
+  constructor(private configService: ConfigService) {
+    const secretKey = this.configService.get<string>('STRIPE_SECRET_KEY');
+    if (!secretKey) {
+      throw new Error('STRIPE_SECRET_KEY is not configured');
+    }
+    this.stripe = new Stripe(secretKey, {
+      apiVersion: '2023-08-16',
+    });
+  }
+
+  async createPaymentIntent(dto: CreatePaymentIntentDto) {
+    const amount = Math.round(dto.amount * 100); // 转换为分
+
+    const paymentIntent = await this.stripe.paymentIntents.create({
+      amount,
+      currency: dto.currency.toLowerCase(),
+      metadata: {
+        userId: dto.userId || '',
+        description: dto.description || '',
+        paymentId: dto.paymentId || '', // 用于Webhook回调时查找支付记录
+      },
+    });
+
+    return {
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+    };
+  }
+
+  async confirmPayment(paymentIntentId: string) {
+    return await this.stripe.paymentIntents.retrieve(paymentIntentId);
+  }
+}
+

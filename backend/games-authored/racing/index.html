@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>霓虹飞驰 · Neon Rush</title>
+<style>
+  html,body{margin:0;height:100%;background:#070a14;overflow:hidden;touch-action:none;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#fff}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  canvas{display:block;touch-action:none;border-radius:10px}
+  #hud{position:fixed;top:max(10px,env(safe-area-inset-top));left:0;right:0;text-align:center;pointer-events:none}
+  #hud .sc{font-size:26px;font-weight:900;background:linear-gradient(90deg,#22d3ee,#7be0a0);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  #hud .sp{font-size:13px;color:#9fb3d6;font-weight:700}
+  #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(7,10,20,.9);text-align:center;padding:24px}
+  #overlay h1{font-size:30px;margin:0 0 6px;background:linear-gradient(90deg,#22d3ee,#7be0a0,#ffd166);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  #overlay p{color:#9fb3d6;font-size:14px;margin:4px 0}
+  #obtn{margin-top:18px;padding:14px 34px;border:none;border-radius:14px;background:linear-gradient(135deg,#22d3ee,#3b82f6);color:#fff;font-size:18px;font-weight:900}
+  .hide{display:none!important}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<div id="hud"><div class="sc"><span id="score">0</span> m</div><div class="sp">速度 <span id="spd">1.0</span>x · 最佳 <span id="best">0</span></div></div>
+<div id="overlay"><h1>霓虹飞驰</h1><p>左右滑动或方向键变道<br>躲开来车,捡能量加分,别撞车</p><button id="obtn">开始飞驰</button></div>
+<script>
+(function(){
+"use strict";
+var CFG=(typeof window!=="undefined"&&window.__GAME_CONFIG)||{};
+if(CFG.title){try{document.title=CFG.title;var h=document.querySelector("#overlay h1");if(h)h.textContent=CFG.title;}catch(e){}}
+var DIFF=CFG.difficulty||"normal";
+var D={easy:{base:3.4,acc:0.00035,spawn:78,lanes:3},normal:{base:4.4,acc:0.0006,spawn:60,lanes:4},hard:{base:6,acc:0.0011,spawn:44,lanes:5}}[DIFF]||{base:4.4,acc:0.0006,spawn:60,lanes:4};
+var DPR=Math.min(window.devicePixelRatio||1,2),cv=document.getElementById("c"),ctx=cv.getContext("2d");
+var LANES=D.lanes,W=0,H=0,laneW=0;
+function resize(){W=Math.min(window.innerWidth-12,Math.max(300,LANES*88));H=window.innerHeight-12;laneW=W/LANES;cv.width=W*DPR;cv.height=H*DPR;cv.style.width=W+"px";cv.style.height=H+"px";ctx.setTransform(DPR,0,0,DPR,0,0);}
+window.addEventListener("resize",resize);resize();
+var elScore=document.getElementById("score"),elSpd=document.getElementById("spd"),elBest=document.getElementById("best"),overlay=document.getElementById("overlay"),obtn=document.getElementById("obtn");
+var best=0;try{best=+(localStorage.getItem("neon_rush_best")||0)||0;}catch(e){}elBest.textContent=best;
+var lane,targetX,carX,carY,carW,carH,obstacles,coins,dist,speed,spawnT,running,roadOff,shake;
+function reset(){lane=Math.floor(LANES/2);carW=laneW*0.56;carH=carW*1.6;carX=laneCx(lane);targetX=carX;carY=H-carH-30;obstacles=[];coins=[];dist=0;speed=D.base;spawnT=0;running=true;roadOff=0;shake=0;elScore.textContent=0;}
+function laneCx(l){return l*laneW+laneW/2;}
+function setLane(l){lane=Math.max(0,Math.min(LANES-1,l));targetX=laneCx(lane);}
+var ts=null;
+cv.addEventListener("touchstart",function(e){ts=e.touches[0].clientX;e.preventDefault&&e.preventDefault();},{passive:false});
+cv.addEventListener("touchmove",function(e){if(ts===null)return;var dx=e.touches[0].clientX-ts;if(Math.abs(dx)>28){setLane(lane+(dx>0?1:-1));ts=e.touches[0].clientX;}e.preventDefault&&e.preventDefault();},{passive:false});
+cv.addEventListener("touchend",function(){ts=null;});
+window.addEventListener("keydown",function(e){if(e.key==="ArrowLeft")setLane(lane-1);else if(e.key==="ArrowRight")setLane(lane+1);});
+function spawn(){
+  var l=Math.floor(Math.random()*LANES);
+  if(Math.random()<0.16){coins.push({l:l,x:laneCx(l),y:-30});}
+  else{
+    // 避免堵死所有车道:同一批不占满
+    obstacles.push({l:l,x:laneCx(l),y:-carH,w:laneW*0.56,h:laneW*0.56*1.6,c:["#ff7b9c","#ffd166","#c084fc","#fb923c"][Math.floor(Math.random()*4)]});
+  }
+}
+function hit(a,bx,by,bw,bh){return Math.abs(a.x-bx)<(a.w+bw)/2*0.82 && Math.abs(a.y-by)<(a.h+bh)/2*0.82;}
+function step(){
+  if(!running)return;
+  speed+=D.acc; dist+=speed*0.6;
+  carX+=(targetX-carX)*0.25;
+  roadOff=(roadOff+speed)%40;
+  spawnT++;var gap=Math.max(26,D.spawn-Math.floor(dist/120));
+  if(spawnT>=gap){spawnT=0;spawn();}
+  for(var i=obstacles.length-1;i>=0;i--){var o=obstacles[i];o.y+=speed;
+    if(hit({x:carX,y:carY,w:carW,h:carH},o.x,o.y,o.w,o.h)){gameOver();return;}
+    if(o.y>H+40)obstacles.splice(i,1);}
+  for(var c=coins.length-1;c>=0;c--){var co=coins[c];co.y+=speed;
+    if(Math.abs(co.x-carX)<carW*0.7&&Math.abs(co.y-carY)<carH*0.7){dist+=50;coins.splice(c,1);continue;}
+    if(co.y>H+30)coins.splice(c,1);}
+  if(shake>0)shake--;
+  elScore.textContent=Math.floor(dist);elSpd.textContent=(speed/D.base).toFixed(1);
+}
+function drawCar(x,y,w,h,color,flip){
+  ctx.save();ctx.translate(x,y);if(flip)ctx.scale(1,-1);
+  ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=12;
+  roundRect(-w/2,-h/2,w,h,7);ctx.fill();ctx.shadowBlur=0;
+  ctx.fillStyle="rgba(0,0,0,.35)";roundRect(-w/2+5,-h/2+h*0.18,w-10,h*0.22,4);ctx.fill();roundRect(-w/2+5,h/2-h*0.34,w-10,h*0.2,4);ctx.fill();
+  ctx.restore();
+}
+function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function draw(){
+  ctx.save();if(shake>0)ctx.translate((Math.random()-0.5)*8,(Math.random()-0.5)*8);
+  ctx.fillStyle="#11151f";ctx.fillRect(0,0,W,H);
+  // 车道虚线
+  ctx.strokeStyle="rgba(255,255,255,.18)";ctx.lineWidth=3;ctx.setLineDash([22,18]);ctx.lineDashOffset=-roadOff;
+  for(var i=1;i<LANES;i++){ctx.beginPath();ctx.moveTo(i*laneW,0);ctx.lineTo(i*laneW,H);ctx.stroke();}
+  ctx.setLineDash([]);
+  // 路缘
+  ctx.fillStyle="#22d3ee";ctx.globalAlpha=0.5;ctx.fillRect(0,0,3,H);ctx.fillRect(W-3,0,3,H);ctx.globalAlpha=1;
+  // coins
+  coins.forEach(function(co){ctx.fillStyle="#ffd166";ctx.shadowColor="#ffd166";ctx.shadowBlur=12;ctx.beginPath();ctx.arc(co.x,co.y,10,0,6.28);ctx.fill();ctx.shadowBlur=0;ctx.fillStyle="#7a5800";ctx.font="bold 12px sans-serif";ctx.textAlign="center";ctx.fillText("$",co.x,co.y+4);});
+  // obstacles (oncoming cars)
+  obstacles.forEach(function(o){drawCar(o.x,o.y,o.w,o.h,o.c,true);});
+  // player
+  drawCar(carX,carY,carW,carH,"#22d3ee",false);
+  ctx.restore();
+}
+function gameOver(){running=false;shake=12;try{window.render_game_to_text=function(){return JSON.stringify({score:Math.floor(dist),best:best,over:true});};if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'gameover',score:Math.max(0,Math.floor(dist))}));}catch(e){}if(Math.floor(dist)>best){best=Math.floor(dist);try{localStorage.setItem("neon_rush_best",best);}catch(e){}elBest.textContent=best;}
+  overlay.classList.remove("hide");overlay.querySelector("h1").textContent="撞车了!";overlay.querySelector("p").innerHTML=Math.floor(dist)+" m · 最佳 "+best+" m";obtn.textContent="再来";}
+function loop(){step();draw();requestAnimationFrame(loop);}
+obtn.addEventListener("click",function(){overlay.classList.add("hide");reset();});
+reset();running=false;draw();requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

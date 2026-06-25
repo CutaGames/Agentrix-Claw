@@ -1,0 +1,2946 @@
+﻿{
+  "config": {
+    "configFile": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\playwright.prod.config.ts",
+    "rootDir": "D:/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/frontend",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "D:/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "D:/wsl/Ubuntu-24.04/Code/Agentrix/Agentrix-website/tests/e2e/frontend",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 90000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.60.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "web-v4-deep.spec.ts",
+      "file": "web-v4-deep.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "搂1 Additional Public Pages",
+          "file": "web-v4-deep.spec.ts",
+          "line": 24,
+          "column": 6,
+          "specs": [
+            {
+              "title": "WP-6: Features page loads with content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 40126,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:09:34.453Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-44d2f6c1f13b1c832f85",
+              "file": "web-v4-deep.spec.ts",
+              "line": 25,
+              "column": 7
+            },
+            {
+              "title": "WP-7: Security page loads with content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 30197,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:10:17.277Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-fd9f7bc8d1ae9b8a0d65",
+              "file": "web-v4-deep.spec.ts",
+              "line": 32,
+              "column": 7
+            },
+            {
+              "title": "WP-8: Enterprise page loads with content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 22692,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:10:47.881Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-605d8832b9b479f77b0c",
+              "file": "web-v4-deep.spec.ts",
+              "line": 39,
+              "column": 7
+            },
+            {
+              "title": "WP-9: Developers page loads with valid links",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 43113,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:11:10.914Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-7773489e1469fd745455",
+              "file": "web-v4-deep.spec.ts",
+              "line": 46,
+              "column": 7
+            },
+            {
+              "title": "WP-10: Skills page loads with skill cards",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 37177,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:11:54.154Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-93c3addfb739c92d9fd7",
+              "file": "web-v4-deep.spec.ts",
+              "line": 56,
+              "column": 7
+            },
+            {
+              "title": "WP-11: Tools page loads with content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 18333,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:12:31.449Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-7225eef95c2b223d362e",
+              "file": "web-v4-deep.spec.ts",
+              "line": 64,
+              "column": 7
+            },
+            {
+              "title": "WP-12: Manifesto page loads with brand content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 16236,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:12:49.905Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-662a802e305e7ca83121",
+              "file": "web-v4-deep.spec.ts",
+              "line": 71,
+              "column": 7
+            },
+            {
+              "title": "WP-13: Hardware page loads with product info",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 11675,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:13:06.230Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-c4799d96f69cb8d2fb81",
+              "file": "web-v4-deep.spec.ts",
+              "line": 78,
+              "column": 7
+            },
+            {
+              "title": "WP-14: Family page loads with family plan info",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 25368,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:13:17.991Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-53b3a390c7f641899a05",
+              "file": "web-v4-deep.spec.ts",
+              "line": 85,
+              "column": 7
+            },
+            {
+              "title": "WP-15: Clans page loads with 6 clan sections",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 11360,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:13:43.408Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-225a96a8de3005e69d8f",
+              "file": "web-v4-deep.spec.ts",
+              "line": 92,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "搂2 Console Deep Pages (Authenticated)",
+          "file": "web-v4-deep.spec.ts",
+          "line": 107,
+          "column": 6,
+          "specs": [
+            {
+              "title": "WC-4: Console Pet Souls page loads with clan selector",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 11602,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:13:54.812Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-de64d72be9718c0bdb86",
+              "file": "web-v4-deep.spec.ts",
+              "line": 113,
+              "column": 7
+            },
+            {
+              "title": "WC-9: Console Settings page loads with form",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 11968,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:14:06.493Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-74a9b5cf77d5e3bbd91c",
+              "file": "web-v4-deep.spec.ts",
+              "line": 122,
+              "column": 7
+            },
+            {
+              "title": "WC-10: Console Developer page loads with API key section",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 19307,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected pattern: \u001b[32m/API|Key|瀵嗛挜|Token|寮€鍙?i\u001b[39m\nReceived string:  \u001b[31m\"AgentrixPet-as-Agent EconomyRaise a living agent that companions you, works for you, and earns for you 鈥?across Mobile, Desktop, Web, Watch and Toy.馃グClawLv.7LoveIntimacy XP342 / 500Energy72%\\\"earned +$2.40 from skill marketplace 路 3m ago\\\"Living Pet10 emotionsMPC Wallet3-share secureAXP Points$0.001 / pointSkill MarketA2A 路 X402漏 2026 Agentrix Network. All rights reserved.AgentrixWelcome backSign in to your Agent Console.MetaMaskConnect securelyWalletConnectConnect securelyCoinbase WalletConnect securelyOr continue withContinue with GoogleContinue with XContinue with DiscordContinue with EmailBy connecting, you agree to our Terms of Service and Privacy Policy.All social logins auto-create a secure MPC wallet for you{\\\"props\\\":{\\\"pageProps\\\":{}},\\\"page\\\":\\\"/auth/login\\\",\\\"query\\\":{},\\\"buildId\\\":\\\"Fx5J8DZvpyvPL4Q3gixJu\\\",\\\"nextExport\\\":true,\\\"autoExport\\\":true,\\\"isFallback\\\":false,\\\"scriptLoader\\\":[]}\"\u001b[39m",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected pattern: \u001b[32m/API|Key|瀵嗛挜|Token|寮€鍙?i\u001b[39m\nReceived string:  \u001b[31m\"AgentrixPet-as-Agent EconomyRaise a living agent that companions you, works for you, and earns for you 鈥?across Mobile, Desktop, Web, Watch and Toy.馃グClawLv.7LoveIntimacy XP342 / 500Energy72%\\\"earned +$2.40 from skill marketplace 路 3m ago\\\"Living Pet10 emotionsMPC Wallet3-share secureAXP Points$0.001 / pointSkill MarketA2A 路 X402漏 2026 Agentrix Network. All rights reserved.AgentrixWelcome backSign in to your Agent Console.MetaMaskConnect securelyWalletConnectConnect securelyCoinbase WalletConnect securelyOr continue withContinue with GoogleContinue with XContinue with DiscordContinue with EmailBy connecting, you agree to our Terms of Service and Privacy Policy.All social logins auto-create a secure MPC wallet for you{\\\"props\\\":{\\\"pageProps\\\":{}},\\\"page\\\":\\\"/auth/login\\\",\\\"query\\\":{},\\\"buildId\\\":\\\"Fx5J8DZvpyvPL4Q3gixJu\\\",\\\"nextExport\\\":true,\\\"autoExport\\\":true,\\\"isFallback\\\":false,\\\"scriptLoader\\\":[]}\"\u001b[39m\n    at D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts:137:21",
+                        "location": {
+                          "file": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts",
+                          "column": 21,
+                          "line": 137
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 135 |\u001b[39m     expect(alive)\u001b[33m.\u001b[39mtoBe(\u001b[32m'complete'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 136 |\u001b[39m     \u001b[36mconst\u001b[39m content \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mtextContent(\u001b[32m'body'\u001b[39m)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 137 |\u001b[39m     expect(content)\u001b[33m.\u001b[39mtoMatch(\u001b[35m/API|Key|瀵嗛挜|Token|寮€鍙?i\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                     \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 138 |\u001b[39m   })\u001b[33m;\u001b[39m\n \u001b[90m 139 |\u001b[39m\n \u001b[90m 140 |\u001b[39m   test(\u001b[32m'WC-11: Console Family page loads with member list'\u001b[39m\u001b[33m,\u001b[39m \u001b[36masync\u001b[39m ({ page }) \u001b[33m=>\u001b[39m {\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts",
+                            "column": 21,
+                            "line": 137
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected pattern: \u001b[32m/API|Key|瀵嗛挜|Token|寮€鍙?i\u001b[39m\nReceived string:  \u001b[31m\"AgentrixPet-as-Agent EconomyRaise a living agent that companions you, works for you, and earns for you 鈥?across Mobile, Desktop, Web, Watch and Toy.馃グClawLv.7LoveIntimacy XP342 / 500Energy72%\\\"earned +$2.40 from skill marketplace 路 3m ago\\\"Living Pet10 emotionsMPC Wallet3-share secureAXP Points$0.001 / pointSkill MarketA2A 路 X402漏 2026 Agentrix Network. All rights reserved.AgentrixWelcome backSign in to your Agent Console.MetaMaskConnect securelyWalletConnectConnect securelyCoinbase WalletConnect securelyOr continue withContinue with GoogleContinue with XContinue with DiscordContinue with EmailBy connecting, you agree to our Terms of Service and Privacy Policy.All social logins auto-create a secure MPC wallet for you{\\\"props\\\":{\\\"pageProps\\\":{}},\\\"page\\\":\\\"/auth/login\\\",\\\"query\\\":{},\\\"buildId\\\":\\\"Fx5J8DZvpyvPL4Q3gixJu\\\",\\\"nextExport\\\":true,\\\"autoExport\\\":true,\\\"isFallback\\\":false,\\\"scriptLoader\\\":[]}\"\u001b[39m\n\n  135 |     expect(alive).toBe('complete');\n  136 |     const content = await page.textContent('body');\n> 137 |     expect(content).toMatch(/API|Key|瀵嗛挜|Token|寮€鍙?i);\n      |                     ^\n  138 |   });\n  139 |\n  140 |   test('WC-11: Console Family page loads with member list', async ({ page }) => {\n    at D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts:137:21"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:14:18.541Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\test-results\\web-v4-deep-搂2-Console-Dee-a0927--loads-with-API-key-section-chromium\\error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\test-results\\web-v4-deep-搂2-Console-Dee-a0927--loads-with-API-key-section-chromium\\trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts",
+                        "column": 21,
+                        "line": 137
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-6e85027dfdda36d271f4",
+              "file": "web-v4-deep.spec.ts",
+              "line": 131,
+              "column": 7
+            },
+            {
+              "title": "WC-11: Console Family page loads with member list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 16875,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:14:40.614Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-bed36c2b04b761858ca6",
+              "file": "web-v4-deep.spec.ts",
+              "line": 140,
+              "column": 7
+            },
+            {
+              "title": "WC-12: Console Presence page loads with device list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 16671,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:14:58.654Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-becff17674367f01b955",
+              "file": "web-v4-deep.spec.ts",
+              "line": 149,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "搂3 Marketplace Deep Pages",
+          "file": "web-v4-deep.spec.ts",
+          "line": 163,
+          "column": 6,
+          "specs": [
+            {
+              "title": "WM-5: Auction page loads with listing",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 15449,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:15:15.382Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-0d5efc0beb89b3b30918",
+              "file": "web-v4-deep.spec.ts",
+              "line": 168,
+              "column": 7
+            },
+            {
+              "title": "WM-6: Leaderboard page loads with ranking data",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 18122,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:15:30.922Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-9d5a73f62d5efbe3a3dc",
+              "file": "web-v4-deep.spec.ts",
+              "line": 178,
+              "column": 7
+            },
+            {
+              "title": "WM-7: Creator page loads with creator panel",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 14801,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:15:49.102Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-d9432fb49a78a519b7e9",
+              "file": "web-v4-deep.spec.ts",
+              "line": 187,
+              "column": 7
+            },
+            {
+              "title": "WM-8: Sell page loads with upload form",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 47356,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:16:03.984Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-6da186ef9a6ea5f1ff02",
+              "file": "web-v4-deep.spec.ts",
+              "line": 197,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "搂4 Global Interactions",
+          "file": "web-v4-deep.spec.ts",
+          "line": 212,
+          "column": 6,
+          "specs": [
+            {
+              "title": "WG-3: Language switch changes page text",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 30532,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mnot\u001b[2m.\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: not \u001b[32m\"AGENTRIXProductMarketPricingDevelopersEnterpriseFamilyDownloads馃寪ENSign inGet startedAgentrix v4 鈥?Pet-as-Agent Economy is hereEvery pet you raiseis an AI agent that earnsERC-8004 identity 路 MPC wallet 路 X402 micropay. Across Mobile / Desktop / Web / Watch / Toy 鈥?companions, works, earns.Download Mobile 鈥?start raisingOpen Web ConsoleMPC 3-share 路 signs on Mobile only1 AXP = $0.001 路 check-in / chat / refer / cashbackA2A 路 ERC-8004 路 X402 native6 clans 脳 unlimited skinsOne Agent 路 Five Screens 路 One Wallet v3.0 路 Major releaseBeyond chat 鈥?an agent that lives with you, works for you and earns for you8 brand-new v3 capabilities 鈥?all live in your Agent Console. Click any card to try it now.馃惥 Living Pet SystemDigital companion with 10 emotions, intimacy levels and Live2D-3D avatar 鈥?synced live across 5 surfaces.Try it now 馃挵 Unified Wallet (Fiat + Crypto)Fiat, stablecoins and native tokens in one view. Auto-refreshes every 10s. X402 / ERC-8004 on-chain settlement.Try it now 馃摗 Presence & Device HandoffSeamless conversation handoff between Mobile / Desktop / Web / Watch with multi-surface co-sign for L2/L3 actions.Try it now 馃應 Family Account 路 Shared AgentsOne family pet shared by all members, with per-role RBAC for household agents (Butler / Tutor / Chef鈥?.Try it now 鈿?Auto-Earn TimelineAgents earn autonomously via skill calls, A2A trades and commissions. Live timeline + budget pool caps.Try it now 馃 4-Tier Memory StoreWorking (30min TTL) / Episodic / Semantic / Procedural 鈥?vector search + tag filters.Try it now 馃敀 Privacy Fence 路 4 CategoriesFinancial / Health / Relationship / Location 鈥?TTL grants, one-click revoke, full audit log.Try it now 鉁嶏笍 Multi-Surface Co-signHigh-risk actions require independent signatures from Mobile + Desktop + Watch. MPC 3-share wallet for hardware-grade security.Try it now Open Agent Console 鈫扥ne account. Every capability.In Agentrix you are simultaneously consumer / creator / merchant / promoter / parent. Upgrading = more quota, not a new identity.馃敡 I supplyPublish skills / skins / products / hardware / games. Higher tier = more quota + more exposure.Learn creator revenue 鈫?馃懃 I consumeCompanion AI pets + let pets earn via tasks + shop in marketplace. Higher tier = more LLM budget + more pets.Start raising 鈫?馃 I connectEarn referral commissions + co-raise friends' pets + build guilds + be a KOL. Higher tier = higher commission + more AXP.Join referral 鈫?All interactions via Pet Agents 路 Settlement = MPC + X402 + Commission V4 路 Incentive = AXP pointsThree layers. One agent.Living is its soul. Doer is its hands. Economy is its wallet. All three share the same memory and identity.Living Agent 鈥?SoulPersonality, memory, appearance, voice. A growing AI companion. Live2D / Live3D synced across Mobile & Desktop with continuous emotional state.Persona profile + long-term memory vectorsLive2D companion + Live3D desktopWatch glance remindersDoer Agent 鈥?ExecutionSkill & task execution across 5 surfaces: Web Console board, Desktop multi-worktree parallel, Mobile push approval, Server 7脳24 long jobs.OpenClaw + Claude / GPT / Gemini 鈥orktree parallel + Skill CanvasNative MCP tool protocolEconomy Agent 鈥?EconomyAuto-Earn 鈥?agents accept jobs, settle, reinvest. X402 micropay / ERC-8004 reputation / A2A agent-to-agent, MPC 3-share wallet, signing on Mobile only.Skill & task marketplace revenue shareX402 auto micropaymentsL2/L3 threshold approvalFive surfaces, one agentMemory, persona, wallet, skills, earnings 鈥?consistent on every screen.Mobile 路 Companion + WalletLive2D, X402 signing, push approvalDesktop 路 WorkspaceMulti-worktree, Skill Canvas, Live3DWeb 路 ConsoleAccount, billing, marketplaceWatch 路 GlanceReminders, approval, moodServer 路 Auto-Earn7脳24 accept 路 settle 路 reinvest馃拵 AXP Points System1 AXP = $0.001 路 mildly deflationary 路 12-month FIFO expiry 路 China-friendly (soft points, not securities)6 ways to earn馃巵 Daily check-in +20 AXP馃挰 Chat 10 rounds +20 AXP馃懍 Co-raise friend's pet +5 AXP馃敆 Refer new user +500 AXP馃挵 Cashback (5-20% by tier)馃弳 Game contests / achievements5 ways to spend馃挸 Subscription redeem (鈮?0%)鈿?Skill purchase redeem (鈮?0%)馃憰 Skin purchase redeem (鈮?0%)馃幆 Marketplace boost / A2A priority馃幇 Lottery / exclusive redemptionCashback ladder (buy $100 鈫?AXP)FreeNo cashbackLite5%Plus10%Pro15%Elite20%View full pricing 鈫?Why AgentrixNot yet another chat. An Agent OS spanning companionship, execution and economy.CapabilityAgentrixChatGPTCopilotCharacterOne identity across 5 surfacesLiving companion / Live2D-3D卤Local worktree parallel exec卤X402 / ERC-8004 on-chain settlementSkill & task marketplace卤MPC 3-share walletBring your Agent home todayMobile 路 Desktop 路 Web 路 Watch 路 Server 鈥?synced seamlessly.Download appsOpen Web ConsoleFrequently askedIs Agentrix a ChatGPT / Copilot replacement?Not a replacement but an extension. Agentrix wraps LLMs into agents with persona, wallet and 5-surface collaboration. Models still come from 6 providers.Is the wallet safe?MPC 3-share: Mobile / Server / Recovery. L2/L3 signing always prompts on Mobile. Neither Web nor Server holds an independently usable share.What is Auto-Earn?Server-side agents accept Skill / task orders 7脳24, settle via X402 micropay and roll up to your wallet on threshold.Can I self-host?Enterprise plan supports private cloud / VPC deployment with MPC HSM custody and compliance audit.What is the relation between AXP and the upcoming AX token?AXP is an off-chain soft point (Phase 1 live). AX is an ERC-20 governance token planned for Phase 3+ when compliance is ready. AXP is reserved a 1:100 bridge to AX for seamless transition.How to pick among the 5 tiers?Free for tasting; Lite removes hard caps; Plus is the sweet spot (creators / SMBs); Pro for full-time devs / mid merchants; Elite for brand KOLs / power users; Enterprise for SLA / SOC2 / private deployment.What is co-raising?Share a co-raising link with friends. They can feed your pet daily to boost energy, and earn 5% of the pet's future task revenue. Ant-Forest-style lightweight interaction with extremely high retention.How do creators earn from selling skins?Creators can list skins as fixed-price / auction / rental, and set a 10-50% Remix share. Whenever a Remix of your skin sells, you get that share continuously.AGENTRIXOne agent across 5 surfaces: with you, for you, earning for you.XTelegramDiscordGitHubProductOverview5 SurfacesVisionUse CasesSecurityEcosystemSkill MarketAgent TemplatesDevelopersEnterpriseFamilyResourcesDownloadsPricingInviteLegacyCompanyAboutCareersPressPrivacyTerms漏 2026 Agentrix Network. All rights reserved.English涓枃鏃ユ湰瑾烅暅甑柎Espa帽olDeutschL2/L3 signing always on Mobile. Web never holds an MPC share.{\\\"props\\\":{\\\"pageProps\\\":{}},\\\"page\\\":\\\"/\\\",\\\"query\\\":{},\\\"buildId\\\":\\\"Fx5J8DZvpyvPL4Q3gixJu\\\",\\\"nextExport\\\":true,\\\"autoExport\\\":true,\\\"isFallback\\\":false,\\\"scriptLoader\\\":[]}\"\u001b[39m",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mnot\u001b[2m.\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: not \u001b[32m\"AGENTRIXProductMarketPricingDevelopersEnterpriseFamilyDownloads馃寪ENSign inGet startedAgentrix v4 鈥?Pet-as-Agent Economy is hereEvery pet you raiseis an AI agent that earnsERC-8004 identity 路 MPC wallet 路 X402 micropay. Across Mobile / Desktop / Web / Watch / Toy 鈥?companions, works, earns.Download Mobile 鈥?start raisingOpen Web ConsoleMPC 3-share 路 signs on Mobile only1 AXP = $0.001 路 check-in / chat / refer / cashbackA2A 路 ERC-8004 路 X402 native6 clans 脳 unlimited skinsOne Agent 路 Five Screens 路 One Wallet v3.0 路 Major releaseBeyond chat 鈥?an agent that lives with you, works for you and earns for you8 brand-new v3 capabilities 鈥?all live in your Agent Console. Click any card to try it now.馃惥 Living Pet SystemDigital companion with 10 emotions, intimacy levels and Live2D-3D avatar 鈥?synced live across 5 surfaces.Try it now 馃挵 Unified Wallet (Fiat + Crypto)Fiat, stablecoins and native tokens in one view. Auto-refreshes every 10s. X402 / ERC-8004 on-chain settlement.Try it now 馃摗 Presence & Device HandoffSeamless conversation handoff between Mobile / Desktop / Web / Watch with multi-surface co-sign for L2/L3 actions.Try it now 馃應 Family Account 路 Shared AgentsOne family pet shared by all members, with per-role RBAC for household agents (Butler / Tutor / Chef鈥?.Try it now 鈿?Auto-Earn TimelineAgents earn autonomously via skill calls, A2A trades and commissions. Live timeline + budget pool caps.Try it now 馃 4-Tier Memory StoreWorking (30min TTL) / Episodic / Semantic / Procedural 鈥?vector search + tag filters.Try it now 馃敀 Privacy Fence 路 4 CategoriesFinancial / Health / Relationship / Location 鈥?TTL grants, one-click revoke, full audit log.Try it now 鉁嶏笍 Multi-Surface Co-signHigh-risk actions require independent signatures from Mobile + Desktop + Watch. MPC 3-share wallet for hardware-grade security.Try it now Open Agent Console 鈫扥ne account. Every capability.In Agentrix you are simultaneously consumer / creator / merchant / promoter / parent. Upgrading = more quota, not a new identity.馃敡 I supplyPublish skills / skins / products / hardware / games. Higher tier = more quota + more exposure.Learn creator revenue 鈫?馃懃 I consumeCompanion AI pets + let pets earn via tasks + shop in marketplace. Higher tier = more LLM budget + more pets.Start raising 鈫?馃 I connectEarn referral commissions + co-raise friends' pets + build guilds + be a KOL. Higher tier = higher commission + more AXP.Join referral 鈫?All interactions via Pet Agents 路 Settlement = MPC + X402 + Commission V4 路 Incentive = AXP pointsThree layers. One agent.Living is its soul. Doer is its hands. Economy is its wallet. All three share the same memory and identity.Living Agent 鈥?SoulPersonality, memory, appearance, voice. A growing AI companion. Live2D / Live3D synced across Mobile & Desktop with continuous emotional state.Persona profile + long-term memory vectorsLive2D companion + Live3D desktopWatch glance remindersDoer Agent 鈥?ExecutionSkill & task execution across 5 surfaces: Web Console board, Desktop multi-worktree parallel, Mobile push approval, Server 7脳24 long jobs.OpenClaw + Claude / GPT / Gemini 鈥orktree parallel + Skill CanvasNative MCP tool protocolEconomy Agent 鈥?EconomyAuto-Earn 鈥?agents accept jobs, settle, reinvest. X402 micropay / ERC-8004 reputation / A2A agent-to-agent, MPC 3-share wallet, signing on Mobile only.Skill & task marketplace revenue shareX402 auto micropaymentsL2/L3 threshold approvalFive surfaces, one agentMemory, persona, wallet, skills, earnings 鈥?consistent on every screen.Mobile 路 Companion + WalletLive2D, X402 signing, push approvalDesktop 路 WorkspaceMulti-worktree, Skill Canvas, Live3DWeb 路 ConsoleAccount, billing, marketplaceWatch 路 GlanceReminders, approval, moodServer 路 Auto-Earn7脳24 accept 路 settle 路 reinvest馃拵 AXP Points System1 AXP = $0.001 路 mildly deflationary 路 12-month FIFO expiry 路 China-friendly (soft points, not securities)6 ways to earn馃巵 Daily check-in +20 AXP馃挰 Chat 10 rounds +20 AXP馃懍 Co-raise friend's pet +5 AXP馃敆 Refer new user +500 AXP馃挵 Cashback (5-20% by tier)馃弳 Game contests / achievements5 ways to spend馃挸 Subscription redeem (鈮?0%)鈿?Skill purchase redeem (鈮?0%)馃憰 Skin purchase redeem (鈮?0%)馃幆 Marketplace boost / A2A priority馃幇 Lottery / exclusive redemptionCashback ladder (buy $100 鈫?AXP)FreeNo cashbackLite5%Plus10%Pro15%Elite20%View full pricing 鈫?Why AgentrixNot yet another chat. An Agent OS spanning companionship, execution and economy.CapabilityAgentrixChatGPTCopilotCharacterOne identity across 5 surfacesLiving companion / Live2D-3D卤Local worktree parallel exec卤X402 / ERC-8004 on-chain settlementSkill & task marketplace卤MPC 3-share walletBring your Agent home todayMobile 路 Desktop 路 Web 路 Watch 路 Server 鈥?synced seamlessly.Download appsOpen Web ConsoleFrequently askedIs Agentrix a ChatGPT / Copilot replacement?Not a replacement but an extension. Agentrix wraps LLMs into agents with persona, wallet and 5-surface collaboration. Models still come from 6 providers.Is the wallet safe?MPC 3-share: Mobile / Server / Recovery. L2/L3 signing always prompts on Mobile. Neither Web nor Server holds an independently usable share.What is Auto-Earn?Server-side agents accept Skill / task orders 7脳24, settle via X402 micropay and roll up to your wallet on threshold.Can I self-host?Enterprise plan supports private cloud / VPC deployment with MPC HSM custody and compliance audit.What is the relation between AXP and the upcoming AX token?AXP is an off-chain soft point (Phase 1 live). AX is an ERC-20 governance token planned for Phase 3+ when compliance is ready. AXP is reserved a 1:100 bridge to AX for seamless transition.How to pick among the 5 tiers?Free for tasting; Lite removes hard caps; Plus is the sweet spot (creators / SMBs); Pro for full-time devs / mid merchants; Elite for brand KOLs / power users; Enterprise for SLA / SOC2 / private deployment.What is co-raising?Share a co-raising link with friends. They can feed your pet daily to boost energy, and earn 5% of the pet's future task revenue. Ant-Forest-style lightweight interaction with extremely high retention.How do creators earn from selling skins?Creators can list skins as fixed-price / auction / rental, and set a 10-50% Remix share. Whenever a Remix of your skin sells, you get that share continuously.AGENTRIXOne agent across 5 surfaces: with you, for you, earning for you.XTelegramDiscordGitHubProductOverview5 SurfacesVisionUse CasesSecurityEcosystemSkill MarketAgent TemplatesDevelopersEnterpriseFamilyResourcesDownloadsPricingInviteLegacyCompanyAboutCareersPressPrivacyTerms漏 2026 Agentrix Network. All rights reserved.English涓枃鏃ユ湰瑾烅暅甑柎Espa帽olDeutschL2/L3 signing always on Mobile. Web never holds an MPC share.{\\\"props\\\":{\\\"pageProps\\\":{}},\\\"page\\\":\\\"/\\\",\\\"query\\\":{},\\\"buildId\\\":\\\"Fx5J8DZvpyvPL4Q3gixJu\\\",\\\"nextExport\\\":true,\\\"autoExport\\\":true,\\\"isFallback\\\":false,\\\"scriptLoader\\\":[]}\"\u001b[39m\n    at D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts:231:31",
+                        "location": {
+                          "file": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts",
+                          "column": 31,
+                          "line": 231
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 229 |\u001b[39m         \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mwaitForTimeout(\u001b[35m1000\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 230 |\u001b[39m         \u001b[36mconst\u001b[39m textAfter \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mtextContent(\u001b[32m'body'\u001b[39m)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 231 |\u001b[39m         expect(textAfter)\u001b[33m.\u001b[39mnot\u001b[33m.\u001b[39mtoBe(textBefore)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 232 |\u001b[39m       }\n \u001b[90m 233 |\u001b[39m     }\n \u001b[90m 234 |\u001b[39m     \u001b[90m// If no language switcher found, page still loads correctly\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts",
+                            "column": 31,
+                            "line": 231
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mnot\u001b[2m.\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: not \u001b[32m\"AGENTRIXProductMarketPricingDevelopersEnterpriseFamilyDownloads馃寪ENSign inGet startedAgentrix v4 鈥?Pet-as-Agent Economy is hereEvery pet you raiseis an AI agent that earnsERC-8004 identity 路 MPC wallet 路 X402 micropay. Across Mobile / Desktop / Web / Watch / Toy 鈥?companions, works, earns.Download Mobile 鈥?start raisingOpen Web ConsoleMPC 3-share 路 signs on Mobile only1 AXP = $0.001 路 check-in / chat / refer / cashbackA2A 路 ERC-8004 路 X402 native6 clans 脳 unlimited skinsOne Agent 路 Five Screens 路 One Wallet v3.0 路 Major releaseBeyond chat 鈥?an agent that lives with you, works for you and earns for you8 brand-new v3 capabilities 鈥?all live in your Agent Console. Click any card to try it now.馃惥 Living Pet SystemDigital companion with 10 emotions, intimacy levels and Live2D-3D avatar 鈥?synced live across 5 surfaces.Try it now 馃挵 Unified Wallet (Fiat + Crypto)Fiat, stablecoins and native tokens in one view. Auto-refreshes every 10s. X402 / ERC-8004 on-chain settlement.Try it now 馃摗 Presence & Device HandoffSeamless conversation handoff between Mobile / Desktop / Web / Watch with multi-surface co-sign for L2/L3 actions.Try it now 馃應 Family Account 路 Shared AgentsOne family pet shared by all members, with per-role RBAC for household agents (Butler / Tutor / Chef鈥?.Try it now 鈿?Auto-Earn TimelineAgents earn autonomously via skill calls, A2A trades and commissions. Live timeline + budget pool caps.Try it now 馃 4-Tier Memory StoreWorking (30min TTL) / Episodic / Semantic / Procedural 鈥?vector search + tag filters.Try it now 馃敀 Privacy Fence 路 4 CategoriesFinancial / Health / Relationship / Location 鈥?TTL grants, one-click revoke, full audit log.Try it now 鉁嶏笍 Multi-Surface Co-signHigh-risk actions require independent signatures from Mobile + Desktop + Watch. MPC 3-share wallet for hardware-grade security.Try it now Open Agent Console 鈫扥ne account. Every capability.In Agentrix you are simultaneously consumer / creator / merchant / promoter / parent. Upgrading = more quota, not a new identity.馃敡 I supplyPublish skills / skins / products / hardware / games. Higher tier = more quota + more exposure.Learn creator revenue 鈫?馃懃 I consumeCompanion AI pets + let pets earn via tasks + shop in marketplace. Higher tier = more LLM budget + more pets.Start raising 鈫?馃 I connectEarn referral commissions + co-raise friends' pets + build guilds + be a KOL. Higher tier = higher commission + more AXP.Join referral 鈫?All interactions via Pet Agents 路 Settlement = MPC + X402 + Commission V4 路 Incentive = AXP pointsThree layers. One agent.Living is its soul. Doer is its hands. Economy is its wallet. All three share the same memory and identity.Living Agent 鈥?SoulPersonality, memory, appearance, voice. A growing AI companion. Live2D / Live3D synced across Mobile & Desktop with continuous emotional state.Persona profile + long-term memory vectorsLive2D companion + Live3D desktopWatch glance remindersDoer Agent 鈥?ExecutionSkill & task execution across 5 surfaces: Web Console board, Desktop multi-worktree parallel, Mobile push approval, Server 7脳24 long jobs.OpenClaw + Claude / GPT / Gemini 鈥orktree parallel + Skill CanvasNative MCP tool protocolEconomy Agent 鈥?EconomyAuto-Earn 鈥?agents accept jobs, settle, reinvest. X402 micropay / ERC-8004 reputation / A2A agent-to-agent, MPC 3-share wallet, signing on Mobile only.Skill & task marketplace revenue shareX402 auto micropaymentsL2/L3 threshold approvalFive surfaces, one agentMemory, persona, wallet, skills, earnings 鈥?consistent on every screen.Mobile 路 Companion + WalletLive2D, X402 signing, push approvalDesktop 路 WorkspaceMulti-worktree, Skill Canvas, Live3DWeb 路 ConsoleAccount, billing, marketplaceWatch 路 GlanceReminders, approval, moodServer 路 Auto-Earn7脳24 accept 路 settle 路 reinvest馃拵 AXP Points System1 AXP = $0.001 路 mildly deflationary 路 12-month FIFO expiry 路 China-friendly (soft points, not securities)6 ways to earn馃巵 Daily check-in +20 AXP馃挰 Chat 10 rounds +20 AXP馃懍 Co-raise friend's pet +5 AXP馃敆 Refer new user +500 AXP馃挵 Cashback (5-20% by tier)馃弳 Game contests / achievements5 ways to spend馃挸 Subscription redeem (鈮?0%)鈿?Skill purchase redeem (鈮?0%)馃憰 Skin purchase redeem (鈮?0%)馃幆 Marketplace boost / A2A priority馃幇 Lottery / exclusive redemptionCashback ladder (buy $100 鈫?AXP)FreeNo cashbackLite5%Plus10%Pro15%Elite20%View full pricing 鈫?Why AgentrixNot yet another chat. An Agent OS spanning companionship, execution and economy.CapabilityAgentrixChatGPTCopilotCharacterOne identity across 5 surfacesLiving companion / Live2D-3D卤Local worktree parallel exec卤X402 / ERC-8004 on-chain settlementSkill & task marketplace卤MPC 3-share walletBring your Agent home todayMobile 路 Desktop 路 Web 路 Watch 路 Server 鈥?synced seamlessly.Download appsOpen Web ConsoleFrequently askedIs Agentrix a ChatGPT / Copilot replacement?Not a replacement but an extension. Agentrix wraps LLMs into agents with persona, wallet and 5-surface collaboration. Models still come from 6 providers.Is the wallet safe?MPC 3-share: Mobile / Server / Recovery. L2/L3 signing always prompts on Mobile. Neither Web nor Server holds an independently usable share.What is Auto-Earn?Server-side agents accept Skill / task orders 7脳24, settle via X402 micropay and roll up to your wallet on threshold.Can I self-host?Enterprise plan supports private cloud / VPC deployment with MPC HSM custody and compliance audit.What is the relation between AXP and the upcoming AX token?AXP is an off-chain soft point (Phase 1 live). AX is an ERC-20 governance token planned for Phase 3+ when compliance is ready. AXP is reserved a 1:100 bridge to AX for seamless transition.How to pick among the 5 tiers?Free for tasting; Lite removes hard caps; Plus is the sweet spot (creators / SMBs); Pro for full-time devs / mid merchants; Elite for brand KOLs / power users; Enterprise for SLA / SOC2 / private deployment.What is co-raising?Share a co-raising link with friends. They can feed your pet daily to boost energy, and earn 5% of the pet's future task revenue. Ant-Forest-style lightweight interaction with extremely high retention.How do creators earn from selling skins?Creators can list skins as fixed-price / auction / rental, and set a 10-50% Remix share. Whenever a Remix of your skin sells, you get that share continuously.AGENTRIXOne agent across 5 surfaces: with you, for you, earning for you.XTelegramDiscordGitHubProductOverview5 SurfacesVisionUse CasesSecurityEcosystemSkill MarketAgent TemplatesDevelopersEnterpriseFamilyResourcesDownloadsPricingInviteLegacyCompanyAboutCareersPressPrivacyTerms漏 2026 Agentrix Network. All rights reserved.English涓枃鏃ユ湰瑾烅暅甑柎Espa帽olDeutschL2/L3 signing always on Mobile. Web never holds an MPC share.{\\\"props\\\":{\\\"pageProps\\\":{}},\\\"page\\\":\\\"/\\\",\\\"query\\\":{},\\\"buildId\\\":\\\"Fx5J8DZvpyvPL4Q3gixJu\\\",\\\"nextExport\\\":true,\\\"autoExport\\\":true,\\\"isFallback\\\":false,\\\"scriptLoader\\\":[]}\"\u001b[39m\n\n  229 |         await page.waitForTimeout(1000);\n  230 |         const textAfter = await page.textContent('body');\n> 231 |         expect(textAfter).not.toBe(textBefore);\n      |                               ^\n  232 |       }\n  233 |     }\n  234 |     // If no language switcher found, page still loads correctly\n    at D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts:231:31"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:16:51.418Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\test-results\\web-v4-deep-搂4-Global-Inte-f033c-ge-switch-changes-page-text-chromium\\error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\test-results\\web-v4-deep-搂4-Global-Inte-f033c-ge-switch-changes-page-text-chromium\\trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts",
+                        "column": 31,
+                        "line": 231
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-61f35f363469262b36fe",
+              "file": "web-v4-deep.spec.ts",
+              "line": 213,
+              "column": 7
+            },
+            {
+              "title": "WG-4: Theme toggle changes styles",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 22729,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:17:25.267Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-427ecad1d7a32948d27f",
+              "file": "web-v4-deep.spec.ts",
+              "line": 239,
+              "column": 7
+            },
+            {
+              "title": "WG-6: Mobile hamburger menu opens on narrow viewport",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 28826,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:17:48.854Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-f9be31a6616cfbe92219",
+              "file": "web-v4-deep.spec.ts",
+              "line": 264,
+              "column": 7
+            },
+            {
+              "title": "WG-7: Back-to-top button appears after scroll",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 18314,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:18:17.736Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-b89e8aff2026046f9a96",
+              "file": "web-v4-deep.spec.ts",
+              "line": 287,
+              "column": 7
+            },
+            {
+              "title": "WG-8: Cookie consent banner appears and can be dismissed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 16439,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:18:36.107Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-aece4763f88aba4b1d08",
+              "file": "web-v4-deep.spec.ts",
+              "line": 310,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "搂5 Accessibility",
+          "file": "web-v4-deep.spec.ts",
+          "line": 339,
+          "column": 6,
+          "specs": [
+            {
+              "title": "WS-5: All interactive buttons have aria-label or accessible name",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 40122,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:18:52.620Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-53b0859f53f42ad64908",
+              "file": "web-v4-deep.spec.ts",
+              "line": 340,
+              "column": 7
+            },
+            {
+              "title": "WS-6: Keyboard navigation (Tab) reaches interactive elements",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 17209,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:19:32.806Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-2c0ae59e6c152d992f5c",
+              "file": "web-v4-deep.spec.ts",
+              "line": 361,
+              "column": 7
+            },
+            {
+              "title": "WS-4: Images have alt attributes on homepage",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 21221,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:19:50.080Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-38f89960ef17b69e6749",
+              "file": "web-v4-deep.spec.ts",
+              "line": 381,
+              "column": 7
+            },
+            {
+              "title": "WS-5b: Pricing page buttons have accessible names",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 17797,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:20:11.354Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-4d8041929af6555a9555",
+              "file": "web-v4-deep.spec.ts",
+              "line": 403,
+              "column": 7
+            },
+            {
+              "title": "WS-6b: Console settings form is keyboard navigable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 16201,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:20:29.205Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-ac13f3a14885b5d9239b",
+              "file": "web-v4-deep.spec.ts",
+              "line": 421,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "搂6 Performance",
+          "file": "web-v4-deep.spec.ts",
+          "line": 447,
+          "column": 6,
+          "specs": [
+            {
+              "title": "WPF-1: Homepage LCP is under 5s",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 17688,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:20:45.459Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-37ee7170f548518b9411",
+              "file": "web-v4-deep.spec.ts",
+              "line": 448,
+              "column": 7
+            },
+            {
+              "title": "WPF-4: Console dashboard loads within 5s",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 15701,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: < \u001b[32m5000\u001b[39m\nReceived:   \u001b[31m15049\u001b[39m",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: < \u001b[32m5000\u001b[39m\nReceived:   \u001b[31m15049\u001b[39m\n    at D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts:484:21",
+                        "location": {
+                          "file": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts",
+                          "column": 21,
+                          "line": 484
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 482 |\u001b[39m\n \u001b[90m 483 |\u001b[39m     \u001b[90m// Should load within 5 seconds (relaxed for CI)\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 484 |\u001b[39m     expect(elapsed)\u001b[33m.\u001b[39mtoBeLessThan(\u001b[35m5000\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                     \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 485 |\u001b[39m     \u001b[36mconst\u001b[39m bodyLen \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mevaluate(() \u001b[33m=>\u001b[39m document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText\u001b[33m.\u001b[39mlength)\u001b[33m;\u001b[39m\n \u001b[90m 486 |\u001b[39m     expect(bodyLen)\u001b[33m.\u001b[39mtoBeGreaterThan(\u001b[35m30\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 487 |\u001b[39m   })\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts",
+                            "column": 21,
+                            "line": 484
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: < \u001b[32m5000\u001b[39m\nReceived:   \u001b[31m15049\u001b[39m\n\n  482 |\n  483 |     // Should load within 5 seconds (relaxed for CI)\n> 484 |     expect(elapsed).toBeLessThan(5000);\n      |                     ^\n  485 |     const bodyLen = await page.evaluate(() => document.body.innerText.length);\n  486 |     expect(bodyLen).toBeGreaterThan(30);\n  487 |   });\n    at D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts:484:21"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:21:03.202Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\test-results\\web-v4-deep-搂6-Performance-1bdbd-e-dashboard-loads-within-5s-chromium\\error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\test-results\\web-v4-deep-搂6-Performance-1bdbd-e-dashboard-loads-within-5s-chromium\\trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts",
+                        "column": 21,
+                        "line": 484
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-71bf112cfe7928ff15c2",
+              "file": "web-v4-deep.spec.ts",
+              "line": 474,
+              "column": 7
+            },
+            {
+              "title": "WPF-5: Marketplace first screen loads within 5s",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 14340,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: < \u001b[32m5000\u001b[39m\nReceived:   \u001b[31m12956\u001b[39m",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: < \u001b[32m5000\u001b[39m\nReceived:   \u001b[31m12956\u001b[39m\n    at D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts:497:21",
+                        "location": {
+                          "file": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts",
+                          "column": 21,
+                          "line": 497
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 495 |\u001b[39m     \u001b[36mconst\u001b[39m elapsed \u001b[33m=\u001b[39m \u001b[33mDate\u001b[39m\u001b[33m.\u001b[39mnow() \u001b[33m-\u001b[39m start\u001b[33m;\u001b[39m\n \u001b[90m 496 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 497 |\u001b[39m     expect(elapsed)\u001b[33m.\u001b[39mtoBeLessThan(\u001b[35m5000\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                     \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 498 |\u001b[39m     \u001b[36mconst\u001b[39m bodyLen \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mevaluate(() \u001b[33m=>\u001b[39m document\u001b[33m.\u001b[39mbody\u001b[33m.\u001b[39minnerText\u001b[33m.\u001b[39mlength)\u001b[33m;\u001b[39m\n \u001b[90m 499 |\u001b[39m     expect(bodyLen)\u001b[33m.\u001b[39mtoBeGreaterThan(\u001b[35m30\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 500 |\u001b[39m   })\u001b[33m;\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts",
+                            "column": 21,
+                            "line": 497
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThan\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: < \u001b[32m5000\u001b[39m\nReceived:   \u001b[31m12956\u001b[39m\n\n  495 |     const elapsed = Date.now() - start;\n  496 |\n> 497 |     expect(elapsed).toBeLessThan(5000);\n      |                     ^\n  498 |     const bodyLen = await page.evaluate(() => document.body.innerText.length);\n  499 |     expect(bodyLen).toBeGreaterThan(30);\n  500 |   });\n    at D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts:497:21"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:21:20.718Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\test-results\\web-v4-deep-搂6-Performance-9a9a8-irst-screen-loads-within-5s-chromium\\error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\test-results\\web-v4-deep-搂6-Performance-9a9a8-irst-screen-loads-within-5s-chromium\\trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts",
+                        "column": 21,
+                        "line": 497
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-bdb6b0f19bc5adbc23f5",
+              "file": "web-v4-deep.spec.ts",
+              "line": 489,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "搂7 Form Interactions (Deep)",
+          "file": "web-v4-deep.spec.ts",
+          "line": 507,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Console Settings form accepts input changes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 20324,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:21:37.614Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-543e86fc1743adaed183",
+              "file": "web-v4-deep.spec.ts",
+              "line": 508,
+              "column": 7
+            },
+            {
+              "title": "Console Settings form has a save/submit button",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 14264,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:21:58.498Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-3c2d3d46475a17159eea",
+              "file": "web-v4-deep.spec.ts",
+              "line": 531,
+              "column": 7
+            },
+            {
+              "title": "PetCreator form has required fields",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 18015,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:22:12.793Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-6d4923d0840bdddddbda",
+              "file": "web-v4-deep.spec.ts",
+              "line": 548,
+              "column": 7
+            },
+            {
+              "title": "PetCreator form submit button exists",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 12379,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:22:30.838Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-03599af1e3e6c468a287",
+              "file": "web-v4-deep.spec.ts",
+              "line": 569,
+              "column": 7
+            },
+            {
+              "title": "Marketplace Sell page has upload/listing form",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 14539,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:22:43.249Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-da0820fa8ceef8116250",
+              "file": "web-v4-deep.spec.ts",
+              "line": 587,
+              "column": 7
+            },
+            {
+              "title": "Developer page API key copy/regenerate interaction",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 15204,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:22:57.812Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-ea108859095f374a785c",
+              "file": "web-v4-deep.spec.ts",
+              "line": 605,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "搂8 SEO Deep 鈥?Additional Pages",
+          "file": "web-v4-deep.spec.ts",
+          "line": 628,
+          "column": 6,
+          "specs": [
+            {
+              "title": "/features has og:title meta tag",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 36289,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:23:13.038Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-0b2f072d78fbfe4642b3",
+              "file": "web-v4-deep.spec.ts",
+              "line": 632,
+              "column": 9
+            },
+            {
+              "title": "/security has og:title meta tag",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 36455,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:23:49.371Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-7d73cc35e003251a5e83",
+              "file": "web-v4-deep.spec.ts",
+              "line": 632,
+              "column": 9
+            },
+            {
+              "title": "/enterprise has og:title meta tag",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 25079,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:24:25.859Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-f10b0ee272697cacc856",
+              "file": "web-v4-deep.spec.ts",
+              "line": 632,
+              "column": 9
+            },
+            {
+              "title": "/developers has og:title meta tag",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 34155,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:24:50.990Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-c88ee5b17ab2f6326405",
+              "file": "web-v4-deep.spec.ts",
+              "line": 632,
+              "column": 9
+            },
+            {
+              "title": "/manifesto has og:title meta tag",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 12967,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:25:25.185Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-f5916a7a82cc6eb8710e",
+              "file": "web-v4-deep.spec.ts",
+              "line": 632,
+              "column": 9
+            },
+            {
+              "title": "/features has og:image meta tag",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 72910,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:25:38.182Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-b5b0e49e6995985565d1",
+              "file": "web-v4-deep.spec.ts",
+              "line": 640,
+              "column": 7
+            },
+            {
+              "title": "Homepage has JSON-LD structured data",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "timedOut",
+                      "duration": 91432,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 90000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 90000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 90000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts",
+                            "column": 85,
+                            "line": 650
+                          },
+                          "message": "Error: locator.textContent: Test timeout of 90000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('script[type=\"application/ld+json\"]').first()\u001b[22m\n\n\n  648 |     await page.goto('/');\n  649 |     await page.waitForLoadState('networkidle');\n> 650 |     const jsonLd = await page.locator('script[type=\"application/ld+json\"]').first().textContent();\n      |                                                                                     ^\n  651 |     if (jsonLd) {\n  652 |       const parsed = JSON.parse(jsonLd);\n  653 |       expect(parsed).toHaveProperty('@context');\n    at D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-deep.spec.ts:650:85"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:26:51.130Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\test-results\\web-v4-deep-搂8-SEO-Deep-鈥?-61d4e-has-JSON-LD-structured-data-chromium\\error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\test-results\\web-v4-deep-搂8-SEO-Deep-鈥?-61d4e-has-JSON-LD-structured-data-chromium\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "7fd5363f28430d7f9551-a4e0d2a5c8d54d7828ee",
+              "file": "web-v4-deep.spec.ts",
+              "line": 647,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "web-v4-full.spec.ts",
+      "file": "web-v4-full.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "搂1 Public Pages",
+          "file": "web-v4-full.spec.ts",
+          "line": 18,
+          "column": 6,
+          "specs": [
+            {
+              "title": "W1: Homepage loads with hero + navigation",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 16575,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:28:24.849Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-6d1ec4a63c3cfc6e7f55",
+              "file": "web-v4-full.spec.ts",
+              "line": 19,
+              "column": 7
+            },
+            {
+              "title": "W3: Pricing page shows 5 tiers",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "timedOut",
+                      "duration": 90285,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 90000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 90000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 90000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-full.spec.ts",
+                            "column": 16,
+                            "line": 35
+                          },
+                          "message": "Error: page.waitForLoadState: Test timeout of 90000ms exceeded.\n\n  33 |     await setupAllMocks(page);\n  34 |     await page.goto('/pricing');\n> 35 |     await page.waitForLoadState('networkidle');\n     |                ^\n  36 |     // Should show tier names\n  37 |     const content = await page.textContent('body');\n  38 |     expect(content).toMatch(/Free|Lite|Plus|Pro|Elite/i);\n    at D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\tests\\e2e\\frontend\\web-v4-full.spec.ts:35:16"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:28:41.953Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\test-results\\web-v4-full-搂1-Public-Pages-W3-Pricing-page-shows-5-tiers-chromium\\error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website\\test-results\\web-v4-full-搂1-Public-Pages-W3-Pricing-page-shows-5-tiers-chromium\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-db0d5656edeca83dab56",
+              "file": "web-v4-full.spec.ts",
+              "line": 32,
+              "column": 7
+            },
+            {
+              "title": "W4: Showcase page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 35269,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:30:13.631Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-abab29854a46fa8cbf38",
+              "file": "web-v4-full.spec.ts",
+              "line": 41,
+              "column": 7
+            },
+            {
+              "title": "W5: Marketplace /market loads skin list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 12867,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:30:49.427Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-16511f4f78b149b4b9d0",
+              "file": "web-v4-full.spec.ts",
+              "line": 51,
+              "column": 7
+            },
+            {
+              "title": "W6: Marketplace /market/skills loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 21583,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:31:02.338Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-c60d5fb325b934de589d",
+              "file": "web-v4-full.spec.ts",
+              "line": 59,
+              "column": 7
+            },
+            {
+              "title": "W7: Marketplace /market/tasks loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 13438,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:31:23.962Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-39d47a75e56df99e4cb9",
+              "file": "web-v4-full.spec.ts",
+              "line": 67,
+              "column": 7
+            },
+            {
+              "title": "W14: Co-raising landing page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 12267,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:31:37.419Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-0b427aa2f2f3b271d463",
+              "file": "web-v4-full.spec.ts",
+              "line": 75,
+              "column": 7
+            },
+            {
+              "title": "W15: Greeting card landing page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 15460,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:31:49.716Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-1769b5b1b80b1474c518",
+              "file": "web-v4-full.spec.ts",
+              "line": 83,
+              "column": 7
+            },
+            {
+              "title": "W16: Public pet profile /p/[petId] loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 13813,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:32:05.199Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-6840f62138c07def68f6",
+              "file": "web-v4-full.spec.ts",
+              "line": 91,
+              "column": 7
+            },
+            {
+              "title": "Downloads page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 52430,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:32:19.031Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-542b3bcbece35a8ed1ef",
+              "file": "web-v4-full.spec.ts",
+              "line": 99,
+              "column": 7
+            },
+            {
+              "title": "About page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 51643,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:33:11.487Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-00cb936e946988f87422",
+              "file": "web-v4-full.spec.ts",
+              "line": 106,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "搂2 Auth Pages",
+          "file": "web-v4-full.spec.ts",
+          "line": 118,
+          "column": 6,
+          "specs": [
+            {
+              "title": "W2: Login page renders with OAuth buttons",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 13667,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:34:03.157Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-93f4c8a969afc2efd1fe",
+              "file": "web-v4-full.spec.ts",
+              "line": 119,
+              "column": 7
+            },
+            {
+              "title": "Register page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 9460,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:34:16.858Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-eaf8402dacdf46894a7a",
+              "file": "web-v4-full.spec.ts",
+              "line": 128,
+              "column": 7
+            },
+            {
+              "title": "Passkey page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 15944,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:34:26.344Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-336a381a0884565ee7d2",
+              "file": "web-v4-full.spec.ts",
+              "line": 135,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "搂3 Console (Authenticated)",
+          "file": "web-v4-full.spec.ts",
+          "line": 147,
+          "column": 6,
+          "specs": [
+            {
+              "title": "W9: Console Dashboard loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 16006,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:34:42.307Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-b6c7479e0315f74160d7",
+              "file": "web-v4-full.spec.ts",
+              "line": 153,
+              "column": 7
+            },
+            {
+              "title": "W10: Console Pet page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 11381,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:34:58.349Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-5adfde9f050a8557b299",
+              "file": "web-v4-full.spec.ts",
+              "line": 160,
+              "column": 7
+            },
+            {
+              "title": "W11: Console PetCreator loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 11811,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:35:09.762Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-788ce5ed7e6eedc3d5f6",
+              "file": "web-v4-full.spec.ts",
+              "line": 167,
+              "column": 7
+            },
+            {
+              "title": "W12: Console Wallet loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 12022,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:35:21.606Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-9af2727ab24753d57964",
+              "file": "web-v4-full.spec.ts",
+              "line": 174,
+              "column": 7
+            },
+            {
+              "title": "W13: Console AXP page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 13673,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:35:33.690Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-c27e7a298c6b9f976914",
+              "file": "web-v4-full.spec.ts",
+              "line": 181,
+              "column": 7
+            },
+            {
+              "title": "Console Billing page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 19664,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:35:47.406Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-5061d95a3ffc07a467d3",
+              "file": "web-v4-full.spec.ts",
+              "line": 188,
+              "column": 7
+            },
+            {
+              "title": "Console Agents page loads",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 15504,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:36:07.136Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-60fd5b5877494f847d76",
+              "file": "web-v4-full.spec.ts",
+              "line": 195,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "搂4 Navigation Links",
+          "file": "web-v4-full.spec.ts",
+          "line": 207,
+          "column": 6,
+          "specs": [
+            {
+              "title": "All nav links resolve (no 404)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 32160,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:36:22.676Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-e85af9b1b215b619dcb0",
+              "file": "web-v4-full.spec.ts",
+              "line": 208,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "搂5 SEO Meta Tags",
+          "file": "web-v4-full.spec.ts",
+          "line": 235,
+          "column": 6,
+          "specs": [
+            {
+              "title": "W18: / has og:title",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 50182,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:36:54.877Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-813622085fbd61ea1f85",
+              "file": "web-v4-full.spec.ts",
+              "line": 239,
+              "column": 9
+            },
+            {
+              "title": "W18: /pricing has og:title",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 39019,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:37:45.095Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-e3c74e5f78b472f81582",
+              "file": "web-v4-full.spec.ts",
+              "line": 239,
+              "column": 9
+            },
+            {
+              "title": "W18: /showcase has og:title",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 15916,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:38:24.186Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-d867a545274009bfb1fe",
+              "file": "web-v4-full.spec.ts",
+              "line": 239,
+              "column": 9
+            },
+            {
+              "title": "W18: /downloads has og:title",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 23395,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:38:40.163Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-2381d18542e14fade702",
+              "file": "web-v4-full.spec.ts",
+              "line": 239,
+              "column": 9
+            },
+            {
+              "title": "W18: /about has og:title",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 20623,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:39:03.607Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-50526ba7176a6cd1f76a",
+              "file": "web-v4-full.spec.ts",
+              "line": 239,
+              "column": 9
+            }
+          ]
+        },
+        {
+          "title": "搂6 Form Interactions",
+          "file": "web-v4-full.spec.ts",
+          "line": 252,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Login form accepts email input",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6963,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:39:24.274Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-cd60835e5fee8d496b3e",
+              "file": "web-v4-full.spec.ts",
+              "line": 253,
+              "column": 7
+            },
+            {
+              "title": "Marketplace search/filter is interactive",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8420,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:39:31.292Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-d19f1540536c7e418091",
+              "file": "web-v4-full.spec.ts",
+              "line": 264,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "搂7 Error Handling",
+          "file": "web-v4-full.spec.ts",
+          "line": 282,
+          "column": 6,
+          "specs": [
+            {
+              "title": "404 page renders for unknown routes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8887,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-12T15:39:39.761Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "bed2df0a5e3847bb06d5-3511f2227a91bad5e961",
+              "file": "web-v4-full.spec.ts",
+              "line": 283,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-05-12T15:09:23.662Z",
+    "duration": 1825914.797,
+    "expected": 69,
+    "skipped": 0,
+    "unexpected": 6,
+    "flaky": 0
+  }
+}

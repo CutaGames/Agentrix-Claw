@@ -1,0 +1,120 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import Stripe from 'stripe';
+import { PaymentService } from './payment.service';
+import { PaymentStatus } from '../../entities/payment.entity';
+
+@Injectable()
+export class StripeWebhookService {
+  private readonly logger = new Logger(StripeWebhookService.name);
+  private stripe: Stripe;
+  private webhookSecret: string;
+
+  constructor(
+    private configService: ConfigService,
+    private paymentService: PaymentService,
+  ) {
+    const secretKey = this.configService.get<string>('STRIPE_SECRET_KEY');
+    if (!secretKey) {
+      throw new Error('STRIPE_SECRET_KEY is not configured');
+    }
+    this.stripe = new Stripe(secretKey, {
+      apiVersion: '2023-08-16',
+    });
+    this.webhookSecret = this.configService.get<string>(
+      'STRIPE_WEBHOOK_SECRET',
+      '',
+    );
+  }
+
+  async handleWebhook(rawBody: Buffer, signature: string) {
+    let event: Stripe.Event;
+
+    try {
+      // 验证Webhook签名
+      event = this.stripe.webhooks.constructEvent(
+        rawBody,
+        signature,
+        this.webhookSecret,
+      );
+    } catch (err: any) {
+      this.logger.error('Webhook签名验证失败:', err.message);
+      throw new Error(`Webhook Error: ${err.message}`);
+    }
+
+    // 处理不同类型的事件
+    switch (event.type) {
+      case 'payment_intent.succeeded':
+        await this.handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
+        break;
+      case 'payment_intent.payment_failed':
+        await this.handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
+        break;
+      case 'payment_intent.canceled':
+        await this.handlePaymentIntentCanceled(event.data.object as Stripe.PaymentIntent);
+        break;
+      default:
+        this.logger.log(`未处理的事件类型: ${event.type}`);
+    }
+
+    return { received: true };
+  }
+
+  private async handlePaymentIntentSucceeded(
+    paymentIntent: Stripe.PaymentIntent,
+  ) {
+    this.logger.log(`支付成功: ${paymentIntent.id}`);
+
+    try {
+      // 查找对应的支付记录
+      // 这里需要根据paymentIntent.metadata中的paymentId来查找
+      const paymentId = paymentIntent.metadata?.paymentId;
+      if (paymentId) {
+        await this.paymentService.updatePaymentStatus(
+          paymentId,
+          PaymentStatus.COMPLETED,
+          paymentIntent.id,
+        );
+      }
+    } catch (error) {
+      this.logger.error('更新支付状态失败:', error);
+    }
+  }
+
+  private async handlePaymentIntentFailed(
+    paymentIntent: Stripe.PaymentIntent,
+  ) {
+    this.logger.log(`支付失败: ${paymentIntent.id}`);
+
+    try {
+      const paymentId = paymentIntent.metadata?.paymentId;
+      if (paymentId) {
+        await this.paymentService.updatePaymentStatus(
+          paymentId,
+          PaymentStatus.FAILED,
+        );
+      }
+    } catch (error) {
+      this.logger.error('更新支付状态失败:', error);
+    }
+  }
+
+  private async handlePaymentIntentCanceled(
+    paymentIntent: Stripe.PaymentIntent,
+  ) {
+    this.logger.log(`支付取消: ${paymentIntent.id}`);
+
+    try {
+      const paymentId = paymentIntent.metadata?.paymentId;
+      if (paymentId) {
+        await this.paymentService.updatePaymentStatus(
+          paymentId,
+          PaymentStatus.CANCELLED,
+        );
+      }
+    } catch (error) {
+      this.logger.error('更新支付状态失败:', error);
+    }
+  }
+}
+

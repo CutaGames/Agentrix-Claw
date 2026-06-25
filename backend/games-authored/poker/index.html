@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>霓虹扑克 · Neon Poker</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b1020;overflow:hidden;touch-action:manipulation;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#fff}
+  #wrap{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:max(20px,env(safe-area-inset-top))}
+  #hud{text-align:center;margin-bottom:8px}
+  #hud .coins{font-size:26px;font-weight:900;background:linear-gradient(90deg,#ffd166,#fca311);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  #hud .sub{font-size:13px;color:#9fb3d6;margin-top:2px}
+  #hand{display:flex;gap:8px;justify-content:center;margin:14px 0;flex-wrap:nowrap}
+  .card{width:58px;height:84px;border-radius:9px;background:#f7fafc;color:#0b1020;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,.4);transition:transform .12s,box-shadow .12s;cursor:pointer;user-select:none}
+  .card.red{color:#e23b4e}
+  .card .rank{font-size:24px;font-weight:900;line-height:1}
+  .card .suit{font-size:20px}
+  .card.held{transform:translateY(-12px);box-shadow:0 0 0 3px #22d3ee,0 8px 16px rgba(34,211,238,.5)}
+  .card .hold-tag{position:absolute;bottom:-20px;left:0;right:0;text-align:center;font-size:11px;font-weight:800;color:#22d3ee}
+  .card.back{background:linear-gradient(135deg,#1e3a8a,#3b0764);color:#7dd3fc}
+  #msg{height:26px;font-size:16px;font-weight:800;color:#7be0a0;text-align:center}
+  #btn{margin-top:14px;padding:15px 40px;border:none;border-radius:14px;background:linear-gradient(135deg,#ffd166,#fca311);color:#0b1020;font-size:19px;font-weight:900;box-shadow:0 6px 16px rgba(252,163,17,.4)}
+  #btn:disabled{opacity:.4}
+  #paytable{margin-top:18px;font-size:12px;color:#8ba2c9;line-height:1.7;text-align:left;max-width:300px}
+  #paytable b{color:#ffd166}
+  .flash{animation:fl .5s ease}
+  @keyframes fl{0%{filter:brightness(2)}100%{filter:none}}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud"><div class="coins"><span id="coins">100</span> 金币</div><div class="sub">下注 <span id="bet">5</span> · 第 <span id="round">1</span> 局</div></div>
+  <div id="msg">点「发牌」开始</div>
+  <div id="hand"></div>
+  <button id="btn">发牌</button>
+  <div id="paytable"></div>
+</div>
+<script>
+(function(){
+"use strict";
+var CFG=(typeof window!=="undefined"&&window.__GAME_CONFIG)||{};
+if(CFG.title){try{document.title=CFG.title;}catch(e){}}
+// 难度影响起始金币与下注:hard 起步少、bet 高(风险大)。
+var DIFF=CFG.difficulty||"normal";
+var START={easy:200,normal:100,hard:60}[DIFF]||100;
+var BET={easy:3,normal:5,hard:10}[DIFF]||5;
+var SUITS=[{s:"\u2660",r:false},{s:"\u2665",r:true},{s:"\u2666",r:true},{s:"\u2663",r:false}];
+var RANKS=["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
+// 牌型赔率(基于下注倍数)。
+var PAYS=[
+  {name:"皇家同花顺",mult:250},{name:"同花顺",mult:50},{name:"四条",mult:25},
+  {name:"葫芦",mult:9},{name:"同花",mult:6},{name:"顺子",mult:4},
+  {name:"三条",mult:3},{name:"两对",mult:2},{name:"对子(J+)",mult:1}
+];
+var coins=START,round=1,deck=[],hand=[],held=[false,false,false,false,false],phase="deal";
+var elCoins=document.getElementById("coins"),elBet=document.getElementById("bet"),elRound=document.getElementById("round");
+var elMsg=document.getElementById("msg"),elHand=document.getElementById("hand"),btn=document.getElementById("btn"),pt=document.getElementById("paytable");
+elBet.textContent=BET;
+pt.innerHTML="<b>赔率表(×下注)</b><br>"+PAYS.map(function(p){return p.name+" ×"+p.mult;}).join(" · ");
+function makeDeck(){var d=[];for(var s=0;s<4;s++)for(var r=0;r<13;r++)d.push({suit:s,rank:r});for(var i=d.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=d[i];d[i]=d[j];d[j]=t;}return d;}
+function renderHand(showAll){
+  elHand.innerHTML="";
+  for(var i=0;i<5;i++){
+    var c=document.createElement("div");c.className="card";
+    var card=hand[i];
+    if(card){
+      if(SUITS[card.suit].r)c.className+=" red";
+      if(held[i])c.className+=" held";
+      c.innerHTML='<div class="rank">'+RANKS[card.rank]+'</div><div class="suit">'+SUITS[card.suit].s+'</div>'+(held[i]?'<div class="hold-tag">保留</div>':'');
+      (function(idx){c.addEventListener("click",function(){if(phase!=="draw")return;held[idx]=!held[idx];renderHand(true);});})(i);
+    } else { c.className+=" back"; c.innerHTML='<div class="suit">\u2756</div>'; }
+    elHand.appendChild(c);
+  }
+}
+function evalHand(){
+  var rc={},sc={},ranks=[];
+  for(var i=0;i<5;i++){var card=hand[i];rc[card.rank]=(rc[card.rank]||0)+1;sc[card.suit]=(sc[card.suit]||0)+1;ranks.push(card.rank);}
+  ranks.sort(function(a,b){return a-b;});
+  var flush=Object.keys(sc).length===1;
+  var straight=true;for(var k=1;k<5;k++){if(ranks[k]!==ranks[k-1]+1){straight=false;break;}}
+  // A-2-3-4-5 low straight (A=12)
+  if(!straight && ranks.join()==="0,1,2,3,12")straight=true;
+  var counts=Object.keys(rc).map(function(k2){return rc[k2];}).sort(function(a,b){return b-a;});
+  var royal=flush&&ranks.join()==="8,9,10,11,12";
+  if(royal)return PAYS[0];
+  if(straight&&flush)return PAYS[1];
+  if(counts[0]===4)return PAYS[2];
+  if(counts[0]===3&&counts[1]===2)return PAYS[3];
+  if(flush)return PAYS[4];
+  if(straight)return PAYS[5];
+  if(counts[0]===3)return PAYS[6];
+  if(counts[0]===2&&counts[1]===2)return PAYS[7];
+  // pair of Jacks or better
+  for(var r in rc){if(rc[r]===2&&(+r>=9))return PAYS[8];}
+  return null;
+}
+function settle(){
+  var res=evalHand();
+  if(res){var win=BET*res.mult;coins+=win;elMsg.style.color="#7be0a0";elMsg.textContent=res.name+"! +"+win;}
+  else{elMsg.style.color="#ff7b9c";elMsg.textContent="未成牌 · 再来一局";}
+  elCoins.textContent=coins;elCoins.parentNode.classList.remove("flash");void elCoins.offsetWidth;if(res)elCoins.parentNode.classList.add("flash");
+  phase="deal";btn.textContent="发牌";
+  round++;elRound.textContent=round;
+  if(coins<BET){elMsg.textContent="金币不足 · 重置为 "+START;coins=START;elCoins.textContent=coins;}
+}
+btn.addEventListener("click",function(){
+  if(phase==="deal"){
+    if(coins<BET)return;
+    coins-=BET;elCoins.textContent=coins;
+    deck=makeDeck();hand=[];held=[false,false,false,false,false];
+    for(var i=0;i<5;i++)hand.push(deck.pop());
+    renderHand(true);
+    var r=evalHand();
+    elMsg.style.color="#9fb3d6";elMsg.textContent=r?("已有 "+r.name+" · 点牌保留后换牌"):"点要保留的牌,然后换牌";
+    phase="draw";btn.textContent="换牌";
+  } else if(phase==="draw"){
+    for(var j=0;j<5;j++){if(!held[j])hand[j]=deck.pop();}
+    renderHand(true);
+    settle();
+  }
+});
+renderHand(false);
+})();
+</script>
+</body>
+</html>

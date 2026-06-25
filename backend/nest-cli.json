@@ -1,0 +1,13 @@
+{
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "assets": [
+      {
+        "include": "modules/openclaw-bridge/clawhub-snapshot.json",
+        "outDir": "dist"
+      }
+    ]
+  }
+}

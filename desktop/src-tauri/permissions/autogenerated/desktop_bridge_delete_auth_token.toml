@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-bridge-delete-auth-token"
+description = "Enables the desktop_bridge_delete_auth_token command without any pre-configured scope."
+commands.allow = ["desktop_bridge_delete_auth_token"]
+
+[[permission]]
+identifier = "deny-desktop-bridge-delete-auth-token"
+description = "Denies the desktop_bridge_delete_auth_token command without any pre-configured scope."
+commands.deny = ["desktop_bridge_delete_auth_token"]

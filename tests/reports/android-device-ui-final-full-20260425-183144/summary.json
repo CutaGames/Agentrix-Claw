@@ -1,0 +1,16 @@
+﻿[
+    {
+        "id":  "device-online",
+        "title":  "Android device online",
+        "status":  "passed",
+        "notes":  "MDX0220309000133       device product:ELS-AN00 model:ELS_AN00 device:HWELS transport_id:8",
+        "snapshot":  ""
+    },
+    {
+        "id":  "fatal",
+        "title":  "Fatal test runner error",
+        "status":  "failed",
+        "notes":  "Expected foreground package app.agentrix.claw but found com.tencent.mm",
+        "snapshot":  ""
+    }
+]
