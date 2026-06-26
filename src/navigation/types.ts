@@ -80,6 +80,9 @@ export type ShareCardRouteParams = {
   ctaLabel?: string;
   accentFrom?: string;
   accentTo?: string;
+  /** Optional pair of small images (e.g. home/away team flags) shown as a VS strip. */
+  leftImageUrl?: string;
+  rightImageUrl?: string;
 };
 
 export type MarketStackParamList = {

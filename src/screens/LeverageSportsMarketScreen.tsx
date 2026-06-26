@@ -14,11 +14,13 @@ import {
   Modal,
   TextInput,
   ScrollView,
+  Image,
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { useI18n } from '../stores/i18nStore';
 import { useNavigation } from '@react-navigation/native';
 import { WORLDCUP_COVER_IMG } from '../constants/posterAssets';
+import { teamFlagUrl } from '../utils/teamFlags';
 import {
   lsmApi,
   LsmMarketView,
@@ -89,6 +91,8 @@ export default function LeverageSportsMarketScreen() {
           ctaLabel: zh ? '扫码下注' : 'Scan to predict',
           accentFrom: '#7c3aed',
           accentTo: '#1d4ed8',
+          leftImageUrl: teamFlagUrl(m.homeTeam) || undefined,
+          rightImageUrl: teamFlagUrl(m.awayTeam) || undefined,
         });
       } catch {
         /* navigation unavailable */
@@ -464,12 +468,18 @@ function MarketCard({
   onShare?: (m: LsmMarketView) => void;
 }) {
   const labels = [market.homeTeam, market.awayTeam, zh ? '平局' : 'Draw'];
+  const homeFlag = teamFlagUrl(market.homeTeam);
+  const awayFlag = teamFlagUrl(market.awayTeam);
   return (
     <View style={styles.card}>
       <View style={styles.cardHead}>
-        <Text style={styles.matchText} numberOfLines={1}>
-          {market.homeTeam} vs {market.awayTeam}
-        </Text>
+        <View style={styles.teamLine}>
+          {homeFlag && <Image source={{ uri: homeFlag }} style={styles.flag} />}
+          <Text style={styles.matchText} numberOfLines={1}>
+            {market.homeTeam} <Text style={styles.vsText}>vs</Text> {market.awayTeam}
+          </Text>
+          {awayFlag && <Image source={{ uri: awayFlag }} style={styles.flag} />}
+        </View>
         <View style={styles.headRight}>
           <StatusBadge status={market.status} stale={market.stale} zh={zh} />
           {onShare && (
@@ -1020,6 +1030,9 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.card, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colors.border },
   cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   matchText: { fontSize: 15, fontWeight: '700', color: colors.text, flex: 1, marginRight: 8 },
+  teamLine: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8, gap: 6 },
+  flag: { width: 22, height: 15, borderRadius: 2, backgroundColor: colors.border },
+  vsText: { color: colors.textSecondary, fontWeight: '700', fontSize: 12 },
   matchMeta: { fontSize: 12, color: colors.textSecondary, marginTop: -4, marginBottom: 10 },
   oddsBtnRow: { flexDirection: 'row', gap: 8 },
   oddsBtn: { flex: 1, backgroundColor: colors.background, borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: colors.border },

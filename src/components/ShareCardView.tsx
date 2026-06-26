@@ -32,6 +32,9 @@ export interface ShareCardProps {
   ctaLabel?: string;
   accentFrom?: string;
   accentTo?: string;
+  /** Optional small image pair (e.g. home/away flags) rendered as a VS strip. */
+  leftImageUrl?: string;
+  rightImageUrl?: string;
   /** Called when share is initiated */
   onShare?: () => void;
 }
@@ -51,6 +54,8 @@ export function ShareCardView({
   ctaLabel,
   accentFrom = '#5B8CFF',
   accentTo = '#7C3AED',
+  leftImageUrl,
+  rightImageUrl,
   onShare,
 }: ShareCardProps) {
   const { t } = useI18n();
@@ -125,6 +130,13 @@ export function ShareCardView({
                 <Text style={styles.description} numberOfLines={3}>{description}</Text>
               ) : null}
             </View>
+            {(leftImageUrl || rightImageUrl) ? (
+              <View style={styles.flagsRow}>
+                {leftImageUrl ? <Image source={{ uri: leftImageUrl }} style={styles.flagImg} resizeMode="cover" /> : <View style={styles.flagImg} />}
+                <Text style={styles.flagsVs}>VS</Text>
+                {rightImageUrl ? <Image source={{ uri: rightImageUrl }} style={styles.flagImg} resizeMode="cover" /> : <View style={styles.flagImg} />}
+              </View>
+            ) : null}
           </View>
 
           {(priceLabel || statsLabel) ? (
@@ -267,6 +279,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
   heroCopy: { gap: 6 },
+  flagsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 14 },
+  flagImg: { width: 56, height: 38, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.18)' },
+  flagsVs: { color: '#fff', fontSize: 18, fontWeight: '900' },
   headerEmoji: { fontSize: 34 },
   cardTitle: { color: '#f8fbff', fontSize: 26, fontWeight: '900', lineHeight: 32 },
   cardSubtitle: { color: 'rgba(240,246,255,0.84)', fontSize: 13, fontWeight: '700' },

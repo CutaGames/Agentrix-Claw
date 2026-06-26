@@ -27,6 +27,8 @@ export function ShareCardScreen() {
     ctaLabel,
     accentFrom,
     accentTo,
+    leftImageUrl,
+    rightImageUrl,
   } = route.params;
   const user = useAuthStore((s) => s.user);
 
@@ -48,6 +50,8 @@ export function ShareCardScreen() {
           ctaLabel={ctaLabel}
           accentFrom={accentFrom}
           accentTo={accentTo}
+          leftImageUrl={leftImageUrl}
+          rightImageUrl={rightImageUrl}
         />
       </ScrollView>
     </SafeAreaView>
