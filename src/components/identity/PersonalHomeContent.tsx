@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Card } from '../Card';
 import { PrimaryButton } from '../PrimaryButton';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const BANNER_W = SCREEN_W - 32; // 16px padding each side
@@ -252,7 +253,7 @@ export const PersonalHomeContent: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     gap: 16,
   },
@@ -491,4 +492,4 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
   },
-});
+}));

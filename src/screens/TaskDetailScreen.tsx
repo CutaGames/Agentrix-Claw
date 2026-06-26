@@ -22,6 +22,7 @@ import {
   TASK_STATUS_CONFIG,
 } from '../services/taskMarketplace.api';
 import { useI18n } from '../stores/i18nStore';
+import { themedStyles } from '../theme/useTheme';
 
 const TYPE_LABEL_ZH: Record<string, string> = {
   development: '开发',
@@ -353,7 +354,7 @@ export function TaskDetailScreen({ route, navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   loadingContainer: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
   // Header
@@ -414,4 +415,4 @@ const styles = StyleSheet.create({
   bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, paddingBottom: 30, backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.border },
   bidButton: { backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
   bidButtonText: { color: '#fff', fontSize: 17, fontWeight: '700' },
-});
+}));

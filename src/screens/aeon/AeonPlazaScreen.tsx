@@ -33,6 +33,7 @@ import { useActivePet } from '../../services/activePet.service';
 import { connectAeonRoom, type AeonRealtimeHandle } from '../../services/aeon/aeonRealtimeClient';
 import { AeonTutorialOverlay, useAeonTutorial } from '../../components/aeon/AeonTutorialOverlay';
 import type { AeonCharacterSnapshot, AeonServerEvent, AeonBadge } from '../../../shared/types/aeon-sync';
+import { themedStyles } from '../../theme/useTheme';
 
 /** 全服公共广场固定房间 id(虚拟房间,不绑定地块;网关纯内存在场)。 */
 const PUBLIC_PLAZA_ROOM_ID = 'aeon-public-plaza';
@@ -298,7 +299,7 @@ export default function AeonPlazaScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: { padding: 16, paddingBottom: 8, flexDirection: 'row', alignItems: 'center' },
   backBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
@@ -348,4 +349,4 @@ const styles = StyleSheet.create({
   sendBtn: { backgroundColor: colors.accent, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 },
   sendBtnDisabled: { opacity: 0.4 },
   sendTxt: { color: '#fff', fontSize: 14, fontWeight: '700' },
-});
+}));

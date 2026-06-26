@@ -33,6 +33,7 @@ import {
   type MigrationResult,
   type LanCandidate,
 } from '../../services/openclaw-bridge.service';
+import { themedStyles } from '../../theme/useTheme';
 
 type WizardStep = 'discover' | 'verify' | 'migrate' | 'done';
 type DiscoverTab = 'manual' | 'lan';
@@ -479,7 +480,7 @@ function InfoRow({ icon, label, value, small }: { icon: string; label: string; v
 // Styles
 // ─────────────────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 24, paddingBottom: 60 },
 
@@ -588,4 +589,4 @@ const styles = StyleSheet.create({
   summaryTileIcon: { fontSize: 24, marginBottom: 6 },
   summaryTileValue: { fontSize: 22, fontWeight: '700', color: colors.text },
   summaryTileLabel: { fontSize: 12, color: colors.textMuted, marginTop: 2, textAlign: 'center' },
-});
+}));

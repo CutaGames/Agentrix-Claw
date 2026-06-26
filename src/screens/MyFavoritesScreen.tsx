@@ -11,6 +11,7 @@ import {
 import { colors } from '../theme/colors';
 import { SkillItem } from '../services/marketplace.api';
 import { apiFetch } from '../services/api';
+import { themedStyles } from '../theme/useTheme';
 
 const MOCK_FAVORITES: SkillItem[] = [
   {
@@ -150,7 +151,7 @@ export function MyFavoritesScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   listContent: { padding: 16, paddingBottom: 20 },
   card: {
@@ -186,4 +187,4 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 40, marginBottom: 8 },
   emptyText: { color: colors.text, fontSize: 16, fontWeight: '600' },
   emptySubtext: { color: colors.muted, fontSize: 13, marginTop: 4 },
-});
+}));

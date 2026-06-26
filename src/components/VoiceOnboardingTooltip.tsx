@@ -10,6 +10,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { colors } from '../theme/colors';
 import { mmkv } from '../stores/mmkvStorage';
+import { themedStyles } from '../theme/useTheme';
 
 const MMKV_KEY = 'voice_onboarding_completed_v2';
 const TOTAL_STEPS = 3;
@@ -121,7 +122,7 @@ export function VoiceOnboardingTooltip({ visible, voiceInteractionMode, duplexMo
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     position: 'absolute',
     bottom: 80,
@@ -190,4 +191,4 @@ const styles = StyleSheet.create({
     borderRightColor: 'transparent',
     borderTopColor: colors.bgCard,
   },
-});
+}));

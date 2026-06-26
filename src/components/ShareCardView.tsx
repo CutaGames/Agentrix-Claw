@@ -6,7 +6,7 @@
 import React, { useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
-  Alert, Share,
+  Alert, Share, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
@@ -21,6 +21,8 @@ export interface ShareCardProps {
   subtitle?: string;
   /** Emoji / icon to show in header */
   headerEmoji?: string;
+  /** Optional hero/cover image URL — when set the poster shows the real cover art. */
+  imageUrl?: string;
   userName?: string;
   categoryLabel?: string;
   priceLabel?: string;
@@ -39,6 +41,7 @@ export function ShareCardView({
   title = 'Agentrix-Claw',
   subtitle = 'Your AI Agent, Powered by OpenClaw',
   headerEmoji = '🦀',
+  imageUrl,
   userName,
   categoryLabel,
   priceLabel,
@@ -108,9 +111,13 @@ export function ShareCardView({
           </View>
 
           <View style={styles.heroPanel}>
-            <View style={styles.heroIconWrap}>
-              <Text style={styles.headerEmoji}>{headerEmoji}</Text>
-            </View>
+            {imageUrl ? (
+              <Image source={{ uri: imageUrl }} style={styles.heroImage} resizeMode="cover" />
+            ) : (
+              <View style={styles.heroIconWrap}>
+                <Text style={styles.headerEmoji}>{headerEmoji}</Text>
+              </View>
+            )}
             <View style={styles.heroCopy}>
               <Text style={styles.cardTitle} numberOfLines={2}>{title}</Text>
               <Text style={styles.cardSubtitle} numberOfLines={2}>{subtitle}</Text>
@@ -158,10 +165,11 @@ export function ShareCardView({
             </View>
             <View style={styles.qrCopy}>
               <Text style={styles.qrTitle}>{resolvedCta}</Text>
-              <Text style={styles.qrSub}>{t({ en: 'Open on mobile, save the poster, or forward to friends.', zh: '手机扫码直达，也可保存海报后转发给好友。' })}</Text>
-              <View style={styles.urlBadge}>
+              <Text style={styles.qrSub}>{t({ en: 'If the QR is blocked, tap the link to copy and open in a browser.', zh: '若二维码被拦截，点下方链接复制后用浏览器打开。' })}</Text>
+              <TouchableOpacity style={styles.urlBadge} onPress={copyLink} activeOpacity={0.7}>
                 <Text style={styles.urlText} numberOfLines={1}>{shareUrl}</Text>
-              </View>
+                <Text style={styles.urlCopy}>{copied ? `✓ ${t({ en: 'Copied', zh: '已复制' })}` : `📋 ${t({ en: 'Copy', zh: '复制' })}`}</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -171,7 +179,7 @@ export function ShareCardView({
             </Text>
           ) : null}
 
-          <Text style={styles.cardFooter}>agentrix.top • Powered by OpenClaw</Text>
+          <Text style={styles.cardFooter}>agentrix.top · Powered by Agentrix</Text>
         </LinearGradient>
       </ViewShot>
 
@@ -251,6 +259,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.14)',
     marginBottom: 14,
   },
+  heroImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 18,
+    marginBottom: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
   heroCopy: { gap: 6 },
   headerEmoji: { fontSize: 34 },
   cardTitle: { color: '#f8fbff', fontSize: 26, fontWeight: '900', lineHeight: 32 },
@@ -299,12 +314,17 @@ const styles = StyleSheet.create({
   qrTitle: { color: '#0F172A', fontSize: 16, fontWeight: '900' },
   qrSub: { color: '#475569', fontSize: 12, lineHeight: 18 },
   urlBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
     backgroundColor: '#E2E8F0',
     borderRadius: 10,
-    paddingVertical: 6,
+    paddingVertical: 8,
     paddingHorizontal: 10,
   },
-  urlText: { color: '#2563EB', fontSize: 11, fontFamily: 'monospace' },
+  urlText: { color: '#2563EB', fontSize: 11, fontFamily: 'monospace', flex: 1 },
+  urlCopy: { color: '#1d4ed8', fontSize: 11, fontWeight: '800' },
   cardUser: { color: 'rgba(226,232,240,0.86)', fontSize: 13, fontWeight: '700' },
   cardFooter: { color: 'rgba(226,232,240,0.64)', fontSize: 11, textAlign: 'center' },
   actions: { flexDirection: 'row', gap: 10, marginTop: 16, width: '100%', maxWidth: 340 },

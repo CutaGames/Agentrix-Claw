@@ -29,6 +29,7 @@ import { apiFetch } from '../../services/api';
 import { colors } from '../../theme/colors';
 import type { AgentStackParamList } from '../../navigation/types';
 import { useI18n } from '../../stores/i18nStore';
+import { themedStyles } from '../../theme/useTheme';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -293,7 +294,7 @@ export function TeamSpaceScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: {
     flexDirection: 'row',
@@ -430,4 +431,4 @@ const styles = StyleSheet.create({
   },
   createBtnDisabled: { opacity: 0.5 },
   createBtnText: { color: '#fff', fontWeight: '700' },
-});
+}));

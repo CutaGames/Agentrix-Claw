@@ -26,6 +26,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
+import { themedStyles } from '../../theme/useTheme';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -241,7 +242,7 @@ export function OtaProgressScreen() {
 
 // ── Styles ───────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary, padding: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   deviceCard: {
@@ -299,4 +300,4 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   secondaryBtnText: { color: colors.textMuted, fontWeight: '600', fontSize: 14 },
-});
+}));

@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { colors } from '../../theme/colors';
 import { SkillItem, marketplaceApi } from '../../services/marketplace.api';
+import { themedStyles } from '../../theme/useTheme';
 
 interface Props {
   skill: SkillItem;
@@ -100,7 +101,7 @@ export function SkillCard({ skill, onPress, onPromote, onInstallToAgent, showIns
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   card: {
     backgroundColor: colors.card,
     borderRadius: 14,
@@ -252,4 +253,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-});
+}));

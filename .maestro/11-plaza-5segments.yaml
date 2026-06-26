@@ -1,56 +1,37 @@
 appId: app.agentrix.claw
 # ─────────────────────────────────────────────────────────────
-# Test 11: Plaza 5-segment flow
-# Cycles through Feed / Skills / Tasks / Pets / Play and
-# verifies each segment renders without crash.
+# Test 11: Plaza 5-segment flow — Feed / Skills / Tasks / Pets / Play
+# 强断言(CI 实证):deep-link 进 Plaza(避免 tab-tap 不可靠),分段用 testID
+# (plaza-seg-*,已从 Pressable 改 TouchableOpacity 让 Fabric 映射)逐段切换。
 # ─────────────────────────────────────────────────────────────
 ---
 - launchApp
+- assertVisible:
+    id: "tab-world"
+- openLink: agentrix://plaza
+- extendedWaitUntil:
+    visible:
+      id: "plaza-seg-feed"
+    timeout: 15000
 
-- tapOn: "Plaza"
-
-- waitForAnimationToEnd:
-    timeout: 5000
-
-# ── Feed segment (default) ───────────────────────────────
-- takeScreenshot: "11-plaza-feed"
-
-# ── Skills segment ───────────────────────────────────────
+# ── 逐段切换:每段 testID 必须存在且可点(验证 5-segment 栏完整)──
 - tapOn:
-    text: "Skills"
-    index: 0  # the Segmented control, not a card
-
-- waitForAnimationToEnd:
-    timeout: 3000
-
+    id: "plaza-seg-skills"
+- waitForAnimationToEnd
 - takeScreenshot: "11-plaza-skills"
-
-# ── Tasks segment ────────────────────────────────────────
 - tapOn:
-    text: "Tasks"
-    index: 0
-
-- waitForAnimationToEnd:
-    timeout: 3000
-
+    id: "plaza-seg-tasks"
+- waitForAnimationToEnd
 - takeScreenshot: "11-plaza-tasks"
-
-# ── Pets segment ─────────────────────────────────────────
 - tapOn:
-    text: "Pets"
-    index: 0
-
-- waitForAnimationToEnd:
-    timeout: 3000
-
+    id: "plaza-seg-pets"
+- waitForAnimationToEnd
 - takeScreenshot: "11-plaza-pets"
-
-# ── Play segment ─────────────────────────────────────────
 - tapOn:
-    text: "Play"
-    index: 0
-
-- waitForAnimationToEnd:
-    timeout: 3000
-
+    id: "plaza-seg-play"
+- waitForAnimationToEnd
 - takeScreenshot: "11-plaza-play"
+- tapOn:
+    id: "plaza-seg-feed"
+- waitForAnimationToEnd
+- takeScreenshot: "11-plaza-feed"

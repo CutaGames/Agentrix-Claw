@@ -249,10 +249,32 @@ class AndroidBackgroundWakeWordService : Service() {
 
   private fun startForegroundCompat() {
     val notification = buildNotification()
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      startForeground(NOTIFICATION_ID, notification, ServiceInfoForegroundType.microphone)
-    } else {
-      startForeground(NOTIFICATION_ID, notification)
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && hasRecordPermission()) {
+        // RECORD_AUDIO granted: legal to run a microphone-typed FGS.
+        startForeground(NOTIFICATION_ID, notification, ServiceInfoForegroundType.microphone)
+      } else {
+        // Pre-Q, or RECORD_AUDIO not (yet) granted. On API 34+ starting a
+        // microphone-typed FGS without the runtime mic permission — or while the
+        // app is not in an eligible state (e.g. a START_STICKY auto-restart from
+        // background) — throws SecurityException and crashes the whole process.
+        // Start a plain, typeless foreground notification just to satisfy the
+        // startForegroundService() contract, then stand down until the user
+        // enables wake-word and grants the mic permission.
+        startForeground(NOTIFICATION_ID, notification)
+        if (!hasRecordPermission()) {
+          stopSelfSafely()
+        }
+      }
+    } catch (t: Throwable) {
+      // Never let a foreground-service start failure (SecurityException,
+      // ForegroundServiceStartNotAllowedException, InvalidForegroundServiceTypeException,
+      // etc.) crash the host app. Log and stand the service down gracefully.
+      android.util.Log.w("WakeWordService", "startForeground failed; standing down", t)
+      try {
+        stopSelfSafely()
+      } catch (_: Throwable) {
+      }
     }
   }
 

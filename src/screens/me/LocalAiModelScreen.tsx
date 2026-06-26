@@ -15,6 +15,7 @@ import type { LocalAiStatus } from '../../stores/settingsStore';
 import { isLiveSpeechRecognitionAvailable } from '../../services/liveSpeech.service';
 import { OtaModelDownloadService, type DownloadProgress } from '../../services/otaModelDownload.service';
 import { RealtimeMicrophoneService } from '../../services/realtimeMicrophone.service';
+import { themedStyles } from '../../theme/useTheme';
 
 interface DownloadRequestOptions {
   repair?: boolean;
@@ -682,7 +683,7 @@ export function LocalAiModelScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 48, gap: 16 },
   card: {
@@ -800,4 +801,4 @@ const styles = StyleSheet.create({
   },
   routeLabel: { flex: 1, fontSize: 12, color: colors.textMuted },
   routeValue: { flex: 1, fontSize: 12, fontWeight: '600', color: colors.textPrimary, textAlign: 'right' },
-});
+}));

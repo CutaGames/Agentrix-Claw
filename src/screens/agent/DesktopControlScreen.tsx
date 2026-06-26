@@ -24,6 +24,7 @@ import {
 } from '../../services/desktopSync';
 import { fetchOperationsContinuity, requestOperationsFollowUp, type OperationsContinuityState } from '../../services/operations';
 import { WatchDataLayerService } from '../../services/wearables/watchDataLayerBridge.service';
+import { themedStyles } from '../../theme/useTheme';
 
 const prettyJson = (value: unknown) => {
   if (value == null) return 'No result';
@@ -382,7 +383,7 @@ export function DesktopControlScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
@@ -569,4 +570,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
-});
+}));

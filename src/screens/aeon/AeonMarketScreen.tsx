@@ -9,6 +9,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 interface MarketTile {
   emoji: string;
@@ -67,7 +68,7 @@ export default function AeonMarketScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12 },
   back: { minWidth: 64 }, backText: { color: colors.textPrimary, fontSize: 16, fontWeight: '600' },
@@ -78,4 +79,4 @@ const styles = StyleSheet.create({
   tileEmoji: { fontSize: 30 },
   tileTitle: { color: colors.textPrimary, fontSize: 15, fontWeight: '700', marginTop: 8 },
   tileSub: { color: colors.textMuted, fontSize: 12, marginTop: 4, lineHeight: 17 },
-});
+}));

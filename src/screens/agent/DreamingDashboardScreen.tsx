@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../../stores/i18nStore';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
+import { themedStyles } from '../../theme/useTheme';
 
 type DreamPhase = 'light' | 'deep' | 'rem';
 type DreamStatus = 'pending' | 'running' | 'completed' | 'failed';
@@ -188,7 +189,7 @@ export function DreamingDashboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   phaseBar: { flexDirection: 'row', paddingHorizontal: 12, gap: 8, paddingTop: 8 },
   phaseTab: {
@@ -243,4 +244,4 @@ const styles = StyleSheet.create({
   insightConfidence: { color: colors.textMuted, fontSize: 10, marginTop: 2 },
   sessionTime: { color: colors.textMuted, fontSize: 10, marginTop: 4 },
   emptyText: { color: colors.textMuted, textAlign: 'center', marginTop: 40, fontSize: 14 },
-});
+}));

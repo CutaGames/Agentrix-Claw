@@ -16,6 +16,7 @@ import { colors } from '../theme/colors';
 import { getMyInstances, batchCleanupInstances } from '../services/openclaw.service';
 import { useAuthStore } from '../stores/authStore';
 import { Card } from '../components/Card';
+import { themedStyles } from '../theme/useTheme';
 
 interface Agent {
   id: string;         // openclaw instance id
@@ -281,7 +282,7 @@ export default function MyAgentsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -435,4 +436,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.error ?? '#FF4444',
   },
-});
+}));

@@ -15,6 +15,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { colors } from '../../theme/colors';
 import { SharePoster } from './SharePoster';
+import { themedStyles } from '../../theme/useTheme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -168,7 +169,7 @@ export function ShareSheet({ visible, onClose, target }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -257,4 +258,4 @@ const styles = StyleSheet.create({
   qrPlaceholder: { fontSize: 80, marginBottom: 12 },
   qrUrl: { color: '#1e293b', fontSize: 12, fontWeight: '500', marginBottom: 4 },
   qrHint: { color: '#64748b', fontSize: 11 },
-});
+}));

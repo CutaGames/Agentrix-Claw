@@ -37,6 +37,7 @@ import type {
   AeonBuildItemDto,
   AeonBuildCatalogItem,
 } from '../../../shared/types/aeon-world';
+import { themedStyles } from '../../theme/useTheme';
 
 /** 与后端 AEON_BUILD 对齐(展示用小网格,放置坐标按比例映射)。 */
 const GRID_W = 12;
@@ -379,7 +380,7 @@ export default function AeonBuildScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   center: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center' },
   header: { padding: 16, paddingBottom: 8 },
@@ -430,4 +431,4 @@ const styles = StyleSheet.create({
   catImg: { width: 48, height: 48, marginBottom: 4 },
   catLabel: { color: colors.textPrimary, fontSize: 11, textAlign: 'center' },
   catMeta: { color: colors.textMuted, fontSize: 9, marginTop: 2 },
-});
+}));

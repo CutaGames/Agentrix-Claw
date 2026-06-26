@@ -12,6 +12,7 @@ import {
 import { colors } from '../theme/colors';
 import { apiFetch } from '../services/api';
 import { useI18n } from '../stores/i18nStore';
+import { themedStyles } from '../theme/useTheme';
 
 interface CommissionStats {
   totalCommission: number;
@@ -234,7 +235,7 @@ export function CommissionEarningsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   loadingContainer: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
   listContent: { paddingBottom: 20 },
@@ -322,4 +323,4 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 40, marginBottom: 8 },
   emptyText: { color: colors.text, fontSize: 16, fontWeight: '600' },
   emptySubtext: { color: colors.muted, fontSize: 13, marginTop: 4 },
-});
+}));

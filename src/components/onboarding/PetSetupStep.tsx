@@ -12,6 +12,7 @@ import { View, Text, StyleSheet, Switch, Pressable } from 'react-native';
 import { MMKV } from 'react-native-mmkv';
 import { colors } from '../../theme/colors';
 import { PetRenderer } from '../pet/PetRiveRenderer';
+import { themedStyles } from '../../theme/useTheme';
 
 const storage = new MMKV();
 const PET_COMPANION_KEY = 'pet_companion_enabled';
@@ -105,7 +106,7 @@ export function PetSetupStep({ onNext, onSkip, t: translate }: PetSetupStepProps
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
@@ -176,6 +177,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
   },
-});
+}));
 
 export default PetSetupStep;

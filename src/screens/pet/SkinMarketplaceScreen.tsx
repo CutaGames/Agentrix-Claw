@@ -23,6 +23,7 @@ import {
   installMarketplaceSkin,
 } from '../../services/mobilePetSdk';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 const PAGE_SIZE = 30;
 
@@ -226,7 +227,7 @@ export function SkinMarketplaceScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 48 },
   subtitle: { color: colors.textSecondary, fontSize: 13, marginBottom: 12 },
@@ -296,6 +297,6 @@ const styles = StyleSheet.create({
   pagerBtnDisabled: { opacity: 0.4 },
   pagerText: { color: colors.text, fontSize: 12, fontWeight: '600' },
   pagerInfo: { color: colors.textMuted, fontSize: 12 },
-});
+}));
 
 export default SkinMarketplaceScreen;

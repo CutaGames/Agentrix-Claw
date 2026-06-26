@@ -16,6 +16,7 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import type { AgentStackParamList } from '../../navigation/types';
 import type { Workflow } from './WorkflowListScreen';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'WorkflowDetail'>;
 type Route = RouteProp<AgentStackParamList, 'WorkflowDetail'>;
@@ -213,7 +214,7 @@ export function WorkflowDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 48, gap: 8 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginBottom: 4 },
@@ -256,4 +257,4 @@ const styles = StyleSheet.create({
     alignItems: 'center', marginTop: 16,
   },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-});
+}));

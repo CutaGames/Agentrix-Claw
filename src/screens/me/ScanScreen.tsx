@@ -20,6 +20,7 @@ import {
   type UploadedPetImage,
   uploadPetScanImage,
 } from '../../services/petCreator';
+import { themedStyles } from '../../theme/useTheme';
 
 const PET_SCAN_VIEWS = [
   {
@@ -650,7 +651,7 @@ export function ScanScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   center: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center', padding: 24 },
   permText: { fontSize: 16, color: colors.textSecondary, marginBottom: 16 },
@@ -979,4 +980,4 @@ const styles = StyleSheet.create({
   hint: { marginTop: 24, fontSize: 14, color: 'rgba(255,255,255,0.8)', textAlign: 'center', paddingHorizontal: 32 },
   rescanBtn: { marginTop: 16, backgroundColor: colors.accent, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 12 },
   rescanText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-});
+}));

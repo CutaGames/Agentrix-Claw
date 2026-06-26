@@ -26,6 +26,7 @@ import {
   sendGreetingCard,
   GreetingTemplate,
 } from '../../services/greeting.api';
+import { themedStyles } from '../../theme/useTheme';
 
 export function GreetingCardComposeScreen() {
   const { t } = useI18n();
@@ -204,7 +205,7 @@ function TemplateTile({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 40 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary, marginBottom: 4 },
@@ -258,4 +259,4 @@ const styles = StyleSheet.create({
   sendBtnDisabled: { backgroundColor: colors.border },
   sendBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   footer: { textAlign: 'center', fontSize: 11, color: colors.textMuted, marginTop: 12, opacity: 0.7 },
-});
+}));

@@ -10,6 +10,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
 import { bindOpenClaw, confirmDesktopPairWithApiBase, mapRawInstance } from '../../services/auth';
 import { registerLocalRelayAgent } from '../../services/openclaw.service';
+import { themedStyles } from '../../theme/useTheme';
 
 // Wizard steps:
 // 'choose'    → user picks: novice (install guide) OR existing (scan)
@@ -323,7 +324,7 @@ const INSTALL_STEPS = [
   { en: 'Tap "QR code is ready — Scan Now" above to connect your phone', zh: '点击上方“二维码已准备好——立即扫描”来连接手机' },
 ];
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 24, paddingTop: 56, paddingBottom: 48, gap: 16 },
   centered: { flex: 1, backgroundColor: colors.bgPrimary, justifyContent: 'center', alignItems: 'center', padding: 24 },
@@ -383,5 +384,5 @@ const styles = StyleSheet.create({
   scanLabel: { color: '#fff', fontSize: 15, marginBottom: 40, textAlign: 'center', paddingHorizontal: 20 },
   cancelBtn: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 30, paddingVertical: 12, borderRadius: 20 },
   cancelBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-});
+}));
 

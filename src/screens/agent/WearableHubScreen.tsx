@@ -26,6 +26,7 @@ import {
   type WearableScanCandidate,
   type WearableServiceSnapshot,
 } from '../../services/wearables/wearableTypes';
+import { themedStyles } from '../../theme/useTheme';
 
 type DeviceFilter = 'all' | 'glass' | 'watch' | 'ring' | 'band' | 'clip' | 'sensor';
 
@@ -515,7 +516,7 @@ export function WearableHubScreen({ navigation }: any) {
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
-const st = StyleSheet.create({
+const st = themedStyles(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgPrimary },
   scroll: { flex: 1 },
   content: { padding: 16, gap: 14 },
@@ -642,4 +643,4 @@ const st = StyleSheet.create({
   supportBadge: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   supportLabel: { fontSize: 12, fontWeight: '600', color: colors.textPrimary },
   supportHint: { fontSize: 12, color: colors.textMuted, lineHeight: 18, textAlign: 'center' },
-});
+}));

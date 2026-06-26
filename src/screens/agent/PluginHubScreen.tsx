@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../../stores/i18nStore';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
+import { themedStyles } from '../../theme/useTheme';
 
 type CapType = 'tool' | 'hook' | 'channel' | 'service';
 
@@ -155,7 +156,7 @@ export function PluginHubScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   statsBanner: {
     flexDirection: 'row',
@@ -202,4 +203,4 @@ const styles = StyleSheet.create({
   capPlugin: { color: colors.textMuted, fontSize: 11 },
   capDesc: { color: colors.textSecondary, fontSize: 12, marginTop: 4 },
   emptyText: { color: colors.textMuted, textAlign: 'center', marginTop: 40, fontSize: 14 },
-});
+}));

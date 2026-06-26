@@ -18,6 +18,7 @@ import {
 } from '../../services/unifiedAgent';
 import { apiFetch } from '../../services/api';
 import type { AgentStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 // ──────────────────────────────────────────────
 // Types
@@ -273,7 +274,7 @@ function BalanceBadge({ agentAccountId, t: _t }: { agentAccountId?: string; t: R
     </View>
   );
 }
-const balBadge = StyleSheet.create({
+const balBadge = themedStyles(() => StyleSheet.create({
   row: { flexDirection: 'row', gap: 6 },
   chip: {
     flex: 1,
@@ -291,7 +292,7 @@ const balBadge = StyleSheet.create({
   },
   label: { fontSize: 10, color: '#22c55e', fontWeight: '600' },
   value: { fontSize: 14, color: '#22c55e', fontWeight: '800' },
-});
+}));
 
 // ──────────────────────────────────────────────
 // Chain Identity Badge
@@ -359,7 +360,7 @@ function ChainIdentityBadge({ agentAccountId, t: _t }: { agentAccountId?: string
     </TouchableOpacity>
   );
 }
-const chainBadge = StyleSheet.create({
+const chainBadge = themedStyles(() => StyleSheet.create({
   confirmed: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -387,7 +388,7 @@ const chainBadge = StyleSheet.create({
   },
   registerIcon: { fontSize: 14 },
   registerText: { fontSize: 13, color: '#a78bfa', fontWeight: '600' },
-});
+}));
 
 export function AgentAccountScreen() {
   const { t } = useI18n();
@@ -783,7 +784,7 @@ export function AgentAccountScreen() {
 // Styles
 // ──────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   list: { padding: 16, gap: 12, paddingBottom: 100 },
   card: {
@@ -948,9 +949,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   apiKeyRegenText: { fontSize: 12, color: colors.textSecondary, fontWeight: '600' },
-});
+}));
 
-const modal = StyleSheet.create({
+const modal = themedStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bgPrimary },
   header: {
     flexDirection: 'row',
@@ -1022,4 +1023,4 @@ const modal = StyleSheet.create({
     borderColor: colors.border,
   },
   infoText: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
-});
+}));

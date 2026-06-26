@@ -9,6 +9,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
+import { themedStyles } from '../../theme/useTheme';
 
 // ──────────────────────────────────────────────
 // Types
@@ -160,7 +161,7 @@ function TransferModal({
     </Modal>
   );
 }
-const ms = StyleSheet.create({
+const ms = themedStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bgPrimary },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -174,7 +175,7 @@ const ms = StyleSheet.create({
   body: { flex: 1, padding: 16 },
   label: { fontSize: 11, color: colors.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 16, marginBottom: 6 },
   input: { backgroundColor: colors.bgCard, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, fontSize: 14, color: colors.textPrimary },
-});
+}));
 
 // ──────────────────────────────────────────────
 // Main Screen
@@ -296,7 +297,7 @@ export function AgentBalanceScreen() {
 // ──────────────────────────────────────────────
 // Styles
 // ──────────────────────────────────────────────
-const s = StyleSheet.create({
+const s = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   // Hero
   heroCard: {
@@ -346,4 +347,4 @@ const s = StyleSheet.create({
   empty: { alignItems: 'center', padding: 40, gap: 8 },
   emptyIcon: { fontSize: 40 },
   emptyText: { fontSize: 14, color: colors.textMuted },
-});
+}));

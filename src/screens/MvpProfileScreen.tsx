@@ -12,6 +12,7 @@ import { colors } from '../theme/colors';
 import { authApi } from '../services/api';
 import { referralApi } from '../services/referral.api';
 import { useAuthStore } from '../stores/authStore';
+import { themedStyles } from '../theme/useTheme';
 
 interface Props {
   navigation: any;
@@ -218,7 +219,7 @@ export function MvpProfileScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -401,4 +402,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
-});
+}));

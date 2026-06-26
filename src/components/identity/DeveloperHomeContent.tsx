@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Card } from '../Card';
 import { PrimaryButton } from '../PrimaryButton';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 // Mock 数据
 const mockDeveloperData = {
@@ -131,7 +132,7 @@ export const DeveloperHomeContent: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     gap: 16,
   },
@@ -297,4 +298,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 12,
   },
-});
+}));

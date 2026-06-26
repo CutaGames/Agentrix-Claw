@@ -1,21 +1,10 @@
 appId: app.agentrix.claw
 name: Soul_Birth — Re-watch guide (Me → 重看引导) re-opens at birth (R1.7)
 # ─────────────────────────────────────────────────────────────
-# Test 64: soul-companion-onboarding — 重看引导 (replay onboarding).
-#
-# Spec: .kiro/specs/soul-companion-onboarding/{requirements,design}.md
-#   Requirement 1.7: 编排器提供「重看引导」入口;用户主动触发重看时,
-#     重置 Soul_Birth 进度并从 `birth` 步骤重新开始。
-#   ProfileScreen.handleReplaySoulBirth → soulBirthStore.reset() → SoulBirthHost
-#     remounts the overlay at the first step (birth).
-#
-# Flow:
-#   Me tab → 重看引导 (testID me-replay-onboarding) → confirm dialog
-#   → tap 重看 / Replay → Soul_Birth overlay re-appears at the `birth` step
-#     ("诞生你的 AI").
-#
-# This flow is fully deterministic — it does NOT depend on cloud provision; it
-# only verifies the replay entry resets and re-mounts the overlay at birth.
+# Test 64: soul-companion-onboarding — 重看引导 (replay onboarding) R1.7.
+# 强断言(CI 实证):deep-link 进 Me/Profile(tab-me 点击在 shard 内不可靠),
+# 再滚到「重看引导」(testID me-replay-onboarding,已确认存在于 ProfileScreen)。
+# 触发后 Soul_Birth 覆盖层在 birth 步重新出现。
 # ─────────────────────────────────────────────────────────────
 ---
 - launchApp:
@@ -23,8 +12,7 @@ name: Soul_Birth — Re-watch guide (Me → 重看引导) re-opens at birth (R1.
 - waitForAnimationToEnd:
     timeout: 8000
 
-# ── Defensive: if a prior run left a Soul_Birth step overlay up, end it via
-#    the global 跳过 (R1.5) so the Me tab + replay entry are reachable. ──
+# ── 防御:若前序遗留 Soul_Birth 步骤覆盖层,先用全局「跳过」(R1.5)关掉 ──
 - runFlow:
     when:
       visible: "^跳过$"
@@ -35,41 +23,31 @@ name: Soul_Birth — Re-watch guide (Me → 重看引导) re-opens at birth (R1.
       - waitForAnimationToEnd:
           timeout: 3000
 
-# ── Open the Me tab ────────────────────────────────────────────
-- tapOn:
-    text: "Me"
-    optional: true
+# ── deep-link 进 Me/Profile,确定性可达 ────────────────────────
+- openLink: agentrix://me
 - waitForAnimationToEnd:
-    timeout: 3000
+    timeout: 6000
 - takeScreenshot: "64-me-tab"
 
-# ── Tap 重看引导 (R1.7 entry) ──────────────────────────────────
-# The menu item lives under Settings; scroll it into view if needed.
+# ── 滚到「重看引导」(R1.7 入口,Settings 区)并断言 ─────────────
 - scrollUntilVisible:
     element:
       id: "me-replay-onboarding"
     direction: DOWN
-    timeout: 8000
-    optional: true
+    timeout: 20000
 - assertVisible:
     id: "me-replay-onboarding"
 - tapOn:
     id: "me-replay-onboarding"
 
-# ── Confirm dialog → tap confirm (重看 / Replay), not 取消 / Cancel ──
-- assertVisible:
-    text: "重看引导|Replay onboarding"
-    optional: true
+# ── 确认弹窗 → 点「重看 / Replay」(非取消)────────────────────
 - takeScreenshot: "64-replay-confirm-dialog"
 - tapOn:
     text: "重看|Replay"
 - waitForAnimationToEnd:
     timeout: 5000
 
-# ── Assert Soul_Birth overlay re-appears at the `birth` step (R1.7) ──
+# ── 断言 Soul_Birth 覆盖层在 birth 步重现(R1.7)──────────────
 - assertVisible:
     text: "诞生你的 AI"
-- assertVisible:
-    text: "灵狐"
-    optional: true
 - takeScreenshot: "64-replayed-birth-step"

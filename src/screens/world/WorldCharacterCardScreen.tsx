@@ -29,6 +29,7 @@ import { useI18n } from '../../stores/i18nStore';
 import { useAuthStore } from '../../stores/authStore';
 import { getWorldAsset, type CharacterCard, type GenerationStatus } from '../../services/worldEngineApi';
 import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<WorldStackParamList, 'WorldCharacterCard'>;
 type Rt = RouteProp<WorldStackParamList, 'WorldCharacterCard'>;
@@ -100,10 +101,11 @@ export function WorldCharacterCardScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [poll]);
 
+  // 战斗子系统已退役(world-creation-feed 需求 11.1):原"去战斗"改为进资产库,
+  // 后续把角色带进统一创作/体验。保留方法签名避免改动调用点。
   const onBattle = useCallback(() => {
-    if (!assetId) return;
-    navigation.navigate('WorldBattlePicker');
-  }, [assetId, navigation]);
+    navigation.navigate('WorldAssetInventory');
+  }, [navigation]);
 
   const onInventory = useCallback(() => {
     navigation.navigate('WorldAssetInventory');
@@ -264,7 +266,7 @@ export function WorldCharacterCardScreen() {
         <>
           <View style={styles.ctaRow}>
             <TouchableOpacity style={styles.primaryBtn} onPress={onBattle}>
-              <Text style={styles.primaryBtnText}>⚔️ {t({ en: 'Battle', zh: '去战斗' })}</Text>
+              <Text style={styles.primaryBtnText}>🎒 {t({ en: 'My Assets', zh: '查看资产' })}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.secondaryBtn} onPress={onShare}>
               <Text style={styles.secondaryBtnText}>🔗 {t({ en: 'Share', zh: '分享' })}</Text>
@@ -341,7 +343,7 @@ function MeshStatusBanner({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 48 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgPrimary, padding: 24 },
@@ -402,6 +404,6 @@ const styles = StyleSheet.create({
   },
   guestSaveHint: { color: colors.textSecondary, fontSize: 13, lineHeight: 20, marginBottom: 14, textAlign: 'center' },
   primaryBtnFull: { backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
-});
+}));
 
 export default WorldCharacterCardScreen;

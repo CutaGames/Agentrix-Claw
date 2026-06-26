@@ -26,6 +26,7 @@ import {
 } from '../services/taskMarketplace.api';
 import { referralApi } from '../services/referral.api';
 import { ShareBottomSheet } from '../components/ShareComponents';
+import { themedStyles } from '../theme/useTheme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -633,7 +634,7 @@ export default function TaskMarketScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   // Compact Banner Carousel
   bannerCarousel: {
@@ -777,4 +778,4 @@ const styles = StyleSheet.create({
   },
   fabIcon: { color: '#fff', fontSize: 20, fontWeight: '700' },
   fabText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-});
+}));

@@ -22,6 +22,7 @@ import {
   NfcError,
   NfcStatus,
 } from '../../services/nfc.service';
+import { themedStyles } from '../../theme/useTheme';
 
 type ScreenState = 'checking' | 'scanning' | 'redeeming' | 'success' | 'error' | 'unsupported';
 
@@ -262,7 +263,7 @@ export function NfcRedeemScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -378,4 +379,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-});
+}));

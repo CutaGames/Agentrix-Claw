@@ -12,6 +12,7 @@ import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useI18n } from '../../stores/i18nStore';
 import type { SocialStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<SocialStackParamList, 'ChatList'>;
 
@@ -156,7 +157,7 @@ export function ChatListScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgPrimary },
   container: { flex: 1 },
   searchRow: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
@@ -198,4 +199,4 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
   },
   fabIcon: { fontSize: 22 },
-});
+}));

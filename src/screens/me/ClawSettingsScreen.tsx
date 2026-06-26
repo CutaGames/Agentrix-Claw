@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput, Share, Platform, ActivityIndicator, AppState, Linking as RNLinking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { colors } from '../../theme/colors';
+import { colors, getThemeMode, setThemeMode, type ThemeMode } from '../../theme/colors';
+import { useColors, useThemedStyles, type Palette } from '../../theme/useTheme';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { UiComplexity } from '../../stores/settingsStore';
@@ -41,6 +42,10 @@ export function ClawSettingsScreen() {
   const resetWakeWordConfig = useSettingsStore((s) => s.resetWakeWordConfig);
   const { language, setLanguage, t } = useI18n();
   const [telemetryOptIn, setTelemetryOptIn] = useState(isAnalyticsOptedIn());
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(getThemeMode());
+  // Live theme: this screen recolors instantly on toggle (no reload).
+  const c = useColors();
+  const styles = useThemedStyles(makeStyles);
   const localAiEnabled = useSettingsStore((s) => s.localAiEnabled);
   const localAiStatus = useSettingsStore((s) => s.localAiStatus);
   const localAiProgress = useSettingsStore((s) => s.localAiProgress);
@@ -324,7 +329,7 @@ export function ClawSettingsScreen() {
       title: t({ en: 'Agent', zh: '智能体' }),
       items: [
         { id: 'notify', icon: '🔔', label: t({ en: 'Notifications', zh: '通知' }), value: notificationsEnabled ? t({ en: 'On', zh: '开启' }) : t({ en: 'Off', zh: '关闭' }) },
-        { id: 'theme', icon: '🎨', label: t({ en: 'Theme', zh: '主题' }), value: t({ en: 'Dark', zh: '深色' }) },
+        { id: 'theme', icon: '🎨', label: t({ en: 'Theme', zh: '主题' }), value: themeMode === 'light' ? t({ en: 'Light', zh: '浅色' }) : t({ en: 'Dark', zh: '深色' }) },
       ],
     },
     {
@@ -531,7 +536,7 @@ export function ClawSettingsScreen() {
             value={wakeWordConfig.displayName}
             onChangeText={(text) => setWakeWordConfig({ displayName: text })}
             placeholder={t({ en: 'Primary wake phrase, e.g. Hey Agentrix', zh: '主唤醒短语，例如 Hey Agentrix' })}
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={c.textMuted}
             style={styles.textInput}
           />
 
@@ -539,7 +544,7 @@ export function ClawSettingsScreen() {
             value={wakeWordConfig.fallbackPhrases.join(', ')}
             onChangeText={(text) => setWakeWordConfig({ fallbackPhrases: text.split(',').map((item) => item.trim()).filter(Boolean) })}
             placeholder={t({ en: 'System wake phrases, comma separated', zh: '系统唤醒短语，逗号分隔' })}
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={c.textMuted}
             autoCapitalize="none"
             style={styles.textInput}
           />
@@ -556,7 +561,7 @@ export function ClawSettingsScreen() {
               }
             }}
             placeholder="0.65"
-            placeholderTextColor={colors.textMuted}
+            placeholderTextColor={c.textMuted}
             keyboardType="decimal-pad"
             style={styles.textInput}
           />
@@ -606,6 +611,38 @@ export function ClawSettingsScreen() {
                   }
                   if (item.id === 'notify') {
                     toggleNotifications(!notificationsEnabled);
+                    return;
+                  }
+                  if (item.id === 'theme') {
+                    const next: ThemeMode = themeMode === 'light' ? 'dark' : 'light';
+                    setThemeMode(next);
+                    setThemeModeState(next);
+                    Alert.alert(
+                      t({ en: 'Theme switched', zh: '主题已切换' }),
+                      t({
+                        en: `Switched to ${next === 'light' ? 'Light' : 'Dark'}. Applied live on themed screens; a few legacy screens repaint fully after a reload.`,
+                        zh: `已切换为${next === 'light' ? '浅色' : '深色'}主题。已适配的页面实时生效;个别旧页面重启后完整刷新。`,
+                      }),
+                      [
+                        { text: t({ en: 'OK', zh: '好' }), style: 'cancel' },
+                        {
+                          text: t({ en: 'Reload now', zh: '立即重启' }),
+                          onPress: () => {
+                            (async () => {
+                              try {
+                                const Updates = require('expo-updates');
+                                if (Updates?.reloadAsync) { await Updates.reloadAsync(); return; }
+                              } catch { /* not available */ }
+                              try {
+                                const { DevSettings } = require('react-native');
+                                if (DevSettings?.reload) { DevSettings.reload(); return; }
+                              } catch { /* not available */ }
+                              Alert.alert(t({ en: 'Please restart the app', zh: '请手动重启 App' }), t({ en: 'Close and reopen Agentrix to apply the theme.', zh: '关闭并重新打开 Agentrix 即可应用新主题。' }));
+                            })();
+                          },
+                        },
+                      ],
+                    );
                     return;
                   }
                   if (item.id === 'api') {
@@ -732,37 +769,37 @@ export function ClawSettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bgPrimary },
+function makeStyles(c: Palette) { return StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bgPrimary },
   content: { padding: 16, paddingBottom: 40, gap: 20 },
   group: { gap: 8 },
-  groupTitle: { fontSize: 12, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, paddingLeft: 4 },
-  groupItems: { backgroundColor: colors.bgCard, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
+  groupTitle: { fontSize: 12, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, paddingLeft: 4 },
+  groupItems: { backgroundColor: c.bgCard, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: c.border },
   item: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
-  itemBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  itemBorder: { borderBottomWidth: 1, borderBottomColor: c.border },
   itemIcon: { fontSize: 18, width: 26 },
-  itemLabel: { flex: 1, fontSize: 15, color: colors.textPrimary },
-  itemValue: { fontSize: 13, color: colors.textMuted },
-  itemArrow: { fontSize: 20, color: colors.textMuted },
-  dangerBtn: { alignItems: 'center', padding: 14, backgroundColor: colors.bgCard, borderRadius: 14, borderWidth: 1, borderColor: colors.error + '55' },
-  dangerBtnText: { color: colors.error, fontWeight: '700', fontSize: 15 },
+  itemLabel: { flex: 1, fontSize: 15, color: c.textPrimary },
+  itemValue: { fontSize: 13, color: c.textMuted },
+  itemArrow: { fontSize: 20, color: c.textMuted },
+  dangerBtn: { alignItems: 'center', padding: 14, backgroundColor: c.bgCard, borderRadius: 14, borderWidth: 1, borderColor: c.error + '55' },
+  dangerBtnText: { color: c.error, fontWeight: '700', fontSize: 15 },
   // ── UI Mode ──
   modeCard: {
-    backgroundColor: colors.bgCard, borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: colors.border, gap: 10,
+    backgroundColor: c.bgCard, borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: c.border, gap: 10,
   },
-  modeDesc: { fontSize: 13, color: colors.textMuted },
+  modeDesc: { fontSize: 13, color: c.textMuted },
   modeRow: { flexDirection: 'row', gap: 8 },
   modeBtn: {
     flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 10,
-    backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.border, gap: 4,
+    backgroundColor: c.bgSecondary, borderWidth: 1, borderColor: c.border, gap: 4,
   },
-  modeBtnActive: { borderColor: colors.accent, backgroundColor: colors.accent + '15' },
+  modeBtnActive: { borderColor: c.accent, backgroundColor: c.accent + '15' },
   modeIcon: { fontSize: 22 },
-  modeLabel: { fontSize: 11, fontWeight: '600', color: colors.textMuted },
-  modeLabelActive: { color: colors.accent },
-  modeCurrentDesc: { fontSize: 12, color: colors.textSecondary, paddingTop: 2 },
-  subsectionTitle: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginTop: 2 },
+  modeLabel: { fontSize: 11, fontWeight: '600', color: c.textMuted },
+  modeLabelActive: { color: c.accent },
+  modeCurrentDesc: { fontSize: 12, color: c.textSecondary, paddingTop: 2 },
+  subsectionTitle: { fontSize: 12, fontWeight: '700', color: c.textSecondary, marginTop: 2 },
   engineBtn: { flexBasis: 0 },
   actionRow: { flexDirection: 'row', gap: 8 },
   actionBtn: {
@@ -772,18 +809,18 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.accent,
-    backgroundColor: colors.accent + '18',
+    borderColor: c.accent,
+    backgroundColor: c.accent + '18',
   },
   actionBtnDisabled: { opacity: 0.45 },
-  actionBtnText: { color: colors.textPrimary, fontSize: 13, fontWeight: '700' },
-  localStatusText: { fontSize: 12, color: colors.textSecondary, lineHeight: 18 },
+  actionBtnText: { color: c.textPrimary, fontSize: 13, fontWeight: '700' },
+  localStatusText: { fontSize: 12, color: c.textSecondary, lineHeight: 18 },
   textInput: {
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: c.bgSecondary,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     borderRadius: 10,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     fontSize: 13,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -793,19 +830,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: c.bgSecondary,
   },
   toggleRowActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accent + '12',
+    borderColor: c.accent,
+    backgroundColor: c.accent + '12',
   },
-  toggleLabel: { color: colors.textPrimary, fontSize: 13, fontWeight: '600' },
-  toggleValue: { color: colors.textMuted, fontSize: 12 },
-  toggleValueActive: { color: colors.accent },
+  toggleLabel: { color: c.textPrimary, fontSize: 13, fontWeight: '600' },
+  toggleValue: { color: c.textMuted, fontSize: 12 },
+  toggleValueActive: { color: c.accent },
   secondaryBtn: {
     marginTop: 4,
     alignItems: 'center',
@@ -813,8 +850,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bgSecondary,
+    borderColor: c.border,
+    backgroundColor: c.bgSecondary,
   },
-  secondaryBtnText: { color: colors.textPrimary, fontSize: 13, fontWeight: '600' },
-});
+  secondaryBtnText: { color: c.textPrimary, fontSize: 13, fontWeight: '600' },
+}); }

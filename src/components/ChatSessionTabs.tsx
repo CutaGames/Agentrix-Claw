@@ -9,6 +9,7 @@ import React, { useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { colors } from '../theme/colors';
 import { mmkv } from '../stores/mmkvStorage';
+import { themedStyles } from '../theme/useTheme';
 
 export const MAX_SESSIONS = 5;
 
@@ -93,7 +94,7 @@ export function ChatSessionTabs({ sessions, activeSessionId, onSelect, onNew, on
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     backgroundColor: colors.bgCard,
     borderBottomWidth: 1,
@@ -154,4 +155,4 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     lineHeight: 20,
   },
-});
+}));

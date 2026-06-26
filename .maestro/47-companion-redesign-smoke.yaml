@@ -14,7 +14,8 @@
 #
 # Spec: requirements.md R12.3, R12.10.
 
-appId: com.cutagames.agentrix
+appId: app.agentrix.claw
+---
 
 # ── Pre-flight: launch app cold ──────────────────────────────────────
 - launchApp:
@@ -25,7 +26,7 @@ appId: com.cutagames.agentrix
 # WorldHubScreen has the "World" tab label highlighted; verify by tapping
 # the icon area and confirming WorldHub headline is visible.
 - assertVisible:
-    text: "World"
+    id: "tab-world"
 - assertVisible:
     id: "splash-pet-sprite"
     optional: true # only present during cold-boot splash
@@ -41,7 +42,6 @@ appId: com.cutagames.agentrix
 # ── Step 3: Long-press ball → PetDetailSheet ─────────────────────────
 - longPressOn:
     id: "floating-ball-sprite"
-    duration: 600
     optional: true
 - waitForAnimationToEnd
 - assertVisible:
@@ -62,13 +62,13 @@ appId: com.cutagames.agentrix
 
 # ── Step 5: Switch to Plaza tab → ball still visible ─────────────────
 - tapOn:
-    text: "Plaza"
+    id: "tab-plaza"
     optional: true
 - waitForAnimationToEnd
 
 # ── Step 6: Switch to Summon tab → ball should NOT be visible ────────
 - tapOn:
-    text: "Summon"
+    id: "tab-summon"
     optional: true
 - waitForAnimationToEnd
 - assertNotVisible:
@@ -77,6 +77,6 @@ appId: com.cutagames.agentrix
 
 # ── Step 7: Switch to Me tab → ball returns ──────────────────────────
 - tapOn:
-    text: "Me"
+    id: "tab-me"
     optional: true
 - waitForAnimationToEnd

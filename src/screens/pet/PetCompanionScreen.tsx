@@ -39,6 +39,7 @@ import {
 import { PetDiaryCard } from '../../components/pet/PetDiaryCard';
 import { PetTapGameModal } from '../../components/pet/PetTapGameModal';
 import { playPetFx, stopPetFx } from '../../services/petInteractionFx';
+import { themedStyles } from '../../theme/useTheme';
 
 type PetEmotion =
   | 'calm' | 'happy' | 'excited' | 'focused'
@@ -261,7 +262,7 @@ export function PetCompanionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 24, alignItems: 'center', paddingBottom: 40 },
   title: { color: colors.text, fontSize: 22, fontWeight: '700', marginBottom: 4 },
@@ -321,4 +322,4 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,212,255,0.10)',
   },
   v4BtnText: { color: colors.accent, fontSize: 13, fontWeight: '600' },
-});
+}));

@@ -22,6 +22,7 @@ import {
   Alert,
 } from 'react-native';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 const TOTAL_STEPS = 5;
 
@@ -333,7 +334,7 @@ function SecondaryButton({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary, padding: 20 },
   progressBar: {
     flexDirection: 'row',
@@ -385,6 +386,6 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.4 },
   linkBtn: { alignItems: 'center', paddingVertical: 8 },
   linkText: { color: colors.textMuted, fontSize: 13 },
-});
+}));
 
 export default InvitationStepperScreen;

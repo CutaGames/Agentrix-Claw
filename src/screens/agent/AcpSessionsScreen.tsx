@@ -21,6 +21,7 @@ import {
   type AcpSession,
   type AcpSessionStatus,
 } from '../../services/acpBridge.api';
+import { themedStyles } from '../../theme/useTheme';
 
 const STATUS_META: Record<AcpSessionStatus, { color: string; label: string }> = {
   active: { color: '#22c55e', label: '运行中' },
@@ -152,7 +153,7 @@ export default function AcpSessionsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { paddingHorizontal: 16, paddingVertical: 12 },
   title: { color: '#fff', fontSize: 20, fontWeight: '700' },
@@ -197,4 +198,4 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   emptyContainer: { alignItems: 'center', paddingTop: 40 },
   emptyText: { color: '#666', fontSize: 14 },
-});
+}));

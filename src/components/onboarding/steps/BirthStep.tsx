@@ -44,6 +44,7 @@ import { mapRawInstance } from '../../../services/auth';
 import { useAuthStore } from '../../../stores/authStore';
 import { useSoulBirthStore } from '../../../stores/soulBirthStore';
 import { navRefNavigate } from '../../../navigation/navigationRef';
+import { themedStyles } from '../../../theme/useTheme';
 
 // ── Tuning constants (Design §3.1) ───────────────────────────────────────────
 const POLL_INTERVAL_MS = 3_000; // 轮询 getInstanceById 间隔
@@ -379,7 +380,7 @@ export function BirthStep({ onComplete, onSkip }: SoulBirthStepProps) {
 
 export default BirthStep;
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   // setup
   avatarPreview: {
     alignItems: 'center',
@@ -506,4 +507,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 6,
   },
-});
+}));

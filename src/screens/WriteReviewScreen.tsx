@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { marketplaceApi } from '../services/marketplace.api';
+import { themedStyles } from '../theme/useTheme';
 
 interface Props {
   route: { params: { skillId: string } };
@@ -110,7 +111,7 @@ export function WriteReviewScreen({ route, navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -182,4 +183,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-});
+}));

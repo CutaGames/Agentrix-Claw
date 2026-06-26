@@ -195,12 +195,12 @@ export default function ReconstructionProgressScreen() {
                   onPress={() =>
                     navigation.reset({
                       index: 0,
-                      routes: [{ name: 'WorldDungeonExplorer', params: { shareCode: dungeonCode } }],
+                      routes: [{ name: 'WorldAssetInventory' }],
                     })
                   }
                   testID="reconstruction-open-dungeon"
                 >
-                  <Text style={styles.dungeonButtonText}>进入副本 →</Text>
+                  <Text style={styles.dungeonButtonText}>查看我的资产 →</Text>
                 </TouchableOpacity>
               </>
             ) : null}

@@ -25,6 +25,7 @@ import {
   getWalletNonce,
   walletSignatureLogin,
 } from '../services/walletConnect';
+import { themedStyles } from '../theme/useTheme';
 
 const WALLET_ID_ALIASES: Record<string, WalletProvider> = {
   metamask: 'metamask',
@@ -789,7 +790,7 @@ export const WalletConnectScreen: React.FC<{ navigation?: any; route?: { params?
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   scrollContent: { padding: 20, paddingBottom: 48 },
   // Header
@@ -945,4 +946,4 @@ const styles = StyleSheet.create({
     alignItems: 'center', backgroundColor: colors.primary,
   },
   modalConfirmText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-});
+}));

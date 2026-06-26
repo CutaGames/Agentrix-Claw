@@ -10,6 +10,7 @@ import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useI18n } from '../../stores/i18nStore';
 import type { SocialStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<SocialStackParamList>;
 
@@ -171,7 +172,7 @@ export function CreatePostScreen() {
 // Fix typo in component tag
 const KeyboardAvancingView = KeyboardAvoidingView;
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bgPrimary },
   scroll: { flex: 1 },
   header: {
@@ -264,4 +265,4 @@ const styles = StyleSheet.create({
   },
   tipsTitle: { fontSize: 13, color: colors.textPrimary, fontWeight: '700', marginBottom: 4 },
   tipsText: { fontSize: 13, color: colors.textMuted, lineHeight: 20 },
-});
+}));

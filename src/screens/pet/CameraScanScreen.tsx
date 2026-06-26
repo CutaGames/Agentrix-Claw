@@ -38,6 +38,7 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
 import { readUriAsBase64 } from '../../utils/readBase64';
+import { themedStyles } from '../../theme/useTheme';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const MIN_FRAMES = 8;
@@ -523,7 +524,7 @@ export function CameraScanScreen() {
 
 const THUMB_SIZE = (SCREEN_W - 16 * 2 - 8 * 3) / 4; // 4 per row
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   // Center screen used by uploading / processing / done / error
   center: {
@@ -763,4 +764,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   secondaryBtnText: { color: colors.textMuted, fontWeight: '600', fontSize: 14 },
-});
+}));

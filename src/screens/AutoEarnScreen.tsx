@@ -4,6 +4,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch } from 're
 import { Card } from '../components/Card';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { colors } from '../theme/colors';
+import { themedStyles } from '../theme/useTheme';
 
 // Mock 数据
 const mockStrategies = [
@@ -186,7 +187,7 @@ export const AutoEarnScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -375,4 +376,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
-});
+}));

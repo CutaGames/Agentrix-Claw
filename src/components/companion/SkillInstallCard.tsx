@@ -41,6 +41,7 @@ import { colors } from '../../theme/colors';
 import { useActivePet } from '../../services/activePet.service';
 import { companionEvents } from '../../services/companionEvents.service';
 import { skillInstallCardRef, type SkillInstallCardHandle, type SkillInstallPresentOpts } from './sheetRefRegistry';
+import { themedStyles } from '../../theme/useTheme';
 
 const SNAP_POINTS = ['70%'];
 
@@ -307,7 +308,7 @@ function Pill({ text, highlight }: PillProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   sheetBg: { backgroundColor: colors.bgPrimary, borderTopLeftRadius: 18, borderTopRightRadius: 18 },
   handleIndicator: { backgroundColor: colors.border, width: 40 },
   container: { flex: 1, paddingHorizontal: 16, paddingTop: 8 },
@@ -373,4 +374,4 @@ const styles = StyleSheet.create({
   },
   confirmBtnDisabled: { backgroundColor: colors.bgCard },
   confirmBtnText: { color: '#0B1220', fontSize: 14, fontWeight: '700' },
-});
+}));

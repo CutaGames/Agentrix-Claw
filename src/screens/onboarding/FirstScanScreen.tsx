@@ -7,6 +7,7 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { useAuthStore } from '../../stores/authStore';
 import { loginAsGuest } from '../../services/auth';
+import { themedStyles } from '../../theme/useTheme';
 
 const { width } = Dimensions.get('window');
 
@@ -118,7 +119,7 @@ export function FirstScanScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary, paddingHorizontal: 28, paddingTop: 90, paddingBottom: 36, justifyContent: 'space-between' },
   hero: { alignItems: 'center' },
   logoCircle: { width: 64, height: 64, marginBottom: 28, opacity: 0.9 },
@@ -145,4 +146,4 @@ const styles = StyleSheet.create({
   loginLink: { marginTop: 22, padding: 8 },
   loginLinkText: { color: colors.accent, fontSize: 15, fontWeight: '600' },
   footer: { textAlign: 'center', fontSize: 11, color: colors.textMuted, lineHeight: 18 },
-});
+}));

@@ -23,6 +23,7 @@ import {
   type MemoryScope,
 } from '../../services/memorySlot.api';
 import { useI18n } from '../../stores/i18nStore';
+import { themedStyles } from '../../theme/useTheme';
 
 const SCOPES: { key: MemoryScope; label: string; emoji: string }[] = [
   { key: 'user', label: 'User', emoji: '👤' },
@@ -170,7 +171,7 @@ export default function AgentMemoryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scopeBar: {
     flexDirection: 'row',
@@ -247,4 +248,4 @@ const styles = StyleSheet.create({
   tagText: { color: '#a78bfa', fontSize: 10 },
   emptyContainer: { alignItems: 'center', paddingTop: 40 },
   emptyText: { color: '#666', fontSize: 14 },
-});
+}));

@@ -4,6 +4,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-nati
 import { useNavigation } from '@react-navigation/native';
 import { Card } from '../components/Card';
 import { colors } from '../theme/colors';
+import { themedStyles } from '../theme/useTheme';
 
 export const ActivityScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -76,7 +77,7 @@ export const ActivityScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -172,4 +173,4 @@ const styles = StyleSheet.create({
   positive: {
     color: '#4ade80',
   },
-});
+}));

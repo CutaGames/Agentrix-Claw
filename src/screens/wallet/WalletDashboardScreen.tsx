@@ -10,6 +10,7 @@ import { useNavigation } from '@react-navigation/native';
 import { apiFetch } from '../../services/api';
 import { getBscBalance, BSC_TESTNET } from '../../services/bscPayment';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 interface WalletProjection {
   user_id?: string;
@@ -147,7 +148,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   heroCard: { margin: 16, padding: 20, borderRadius: 16, backgroundColor: 'rgba(0,212,255,0.10)', borderWidth: 1, borderColor: 'rgba(0,212,255,0.25)' },
   heroLabel: { color: colors.textSecondary, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6 },
@@ -165,4 +166,4 @@ const styles = StyleSheet.create({
   dim: { color: colors.textSecondary, fontSize: 12, marginVertical: 6 },
   linkBtn: { marginTop: 12, alignSelf: 'flex-start' },
   linkBtnText: { color: colors.accent, fontSize: 13, fontWeight: '600' },
-});
+}));

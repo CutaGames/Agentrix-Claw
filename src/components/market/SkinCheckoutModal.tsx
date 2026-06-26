@@ -30,6 +30,7 @@ import { useI18n } from '../../stores/i18nStore';
 import { SkinListItem } from '../../services/marketSkins.api';
 import { fetchAxpBalance, spendAxp } from '../../services/axp.api';
 import { installSkin } from '../../services/petSkinMarketplace.api';
+import { themedStyles } from '../../theme/useTheme';
 
 interface SkinCheckoutModalProps {
   visible: boolean;
@@ -223,7 +224,7 @@ export function SkinCheckoutModal({ visible, skin, onClose, onSuccess }: SkinChe
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -298,4 +299,4 @@ const styles = StyleSheet.create({
   },
   purchaseBtnDisabled: { opacity: 0.6 },
   purchaseBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-});
+}));

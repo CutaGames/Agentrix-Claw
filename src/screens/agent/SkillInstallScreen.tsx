@@ -9,6 +9,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
 import type { AgentStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'SkillInstall'>;
 type RouteT = RouteProp<AgentStackParamList, 'SkillInstall'>;
@@ -187,7 +188,7 @@ export function SkillInstallScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 14 },
   emoji: { fontSize: 56 },
   title: { fontSize: 22, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
@@ -200,4 +201,4 @@ const styles = StyleSheet.create({
   restartBtn: { borderWidth: 1.5, borderColor: colors.primary, borderRadius: 12, padding: 12, paddingHorizontal: 28, minWidth: 160, alignItems: 'center' },
   restartText: { color: colors.primary, fontWeight: '600', fontSize: 15 },
   cancel: { color: colors.textMuted, fontSize: 14, marginTop: 4 },
-});
+}));

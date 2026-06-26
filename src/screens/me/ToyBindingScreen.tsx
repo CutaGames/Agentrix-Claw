@@ -36,6 +36,7 @@ import {
   PairedDevice,
   BleStatus,
 } from '../../services/ble.service';
+import { themedStyles } from '../../theme/useTheme';
 
 type ScreenMode = 'list' | 'scanning' | 'pairing' | 'paired';
 
@@ -414,7 +415,7 @@ function PairingCodeInput({
   );
 }
 
-const codeStyles = StyleSheet.create({
+const codeStyles = themedStyles(() => StyleSheet.create({
   container: {
     marginVertical: 24,
     alignItems: 'center',
@@ -450,11 +451,11 @@ const codeStyles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-});
+}));
 
 // ── Main Styles ────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -658,4 +659,4 @@ const styles = StyleSheet.create({
   loader: {
     marginVertical: 16,
   },
-});
+}));

@@ -12,6 +12,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, memoryApi } from '../../services/api';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
+import { themedStyles } from '../../theme/useTheme';
 
 // ─── Types ────────────────────────────────────────────────────
 interface KnowledgeFile {
@@ -55,7 +56,7 @@ function timeAgo(iso: string) {
 }
 
 // ─── Styles ────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -94,9 +95,9 @@ const styles = StyleSheet.create({
   fileMeta: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   deleteBtn: { padding: 8 },
   deleteBtnText: { fontSize: 22, color: '#ef4444' },
-});
+}));
 
-const sheet = StyleSheet.create({
+const sheet = themedStyles(() => StyleSheet.create({
   container: {
     backgroundColor: colors.bgCard, margin: 16, borderRadius: 16,
     padding: 16, borderWidth: 1, borderColor: colors.border, gap: 10,
@@ -111,7 +112,7 @@ const sheet = StyleSheet.create({
   },
   submitBtn: { backgroundColor: colors.primary, borderRadius: 10, padding: 14, alignItems: 'center' },
   submitText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-});
+}));
 
 // ─── Add Knowledge Modal ───────────────────────────────────────
 function AddKnowledgeSheet({

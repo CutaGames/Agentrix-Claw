@@ -26,6 +26,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
+import { themedStyles } from '../../theme/useTheme';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -254,7 +255,7 @@ export function PetAuctionScreen() {
 
 // ── Styles ───────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 40 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary, marginBottom: 4 },
@@ -310,4 +311,4 @@ const styles = StyleSheet.create({
   },
   bidBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   sellerText: { fontSize: 11, color: colors.textMuted, marginTop: 8 },
-});
+}));

@@ -1,10 +1,16 @@
 /**
- * Plaza 5-segment navigation contract tests.
+ * Plaza navigation contract tests.
  *
- * PlazaStackNavigator exposes one route per plaza segment (Feed/Skills/
- * Tasks/Pets/Play). If anyone renames the screens or drops a route, the
- * PlazaScreen Segmented control would silently break — this test fails
- * fast to catch that.
+ * After the marketplace tab refactor (agentrix-marketplace-tab-refactor),
+ * the Plaza tab is a single-layer trading marketplace. The 5 market
+ * segments (predictions/skills/tasks/pets/resources) switch in-screen
+ * inside `MarketplaceScreen` — they are NOT stack routes. The stack only
+ * holds the root + each segment's secondary detail/checkout screens.
+ *
+ * 广场(Feed/Messaging/GreetingCard) and 玩乐(Play/Predict/PredictionMarket/
+ * EventsCenter/PhotoMimic/CoRaising) were decommissioned — their routes
+ * must NOT be registered. This test fails fast if anyone re-adds them or
+ * drops a kept route.
  *
  * Note: we can't actually mount <PlazaStackNavigator/> here because the
  * root jest config is "testEnvironment: node" (no RN runtime) — instead
@@ -26,26 +32,42 @@ function hasStackScreen(name: string): boolean {
 }
 
 describe('PlazaStackNavigator', () => {
-  const REQUIRED_SEGMENT_ROUTES = [
+  const REQUIRED_ROUTES = [
     'PlazaRoot',
-    'Feed',
     'Skills',
     'Tasks',
     'Pets',
-    'Play',
   ];
 
-  describe('5-segment core routes', () => {
-    it.each(REQUIRED_SEGMENT_ROUTES)('declares <Stack.Screen name="%s">', (name) => {
+  // Routes decommissioned with 广场/玩乐 — must not be re-registered.
+  const REMOVED_ROUTES = [
+    'Feed',
+    'PostDetail',
+    'ShowcaseDetail',
+    'UserProfile',
+    'CreatePost',
+    'Messaging',
+    'DirectMessage',
+    'GroupChat',
+    'Play',
+    'Predict',
+    'PredictionMarket',
+    'EventsCenter',
+    'PhotoMimic',
+    'CoRaisingInvite',
+    'CoRaisingLanding',
+    'GreetingCardCompose',
+    'GreetingCardInbox',
+  ];
+
+  describe('core routes', () => {
+    it.each(REQUIRED_ROUTES)('declares <Stack.Screen name="%s">', (name) => {
       expect(hasStackScreen(name)).toBe(true);
     });
   });
 
   describe('secondary routes wired from segments', () => {
     it.each([
-      'Messaging',
-      'DirectMessage',
-      'GroupChat',
       'SkillDetail',
       'Checkout',
       'SkillInstall',
@@ -54,11 +76,6 @@ describe('PlazaStackNavigator', () => {
       'PetsSkins',
       'SkinAuctionDetail',
       'PetAuctionDetail',
-      'Predict',
-      'CoRaisingInvite',
-      'CoRaisingLanding',
-      'GreetingCardCompose',
-      'GreetingCardInbox',
       'ShareCard',
       'CreateLink',
       'ToyCustom',
@@ -67,11 +84,17 @@ describe('PlazaStackNavigator', () => {
     });
   });
 
+  describe('decommissioned 广场/玩乐 routes are removed', () => {
+    it.each(REMOVED_ROUTES)('does NOT declare <Stack.Screen name="%s">', (name) => {
+      expect(hasStackScreen(name)).toBe(false);
+    });
+  });
+
   describe('param-list surface', () => {
-    it('PlazaStackParamList declares each segment route in types.ts', () => {
+    it('PlazaStackParamList declares each kept route in types.ts', () => {
       const typesPath = path.resolve(__dirname, '..', 'types.ts');
       const typesSource = fs.readFileSync(typesPath, 'utf8');
-      REQUIRED_SEGMENT_ROUTES.forEach((name) => {
+      REQUIRED_ROUTES.forEach((name) => {
         // either "name: undefined" (no-params) or "name: { ... }" is acceptable
         const re = new RegExp(`\\s${name}\\s*:\\s*(undefined|\\{)`);
         expect(re.test(typesSource)).toBe(true);

@@ -13,6 +13,7 @@ import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import type { SocialStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<SocialStackParamList, 'GroupChat'>;
 type Route = RouteProp<SocialStackParamList, 'GroupChat'>;
@@ -351,7 +352,7 @@ export function GroupChatScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgPrimary },
   kav: { flex: 1 },
   msgList: { padding: 16, paddingBottom: 8 },
@@ -410,4 +411,4 @@ const styles = StyleSheet.create({
   inviteBtnText: { color: '#000', fontSize: 15, fontWeight: '700' },
   leaveBtn: { backgroundColor: colors.bgCard, borderRadius: 14, paddingVertical: 13, alignItems: 'center', borderWidth: 1, borderColor: colors.error + '55' },
   leaveBtnText: { color: colors.error, fontSize: 15, fontWeight: '600' },
-});
+}));

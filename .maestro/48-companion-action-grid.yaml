@@ -14,7 +14,8 @@
 #
 # Spec: requirements.md R4.2 / R4.4 / R12.3. Audit: MOBILE_PET_SYSTEM_AUDIT.
 
-appId: com.cutagames.agentrix
+appId: app.agentrix.claw
+---
 
 - launchApp:
     clearState: false
@@ -27,7 +28,6 @@ appId: com.cutagames.agentrix
 - waitForAnimationToEnd
 - longPressOn:
     id: "floating-ball-sprite"
-    duration: 600
     optional: true
 - waitForAnimationToEnd
 - assertVisible:
@@ -48,7 +48,6 @@ appId: com.cutagames.agentrix
 # Re-open the sheet between each action (navigating away dismisses it).
 - longPressOn:
     id: "floating-ball-sprite"
-    duration: 600
     optional: true
 - waitForAnimationToEnd
 
@@ -61,7 +60,6 @@ appId: com.cutagames.agentrix
 - waitForAnimationToEnd
 - longPressOn:
     id: "floating-ball-sprite"
-    duration: 600
     optional: true
 - waitForAnimationToEnd
 
@@ -74,7 +72,6 @@ appId: com.cutagames.agentrix
 - waitForAnimationToEnd
 - longPressOn:
     id: "floating-ball-sprite"
-    duration: 600
     optional: true
 - waitForAnimationToEnd
 
@@ -87,7 +84,6 @@ appId: com.cutagames.agentrix
 - waitForAnimationToEnd
 - longPressOn:
     id: "floating-ball-sprite"
-    duration: 600
     optional: true
 - waitForAnimationToEnd
 
@@ -100,7 +96,6 @@ appId: com.cutagames.agentrix
 - waitForAnimationToEnd
 - longPressOn:
     id: "floating-ball-sprite"
-    duration: 600
     optional: true
 - waitForAnimationToEnd
 

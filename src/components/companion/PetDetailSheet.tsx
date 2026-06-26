@@ -42,6 +42,7 @@ import {
   type PetDetailSheetHandle,
   type PetDetailSection,
 } from './sheetRefRegistry';
+import { themedStyles } from '../../theme/useTheme';
 
 const SNAP_POINTS = ['85%'];
 
@@ -742,7 +743,7 @@ function DevicePill({ emoji, name, online }: DevicePillProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   sheetBg: {
     backgroundColor: colors.bgPrimary,
     borderTopLeftRadius: 18,
@@ -919,4 +920,4 @@ const styles = StyleSheet.create({
   actionBtnText: { fontSize: 13, fontWeight: '700' },
   actionBtnTextPrimary: { color: '#0B1220' },
   actionBtnTextGhost: { color: colors.textPrimary },
-});
+}));

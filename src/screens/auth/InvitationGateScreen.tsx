@@ -18,6 +18,7 @@ import {
   redeemInvitationCode,
   checkInvitationStatus,
 } from '../../services/invitation.service';
+import { themedStyles } from '../../theme/useTheme';
 
 export function InvitationGateScreen() {
   const [code, setCode] = useState('');
@@ -145,7 +146,7 @@ export function InvitationGateScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -227,4 +228,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textDecorationLine: 'underline',
   },
-});
+}));

@@ -27,6 +27,7 @@ import { useSoulBirthStore } from '../../../stores/soulBirthStore';
 import { buildBirthMomentLine } from '../../../services/onboarding/birthMomentLine';
 import { getOnboardingTtsSpeaker } from '../../../services/onboarding/ttsSpeaker';
 import { getWeatherGarnish } from '../../../services/onboarding/weatherGarnish';
+import { themedStyles } from '../../../theme/useTheme';
 
 /** 总超时兜底:即便音频从不触发 drain(静音/原生不可用),也保证推进(Property 1)。 */
 const HARD_ADVANCE_TIMEOUT_MS = 30_000;
@@ -179,7 +180,7 @@ export function FirstWordsStep({ onComplete, onSkip }: SoulBirthStepProps) {
 
 export default FirstWordsStep;
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   haloWrap: {
     width: 96,
     height: 96,
@@ -229,4 +230,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-});
+}));

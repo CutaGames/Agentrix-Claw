@@ -9,6 +9,7 @@ import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useI18n } from '../../stores/i18nStore';
 import type { DiscoverStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<DiscoverStackParamList, 'DiscoverHome'>;
 
@@ -56,7 +57,7 @@ export function DiscoverScreen() {
         <Text style={styles.predictHeroIcon}>🎯</Text>
         <View style={{ flex: 1 }}>
           <Text style={styles.predictHeroTitle}>
-            {t({ en: 'BTC 5-min Predict', zh: 'BTC 5分钟预测' })}
+            {t({ en: 'BTC Prediction', zh: 'BTC 预测' })}
           </Text>
           <Text style={styles.predictHeroSub}>
             {t({ en: 'Up or down? Bet with virtual USDC · settled on-chain price', zh: '涨还是跌？虚拟 USDC 下注 · 链上价格开奖' })}
@@ -154,7 +155,7 @@ export function DiscoverScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 32 },
   searchBar: {
@@ -225,4 +226,4 @@ const styles = StyleSheet.create({
   showcaseBtnIcon: { fontSize: 20 },
   showcaseBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   showcaseHint: { color: colors.textMuted, fontSize: 13, textAlign: 'center', paddingHorizontal: 40, lineHeight: 20 },
-});
+}));

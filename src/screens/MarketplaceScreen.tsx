@@ -18,6 +18,7 @@ import { searchOpenClawHub } from '../services/openclawHub.service';
 import { SkillCard } from '../components/market/SkillCard';
 import { CategoryTabs } from '../components/market/CategoryTabs';
 import { useI18n } from '../stores/i18nStore';
+import { themedStyles } from '../theme/useTheme';
 
 type MarketCategory = 'resources' | 'skills' | 'tasks' | 'openclaw';
 
@@ -317,7 +318,7 @@ export function MarketplaceScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -455,4 +456,4 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
   },
-});
+}));

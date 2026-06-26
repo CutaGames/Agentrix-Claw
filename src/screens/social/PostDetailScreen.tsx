@@ -14,6 +14,7 @@ import { socialShareService } from '../../services/socialShare';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
 import type { SocialStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type RouteT = RouteProp<SocialStackParamList, 'PostDetail'>;
 type Nav = NativeStackNavigationProp<SocialStackParamList, 'PostDetail'>;
@@ -290,7 +291,7 @@ export function PostDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgPrimary },
   loading: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center' },
   list: { paddingBottom: 12 },
@@ -335,4 +336,4 @@ const styles = StyleSheet.create({
   sendIcon: { color: '#fff', fontSize: 17, marginLeft: 2 },
   emptyComments: { paddingHorizontal: 16, paddingVertical: 20, color: colors.textMuted, textAlign: 'center' },
   emptyStateTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-});
+}));

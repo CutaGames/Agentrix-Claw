@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { useTokenQuota, formatTokens, QuotaStatus } from '../hooks/useTokenQuota';
+import { themedStyles } from '../theme/useTheme';
 
 // ─── Energy color thresholds ──────────────────────────────────────────────────
 function getEnergyColor(level: number): string {
@@ -267,7 +268,7 @@ function StatCell({ label, value, color }: { label: string; value: string; color
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   cardWrap: {
     backgroundColor: colors.bgCard,
     borderRadius: 14,
@@ -355,9 +356,9 @@ const styles = StyleSheet.create({
     borderColor: '#ef4444',
   },
   exhaustedText: { fontSize: 12, color: '#ef4444', fontWeight: '600' },
-});
+}));
 
-const modal = StyleSheet.create({
+const modal = themedStyles(() => StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -437,4 +438,4 @@ const modal = StyleSheet.create({
     marginTop: 4,
   },
   upgradeBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-});
+}));

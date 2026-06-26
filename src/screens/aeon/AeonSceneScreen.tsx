@@ -19,6 +19,7 @@ import { listRoomsByPlot, getRoomWithPresence } from '../../services/aeon/aeonAp
 import { connectAeonRoom, type AeonRealtimeHandle } from '../../services/aeon/aeonRealtimeClient';
 import { AeonTutorialOverlay, useAeonTutorial } from '../../components/aeon/AeonTutorialOverlay';
 import type { AeonCharacterSnapshot, AeonServerEvent } from '../../../shared/types/aeon-sync';
+import { themedStyles } from '../../theme/useTheme';
 
 const SPRITE_SIZE = 48;
 const GRID_N = 7; // 等距网格 7×7
@@ -316,7 +317,7 @@ export default function AeonSceneScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   center: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center' },
   header: { padding: 16, paddingBottom: 8, flexDirection: 'row', alignItems: 'center' },
@@ -372,4 +373,4 @@ const styles = StyleSheet.create({
   rosterBadge: { fontSize: 16 },
   rosterName: { color: colors.textPrimary, fontSize: 14, flex: 1 },
   rosterState: { color: colors.textMuted, fontSize: 11 },
-});
+}));

@@ -27,6 +27,7 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
 import { listSkins, type PetSkinSummary } from '../../services/mobilePetSdk';
+import { themedStyles } from '../../theme/useTheme';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -252,7 +253,7 @@ export function ToyCustomInquiryScreen() {
 
 // ── Styles ───────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 40 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary, marginBottom: 4 },
@@ -333,4 +334,4 @@ const styles = StyleSheet.create({
   submitBtnDisabled: { opacity: 0.6 },
   submitBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   footer: { textAlign: 'center', fontSize: 11, color: colors.textMuted, marginTop: 12, lineHeight: 16 },
-});
+}));

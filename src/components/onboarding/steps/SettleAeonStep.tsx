@@ -57,6 +57,7 @@ import type {
   AeonNearbyPerson,
   AeonCheckinResult,
 } from '../../../../shared/types/aeon-world';
+import { themedStyles } from '../../../theme/useTheme';
 
 // ── Tuning constants(Design §2 settle_aeon / Error Handling)──────────────────
 /** 签到奖励额度(展示用;真实发放在后端 checkIn,与 CHECKIN_REWARD_AXP 同源,R5.3)。 */
@@ -441,7 +442,7 @@ export function SettleAeonStep({ onComplete, onSkip }: SoulBirthStepProps) {
 
 export default SettleAeonStep;
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   primaryBtn: {
     width: '100%',
     backgroundColor: colors.primary,
@@ -540,4 +541,4 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.5,
   },
-});
+}));

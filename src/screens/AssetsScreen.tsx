@@ -3,6 +3,7 @@ import React from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { Card } from '../components/Card';
 import { colors } from '../theme/colors';
+import { themedStyles } from '../theme/useTheme';
 
 // Mock 数据
 const mockAssets = [
@@ -75,7 +76,7 @@ export const AssetsScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -193,4 +194,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-});
+}));

@@ -25,6 +25,7 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { fetchAxpBalance, spendAxp } from '../../services/axp.api';
 import { apiFetch } from '../../services/api';
+import { themedStyles } from '../../theme/useTheme';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -359,7 +360,7 @@ export function AxpRewardShopScreen() {
 
 // ── Styles ───────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 40 },
   // Balance header
@@ -430,4 +431,4 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     opacity: 0.7,
   },
-});
+}));

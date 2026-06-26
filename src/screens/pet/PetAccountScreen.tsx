@@ -26,6 +26,7 @@ import {
   fetchPetAccount,
   type PetAccountView,
 } from '../../services/petAccount.api';
+import { themedStyles } from '../../theme/useTheme';
 
 interface Props {
   livingPetId: string;
@@ -231,7 +232,7 @@ function statusZh(s: string): string {
   }
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -261,4 +262,4 @@ const styles = StyleSheet.create({
   dim: { color: colors.textSecondary, fontSize: 12, marginTop: 4 },
   errorText: { color: '#fca5a5', fontSize: 14, marginBottom: 8 },
   retry: { color: colors.accent, fontSize: 14, padding: 8 },
-});
+}));

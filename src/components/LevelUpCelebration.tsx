@@ -16,6 +16,7 @@ import {
 import { colors } from '../theme/colors';
 import { useI18n } from '../stores/i18nStore';
 import { showAxpToast } from '../stores/axpToastStore';
+import { themedStyles } from '../theme/useTheme';
 
 export interface LevelUpCelebrationProps {
   visible: boolean;
@@ -102,7 +103,7 @@ export function LevelUpCelebration({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
@@ -178,4 +179,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-});
+}));

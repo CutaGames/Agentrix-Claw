@@ -9,6 +9,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
 import { getReferralStats, getMyLinks, createShareLink, buildShareText } from '../../services/sharing.service';
 import * as Clipboard from 'expo-clipboard';
+import { themedStyles } from '../../theme/useTheme';
 
 export function ReferralDashboardScreen() {
   const user = useAuthStore((s) => s.user);
@@ -127,7 +128,7 @@ export function ReferralDashboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 40, gap: 16 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary },
@@ -155,4 +156,4 @@ const styles = StyleSheet.create({
   linkRowStats: { alignItems: 'flex-end', gap: 2 },
   clicksText: { fontSize: 12, color: colors.textSecondary },
   conversionsText: { fontSize: 12, color: colors.success },
-});
+}));

@@ -63,9 +63,12 @@ export const useCompanionLayoutStore = create<CompanionLayoutState>()(
     {
       name: 'companion-layout-storage',
       storage: createJSONStorage(() => mmkvStorage),
-      // Only persist the corner; live position resets to corner on launch.
+      // Only persist the corner + last vertical position; live X resets to the
+      // docked edge on launch, but the ball returns to the side & height the
+      // user last left it (so it stops snapping back over the same buttons).
       partialize: (state) => ({
         lastCorner: state.lastCorner,
+        y: state.y,
       }),
     },
   ),

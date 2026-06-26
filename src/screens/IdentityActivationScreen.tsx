@@ -7,6 +7,7 @@ import { Card } from '../components/Card';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { colors } from '../theme/colors';
 import { useIdentityStore } from '../stores/identityStore';
+import { themedStyles } from '../theme/useTheme';
 
 type Props = NativeStackScreenProps<any, any>;
 
@@ -126,7 +127,7 @@ export const IdentityActivationScreen: React.FC<Props> = ({ route, navigation })
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -207,4 +208,4 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 14,
   },
-});
+}));

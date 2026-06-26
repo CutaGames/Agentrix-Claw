@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { referralApi, ReferralLink } from '../services/referral.api';
+import { themedStyles } from '../theme/useTheme';
 
 interface Props {
   navigation: any;
@@ -144,7 +145,7 @@ export function MyLinksScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -253,4 +254,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
   },
-});
+}));

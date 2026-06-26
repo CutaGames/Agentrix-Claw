@@ -1,33 +1,25 @@
+
 /**
- * PlazaStackNavigator — 🎪 集市 Tab (Sprint A).
+ * PlazaStackNavigator — 🎪 集市 Tab.
  *
- * Reuses existing market/social/predict screens; full wiring of
- * 5-segment content inside `PlazaScreen` is Sprint B2-B6.
+ * 单层交易市场:根屏 `MarketplaceScreen` 同屏切换 5 段
+ * (赛事预测 / OpenClaw技能 / 任务 / 宠物 / 资源与商品),其余为各段的
+ * 二级详情/结算屏。
+ *
+ * 下线说明 (agentrix-marketplace-tab-refactor task 10):
+ *   广场(Feed/Messaging/GreetingCard) 与 玩乐(Play/Predict/PredictionMarket/
+ *   EventsCenter/PhotoMimic/CoRaising) 已整体下线 —— 移除其集市内入口与路由。
+ *   相关深链别名在 legacyRouteTable 改为导向 MarketplaceRoot。
  */
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../theme/colors';
 import { useI18n } from '../stores/i18nStore';
 
-import { PlazaScreen } from '../screens/plaza/PlazaScreen';
-import {
-  PlazaToyCustomStub,
-  PlazaPlayStub,
-} from '../screens/plaza/PlazaPlaceholderScreens';
+import { MarketplaceScreen } from '../screens/market/MarketplaceScreen';
 import { PetAuctionScreen } from '../screens/plaza/PetAuctionScreen';
 import { ToyCustomInquiryScreen } from '../screens/plaza/ToyCustomInquiryScreen';
-import { GreetingCardComposeScreen } from '../screens/plaza/GreetingCardComposeScreen';
-import { GreetingCardInboxScreen } from '../screens/plaza/GreetingCardInboxScreen';
 import { SkinAuctionScreen } from '../screens/plaza/SkinAuctionScreen';
-import { MessagingScreen } from '../screens/plaza/MessagingScreen';
-
-// Reused screens — keep current imports working
-import { FeedScreen } from '../screens/social/FeedScreen';
-import { PostDetailScreen } from '../screens/social/PostDetailScreen';
-import { UserProfileScreen } from '../screens/social/UserProfileScreen';
-import { CreatePostScreen } from '../screens/social/CreatePostScreen';
-import { GroupChatScreen } from '../screens/social/GroupChatScreen';
-import { DirectMessageScreen } from '../screens/social/DirectMessageScreen';
 
 import { ClawMarketplaceScreen } from '../screens/market/ClawMarketplaceScreen';
 import { ClawSkillDetailScreen } from '../screens/market/ClawSkillDetailScreen';
@@ -38,17 +30,8 @@ import TaskMarketScreen from '../screens/TaskMarketScreen';
 import { TaskDetailScreen } from '../screens/TaskDetailScreen';
 import { PostTaskScreen } from '../screens/PostTaskScreen';
 
-import { PredictScreen } from '../screens/discover/PredictScreen';
-
 import { CreateLinkScreen } from '../screens/CreateLinkScreen';
 import { ShareCardScreen } from '../screens/ShareCardScreen';
-
-// Co-Raising placeholders (same component used in Home)
-import { CoRaisingInviteScreen } from '../screens/home/CoRaisingInviteScreen';
-import { CoRaisingLandingScreen } from '../screens/home/CoRaisingLandingScreen';
-
-// G1 Photo Mimic Game
-import { PhotoMimicSeasonScreen } from '../screens/plaza/PhotoMimicSeasonScreen';
 
 import type { PlazaStackParamList } from './types';
 
@@ -68,52 +51,8 @@ export function PlazaStackNavigator() {
     >
       <Stack.Screen
         name="PlazaRoot"
-        component={PlazaScreen}
-        options={{ title: t({ en: 'Plaza', zh: '集市' }), headerShown: false }}
-      />
-
-      {/* Feed ──────────────────────────────────────────────── */}
-      <Stack.Screen
-        name="Feed"
-        component={FeedScreen}
-        options={{ title: t({ en: 'Feed', zh: '广场' }), headerShown: false }}
-      />
-      <Stack.Screen
-        name="PostDetail"
-        component={PostDetailScreen}
-        options={{ title: t({ en: 'Post', zh: '帖子' }) }}
-      />
-      <Stack.Screen
-        name="ShowcaseDetail"
-        component={PostDetailScreen}
-        options={{ title: t({ en: 'Showcase', zh: '展示' }) }}
-      />
-      <Stack.Screen
-        name="UserProfile"
-        component={UserProfileScreen}
-        options={{ title: t({ en: 'Profile', zh: '用户' }) }}
-      />
-      <Stack.Screen
-        name="CreatePost"
-        component={CreatePostScreen}
-        options={{ title: t({ en: 'Create Post', zh: '发表' }) }}
-      />
-
-      {/* Messaging ─────────────────────────────────────────── */}
-      <Stack.Screen
-        name="Messaging"
-        component={MessagingScreen}
-        options={{ title: t({ en: 'Messages', zh: '消息' }) }}
-      />
-      <Stack.Screen
-        name="DirectMessage"
-        component={DirectMessageScreen}
-        options={({ route }) => ({ title: route.params?.userName ?? t({ en: 'Chat', zh: '私信' }) })}
-      />
-      <Stack.Screen
-        name="GroupChat"
-        component={GroupChatScreen}
-        options={({ route }) => ({ title: route.params?.groupName ?? t({ en: 'Group', zh: '群聊' }) })}
+        component={MarketplaceScreen}
+        options={{ title: t({ en: 'Marketplace', zh: '集市' }), headerShown: false }}
       />
 
       {/* Skills ────────────────────────────────────────────── */}
@@ -175,49 +114,6 @@ export function PlazaStackNavigator() {
         name="PetAuctionDetail"
         component={PetAuctionScreen}
         options={{ title: t({ en: 'Pet', zh: '主宠' }) }}
-      />
-
-      {/* Play ──────────────────────────────────────────────── */}
-      <Stack.Screen
-        name="Play"
-        component={PlazaPlayStub}
-        options={{ title: t({ en: 'Play', zh: '玩乐' }) }}
-      />
-      <Stack.Screen
-        name="Predict"
-        component={PredictScreen}
-        options={{ title: t({ en: 'Predict', zh: '预测' }) }}
-      />
-
-      {/* G1 Photo Mimic Game (docs/G1_PHOTO_MIMIC_GAME_2026-05) */}
-      <Stack.Screen
-        name="PhotoMimic"
-        component={PhotoMimicSeasonScreen}
-        options={{ title: t({ en: 'Photo Mimic', zh: '宠物模仿秀' }) }}
-      />
-
-      {/* Co-Raising from Plaza entry ───────────────────────── */}
-      <Stack.Screen
-        name="CoRaisingInvite"
-        component={CoRaisingInviteScreen}
-        options={{ title: t({ en: 'Invite friends', zh: '邀请朋友' }) }}
-      />
-      <Stack.Screen
-        name="CoRaisingLanding"
-        component={CoRaisingLandingScreen}
-        options={{ title: t({ en: 'Join co-raising', zh: '加入共养' }) }}
-      />
-
-      {/* Greeting cards ────────────────────────────────────── */}
-      <Stack.Screen
-        name="GreetingCardCompose"
-        component={GreetingCardComposeScreen}
-        options={{ title: t({ en: 'Greeting Card', zh: '宠物贺卡' }) }}
-      />
-      <Stack.Screen
-        name="GreetingCardInbox"
-        component={GreetingCardInboxScreen}
-        options={{ title: t({ en: 'Greeting Inbox', zh: '贺卡收件' }) }}
       />
 
       {/* Share card ────────────────────────────────────────── */}

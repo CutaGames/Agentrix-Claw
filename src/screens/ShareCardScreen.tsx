@@ -6,6 +6,7 @@ import { ShareCardView } from '../components/ShareCardView';
 import { useAuthStore } from '../stores/authStore';
 import { colors } from '../theme/colors';
 import type { ShareCardRouteParams } from '../navigation/types';
+import { themedStyles } from '../theme/useTheme';
 
 type RouteT = RouteProp<Record<'ShareCard', ShareCardRouteParams>, 'ShareCard'>;
 
@@ -17,6 +18,7 @@ export function ShareCardScreen() {
     userName,
     subtitle,
     headerEmoji,
+    imageUrl,
     categoryLabel,
     priceLabel,
     statsLabel,
@@ -36,6 +38,7 @@ export function ShareCardScreen() {
           title={title ?? 'Agentrix Claw'}
           subtitle={subtitle}
           headerEmoji={headerEmoji}
+          imageUrl={imageUrl}
           userName={userName ?? user?.nickname ?? user?.email}
           categoryLabel={categoryLabel}
           priceLabel={priceLabel}
@@ -51,7 +54,7 @@ export function ShareCardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgPrimary },
   scroll: { flexGrow: 1, justifyContent: 'center', paddingVertical: 24 },
-});
+}));

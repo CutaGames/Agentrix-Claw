@@ -47,11 +47,15 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../../theme/colors';
 import { useActivePet } from '../../services/activePet.service';
+import { useAuthStore } from '../../stores/authStore';
+import { useI18n } from '../../stores/i18nStore';
+import { useVoiceSession } from '../../hooks/useVoiceSession';
 import { navRefNavigate } from '../../navigation/navigationRef';
 import { companionEvents } from '../../services/companionEvents.service';
 import {
   subscribeConversation,
   setPendingPrefill,
+  appendConversationMessages,
   getConversationSnapshot,
   type ConversationSnapshot,
 } from '../../services/conversationStore';
@@ -62,8 +66,72 @@ import {
 } from './sheetRefRegistry';
 import { speakCompanionReply, stopCompanionVoice } from '../../services/onboarding/companionVoice';
 import { getOnboardingTtsSpeaker } from '../../services/onboarding/ttsSpeaker';
+import { themedStyles } from '../../theme/useTheme';
 
 const SNAP_POINTS = ['65%', '100%'];
+
+/** A live voice turn rendered inside the bubble (independent of the
+ *  conversationStore which AgentChatScreen owns). */
+interface BubbleVoiceMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  streaming?: boolean;
+}
+
+/**
+ * BubbleVoiceController — 方案B: real in-bubble voice.
+ *
+ * Mounted ONLY while the bubble sheet is open AND voice is active, so the
+ * heavy useVoiceSession side-effects (mic, wake-word, background audio,
+ * realtime WS) never run globally (ConversationBubble itself is always
+ * mounted in CompanionLayer). Unmounting tears the realtime session down.
+ *
+ * Runs the SAME realtime duplex path as the proven "red phone" voice on
+ * AgentChatScreen (server-side STT→LLM→TTS over the /voice WS); the realtime
+ * callbacks deliver the user transcript + streamed assistant reply, which we
+ * lift back into the bubble's own message list. Renders nothing itself.
+ */
+function BubbleVoiceController(props: {
+  token: string;
+  instanceId: string;
+  instanceName?: string;
+  language: 'zh' | 'en';
+  onUserMessage: (text: string) => void;
+  onAssistantChunk: (chunk: string) => void;
+  onAssistantEnd: () => void;
+  onError: (message: string) => void;
+  onPhase: (phase: string, connected: boolean, listening: boolean) => void;
+}) {
+  const { t } = useI18n();
+  const vs = useVoiceSession({
+    token: props.token,
+    language: props.language,
+    instanceId: props.instanceId,
+    instanceName: props.instanceName,
+    voiceModeRequested: true,
+    duplexModeRequested: true,
+    useRealtimeChannel: true,
+    isSending: false,
+    onSendMessage: () => {
+      // Realtime duplex: the /voice gateway runs STT→LLM→TTS server-side and
+      // streams the reply back via the realtime callbacks below, so there is
+      // no client-side send pipeline to drive here.
+    },
+    onRealtimeUserMessage: props.onUserMessage,
+    onRealtimeAssistantChunk: props.onAssistantChunk,
+    onRealtimeAssistantResponseEnd: props.onAssistantEnd,
+    onRealtimeError: props.onError,
+    onStopCurrentResponse: () => {},
+    t,
+  });
+
+  useEffect(() => {
+    props.onPhase(vs.voicePhase, vs.realtimeConnected, vs.liveListening);
+  }, [vs.voicePhase, vs.realtimeConnected, vs.liveListening]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null;
+}
 
 export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
   function ConversationBubble(_props, externalRef) {
@@ -75,6 +143,9 @@ export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
       [],
     );
     const pet = useActivePet();
+    const { language } = useI18n();
+    const token = useAuthStore((s) => s.token);
+    const activeInstance = useAuthStore((s) => s.activeInstance);
 
     const [draft, setDraft] = useState('');
     const [pendingAttachments, setPendingAttachments] = useState<
@@ -84,6 +155,72 @@ export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
     const [busy, setBusy] = useState(false);
     /** 正在朗读的助手消息 id(用于 🔊 高亮 + 二次点击停止)。 */
     const [speakingId, setSpeakingId] = useState<string | null>(null);
+    /** 气泡是否已展开(sheet 打开)——用于仅在打开时挂载语音控制器。 */
+    const [sheetOpen, setSheetOpen] = useState(false);
+    /** 方案B:气泡内实时语音的本地消息列表 + 状态。 */
+    const [voiceMessages, setVoiceMessages] = useState<BubbleVoiceMessage[]>([]);
+    const [voiceStatus, setVoiceStatus] = useState<string>('');
+
+    const voiceCanRun = voiceActive && sheetOpen && !!token && !!activeInstance?.id;
+
+    const handleVoiceUserMessage = useCallback((text: string) => {
+      const clean = (text || '').trim();
+      if (!clean) return;
+      const uid = `vu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const aid = `va-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      // 合并进主对话历史:语音转写的用户话立即写入共享 store(召唤页 focus 时会并入)。
+      appendConversationMessages([{ id: uid, role: 'user', content: clean, createdAt: Date.now() }]);
+      setVoiceMessages((prev) => [
+        ...prev,
+        { id: uid, role: 'user', content: clean },
+        { id: aid, role: 'assistant', content: '', streaming: true },
+      ]);
+    }, []);
+
+    const handleVoiceAssistantChunk = useCallback((chunk: string) => {
+      if (!chunk) return;
+      setVoiceMessages((prev) => {
+        const next = [...prev];
+        // Append to the last streaming assistant message, or start one.
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].role === 'assistant' && next[i].streaming) {
+            next[i] = { ...next[i], content: next[i].content + chunk };
+            return next;
+          }
+        }
+        next.push({ id: `a-${Date.now()}`, role: 'assistant', content: chunk, streaming: true });
+        return next;
+      });
+    }, []);
+
+    const handleVoiceAssistantEnd = useCallback(() => {
+      setVoiceMessages((prev) => {
+        let appended = false;
+        return prev.map((m) => {
+          if (m.role === 'assistant' && m.streaming) {
+            // 助手回复完成 → 把最终文本并入共享主对话历史(召唤页可见)。
+            if (!appended && m.content) {
+              appendConversationMessages([{ id: m.id, role: 'assistant', content: m.content, createdAt: Date.now() }]);
+              appended = true;
+            }
+            return { ...m, streaming: false };
+          }
+          return m;
+        });
+      });
+    }, []);
+
+    const handleVoiceError = useCallback((message: string) => {
+      setVoiceStatus(message || '语音出错');
+    }, []);
+
+    const handleVoicePhase = useCallback((phase: string, connected: boolean, listening: boolean) => {
+      if (!connected) setVoiceStatus('连接中…');
+      else if (listening || phase === 'recording') setVoiceStatus('在听…');
+      else if (phase === 'thinking') setVoiceStatus('思考中…');
+      else if (phase === 'speaking') setVoiceStatus('回应中…');
+      else setVoiceStatus('已就绪');
+    }, []);
 
     // P-9 Q2 (T5.2/T5.4) — live mirror of the active conversation so the
     // bubble shows the SAME messages + routing badge as the full Summon
@@ -102,12 +239,21 @@ export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
       [convo.messages],
     );
 
+    // When in-bubble voice is active, render its own live turn list; otherwise
+    // mirror the shared conversation (AgentChatScreen).
+    const displayMessages = useMemo(
+      () => (voiceActive && voiceMessages.length > 0 ? (voiceMessages as any[]) : (visibleMessages as any[])),
+      [voiceActive, voiceMessages, visibleMessages],
+    );
+
     const reset = useCallback(() => {
       setDraft('');
       setPendingAttachments([]);
       setVoiceActive(false);
       setBusy(false);
       setSpeakingId(null);
+      setVoiceMessages([]);
+      setVoiceStatus('');
       stopCompanionVoice();
     }, []);
 
@@ -146,6 +292,7 @@ export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
         if (opts?.initialPrompt) setDraft(opts.initialPrompt);
         if (opts?.attachments?.length) setPendingAttachments(opts.attachments);
         if (opts?.autoActivateVoice) setVoiceActive(true);
+        setSheetOpen(true);
         sheetRef.current?.present();
 
         if (opts?.autoOpenCamera) {
@@ -255,6 +402,7 @@ export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
     );
 
     const handleSheetDismiss = useCallback(() => {
+      setSheetOpen(false);
       reset();
       // Phase 1: explicitly tell mode bus the user closed the bubble so
       // the ball can fall back to companion mode if it had transitioned
@@ -282,6 +430,21 @@ export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
         keyboardBlurBehavior="restore"
       >
         <BottomSheetView style={styles.container}>
+          {/* 方案B: real in-bubble realtime voice — mounted only while open +
+              active so its mic/WS side-effects never run globally. */}
+          {voiceCanRun && (
+            <BubbleVoiceController
+              token={token as string}
+              instanceId={activeInstance!.id}
+              instanceName={convo.agentName || pet.name}
+              language={language === 'zh' ? 'zh' : 'en'}
+              onUserMessage={handleVoiceUserMessage}
+              onAssistantChunk={handleVoiceAssistantChunk}
+              onAssistantEnd={handleVoiceAssistantEnd}
+              onError={handleVoiceError}
+              onPhase={handleVoicePhase}
+            />
+          )}
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
@@ -289,7 +452,7 @@ export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
               <View>
                 <Text style={styles.headerName}>{convo.agentName || pet.name}</Text>
                 <Text style={styles.headerMode}>
-                  {convo.busy ? '思考中…' : voiceActive ? '在听…' : '准备好了'}
+                  {voiceActive ? (voiceStatus || '在听…') : convo.busy ? '思考中…' : '准备好了'}
                 </Text>
               </View>
             </View>
@@ -330,13 +493,13 @@ export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
               </View>
             )}
 
-            {visibleMessages.length > 0 ? (
+            {displayMessages.length > 0 ? (
               <BottomSheetScrollView
                 style={styles.messageList}
                 contentContainerStyle={styles.messageListContent}
                 showsVerticalScrollIndicator={false}
               >
-                {visibleMessages.map((m) => (
+                {displayMessages.map((m) => (
                   <View
                     key={m.id}
                     style={[
@@ -476,7 +639,7 @@ export const ConversationBubble = forwardRef<ConversationBubbleHandle>(
   },
 );
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   sheetBg: {
     backgroundColor: colors.bgCard,
     borderTopLeftRadius: 18,
@@ -678,4 +841,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 8,
   },
-});
+}));

@@ -21,6 +21,7 @@ import {
   PolymarketEvent,
   BetSide,
 } from '../../services/prediction.api';
+import { themedStyles } from '../../theme/useTheme';
 
 const QUICK_BETS = [10, 25, 50, 100];
 
@@ -445,7 +446,7 @@ function Stat({ label, value, color }: { label: string; value: string; color?: s
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 32 },
 
@@ -561,4 +562,4 @@ const styles = StyleSheet.create({
   polyTitle: { color: colors.textPrimary, fontSize: 13, fontWeight: '600' },
   polyPrices: { color: colors.textMuted, fontSize: 11, marginTop: 4 },
   polyArrow: { color: colors.accent, fontSize: 18 },
-});
+}));

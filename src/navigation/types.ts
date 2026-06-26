@@ -70,6 +70,8 @@ export type ShareCardRouteParams = {
   userName?: string;
   subtitle?: string;
   headerEmoji?: string;
+  /** Optional hero/cover image URL — when set the poster shows the real cover art. */
+  imageUrl?: string;
   categoryLabel?: string;
   priceLabel?: string;
   statsLabel?: string;
@@ -136,6 +138,8 @@ export type MeStackParamList = {
   Subscribe: undefined;
   AxpCenter: undefined;
   AxpRewardShop: undefined;
+  /** Pet Earning Flywheel — 萌宠收益中心（聚合 AXP + USDT 集市收入 + 分类/走势/明细）。 */
+  PetEarnings: undefined;
   // Sprint 4: Toy Binding
   ToyBinding: undefined;
   // P-9 Q1: re-home the orphaned pet screens here (T6.7). PetDetailSheet's
@@ -148,6 +152,13 @@ export type MeStackParamList = {
   PetPlayground: undefined;
   PetSkinMarketplace: undefined;
   MemoryManagement: undefined;
+  // Crypto-Native Agent Ops (Agent 自运营) — consumer + monitoring slice.
+  AgentOpsHub: undefined;
+  AgentOpsDueDiligence: undefined;
+  AgentOpsMonitors: undefined;
+  AgentOpsDeliverables: { taskId?: string } | undefined;
+  AgentOpsReliability: undefined;
+  AgentOpsEconomicStatus: { agentId?: string } | undefined;
 };
 
 export type DiscoverStackParamList = {
@@ -239,21 +250,17 @@ export type SummonStackParamList = {
 };
 
 /**
- * 🎪 Plaza Stack — 经济 + 社交 + 游戏
- * 5 segmented sections inside PlazaScreen: Feed / Skills / Tasks / Pets / Play
+ * 🎪 Plaza Stack — 单层交易市场(集市)。
+ *
+ * 根屏 `MarketplaceScreen` 同屏切 5 段(赛事预测/技能/任务/宠物/资源),
+ * 其余路由为各段二级详情/结算屏。
+ *
+ * 广场(Feed/Messaging/GreetingCard)与玩乐(Play/Predict/PredictionMarket/
+ * EventsCenter/PhotoMimic/CoRaising)已整体下线 —— 移除其集市内路由
+ * (agentrix-marketplace-tab-refactor task 10)。
  */
 export type PlazaStackParamList = {
   PlazaRoot: undefined;
-  // Feed
-  Feed: undefined;
-  PostDetail: { postId: string };
-  ShowcaseDetail: { postId: string };
-  UserProfile: { userId: string };
-  CreatePost: undefined;
-  // Messaging (DM + Group)
-  Messaging: undefined;
-  DirectMessage: { userId: string; userName: string; userAvatar?: string };
-  GroupChat: { groupId: string; groupName: string };
   // Skills market
   Skills: undefined;
   SkillDetail: { skillId: string; skillName: string };
@@ -268,17 +275,6 @@ export type PlazaStackParamList = {
   PetsSkins: undefined;
   SkinAuctionDetail: { auctionId: string };
   PetAuctionDetail: { auctionId: string };
-  // Play (Predict + multiplayer + mini-games)
-  Play: undefined;
-  Predict: undefined;
-  // G1 Photo Mimic Game (docs/G1_PHOTO_MIMIC_GAME_2026-05)
-  PhotoMimic: undefined;
-  // Co-Raising entry from Plaza
-  CoRaisingInvite: undefined;
-  CoRaisingLanding: { token?: string };
-  // Greeting Cards (multiplayer Phase 1 δ)
-  GreetingCardCompose: undefined;
-  GreetingCardInbox: undefined;
   // Share card generator
   ShareCard: ShareCardRouteParams;
   CreateLink: { skillId: string; skillName: string; skillPrice?: number; skillPriceUnit?: string };

@@ -12,6 +12,7 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
 import { taskMarketplaceApi, type TaskItem } from '../../services/taskMarketplace.api';
+import { themedStyles } from '../../theme/useTheme';
 
 // ──────────────────────────────────────────────
 // Types
@@ -609,7 +610,7 @@ export function TaskBoardScreen() {
 // ──────────────────────────────────────────────
 // Styles
 // ──────────────────────────────────────────────
-const s = StyleSheet.create({
+const s = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   scroll: { flex: 1 },
   // Summary
@@ -705,9 +706,9 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 }, elevation: 8,
   },
   fabText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-});
+}));
 
-const modalS = StyleSheet.create({
+const modalS = themedStyles(() => StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000066' },
   container: {
     backgroundColor: colors.bgCard, borderTopLeftRadius: 20, borderTopRightRadius: 20,
@@ -743,4 +744,4 @@ const modalS = StyleSheet.create({
     alignItems: 'center', marginTop: 4,
   },
   createBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-});
+}));

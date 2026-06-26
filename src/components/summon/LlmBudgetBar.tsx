@@ -19,6 +19,7 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { fetchMyQuota, type TierQuota } from '../../services/subscription.api';
 import { fetchQuotaStatus, type QuotaStatus } from '../../services/token-quota.service';
+import { themedStyles } from '../../theme/useTheme';
 
 export function LlmBudgetBar() {
   const { t } = useI18n();
@@ -126,7 +127,7 @@ export function LlmBudgetBar() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -172,4 +173,4 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textMuted,
   },
-});
+}));

@@ -22,6 +22,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
+import { themedStyles } from '../../theme/useTheme';
 
 function StubScreen({ emoji, title, body, sprint }: { emoji: string; title: string; body: string; sprint: string }) {
   return (
@@ -70,11 +71,11 @@ export function PlazaPlayStub() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 24, alignItems: 'center' },
   emoji: { fontSize: 64, marginTop: 48, marginBottom: 16 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 12 },
   body: { fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 22, marginBottom: 16 },
   sprint: { fontSize: 11, color: colors.textMuted, fontWeight: '600', opacity: 0.6 },
-});
+}));

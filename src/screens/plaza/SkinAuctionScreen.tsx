@@ -32,6 +32,7 @@ import {
   SkinSortV2,
   SkinClan,
 } from '../../services/marketSkins.api';
+import { themedStyles } from '../../theme/useTheme';
 
 const PAGE_SIZE = 20;
 
@@ -73,7 +74,12 @@ function formatAxpPrice(item: SkinListItem): string | null {
   return `${discounted} AXP`;
 }
 
-export function SkinAuctionScreen() {
+export function SkinAuctionScreen({
+  ListHeaderComponent,
+}: {
+  /** 可选：渲染在皮肤网格上方、随列表一起滚动的头部（如精选皮肤轮播）。 */
+  ListHeaderComponent?: React.ReactElement | null;
+} = {}) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const [sort, setSort] = useState<SkinSortV2>('featured');
@@ -211,6 +217,7 @@ export function SkinAuctionScreen() {
           }
           onEndReached={() => query.hasNextPage && query.fetchNextPage()}
           onEndReachedThreshold={0.4}
+          ListHeaderComponent={ListHeaderComponent ?? null}
           ListEmptyComponent={
             <View style={styles.center}>
               <Text style={styles.emoji}>🎨</Text>
@@ -317,7 +324,7 @@ function SkinCard({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary },
@@ -426,4 +433,4 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 48, marginBottom: 12 },
   errorText: { fontSize: 13, color: colors.error, textAlign: 'center' },
   emptyText: { fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 20 },
-});
+}));

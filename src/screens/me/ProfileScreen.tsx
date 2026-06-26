@@ -28,7 +28,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQuery } from '@tanstack/react-query';
-import { colors } from '../../theme/colors';
+import { useColors, useThemedStyles, type Palette } from '../../theme/useTheme';
 import { useAuthStore } from '../../stores/authStore';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -70,6 +70,8 @@ function fmtQuota(v: number, format: 'default' | 'cents' = 'default'): string {
 
 export function ProfileScreen() {
   const navigation = useNavigation<Nav>();
+  const c = useColors();
+  const styles = useThemedStyles(makeStyles);
   const user = useAuthStore((s) => s.user);
   const activeInstance = useAuthStore((s) => s.activeInstance);
   const clearAuth = useAuthStore((s) => s.clearAuth);
@@ -231,7 +233,7 @@ export function ProfileScreen() {
           <Text style={styles.cardArrow}>›</Text>
         </View>
         {axpQ.isLoading && !axpQ.data ? (
-          <ActivityIndicator color={colors.accent} />
+          <ActivityIndicator color={c.accent} />
         ) : (
           <>
             <Text style={styles.axpValue}>
@@ -279,6 +281,7 @@ export function ProfileScreen() {
       <Section title={t({ en: 'My stuff', zh: '我的' })}>
         <MenuItem icon="📦" label={t({ en: 'Orders', zh: '订单' })} onPress={() => navigation.navigate('MyOrders')} testID="me-orders" />
         <MenuItem icon="⚡" label={t({ en: 'Installed Skills', zh: '已装技能' })} onPress={() => navigation.navigate('MySkills')} testID="me-skills" />
+        <MenuItem icon="🛠" label={t({ en: 'Agent Ops', zh: 'Agent 自运营' })} onPress={() => navigation.navigate('AgentOpsHub')} testID="me-agent-ops" />
         <MenuItem icon="🎁" label={t({ en: 'Referrals & Earnings', zh: '推广与佣金' })} onPress={() => navigation.navigate('ReferralDashboard')} testID="me-promote" />
       </Section>
 
@@ -363,6 +366,7 @@ export function ProfileScreen() {
 // ── Reusable UI primitives ───────────────────────────
 
 function QuotaCell({ label, value }: { label: string; value: string }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.quotaCell}>
       <Text style={styles.quotaValue}>{value}</Text>
@@ -382,6 +386,7 @@ function MenuItem({
   onPress: () => void;
   testID?: string;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <TouchableOpacity style={styles.menuItem} onPress={onPress} testID={testID}>
       <Text style={styles.menuIcon}>{icon}</Text>
@@ -404,6 +409,7 @@ function Section({
   open?: boolean;
   onToggle?: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const Header = (
     <View style={styles.sectionHeaderRow}>
       <Text style={styles.sectionHeader}>{title}</Text>
@@ -426,64 +432,64 @@ function Section({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bgPrimary },
+function makeStyles(c: Palette) { return StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bgPrimary },
   content: { padding: 16, paddingBottom: 40, gap: 14 },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
-  topBarTitle: { fontSize: 22, fontWeight: '800', color: colors.textPrimary },
+  topBarTitle: { fontSize: 22, fontWeight: '800', color: c.textPrimary },
   bellBtn: { position: 'relative', padding: 6 },
   bellIcon: { fontSize: 22 },
-  bellBadge: { position: 'absolute', top: 2, right: 2, backgroundColor: colors.error, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
+  bellBadge: { position: 'absolute', top: 2, right: 2, backgroundColor: c.error, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
   bellBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
   // Profile header
   profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.bgCard,
+    backgroundColor: c.bgCard,
     borderRadius: 16,
     padding: 16,
     gap: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
-  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: c.primary, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 26, fontWeight: '800', color: '#fff' },
-  nickname: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
-  email: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  nickname: { fontSize: 18, fontWeight: '700', color: c.textPrimary },
+  email: { fontSize: 13, color: c.textMuted, marginTop: 2 },
   tierRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
   tierPill: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, borderWidth: 1 },
   tierText: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  upgradeBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.accent },
+  upgradeBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: c.accent },
   upgradeBtnText: { fontSize: 11, fontWeight: '700', color: '#fff' },
   // Wallet cards
   walletCard: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: c.bgCard,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   axpCard: {
-    backgroundColor: colors.accent + '12',
+    backgroundColor: c.accent + '12',
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: colors.accent + '55',
+    borderColor: c.accent + '55',
   },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  cardLabel: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
-  cardArrow: { fontSize: 16, color: colors.textMuted },
-  cardCta: { fontSize: 12, fontWeight: '700', color: colors.accent },
-  walletValue: { fontSize: 16, fontWeight: '600', color: colors.textPrimary, fontFamily: 'monospace' },
-  walletMuted: { fontSize: 11, color: colors.textMuted, marginTop: 4 },
-  axpValue: { fontSize: 24, fontWeight: '800', color: colors.accent },
+  cardLabel: { fontSize: 13, fontWeight: '700', color: c.textPrimary },
+  cardArrow: { fontSize: 16, color: c.textMuted },
+  cardCta: { fontSize: 12, fontWeight: '700', color: c.accent },
+  walletValue: { fontSize: 16, fontWeight: '600', color: c.textPrimary, fontFamily: 'monospace' },
+  walletMuted: { fontSize: 11, color: c.textMuted, marginTop: 4 },
+  axpValue: { fontSize: 24, fontWeight: '800', color: c.accent },
   // Quota grid
   quotaCard: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: c.bgCard,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   quotaGrid: {
     flexDirection: 'row',
@@ -493,13 +499,13 @@ const styles = StyleSheet.create({
   },
   quotaCell: {
     width: '31%',
-    backgroundColor: colors.bgPrimary,
+    backgroundColor: c.bgPrimary,
     borderRadius: 10,
     padding: 10,
     alignItems: 'center',
   },
-  quotaValue: { fontSize: 18, fontWeight: '800', color: colors.textPrimary },
-  quotaLabel: { fontSize: 10, color: colors.textMuted, marginTop: 2 },
+  quotaValue: { fontSize: 18, fontWeight: '800', color: c.textPrimary },
+  quotaLabel: { fontSize: 10, color: c.textMuted, marginTop: 2 },
   // Section / menu
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -512,30 +518,30 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: c.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  sectionCaret: { fontSize: 14, color: colors.textMuted },
+  sectionCaret: { fontSize: 14, color: c.textMuted },
   sectionCard: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: c.bgCard,
     borderRadius: 14,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: c.border,
     gap: 12,
   },
   menuIcon: { fontSize: 20, width: 28 },
-  menuLabel: { flex: 1, fontSize: 15, color: colors.textPrimary },
-  menuArrow: { fontSize: 20, color: colors.textMuted },
+  menuLabel: { flex: 1, fontSize: 15, color: c.textPrimary },
+  menuArrow: { fontSize: 20, color: c.textMuted },
   // Logout
   logoutBtn: { alignItems: 'center', padding: 14, marginTop: 10 },
-  logoutText: { color: colors.error, fontSize: 15, fontWeight: '600' },
-});
+  logoutText: { color: c.error, fontSize: 15, fontWeight: '600' },
+}); }

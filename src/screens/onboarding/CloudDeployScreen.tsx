@@ -8,6 +8,7 @@ import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { mapRawInstance } from '../../services/auth';
 import { provisionCloudAgent, getInstanceById } from '../../services/openclaw.service';
+import { themedStyles } from '../../theme/useTheme';
 
 type WizardStep = 'setup' | 'deploying' | 'done';
 
@@ -169,7 +170,7 @@ export function CloudDeployScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 24, paddingTop: 48, paddingBottom: 40, gap: 16 },
   centered: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 },
@@ -227,4 +228,4 @@ const styles = StyleSheet.create({
   },
   urlText: { color: colors.accent, fontSize: 13, fontFamily: 'monospace' },
   shareHint: { fontSize: 13, color: colors.textMuted, textAlign: 'center', marginTop: 8 },
-});
+}));

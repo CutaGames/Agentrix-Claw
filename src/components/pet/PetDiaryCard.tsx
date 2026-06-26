@@ -9,6 +9,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { colors } from '../../theme/colors';
 import { getRecentDiary, type PetDiaryEntry } from '../../services/petDiarySdk';
+import { themedStyles } from '../../theme/useTheme';
 
 interface Props {
   /** Optional refresh trigger — bump this when emotion changes a lot. */
@@ -86,7 +87,7 @@ export function PetDiaryCard({ refreshKey }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   card: {
     backgroundColor: 'rgba(167,139,250,0.10)',
     borderRadius: 12,
@@ -106,4 +107,4 @@ const styles = StyleSheet.create({
   body: { color: colors.text, fontSize: 14, lineHeight: 20, marginBottom: 6 },
   meta: { color: colors.textSecondary, fontSize: 11 },
   muted: { color: colors.textSecondary, fontSize: 12, marginTop: 4 },
-});
+}));

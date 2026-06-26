@@ -13,6 +13,7 @@ import {
 import { colors } from '../theme/colors';
 import { sellerApi, SellerDashboard, SellerSkill } from '../services/seller.api';
 import { referralApi } from '../services/referral.api';
+import { themedStyles } from '../theme/useTheme';
 
 interface Props {
   navigation: any;
@@ -198,7 +199,7 @@ export function MySkillsScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -386,4 +387,4 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginLeft: 8,
   },
-});
+}));

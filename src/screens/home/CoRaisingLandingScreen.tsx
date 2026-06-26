@@ -27,6 +27,7 @@ import {
   feedCoRaisingPet,
 } from '../../services/coraising.api';
 import type { HomeStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Route = RouteProp<HomeStackParamList, 'CoRaisingLanding'>;
 
@@ -181,7 +182,7 @@ export function CoRaisingLandingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 24, alignItems: 'center' },
   center: { flex: 1, backgroundColor: colors.bgPrimary, padding: 24, alignItems: 'center', justifyContent: 'center' },
@@ -212,4 +213,4 @@ const styles = StyleSheet.create({
   },
   feedBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   footer: { fontSize: 11, color: colors.textMuted, textAlign: 'center', opacity: 0.7, marginTop: 12 },
-});
+}));

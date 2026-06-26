@@ -11,6 +11,7 @@ import { DrawerContentComponentProps } from '@react-navigation/drawer';
 import { useAuthStore } from '../stores/authStore';
 import { colors } from '../theme/colors';
 import { useI18n } from '../stores/i18nStore';
+import { themedStyles } from '../theme/useTheme';
 
 const STATUS_COLORS: Record<string, string> = {
   active: '#22c55e',
@@ -245,7 +246,7 @@ export function AgentDrawerContent({ navigation }: DrawerContentComponentProps) 
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
@@ -413,4 +414,4 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     borderBottomWidth: 0,
   },
-});
+}));

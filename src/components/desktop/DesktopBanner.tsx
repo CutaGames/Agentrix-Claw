@@ -58,6 +58,7 @@ import {
   type DevicePresence,
   type PresenceSubscription,
 } from '../../services/presence.service';
+import { themedStyles } from '../../theme/useTheme';
 
 // ── Tuning constants ──────────────────────────────────────────────────────────
 /** pollBindSession 轮询间隔(ms)。与 OpenClawBindScreen 同量级,够灵敏又不过载。 */
@@ -563,7 +564,7 @@ function PairedView({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   // collapsed
   collapsedCard: {
     flexDirection: 'row',
@@ -696,4 +697,4 @@ const styles = StyleSheet.create({
   presenceStatusWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   presenceDot: { width: 8, height: 8, borderRadius: 4 },
   presenceStatus: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
-});
+}));

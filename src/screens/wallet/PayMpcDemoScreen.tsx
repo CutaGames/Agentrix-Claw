@@ -22,6 +22,7 @@ import {
   Alert,
 } from 'react-native';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 type Stage = 'idle' | 'paying' | 'paid' | 'requesting' | 'awaiting_biometric' | 'approving' | 'done' | 'error';
 
@@ -135,7 +136,7 @@ function PrimaryButton({ label, onPress }: { label: string; onPress: () => void 
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary, padding: 20 },
   title: { color: colors.textPrimary, fontSize: 22, fontWeight: '700', marginBottom: 8 },
   subtitle: { color: colors.textMuted, fontSize: 13, marginBottom: 24 },
@@ -154,6 +155,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnLabel: { color: '#fff', fontWeight: '700', fontSize: 15 },
-});
+}));
 
 export default PayMpcDemoScreen;

@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import type { MeStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<MeStackParamList>;
 
@@ -35,7 +36,7 @@ export function AccountScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary, padding: 20, gap: 12 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary, marginBottom: 8 },
   card: { backgroundColor: colors.bgCard, borderRadius: 12, padding: 14, gap: 4, borderWidth: 1, borderColor: colors.border },
@@ -44,4 +45,4 @@ const styles = StyleSheet.create({
   actionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.bgCard, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.border },
   actionLabel: { fontSize: 15, color: colors.textPrimary, fontWeight: '600' },
   actionChevron: { fontSize: 20, color: colors.textMuted },
-});
+}));

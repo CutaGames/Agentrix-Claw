@@ -32,6 +32,7 @@ import {
   SubscriptionTier,
   TierCatalogEntry,
 } from '../../services/subscription.api';
+import { themedStyles } from '../../theme/useTheme';
 
 // ── Constants ─────────────────────────────────────────────────
 
@@ -125,7 +126,7 @@ function AxpSlider({ value, maxValue, onValueChange }: AxpSliderProps) {
   );
 }
 
-const sliderStyles = StyleSheet.create({
+const sliderStyles = themedStyles(() => StyleSheet.create({
   container: {
     height: 40,
     justifyContent: 'center',
@@ -156,7 +157,7 @@ const sliderStyles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
-});
+}));
 
 // ── Main Screen ───────────────────────────────────────────────
 
@@ -457,7 +458,7 @@ function quotaValue(v: number, format: 'default' | 'cents' = 'default'): string 
 
 // ── Styles ────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 60 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary, marginBottom: 4 },
@@ -605,4 +606,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: CYAN,
   },
-});
+}));

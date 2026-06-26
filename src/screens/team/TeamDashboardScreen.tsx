@@ -13,7 +13,12 @@ import { useNotificationStore } from '../../stores/notificationStore';
 import { apiFetch } from '../../services/api';
 import { fetchUnifiedAgents, type UnifiedAgent } from '../../services/unifiedAgent';
 import { fetchOperationsContinuity, fetchOperationsTimeline, requestOperationsFollowUp } from '../../services/operations';
+import {
+  fetchTeamDashboard, fetchTeamSettlements,
+  type TeamMeteringDashboard, type SettlementRecord, type BillingMode,
+} from '../../services/agentOpsApi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { themedStyles } from '../../theme/useTheme';
 
 // ──────────────────────────────────────────────
 // Types
@@ -151,7 +156,7 @@ function RiskBadge({ level }: { level?: string }) {
   );
 }
 
-const riskStyles = StyleSheet.create({
+const riskStyles = themedStyles(() => StyleSheet.create({
   badge: {
     borderRadius: 6,
     paddingHorizontal: 8,
@@ -159,7 +164,7 @@ const riskStyles = StyleSheet.create({
     borderWidth: 1,
   },
   text: { fontSize: 11, fontWeight: '700' },
-});
+}));
 
 // ──────────────────────────────────────────────
 // Approval Item Component
@@ -322,7 +327,7 @@ function OnboardingGuide({ t, onDismiss }: { t: (p: { en: string; zh: string }) 
   );
 }
 
-const guide = StyleSheet.create({
+const guide = themedStyles(() => StyleSheet.create({
   container: {
     margin: 16, marginBottom: 8, backgroundColor: colors.accent + '11',
     borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.accent + '33',
@@ -334,7 +339,7 @@ const guide = StyleSheet.create({
   step: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
   stepIcon: { fontSize: 16, width: 24, textAlign: 'center' },
   stepText: { fontSize: 13, color: colors.textPrimary, flex: 1, lineHeight: 18 },
-});
+}));
 
 // ──────────────────────────────────────────────
 // Team Agent Role Card (within a team group)
@@ -377,7 +382,7 @@ function TeamAgentRow({ agent, t, onPress }: { agent: TeamAgent; t: (p: { en: st
   );
 }
 
-const teamRow = StyleSheet.create({
+const teamRow = themedStyles(() => StyleSheet.create({
   container: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 0.5, borderBottomColor: colors.border },
   left: { flex: 1, gap: 1 },
   codename: { fontSize: 13, fontWeight: '700', color: colors.accent },
@@ -387,7 +392,7 @@ const teamRow = StyleSheet.create({
   tierText: { fontSize: 10, fontWeight: '600' },
   score: { fontSize: 12, fontWeight: '700', width: 32, textAlign: 'right' },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-});
+}));
 
 // ──────────────────────────────────────────────
 // My Team Group Card (shows all agents in a team)
@@ -432,7 +437,7 @@ function MyTeamGroupCard({
   );
 }
 
-const teamGroup = StyleSheet.create({
+const teamGroup = themedStyles(() => StyleSheet.create({
   card: {
     backgroundColor: colors.bgCard, borderRadius: 16, padding: 14,
     marginHorizontal: 16, marginBottom: 10, borderWidth: 1, borderColor: colors.border,
@@ -444,7 +449,7 @@ const teamGroup = StyleSheet.create({
   actions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8, gap: 10 },
   actionBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: '#ef444411', borderWidth: 1, borderColor: '#ef444433' },
   actionText: { fontSize: 12, fontWeight: '600', color: '#ef4444' },
-});
+}));
 
 // ──────────────────────────────────────────────
 // Template Picker Card (for creating new team)
@@ -488,7 +493,7 @@ function TemplatePickerCard({
   );
 }
 
-const tplCard = StyleSheet.create({
+const tplCard = themedStyles(() => StyleSheet.create({
   card: {
     backgroundColor: colors.bgCard, borderRadius: 16, padding: 14,
     marginHorizontal: 16, marginBottom: 10, borderWidth: 1, borderColor: colors.accent + '33',
@@ -505,7 +510,7 @@ const tplCard = StyleSheet.create({
   moreRoles: { fontSize: 11, color: colors.textMuted, alignSelf: 'center' },
   createBtn: { backgroundColor: colors.accent, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
   createText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-});
+}));
 
 // ──────────────────────────────────────────────
 // Team Dashboard Screen
@@ -849,6 +854,9 @@ export function TeamDashboardScreen({ navigation }: Props) {
           ))}
         </View>
 
+        {/* ═══ Metering & Settlement (agent-ops) ═══ */}
+        <TeamMeteringSection t={t} />
+
         {/* ═══ CEO Directive — give a command to CEO ═══ */}
         {hasTeams && (
           <TouchableOpacity
@@ -1112,10 +1120,141 @@ export function TeamApprovalDetailScreen({ route, navigation }: DetailProps) {
 }
 
 // ──────────────────────────────────────────────
+// Team Metering & Settlement section (agent-ops)
+// ──────────────────────────────────────────────
+
+const BILLING_LABEL: Record<BillingMode, { en: string; zh: string }> = {
+  subscription: { en: 'Subscription', zh: '订阅' },
+  rental: { en: 'Rental', zh: '租赁' },
+  per_result: { en: 'Per result', zh: '按结果' },
+};
+
+const SETTLEMENT_STATUS_COLOR: Record<string, string> = {
+  settled: '#22c55e',
+  pending: '#f59e0b',
+  failed: '#ef4444',
+  refunded: '#6b7280',
+};
+
+function TeamMeteringSection({ t }: { t: (p: { en: string; zh: string }) => string }) {
+  const dashQ = useQuery({
+    queryKey: ['team-metering-dashboard'],
+    queryFn: () => fetchTeamDashboard(),
+    retry: false,
+  });
+  const settleQ = useQuery({
+    queryKey: ['team-settlements'],
+    queryFn: fetchTeamSettlements,
+    retry: false,
+  });
+
+  const dash: TeamMeteringDashboard | undefined = dashQ.data;
+  const settlements: SettlementRecord[] = settleQ.data ?? [];
+
+  return (
+    <View style={metering.panel} testID="team-metering-section">
+      <View style={metering.header}>
+        <Text style={metering.title}>💳 {t({ en: 'Metering & Settlement', zh: '计量与结算' })}</Text>
+      </View>
+
+      {dashQ.isLoading ? (
+        <ActivityIndicator color={colors.accent} style={{ marginVertical: 12 }} />
+      ) : dash ? (
+        <>
+          <View style={metering.totalRow}>
+            <Text style={metering.totalLabel}>{t({ en: 'Total spend', zh: '总支出' })}</Text>
+            <Text style={metering.totalValue}>${(dash.totalSpendUsd ?? 0).toFixed(2)}</Text>
+          </View>
+          <View style={metering.splitRow}>
+            {(dash.split ?? []).map((s) => (
+              <View key={s.mode} style={metering.splitCell} testID={`team-metering-${s.mode}`}>
+                <Text style={metering.splitValue}>${(s.amountUsd ?? 0).toFixed(0)}</Text>
+                <Text style={metering.splitLabel}>{s.label || t(BILLING_LABEL[s.mode] ?? { en: s.mode, zh: s.mode })}</Text>
+              </View>
+            ))}
+          </View>
+          {(dash.agentCount != null || dash.resultCount != null) ? (
+            <Text style={metering.meta}>
+              {dash.agentCount != null ? t({ en: `${dash.agentCount} agents`, zh: `${dash.agentCount} 个 Agent` }) : ''}
+              {dash.resultCount != null ? ` · ${t({ en: `${dash.resultCount} results`, zh: `${dash.resultCount} 个结果` })}` : ''}
+            </Text>
+          ) : null}
+        </>
+      ) : (
+        <Text style={metering.empty}>{t({ en: 'No metering data yet.', zh: '暂无计量数据。' })}</Text>
+      )}
+
+      {/* Settlement / 分佣 records */}
+      <Text style={metering.subTitle}>{t({ en: 'Settlements & commission', zh: '结算与分佣' })}</Text>
+      {settleQ.isLoading ? (
+        <ActivityIndicator color={colors.accent} style={{ marginVertical: 8 }} />
+      ) : settlements.length === 0 ? (
+        <Text style={metering.empty}>{t({ en: 'No settlement records.', zh: '暂无结算记录。' })}</Text>
+      ) : (
+        settlements.slice(0, 6).map((rec) => {
+          const color = SETTLEMENT_STATUS_COLOR[rec.status] ?? '#6b7280';
+          return (
+            <View key={rec.id} style={metering.settleRow} testID={`team-settlement-${rec.id}`}>
+              <View style={{ flex: 1 }}>
+                <Text style={metering.settleMode}>
+                  {t(BILLING_LABEL[rec.mode] ?? { en: rec.mode, zh: rec.mode })}
+                  {rec.counterparty ? ` · ${rec.counterparty}` : ''}
+                </Text>
+                <Text style={metering.settleMeta}>
+                  {new Date(rec.createdAt).toLocaleDateString()}
+                  {rec.commissionUsd != null ? ` · ${t({ en: 'commission', zh: '分佣' })} $${rec.commissionUsd.toFixed(2)}` : ''}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 3 }}>
+                <Text style={metering.settleAmount}>${(rec.amountUsd ?? 0).toFixed(2)}</Text>
+                <View style={[metering.statusPill, { backgroundColor: color + '22', borderColor: color + '66' }]}>
+                  <Text style={[metering.statusText, { color }]}>{rec.status}</Text>
+                </View>
+              </View>
+            </View>
+          );
+        })
+      )}
+    </View>
+  );
+}
+
+const metering = themedStyles(() => StyleSheet.create({
+  panel: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: colors.bgCard,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 10,
+  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title: { fontSize: 15, fontWeight: '800', color: colors.textPrimary },
+  totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  totalLabel: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
+  totalValue: { fontSize: 22, fontWeight: '800', color: colors.accent },
+  splitRow: { flexDirection: 'row', gap: 8 },
+  splitCell: { flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: colors.bgSecondary, borderRadius: 10, borderWidth: 1, borderColor: colors.border, gap: 2 },
+  splitValue: { fontSize: 16, fontWeight: '800', color: colors.textPrimary },
+  splitLabel: { fontSize: 10, color: colors.textMuted, fontWeight: '600', textAlign: 'center' },
+  meta: { fontSize: 11, color: colors.textMuted },
+  subTitle: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.4 },
+  empty: { fontSize: 12, color: colors.textMuted, textAlign: 'center', paddingVertical: 8 },
+  settleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.bgSecondary, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.border },
+  settleMode: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+  settleMeta: { fontSize: 10, color: colors.textMuted, marginTop: 2 },
+  settleAmount: { fontSize: 14, fontWeight: '800', color: colors.textPrimary },
+  statusPill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, borderWidth: 1 },
+  statusText: { fontSize: 10, fontWeight: '700', textTransform: 'capitalize' },
+}));
+
+// ──────────────────────────────────────────────
 // Styles
 // ──────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: {
     flexDirection: 'row',
@@ -1281,9 +1420,9 @@ const styles = StyleSheet.create({
   },
   ceoBannerTitle: { fontSize: 15, fontWeight: '800', color: colors.textPrimary },
   ceoBannerSub: { fontSize: 11, color: colors.textMuted, marginTop: 2, lineHeight: 16 },
-});
+}));
 
-const cards = StyleSheet.create({
+const cards = themedStyles(() => StyleSheet.create({
   card: {
     backgroundColor: colors.bgCard,
     borderRadius: 16,
@@ -1316,9 +1455,9 @@ const cards = StyleSheet.create({
     borderColor: '#22c55e55',
   },
   actionText: { fontSize: 13, fontWeight: '700' },
-});
+}));
 
-const agentCard = StyleSheet.create({
+const agentCard = themedStyles(() => StyleSheet.create({
   card: {
     backgroundColor: colors.bgCard,
     borderRadius: 16,
@@ -1355,9 +1494,9 @@ const agentCard = StyleSheet.create({
   },
   statLabel: { fontSize: 10, color: colors.textMuted, fontWeight: '600' },
   statValue: { fontSize: 13, color: colors.textPrimary, fontWeight: '700' },
-});
+}));
 
-const detail = StyleSheet.create({
+const detail = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   scroll: { flex: 1 },
   card: {
@@ -1388,4 +1527,4 @@ const detail = StyleSheet.create({
   rejectBtn: { backgroundColor: '#ef444411', borderColor: '#ef444455' },
   approveBtn: { backgroundColor: colors.accent, borderColor: colors.accent },
   btnText: { fontSize: 15, fontWeight: '700' },
-});
+}));

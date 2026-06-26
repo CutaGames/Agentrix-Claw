@@ -32,6 +32,7 @@ import {
   startTrainingBattle,
   type WorldGameRuleSet,
 } from '../../services/worldEngineApi';
+import { themedStyles } from '../../theme/useTheme';
 
 const DMG_PRESETS = [
   { label: '标准', value: 1.0 },
@@ -196,7 +197,7 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingTop: Platform.OS === 'ios' ? 60 : 28, paddingBottom: 80 },
   title: { fontSize: 22, fontWeight: '700', color: colors.textPrimary, marginBottom: 4 },
@@ -226,6 +227,6 @@ const styles = StyleSheet.create({
   shareBtn: { backgroundColor: colors.primary, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 16 },
   shareBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   deleteText: { color: '#ef4444', fontSize: 12 },
-});
+}));
 
 export default WorldUgcRuleSetsScreen;

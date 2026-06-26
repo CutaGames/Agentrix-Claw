@@ -49,6 +49,7 @@ import { marketplaceApi } from '../../services/marketplace.api';
 import { getHubSkillDetail } from '../../services/openclawHub.service';
 import { useI18n } from '../../stores/i18nStore';
 import type { MarketStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -692,7 +693,7 @@ export function CheckoutScreen() {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 48 },
 
@@ -906,4 +907,4 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   successDoneBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-});
+}));

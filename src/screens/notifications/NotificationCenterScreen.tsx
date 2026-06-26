@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { colors } from '../../theme/colors';
 import { useNotificationStore, AppNotification } from '../../stores/notificationStore';
+import { themedStyles } from '../../theme/useTheme';
 
 function typeIconAndColor(type: AppNotification['type']): { icon: string; color: string } {
   switch (type) {
@@ -111,7 +112,7 @@ export function NotificationCenterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: {
     flexDirection: 'row',
@@ -172,4 +173,4 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 48 },
   emptyTitle: { color: colors.textPrimary, fontSize: 18, fontWeight: '700' },
   emptyBody: { color: colors.textMuted, fontSize: 14 },
-});
+}));

@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { colors } from '../../theme/colors';
 import { listMerchantProducts, createProductOrder, formatPrice, type ProductSummary } from '../../services/productApi';
 import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
+import { themedStyles } from '../../theme/useTheme';
 
 type Rt = RouteProp<WorldStackParamList, 'AeonStore'>;
 
@@ -106,7 +107,7 @@ export default function AeonStoreScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12 },
@@ -119,4 +120,4 @@ const styles = StyleSheet.create({
   cardImgPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   cardName: { color: colors.textPrimary, fontSize: 13, fontWeight: '600', paddingHorizontal: 10, paddingTop: 8 },
   cardPrice: { color: colors.accent, fontSize: 14, fontWeight: '800', paddingHorizontal: 10, paddingTop: 2, paddingBottom: 10 },
-});
+}));

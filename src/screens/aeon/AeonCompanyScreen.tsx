@@ -24,6 +24,7 @@ import {
   listMyPlots,
   type AeonOrgDto, type AeonOrgMemberDto, type AeonPlotDto,
 } from '../../services/aeon/aeonApi';
+import { themedStyles } from '../../theme/useTheme';
 
 /** 可雇佣的 agent 候选(用户的 OpenClaw 实例 + 主宠兜底)。 */
 interface HireCandidate { id: string; name: string }
@@ -372,7 +373,7 @@ export default function AeonCompanyScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   center: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12 },
@@ -434,4 +435,4 @@ const styles = StyleSheet.create({
   cancelText: { color: colors.textMuted, fontSize: 14 },
   confirmBtn: { flex: 1, paddingVertical: 13, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center' },
   confirmText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-});
+}));

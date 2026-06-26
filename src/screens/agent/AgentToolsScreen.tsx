@@ -9,6 +9,7 @@ import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
+import { themedStyles } from '../../theme/useTheme';
 
 type ToolTab = 'terminal' | 'files' | 'system';
 
@@ -362,7 +363,7 @@ function getFileIcon(name: string): string {
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
 
@@ -491,4 +492,4 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryBtnText: { color: colors.accent, fontWeight: '600' },
-});
+}));

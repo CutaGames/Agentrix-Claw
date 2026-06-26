@@ -16,6 +16,7 @@ import { useAuthStore } from '../stores/authStore';
 import { apiFetch } from '../services/api';
 import { useI18n } from '../stores/i18nStore';
 import { checkMPCWallet, ensureMPCWallet, isMPCBackupCompleted } from '../services/mpcWallet';
+import { themedStyles } from '../theme/useTheme';
 
 interface SocialAccount {
   id: string;
@@ -354,7 +355,7 @@ export function AccountScreen({ navigation }: { navigation: any }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   loadingContainer: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
 
@@ -540,4 +541,4 @@ const styles = StyleSheet.create({
   },
   securityIcon: { fontSize: 18 },
   securityText: { flex: 1, color: colors.muted, fontSize: 11, lineHeight: 17 },
-});
+}));

@@ -11,6 +11,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../services/api';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 // ─── Types ────────────────────────────────────────────────────
 interface LogEntry {
@@ -174,7 +175,7 @@ export function AgentLogsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: {
     flexDirection: 'row',
@@ -235,4 +236,4 @@ const styles = StyleSheet.create({
   },
   typeBadgeText: { fontSize: 10, color: colors.textMuted, fontWeight: '600', textTransform: 'uppercase' },
   separator: { height: 1, backgroundColor: colors.border, marginLeft: 68 },
-});
+}));

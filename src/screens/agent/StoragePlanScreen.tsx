@@ -6,6 +6,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { getStorageInfo, upgradeStoragePlan, StorageTier } from '../../services/openclaw.service';
+import { themedStyles } from '../../theme/useTheme';
 
 const TIER_COLORS: Record<StorageTier, string> = {
   free: '#22c55e',
@@ -191,7 +192,7 @@ export function StoragePlanScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 20, paddingBottom: 48, gap: 12 },
   usageCard: {
@@ -275,4 +276,4 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 4,
   },
-});
+}));

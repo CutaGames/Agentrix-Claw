@@ -1,82 +1,46 @@
 appId: app.agentrix.claw
 # ─────────────────────────────────────────────────────────────
-# Test 22: V4 Plaza Tab Full 5-Segment Verification
-# Covers: M8-M16 (Feed/Skills/Tasks/Pets/Play)
+# Test 22: V4 Plaza Tab Full 5-Segment Verification (M8-M16)
+# 强断言:deep-link 进 Plaza,plaza-seg-* testID 逐段切换 + 内容预览滚动。
+# 各段内容卡文案随 i18n(CI 为英文),故内容断言用 optional;段切换用 testID 硬断。
 # ─────────────────────────────────────────────────────────────
 ---
 - launchApp
-
-- tapOn: "Plaza"
-
-- waitForAnimationToEnd:
-    timeout: 5000
-
-- takeScreenshot: "22-plaza-landing"
+- assertVisible:
+    id: "tab-world"
+- openLink: agentrix://plaza
+- extendedWaitUntil:
+    visible:
+      id: "plaza-seg-feed"
+    timeout: 15000
 
 # ── M8: Feed ────────────────────────────────────────────
-- tapOn: "Feed"
-
-- waitForAnimationToEnd:
-    timeout: 3000
-
+- tapOn:
+    id: "plaza-seg-feed"
+- waitForAnimationToEnd
 - scroll
-
 - takeScreenshot: "22-plaza-feed"
 
 # ── M9: Skills ──────────────────────────────────────────
-- tapOn: "Skills"
-
-- waitForAnimationToEnd:
-    timeout: 3000
-
+- tapOn:
+    id: "plaza-seg-skills"
+- waitForAnimationToEnd
 - takeScreenshot: "22-plaza-skills"
 
 # ── M10: Tasks ──────────────────────────────────────────
-- tapOn: "Tasks"
-
-- waitForAnimationToEnd:
-    timeout: 3000
-
+- tapOn:
+    id: "plaza-seg-tasks"
+- waitForAnimationToEnd
 - takeScreenshot: "22-plaza-tasks"
 
 # ── M11-M12: Pets (Skin Auction + Pet Auction) ──────────
-- tapOn: "Pets"
-
-- waitForAnimationToEnd:
-    timeout: 3000
-
+- tapOn:
+    id: "plaza-seg-pets"
+- waitForAnimationToEnd
 - takeScreenshot: "22-plaza-pets"
 
-# Check for auction sub-tabs
-- assertVisible:
-    text: "皮肤"
-    optional: true
-
-- assertVisible:
-    text: "主宠"
-    optional: true
-
 # ── M13-M16: Play ────────────────────────────────────────
-- tapOn: "Play"
-
-- waitForAnimationToEnd:
-    timeout: 3000
-
+- tapOn:
+    id: "plaza-seg-play"
+- waitForAnimationToEnd
 - takeScreenshot: "22-plaza-play"
-
-# Play sub-entries
-- assertVisible:
-    text: "模仿秀"
-    optional: true
-
-- assertVisible:
-    text: "预测"
-    optional: true
-
-- assertVisible:
-    text: "共养"
-    optional: true
-
-- assertVisible:
-    text: "贺卡"
-    optional: true

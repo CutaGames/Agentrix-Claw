@@ -39,6 +39,7 @@ import {
 import type { AeonPlotDto, AeonPlotMarker, AeonNearbyPlot, AeonNearbyPerson, AeonCheckinLeaderEntry } from '../../../shared/types/aeon-world';
 import { wgs84ToGcj02 } from '../../../shared/types/aeon-world';
 import { resolveMapStyle, defaultMapZoom, hasHighPrecisionMap, mapBaseIsGcj02, defaultMapCenterWgs84, fallbackMapZoom, geocodeAddress, hasGeocoder, type GeocodeHit } from '../../config/mapStyle';
+import { themedStyles } from '../../theme/useTheme';
 
 /** 尝试加载 MapLibre;未安装则 null(降级)。 */
 function loadMapLibre(): any | null {
@@ -711,7 +712,7 @@ export default function AeonMapScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary, padding: 16 },
   center: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center' },
   map: { flex: 1, borderRadius: 12, overflow: 'hidden' },
@@ -788,4 +789,4 @@ const styles = StyleSheet.create({
   markerName: { color: colors.textPrimary, fontSize: 14, fontWeight: '500', flex: 1 },
   markerOwner: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   markerMeta: { color: colors.textMuted, fontSize: 11 },
-});
+}));

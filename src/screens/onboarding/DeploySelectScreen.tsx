@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 
 import { useAuthStore } from '../../stores/authStore';
+import { themedStyles } from '../../theme/useTheme';
 
 const { width } = Dimensions.get('window');
 
@@ -114,7 +115,7 @@ export function DeploySelectScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 24, paddingTop: 56, paddingBottom: 40 },
   title: { fontSize: 28, fontWeight: '800', color: colors.textPrimary, marginBottom: 12 },
@@ -167,4 +168,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-});
+}));

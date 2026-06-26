@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../../stores/i18nStore';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
+import { themedStyles } from '../../theme/useTheme';
 
 interface McpServer {
   id: string;
@@ -250,7 +251,7 @@ export function McpManagerScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   toolbar: {
     flexDirection: 'row',
@@ -326,4 +327,4 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   submitBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-});
+}));

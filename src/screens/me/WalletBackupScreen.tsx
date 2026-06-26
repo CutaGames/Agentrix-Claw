@@ -12,6 +12,7 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { getRecoveryCode, getStoredShardA, markMPCBackupCompleted } from '../../services/mpcWallet';
 import type { MeStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<MeStackParamList>;
 
@@ -150,7 +151,7 @@ export function WalletBackupScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgPrimary },
   scroll: { padding: 20, paddingBottom: 40, alignItems: 'center' },
   shieldIcon: { fontSize: 64, marginTop: 8, marginBottom: 8 },
@@ -177,4 +178,4 @@ const styles = StyleSheet.create({
   infoText: { fontSize: 13, color: colors.textSecondary, lineHeight: 20 },
   doneBtn: { backgroundColor: colors.accent, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 40, width: '100%', alignItems: 'center' },
   doneBtnText: { color: '#000', fontSize: 16, fontWeight: '800' },
-});
+}));

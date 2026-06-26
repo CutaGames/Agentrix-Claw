@@ -24,6 +24,7 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { fetchMarketSkins, SkinListItem, SkinClan } from '../../services/marketSkins.api';
 import type { PlazaStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<PlazaStackParamList, 'PlazaRoot'>;
 
@@ -147,7 +148,7 @@ export function FeaturedSkinsCarousel() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { marginBottom: 16 },
   loadingWrap: { height: 60, justifyContent: 'center', alignItems: 'center' },
   headerRow: {
@@ -207,4 +208,4 @@ const styles = StyleSheet.create({
   cardBody: { padding: 10, gap: 4 },
   cardName: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
   cardPrice: { fontSize: 12, fontWeight: '600', color: colors.accent },
-});
+}));

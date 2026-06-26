@@ -13,6 +13,7 @@ import { useI18n } from '../../stores/i18nStore';
 import type { SocialStackParamList, MainTabParamList } from '../../navigation/types';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { CompositeNavigationProp } from '@react-navigation/native';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = CompositeNavigationProp<
   NativeStackNavigationProp<SocialStackParamList, 'Feed'>,
@@ -341,7 +342,7 @@ export function FeedScreen() {
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -402,4 +403,4 @@ const styles = StyleSheet.create({
 
   ctaBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1 },
   ctaText: { fontSize: 12, fontWeight: '700' },
-});
+}));

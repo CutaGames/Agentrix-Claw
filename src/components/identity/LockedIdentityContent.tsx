@@ -5,6 +5,7 @@ import { Card } from '../Card';
 import { PrimaryButton } from '../PrimaryButton';
 import { colors } from '../../theme/colors';
 import { IdentityType } from '../../types/identity';
+import { themedStyles } from '../../theme/useTheme';
 
 interface Props {
   identity: IdentityType;
@@ -87,7 +88,7 @@ export const LockedIdentityContent: React.FC<Props> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
@@ -160,4 +161,4 @@ const styles = StyleSheet.create({
     marginTop: 16,
     textAlign: 'center',
   },
-});
+}));

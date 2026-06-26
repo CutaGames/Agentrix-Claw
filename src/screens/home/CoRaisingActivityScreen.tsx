@@ -19,6 +19,7 @@ import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { listMyCoRaisingInvites, CoRaisingInviteView } from '../../services/coraising.api';
+import { themedStyles } from '../../theme/useTheme';
 
 export function CoRaisingActivityScreen() {
   const navigation = useNavigation<any>();
@@ -103,7 +104,7 @@ function Stat({ label, value }: { label: string; value: number | string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 40 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary, marginBottom: 16 },
@@ -148,4 +149,4 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row' },
   statValue: { fontSize: 18, fontWeight: '700', color: colors.accent },
   statLabel: { fontSize: 10, color: colors.textMuted, marginTop: 2 },
-});
+}));

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { marketplaceApi, ReviewItem } from '../services/marketplace.api';
+import { themedStyles } from '../theme/useTheme';
 
 interface Props {
   route: { params: { skillId: string } };
@@ -131,7 +132,7 @@ export function ReviewsScreen({ route, navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -235,4 +236,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
   },
-});
+}));

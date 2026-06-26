@@ -40,6 +40,7 @@ import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { PetSpriteImage } from '../../components/PetSpriteImage';
 import { useActivePet } from '../../services/activePet.service';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<WorldStackParamList, 'WorldFeed'>;
 
@@ -94,18 +95,11 @@ export function WorldFeedScreen() {
     async (npc: WorldNpc, action: string) => {
       if (action === 'train') {
         if (residents.length === 0) {
-          Alert.alert('还没有角色', '先拍一个物体生成角色,再来找教官训练。');
+          Alert.alert('还没有角色', '先拍一个物体生成角色,再来共创你的世界。');
           return;
         }
-        // 跳到战斗屏,由它调用 /train 开战(拿到完整 state+skills)
-        (navigation as any).navigate('WorldInteractiveBattle', {
-          challengerAssetId: residents[0].assetId,
-          defenderAssetId: residents[0].assetId,
-          training: true,
-          challengerName: residents[0].name,
-          challengerPortraitUrl: residents[0].portraitUrl ?? null,
-          defenderName: '训练假人',
-        });
+        // 战斗子系统已退役(需求 11.1):原"训练对战"改为进资产库管理角色。
+        (navigation as any).navigate('WorldAssetInventory');
       } else if (action === 'quest') {
         Alert.alert(npc.name, npc.line);
       } else {
@@ -297,7 +291,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 80 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgPrimary },
@@ -370,6 +364,6 @@ const styles = StyleSheet.create({
   sheetTrainText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   sheetCloseBtn: { paddingVertical: 10, alignItems: 'center' },
   sheetCloseText: { color: colors.textMuted, fontSize: 14 },
-});
+}));
 
 export default WorldFeedScreen;

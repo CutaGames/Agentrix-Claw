@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { colors } from '../theme/colors';
+import { themedStyles } from '../theme/useTheme';
 
 // 示例交易金额
 const EXAMPLE_AMOUNT = 100;
@@ -199,7 +200,7 @@ export function CommissionRulesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   section: { padding: 16 },
   sectionTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: 12 },
@@ -251,4 +252,4 @@ const styles = StyleSheet.create({
   faqCard: { backgroundColor: colors.card, borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: colors.border },
   faqQ: { color: colors.text, fontSize: 14, fontWeight: '600', marginBottom: 6 },
   faqA: { color: colors.muted, fontSize: 13, lineHeight: 20 },
-});
+}));

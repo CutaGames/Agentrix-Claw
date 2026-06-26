@@ -200,6 +200,11 @@ export function PetSpriteImage({
     setFrame(0);
 
     if (!spec || spec.frames <= 1) return; // Static / missing sprite — no animation
+    // Under Maestro/E2E automation, freeze on frame 0. The perpetual
+    // setInterval frame-cycling otherwise keeps the accessibility tree from
+    // ever reaching idle, hanging UiAutomator-based drivers (Maestro) on
+    // launch/screenshot. Production users are unaffected.
+    if (process.env.EXPO_PUBLIC_MAESTRO_E2E === '1') return;
     const intervalMs = Math.max(16, Math.floor(1000 / spec.fps));
     let f = 0;
     const id = setInterval(() => {

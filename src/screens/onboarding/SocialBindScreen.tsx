@@ -9,6 +9,7 @@ import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { generateTelegramQr } from '../../services/openclaw.service';
 import type { OnboardingStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 // Use OnboardingStackParamList only for route params — navigation is typed as any
 // to allow this screen to work in both Onboarding and Agent stacks.
@@ -216,7 +217,7 @@ const STEPS = [
   'Your agent is now ready to reply on Telegram.',
 ];
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 24, paddingTop: 56, paddingBottom: 48 },
   centered: {
@@ -339,4 +340,4 @@ const styles = StyleSheet.create({
   successEmoji: { fontSize: 64, marginBottom: 24 },
   successTitle: { fontSize: 28, fontWeight: '800', color: colors.textPrimary, marginBottom: 12 },
   successSubtitle: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', lineHeight: 22 },
-});
+}));

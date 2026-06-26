@@ -24,6 +24,15 @@ import { SpeechWakeWordService } from '../services/speechWakeWord.service';
 import { LocalWakeWordService, hasLocalWakeWordModel, thresholdFromSensitivity } from '../services/localWakeWord.service';
 import { addVoiceDiagnostic } from '../services/voiceDiagnostics';
 import { isVoiceUiE2EEnabled } from '../testing/e2e';
+
+// When running under Maestro/E2E automation, the companion ball's perpetual
+// Animated.loop animations (breathing/pulse/orbit/ring) keep the Android
+// accessibility tree from ever reaching "idle", which makes UiAutomator-based
+// drivers (incl. Maestro and `uiautomator dump`) hang on launch/screenshot.
+// Gate the decorative loops off in automation so per-element UI tests can run.
+// Production users are unaffected (flag is false in normal builds).
+const REDUCE_MOTION_FOR_AUTOMATION =
+  isVoiceUiE2EEnabled() || process.env.EXPO_PUBLIC_MAESTRO_E2E === '1';
 import {
   resolveSpriteForMode,
   subscribePetMode,
@@ -32,6 +41,8 @@ import {
 } from '../services/petMode';
 import { PetSpriteImage } from './PetSpriteImage';
 import { navRefNavigate } from '../navigation/navigationRef';
+import { useCompanionLayoutStore } from '../stores/companionLayoutStore';
+import { themedStyles } from '../theme/useTheme';
 
 // ─── Layout constants ───────────────────────────────────────────────────────
 const BALL_SIZE = 48;
@@ -66,6 +77,7 @@ function OrbitingParticles({ active }: { active: boolean }) {
 
   useEffect(() => {
     if (!active) { rotation.setValue(0); return; }
+    if (REDUCE_MOTION_FOR_AUTOMATION) { rotation.setValue(0); return; }
     const spin = Animated.loop(
       Animated.timing(rotation, { toValue: 1, duration: 2000, useNativeDriver: true }),
     );
@@ -299,7 +311,24 @@ export function GlobalFloatingBall({
   // P-9 Q1 — boot fully on-screen at the right edge (was screenW -
   // MINIMIZED_REVEAL, i.e. an 18px sliver) so the pet is visible and
   // tappable on first paint.
-  const pan = useRef(new Animated.ValueXY({ x: screenW - BALL_SIZE - EDGE_MARGIN, y: screenH - 200 })).current;
+  // Restore the last docked side + vertical position the user left it at, so
+  // a fresh launch doesn't always drop the ball over the same bottom-right
+  // buttons (persisted via companionLayoutStore).
+  const initialPan = useRef(((): { x: number; y: number } => {
+    try {
+      const st = useCompanionLayoutStore.getState();
+      const onLeft = st.lastCorner === 'top-left' || st.lastCorner === 'bottom-left';
+      const x = onLeft ? EDGE_MARGIN : screenW - BALL_SIZE - EDGE_MARGIN;
+      const defaultY = screenH - 200;
+      const y = typeof st.y === 'number' && st.y > 0
+        ? Math.max(EDGE_MARGIN + 50, Math.min(st.y, screenH - BALL_SIZE - 100))
+        : defaultY;
+      return { x, y };
+    } catch {
+      return { x: screenW - BALL_SIZE - EDGE_MARGIN, y: screenH - 200 };
+    }
+  })()).current;
+  const pan = useRef(new Animated.ValueXY(initialPan)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const coreBreathAnim = useRef(new Animated.Value(0.6)).current;
   const morphWidth = useRef(new Animated.Value(BALL_SIZE)).current;
@@ -323,6 +352,7 @@ export function GlobalFloatingBall({
 
   // ── Core breathing animation (always runs) ──
   useEffect(() => {
+    if (REDUCE_MOTION_FOR_AUTOMATION) { coreBreathAnim.setValue(1); return; }
     const breath = Animated.loop(
       Animated.sequence([
         Animated.timing(coreBreathAnim, { toValue: 1, duration: 1800, useNativeDriver: true }),
@@ -335,6 +365,7 @@ export function GlobalFloatingBall({
 
   // ── Pulse for non-idle states ──
   useEffect(() => {
+    if (REDUCE_MOTION_FOR_AUTOMATION) { pulseAnim.setValue(1); return; }
     if (ballState !== 'idle') {
       const pulse = Animated.loop(
         Animated.sequence([
@@ -351,7 +382,7 @@ export function GlobalFloatingBall({
 
   // ── P1b CompanionMode ring pulse (signing / nudge) ──
   useEffect(() => {
-    if (companionModePulse) {
+    if (companionModePulse && !REDUCE_MOTION_FOR_AUTOMATION) {
       const loop = Animated.loop(
         Animated.sequence([
           Animated.timing(modeRingPulse, { toValue: 0.35, duration: 650, useNativeDriver: true }),
@@ -429,6 +460,19 @@ export function GlobalFloatingBall({
       : (onLeft ? EDGE_MARGIN : screenW - BALL_SIZE - EDGE_MARGIN);
     const clampedY = Math.max(EDGE_MARGIN + 50, Math.min(y, screenH - BALL_SIZE - 100));
     Animated.spring(pan, { toValue: { x: snapX, y: clampedY }, useNativeDriver: false, friction: 7 }).start();
+
+    // Persist the docked side + vertical position so the ball returns to where
+    // the user last left it on the next launch (instead of always re-blocking
+    // the same bottom-right corner).
+    try {
+      const corner = `${clampedY < screenH / 2 ? 'top' : 'bottom'}-${onLeft ? 'left' : 'right'}` as
+        | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+      const st = useCompanionLayoutStore.getState();
+      st.setLastCorner(corner);
+      st.setPosition(snapX, clampedY);
+    } catch {
+      /* non-fatal: persistence is best-effort */
+    }
   }, [pan, screenW, screenH, isMinimized]);
 
   // Re-dock when going minimized
@@ -1076,7 +1120,7 @@ export function GlobalFloatingBall({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   outerContainer: {
     position: 'absolute',
     alignItems: 'center',
@@ -1300,6 +1344,6 @@ const styles = StyleSheet.create({
   resultActionTextPrimary: {
     color: '#fff',
   },
-});
+}));
 
 export default GlobalFloatingBall;

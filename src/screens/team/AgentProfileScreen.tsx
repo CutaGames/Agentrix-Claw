@@ -10,6 +10,7 @@ import { TeamStackParamList } from '../../navigation/types';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
+import { themedStyles } from '../../theme/useTheme';
 
 // ──────────────────────────────────────────────
 // Agent Role Definitions (from PRD)
@@ -510,7 +511,7 @@ export function AgentProfileScreen({ route, navigation }: Props) {
 // ──────────────────────────────────────────────
 // Styles
 // ──────────────────────────────────────────────
-const s = StyleSheet.create({
+const s = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   scroll: { flex: 1 },
   heroCard: {
@@ -589,9 +590,9 @@ const s = StyleSheet.create({
     height: 4, backgroundColor: colors.bgPrimary, borderRadius: 2, overflow: 'hidden',
   },
   progressFill: { height: 4, backgroundColor: '#f59e0b', borderRadius: 2 },
-});
+}));
 
-const modal = StyleSheet.create({
+const modal = themedStyles(() => StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000066' },
   container: {
     backgroundColor: colors.bgCard, borderTopLeftRadius: 20, borderTopRightRadius: 20,
@@ -619,9 +620,9 @@ const modal = StyleSheet.create({
     alignItems: 'center',
   },
   createBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-});
+}));
 
-const chat = StyleSheet.create({
+const chat = themedStyles(() => StyleSheet.create({
   container: {
     marginHorizontal: 16, marginBottom: 16,
     backgroundColor: colors.bgCard, borderRadius: 16,
@@ -645,4 +646,4 @@ const chat = StyleSheet.create({
     backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
   },
   sendText: { color: '#fff', fontSize: 18, fontWeight: '700' },
-});
+}));

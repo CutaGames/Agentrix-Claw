@@ -38,6 +38,7 @@ import type {
   AeonBadge,
   AeonStageRole,
 } from '../../../shared/types/aeon-sync';
+import { themedStyles } from '../../theme/useTheme';
 
 /** 默认主直播厅房间 id(无指定活动时进的常驻厅;'aeon-live-' 前缀触发后端舞台规则)。 */
 const DEFAULT_LIVE_ROOM_ID = 'aeon-live-main';
@@ -403,7 +404,7 @@ export default function AeonLiveStageScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: { padding: 16, paddingBottom: 8, flexDirection: 'row', alignItems: 'center' },
   backBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
@@ -468,4 +469,4 @@ const styles = StyleSheet.create({
   tipPresetUnit: { color: '#f5c84c', fontSize: 10 },
   tipCancel: { paddingVertical: 12, alignItems: 'center', marginTop: 8 },
   tipCancelTxt: { color: colors.textMuted, fontSize: 14 },
-});
+}));

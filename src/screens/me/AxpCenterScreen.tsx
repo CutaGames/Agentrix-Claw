@@ -25,6 +25,7 @@ import {
   AxpLedgerEntry,
   AxpBalanceView,
 } from '../../services/axp.api';
+import { themedStyles } from '../../theme/useTheme';
 
 function formatUsd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -99,6 +100,15 @@ export function AxpCenterScreen() {
       ) : (
         <BalanceBlock balance={balance} t={t} />
       )}
+
+      <TouchableOpacity
+        style={styles.actionBtn}
+        onPress={() => navigation.navigate('PetEarnings')}
+      >
+        <Text style={styles.actionBtnText}>
+          💰 {t({ en: 'Earnings Center', zh: '收益中心（含集市/USDT）' })}
+        </Text>
+      </TouchableOpacity>
 
       <TouchableOpacity
         style={styles.actionBtn}
@@ -198,7 +208,7 @@ function LedgerRow({ entry, t }: { entry: AxpLedgerEntry; t: any }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 40 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary, marginBottom: 16 },
@@ -276,4 +286,4 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     opacity: 0.55,
   },
-});
+}));

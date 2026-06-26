@@ -115,11 +115,12 @@ describe('Legacy deep-link resolver', () => {
   describe('Discover → Plaza', () => {
     it.each([
       ['agentrix://discover', 'agentrix://plaza'],
-      ['agentrix://discover/predict', 'agentrix://plaza/play/predict'],
+      // 玩乐/广场已下线 → 集市 root
+      ['agentrix://discover/predict', 'agentrix://plaza'],
       ['agentrix://discover/marketplace', 'agentrix://plaza/skills'],
-      ['agentrix://discover/feed', 'agentrix://plaza/feed'],
-      ['agentrix://discover/post/p-42', 'agentrix://plaza/feed/post/p-42'],
-      ['agentrix://discover/user/u-7', 'agentrix://plaza/feed/user/u-7'],
+      ['agentrix://discover/feed', 'agentrix://plaza'],
+      ['agentrix://discover/post/p-42', 'agentrix://plaza'],
+      ['agentrix://discover/user/u-7', 'agentrix://plaza'],
       ['agentrix://discover/task-market', 'agentrix://plaza/tasks'],
       ['agentrix://discover/task/t-1', 'agentrix://plaza/tasks/t-1'],
     ])('%s → %s', (input, expected) => {
@@ -127,16 +128,16 @@ describe('Legacy deep-link resolver', () => {
     });
   });
 
-  describe('Social → Plaza Feed/Messaging', () => {
+  describe('Social → 集市 root (广场/私信已下线)', () => {
     it.each([
-      ['agentrix://social', 'agentrix://plaza/feed'],
-      ['agentrix://social/feed', 'agentrix://plaza/feed'],
-      ['agentrix://social/post/p-1', 'agentrix://plaza/feed/post/p-1'],
-      ['agentrix://social/user/u-2', 'agentrix://plaza/feed/user/u-2'],
-      ['agentrix://social/dm/list', 'agentrix://plaza/messaging'],
-      ['agentrix://social/dm/user-9', 'agentrix://plaza/messaging/user-9'],
-      ['agentrix://social/group/g-3', 'agentrix://plaza/messaging/group/g-3'],
-      ['agentrix://social/chat-list', 'agentrix://plaza/messaging'],
+      ['agentrix://social', 'agentrix://plaza'],
+      ['agentrix://social/feed', 'agentrix://plaza'],
+      ['agentrix://social/post/p-1', 'agentrix://plaza'],
+      ['agentrix://social/user/u-2', 'agentrix://plaza'],
+      ['agentrix://social/dm/list', 'agentrix://plaza'],
+      ['agentrix://social/dm/user-9', 'agentrix://plaza'],
+      ['agentrix://social/group/g-3', 'agentrix://plaza'],
+      ['agentrix://social/chat-list', 'agentrix://plaza'],
       ['agentrix://social/listener', 'agentrix://me/advanced/social-listener'],
     ])('%s → %s', (input, expected) => {
       expect(resolveLegacyRoute(input)).toBe(expected);
@@ -169,7 +170,7 @@ describe('Legacy deep-link resolver', () => {
       ['agentrix://quick-pay', 'agentrix://me/wallet'],
       ['agentrix://identity-activation', 'agentrix://me'],
       ['agentrix://identity-activation/dev', 'agentrix://me'],
-      ['agentrix://airdrop', 'agentrix://plaza/feed'],
+      ['agentrix://airdrop', 'agentrix://plaza'],
       ['agentrix://alliance', 'agentrix://me/advanced/alliance'],
     ])('%s → %s', (input, expected) => {
       expect(resolveLegacyRoute(input)).toBe(expected);

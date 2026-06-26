@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { apiFetch } from '../../services/api';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 interface PlanRow {
   id: string;
@@ -137,7 +138,7 @@ function RiskBadge({ level }: { level: PlanRow['risk_level'] }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: 16 },
   heading: { color: colors.text, fontSize: 20, fontWeight: '700', marginBottom: 12 },
   empty: { color: colors.textSecondary, textAlign: 'center', marginTop: 48 },
@@ -159,4 +160,4 @@ const styles = StyleSheet.create({
   btnRejectText: { color: '#fca5a5', fontWeight: '600' },
   btnApprove: { backgroundColor: colors.accent },
   btnApproveText: { color: '#0B1220', fontWeight: '700' },
-});
+}));

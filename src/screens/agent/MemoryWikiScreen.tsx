@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../../stores/i18nStore';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
+import { themedStyles } from '../../theme/useTheme';
 
 interface WikiPage {
   id: string;
@@ -313,7 +314,7 @@ export function MemoryWikiScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   modeBar: { flexDirection: 'row', paddingHorizontal: 12, gap: 6, paddingVertical: 8, alignItems: 'center' },
   modeTab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: colors.bgCard },
@@ -403,4 +404,4 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 10,
   },
-});
+}));

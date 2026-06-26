@@ -16,6 +16,7 @@ import { installSkillToInstance } from '../../services/openclaw.service';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
 import type { AgentStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'SkillPack'>;
 
@@ -183,7 +184,7 @@ export function SkillPackScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   scroll: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 140 },
@@ -210,4 +211,4 @@ const styles = StyleSheet.create({
   progressBar: { width: '80%', height: 6, backgroundColor: colors.bgSecondary, borderRadius: 3, marginTop: 20, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 3 },
   progressText: { fontSize: 14, color: colors.textMuted, marginTop: 8 },
-});
+}));

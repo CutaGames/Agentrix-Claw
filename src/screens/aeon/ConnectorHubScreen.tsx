@@ -22,6 +22,7 @@ import {
   getOAuthAuthorizeUrl, listInstalledConnectors,
 } from '../../services/connectorApi';
 import type { ConnectorCatalogItem } from '../../../shared/types/connector';
+import { themedStyles } from '../../theme/useTheme';
 
 const CATEGORY_LABEL: Record<string, string> = {
   info: '资讯', finance: '金融', travel: '出行', food: '餐饮',
@@ -282,7 +283,7 @@ export default function ConnectorHubScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   center: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 8 },
@@ -318,4 +319,4 @@ const styles = StyleSheet.create({
   cancelText: { color: colors.textMuted, fontSize: 14 },
   confirmBtn: { flex: 1, paddingVertical: 13, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center' },
   confirmText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-});
+}));

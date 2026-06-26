@@ -23,6 +23,7 @@ import {
   REMOTE_CONTROL_WHITELIST,
   type RemoteControlCommand,
 } from '../../../shared/types/remote-control';
+import { themedStyles } from '../../theme/useTheme';
 
 interface DeviceEntry {
   id: string;
@@ -236,7 +237,7 @@ export function RemoteControlPanel({ originDeviceId, isNight }: RemoteControlPan
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   root: { paddingTop: 4 },
   empty: { paddingVertical: 14, alignItems: 'center' },
   emptyText: { color: colors.textMuted, fontSize: 12 },
@@ -270,4 +271,4 @@ const styles = StyleSheet.create({
   resultOk: { color: colors.success },
   resultFail: { color: colors.warning },
   nightHint: { color: colors.textMuted, fontSize: 11, marginTop: 6, fontStyle: 'italic' },
-});
+}));

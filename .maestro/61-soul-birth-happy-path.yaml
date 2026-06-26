@@ -48,7 +48,7 @@ name: Soul_Birth — Happy Path (5-step walkthrough → terminate → World)
 
 # ── Bootstrap: reset Soul_Birth to `birth` via the replay entry (R1.7) ──
 - tapOn:
-    text: "Me"
+    id: "tab-me"
     optional: true
 - waitForAnimationToEnd:
     timeout: 3000
@@ -163,7 +163,7 @@ name: Soul_Birth — Happy Path (5-step walkthrough → terminate → World)
 # Once all 5 steps complete, SoulBirthHost returns null and the opaque
 # step overlay is gone, revealing the bottom tab bar.
 - assertVisible:
-    text: "World"
+    id: "tab-world"
     optional: true
 - assertNotVisible: "安家永曜城"
 - assertNotVisible: "诞生你的 AI"

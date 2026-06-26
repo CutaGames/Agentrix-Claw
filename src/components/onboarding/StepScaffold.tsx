@@ -15,6 +15,7 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 interface StepScaffoldProps {
   title: string;
@@ -80,7 +81,7 @@ export function PlaceholderButton({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   fill: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
@@ -134,4 +135,4 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-});
+}));

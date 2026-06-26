@@ -42,6 +42,7 @@ import {
   type GenerationStatus,
 } from '../../services/worldEngineApi';
 import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<WorldStackParamList, 'WorldAssetDetail'>;
 type Rt = RouteProp<WorldStackParamList, 'WorldAssetDetail'>;
@@ -100,8 +101,8 @@ export function WorldAssetDetailScreen() {
 
   const onBattle = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    // 带上本角色作为挑战者预选, 进选人屏挑对手。
-    (navigation as any).navigate('WorldBattlePicker', { preselectChallengerId: assetId });
+    // 战斗已退役(需求 11.1):原"对战"入口改为返回资产库。
+    (navigation as any).navigate('WorldAssetInventory');
   }, [navigation, assetId]);
 
   const onListForSale = useCallback(() => {
@@ -408,7 +409,7 @@ function MeshStatusChip({ status, t }: { status?: GenerationStatus; t: (x: { en:
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 48 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgPrimary, gap: 12 },
@@ -482,6 +483,6 @@ const styles = StyleSheet.create({
   modalCancelText: { color: colors.textMuted, fontSize: 14 },
   modalConfirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center' },
   modalConfirmText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-});
+}));
 
 export default WorldAssetDetailScreen;

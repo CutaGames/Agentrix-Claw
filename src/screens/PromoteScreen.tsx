@@ -16,6 +16,7 @@ import { marketplaceApi, SkillItem } from '../services/marketplace.api';
 import { QrCode } from '../components/common/QrCode';
 import { ShareSheet } from '../components/promote/ShareSheet';
 import { useI18n } from '../stores/i18nStore';
+import { themedStyles } from '../theme/useTheme';
 
 // Clipboard — graceful fallback
 let Clipboard: any = null;
@@ -284,7 +285,7 @@ export function PromoteScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -582,4 +583,4 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 18,
   },
-});
+}));

@@ -54,6 +54,7 @@ import {
   setVoiceGreetPrefs,
   type PushChannels,
 } from '../../stores/petCompanionSettings';
+import { themedStyles } from '../../theme/useTheme';
 
 const REVERSE_KINDS: Array<{ key: ReverseCallKind; label: string; hint: string }> = [
   { key: 'callPhone', label: '打电话', hint: '高摩擦,默认关闭' },
@@ -502,7 +503,7 @@ function LimitBox({ label, value }: LimitBoxProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { paddingHorizontal: 16, paddingVertical: 12 },
   intro: { color: colors.textMuted, fontSize: 13, marginBottom: 12 },
@@ -594,4 +595,4 @@ const styles = StyleSheet.create({
   },
   summaryValue: { color: colors.accent, fontSize: 18, fontWeight: '700' },
   summaryLabel: { color: colors.textMuted, fontSize: 11, marginTop: 4 },
-});
+}));

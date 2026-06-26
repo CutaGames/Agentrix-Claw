@@ -31,6 +31,7 @@ import {
   rsvpAeonEvent,
 } from '../../services/aeon/aeonApi';
 import type { AeonEventDto, AeonEventKind, AeonEventStatus } from '../../../shared/types/aeon-world';
+import { themedStyles } from '../../theme/useTheme';
 
 const KIND_META: Record<AeonEventKind, { label: string; emoji: string }> = {
   talk_show: { label: '脱口秀', emoji: '🎙️' },
@@ -322,7 +323,7 @@ export default function AeonEventsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   center: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center' },
   dim: { color: colors.textMuted, fontSize: 13, marginTop: 8 },
@@ -379,4 +380,4 @@ const styles = StyleSheet.create({
   submitTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
   cancelBtn: { paddingVertical: 12, alignItems: 'center', marginTop: 4 },
   cancelTxt: { color: colors.textMuted, fontSize: 14 },
-});
+}));

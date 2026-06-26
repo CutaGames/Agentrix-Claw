@@ -24,6 +24,15 @@ import { useI18n } from '../stores/i18nStore';
 
 import { WorldHubScreen } from '../screens/world/WorldHubScreen';
 import WorldFeedScreen from '../screens/world/WorldFeedScreen';
+// World Creation & Feed (统一创作流) — task 3.3:全屏竖向分页创作流(类抖音)
+import CreationFeedScreen from '../screens/world/CreationFeedScreen';
+// World Creation & Feed (统一创作器) — task 4.4:单一动作创作流(描述→生成→选址→发布)
+import CreationCreatorScreen from '../screens/world/CreationCreatorScreen';
+// World Creation & Feed — task 5.3/5.4 体验宿主、8.3 详情、7.3/9.4 我的世界、6.x 统一地图
+import CreationExperienceScreen from '../screens/world/CreationExperienceScreen';
+import CreationDetailScreen from '../screens/world/CreationDetailScreen';
+import MyWorldScreen from '../screens/world/MyWorldScreen';
+import UnifiedWorldMapScreen from '../screens/world/UnifiedWorldMapScreen';
 import WorldCharacterCardScreen from '../screens/world/WorldCharacterCardScreen';
 import WorldEngineScannerScreen from '../screens/WorldEngineScannerScreen';
 import WorldAssetInventoryScreen from '../screens/WorldAssetInventoryScreen';
@@ -36,6 +45,14 @@ import WorldBattleArenaScreen from '../screens/WorldBattleArenaScreen';
 import WorldInteractiveBattleScreen from '../screens/world/WorldInteractiveBattleScreen';
 import WorldUgcRuleSetsScreen from '../screens/world/WorldUgcRuleSetsScreen';
 import WorldDungeonExplorerScreen from '../screens/WorldDungeonExplorerScreen';
+// AI World Creation Platform (v6) — shared World_Map outer layer (Task 10.3)
+import WorldMapScreen from '../screens/WorldMapScreen';
+// AI World Creation Platform (v6) — creation/economy/experience surfaces (mobile UI)
+import LandPlotsScreen from '../screens/world/LandPlotsScreen';
+import PlotCreatorScreen from '../screens/world/PlotCreatorScreen';
+import PlotExperienceScreen from '../screens/world/PlotExperienceScreen';
+import CreationTaskStatusScreen from '../screens/world/CreationTaskStatusScreen';
+import WorldCreationMarketplaceScreen from '../screens/world/WorldCreationMarketplaceScreen';
 import { PetCreatorScreen } from '../screens/pet/PetCreatorScreen';
 import { CameraScanScreen } from '../screens/pet/CameraScanScreen';
 // Aeon(永曜城)— 实时多人共建世界(Phase 1)
@@ -59,10 +76,27 @@ import AeonEventsScreen from '../screens/aeon/AeonEventsScreen';
 import ConnectorHubScreen from '../screens/aeon/ConnectorHubScreen';
 // 商家店铺(地块 POI 接 marketplace 商品)(2026-06-03)
 import AeonStoreScreen from '../screens/aeon/AeonStoreScreen';
+// 分享海报(复用 skill/商品同款海报屏)
+import { ShareCardScreen } from '../screens/ShareCardScreen';
+import type { ShareCardRouteParams } from './types';
 
 export type WorldStackParamList = {
   WorldRoot: undefined;
   WorldFeed: undefined;
+  /** 分享海报(创作流分享走精美海报 + 有效链接,与 skill/商品一致)。 */
+  ShareCard: ShareCardRouteParams;
+  /** World Creation & Feed — 统一创作流(类抖音全屏竖向分页)(task 3.3,需求 5.1/5.2)。 */
+  CreationFeed: undefined;
+  /** World Creation & Feed — 统一创作器(单一动作:描述→生成→选址→发布)(task 4.4,需求 2.1/2.2/2.9)。 */
+  CreationCreator: { type?: import('../../shared/types/creation').CreationType } | undefined;
+  /** World Creation & Feed — 统一体验宿主(玩/买/看/聊)(task 5.3,需求 6.1–6.5)。 */
+  CreationExperience: { creationId: string; type?: import('../../shared/types/creation').CreationType; title?: string };
+  /** World Creation & Feed — 创作详情/留言/分享(task 8.3,需求 8.1–8.4)。 */
+  CreationDetail: { creationId: string; title?: string };
+  /** World Creation & Feed — 我的世界(我的创作 + Agent 代付额度)(task 7.3/9.4,需求 10.4/13.4)。 */
+  MyWorld: undefined;
+  /** World Creation & Feed — 统一世界地图(标记=Creation)(task 6.x,需求 4.1/4.7)。 */
+  UnifiedWorldMap: undefined;
   WorldCharacterCard: {
     assetId?: string;
     card?: import('../services/worldEngineApi').CharacterCard;
@@ -92,6 +126,18 @@ export type WorldStackParamList = {
   WorldBattlePicker: { ruleSetShareCode?: string; ruleSetName?: string; preselectChallengerId?: string } | undefined;
   WorldDungeonExplorer: { shareCode?: string };
   WorldUgcRuleSets: undefined;
+  /** AI World Creation Platform (v6) — shared World_Map outer layer (Task 10.3). */
+  WorldMap: undefined;
+  /** v6 — Land_Economy: acquire / list scarce plots (R2). */
+  LandPlots: undefined;
+  /** v6 — Plot creator (prompt-drive / co-edit / hand-build) (R3). */
+  PlotCreator: { plotId: string; substrateTier: import('../../shared/types/world-creation').SubstrateTier; title?: string };
+  /** v6 — Plot inner-experience host (enter / checkout) (R1.4/R15). */
+  PlotExperience: { plotId: string; title?: string };
+  /** v6 — Creation_Task status / retry (R8). */
+  CreationTaskStatus: { taskId: string };
+  /** v6 — Plot experience Marketplace (browse / purchase) (R11). */
+  WorldCreationMarketplace: undefined;
   ReconstructionProgress: {
     jobId: string;
     estimatedSeconds?: number;
@@ -151,6 +197,41 @@ export function WorldStackNavigator() {
         options={{ title: t({ en: 'My World', zh: '我的世界' }), headerShown: false }}
       />
       <Stack.Screen
+        name="CreationFeed"
+        component={CreationFeedScreen}
+        options={{ title: t({ en: 'Feed', zh: '创作流' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="CreationCreator"
+        component={CreationCreatorScreen}
+        options={{ title: t({ en: 'New Creation', zh: '新建创作' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="CreationExperience"
+        component={CreationExperienceScreen}
+        options={{ title: t({ en: 'Experience', zh: '体验' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="ShareCard"
+        component={ShareCardScreen}
+        options={{ title: t({ en: 'Share', zh: '分享' }) }}
+      />
+      <Stack.Screen
+        name="CreationDetail"
+        component={CreationDetailScreen}
+        options={{ title: t({ en: 'Detail', zh: '详情' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="MyWorld"
+        component={MyWorldScreen}
+        options={{ title: t({ en: 'My World', zh: '我的世界' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="UnifiedWorldMap"
+        component={UnifiedWorldMapScreen}
+        options={{ title: t({ en: 'World Map', zh: '世界地图' }), headerShown: false }}
+      />
+      <Stack.Screen
         name="WorldCharacterCard"
         component={WorldCharacterCardScreen}
         options={{ title: t({ en: 'Your Character', zh: '你的角色' }), headerShown: false }}
@@ -189,6 +270,36 @@ export function WorldStackNavigator() {
         name="WorldUgcRuleSets"
         component={WorldUgcRuleSetsScreen}
         options={{ title: t({ en: 'Game Modes', zh: '我的玩法' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldMap"
+        component={WorldMapScreen}
+        options={{ title: t({ en: 'World Map', zh: '世界地图' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="LandPlots"
+        component={LandPlotsScreen}
+        options={{ title: t({ en: 'Plots', zh: '地块' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="PlotCreator"
+        component={PlotCreatorScreen}
+        options={{ title: t({ en: 'Plot Creator', zh: 'Plot 创作器' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="PlotExperience"
+        component={PlotExperienceScreen}
+        options={{ title: t({ en: 'Experience', zh: '体验' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="CreationTaskStatus"
+        component={CreationTaskStatusScreen}
+        options={{ title: t({ en: 'Creation Task', zh: '创作任务' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="WorldCreationMarketplace"
+        component={WorldCreationMarketplaceScreen}
+        options={{ title: t({ en: 'Plot Market', zh: 'Plot 体验市场' }), headerShown: false }}
       />
       <Stack.Screen
         name="ReconstructionProgress"

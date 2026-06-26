@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
 import { apiFetch } from '../../services/api';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 export function MySkillsScreen() {
   const { data, isLoading, refetch, isRefetching } = useQuery({
@@ -48,7 +49,7 @@ export function MySkillsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   list: { padding: 16, gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgCard, borderRadius: 12, padding: 14, gap: 12, borderWidth: 1, borderColor: colors.border },
@@ -56,4 +57,4 @@ const styles = StyleSheet.create({
   name: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
   meta: { fontSize: 12, color: colors.textMuted },
   empty: { textAlign: 'center', color: colors.textMuted, fontSize: 14, marginTop: 40 },
-});
+}));

@@ -22,6 +22,7 @@ import {
   type AeonPlotMessageDto,
 } from '../../services/aeon/aeonApi';
 import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<WorldStackParamList, 'AeonPlotVisit'>;
 type Rt = RouteProp<WorldStackParamList, 'AeonPlotVisit'>;
@@ -222,7 +223,7 @@ export default function AeonPlotVisitScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12 },
   back: { minWidth: 56 }, backText: { color: colors.textPrimary, fontSize: 16, fontWeight: '600' },
@@ -265,4 +266,4 @@ const styles = StyleSheet.create({
   poiCancelText: { color: colors.textMuted, fontSize: 14 },
   poiConfirm: { flex: 1, paddingVertical: 13, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center' },
   poiConfirmText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-});
+}));

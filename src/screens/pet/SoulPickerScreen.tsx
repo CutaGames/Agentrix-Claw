@@ -24,6 +24,7 @@ import {
   getPetState,
 } from '../../services/mobilePetSdk';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 const CLANS: Array<{ id: PetClan; label: string; emoji: string; locked?: boolean }> = [
   { id: 'A_office', label: '效率派', emoji: '🦾' },
@@ -176,7 +177,7 @@ export function SoulPickerScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background ?? '#0b0b13' },
   header: { padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
   title: { fontSize: 18, fontWeight: '600', color: colors.text ?? '#fff' },
@@ -233,6 +234,6 @@ const styles = StyleSheet.create({
   btnActive: { backgroundColor: 'rgba(16,185,129,0.3)' },
   btnText: { color: '#000', fontSize: 13, fontWeight: '600' },
   btnTextActive: { color: '#6ee7b7' },
-});
+}));
 
 export default SoulPickerScreen;

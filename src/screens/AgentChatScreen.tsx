@@ -16,6 +16,7 @@ import { colors } from '../theme/colors';
 import { sendAgentMessage, getAgentHistory } from '../services/openclaw.service';
 import { useAuthStore } from '../stores/authStore';
 import { setPetMode } from '../services/petMode';
+import { themedStyles } from '../theme/useTheme';
 
 type RootStackParamList = {
   AgentChat: { agentId: string; agentName: string; instanceId?: string };
@@ -186,7 +187,7 @@ export default function AgentChatScreen({ route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -301,4 +302,4 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-});
+}));

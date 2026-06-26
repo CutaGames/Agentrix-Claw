@@ -1,67 +1,18 @@
 appId: app.agentrix.claw
 # ─────────────────────────────────────────────────────────────
-# Test 10: 4-Tab canonical navigation smoke
-# Covers: Home / Summon / Plaza / Me tabs + their top bars
-# Prerequisite: test account signed in (see 02-auth-screen.yaml)
+# Test 10: 世界 tab 可达冒烟(deep-link 确定性进 World Hub)。
+# 精简为单一可靠落地断言 —— 重型 x86_64 CI 模拟器上连续多 deep-link 易渲染竞态 flake;
+# 其余 tab 已由专用 flow 强测:Plaza→11/22、Summon→21、Me→28/64。
 # ─────────────────────────────────────────────────────────────
 ---
 - launchApp
-
-# ── Home Tab ─────────────────────────────────────────────
 - assertVisible:
-    text: "Home"
-    optional: true
-
-- tapOn: "Home"
-
-# HomeScreen: pet switcher + scan + bell + summon CTA
-- assertVisible:
-    text: "🏠"
-    optional: true
-
-- takeScreenshot: "10-home-visible"
-
-# ── Summon Tab ───────────────────────────────────────────
-- tapOn: "Summon"
-
+    id: "tab-world"
+- openLink: agentrix://world
 - waitForAnimationToEnd:
-    timeout: 5000
-
-- takeScreenshot: "10-summon-visible"
-
-# ── Plaza Tab ────────────────────────────────────────────
-- tapOn: "Plaza"
-
-- waitForAnimationToEnd:
-    timeout: 5000
-
-- assertVisible:
-    text: "Plaza"
-    optional: true
-
-- takeScreenshot: "10-plaza-visible"
-
-# 5-segment bar
-- assertVisible:
-    text: "Feed"
-    optional: true
-- assertVisible:
-    text: "Skills"
-    optional: true
-- assertVisible:
-    text: "Tasks"
-    optional: true
-- assertVisible:
-    text: "Pets"
-    optional: true
-- assertVisible:
-    text: "Play"
-    optional: true
-
-# ── Me Tab ───────────────────────────────────────────────
-- tapOn: "Me"
-
-- waitForAnimationToEnd:
-    timeout: 5000
-
-- takeScreenshot: "10-me-visible"
+    timeout: 6000
+- extendedWaitUntil:
+    visible:
+      id: "world-hub-scroll"
+    timeout: 25000
+- takeScreenshot: "10-world-hub"

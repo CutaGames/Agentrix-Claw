@@ -19,6 +19,7 @@ import {
   getUnifiedAgent,
   type UnifiedAgent,
 } from '../../services/unifiedAgent';
+import { themedStyles } from '../../theme/useTheme';
 
 type AgentAccount = UnifiedAgent;
 
@@ -913,7 +914,7 @@ export function AgentPermissionsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 48, gap: 8 },
   accountPickerWrap: { gap: 10, marginBottom: 4 },
@@ -1035,4 +1036,4 @@ const styles = StyleSheet.create({
   },
   modelPickLabel: { fontSize: 14, fontWeight: '600', color: colors.textPrimary, flex: 1 },
   modelPickCaps: { fontSize: 11, color: colors.textMuted },
-});
+}));

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { apiFetch } from '../services/api';
+import { themedStyles } from '../theme/useTheme';
 
 interface Order {
   id: string;
@@ -125,7 +126,7 @@ export function MyOrdersScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   listContent: { padding: 16, paddingBottom: 20 },
   orderCard: {
@@ -151,4 +152,4 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 40, marginBottom: 8 },
   emptyText: { color: colors.text, fontSize: 16, fontWeight: '600' },
   emptySubtext: { color: colors.muted, fontSize: 13, marginTop: 4 },
-});
+}));

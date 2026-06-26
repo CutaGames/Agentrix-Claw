@@ -6,6 +6,7 @@ import { Card } from '../components/Card';
 import { colors } from '../theme/colors';
 import { useIdentityStore } from '../stores/identityStore';
 import { useI18n } from '../stores/i18nStore';
+import { themedStyles } from '../theme/useTheme';
 
 export const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -110,7 +111,7 @@ export const ProfileScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -256,4 +257,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
   },
-});
+}));

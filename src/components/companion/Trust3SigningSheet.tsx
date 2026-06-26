@@ -62,6 +62,7 @@ import {
   type Trust3SignRequest,
   type Trust3SigningSheetHandle,
 } from './sheetRefRegistry';
+import { themedStyles } from '../../theme/useTheme';
 
 const SNAP_POINTS = ['70%'];
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -481,7 +482,7 @@ function SummaryRow({ label, value, highlight }: SummaryRowProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   sheetBg: {
     backgroundColor: colors.bgPrimary,
     borderTopLeftRadius: 18,
@@ -590,4 +591,4 @@ const styles = StyleSheet.create({
   },
   confirmBtnDisabled: { backgroundColor: colors.bgCard },
   confirmBtnText: { color: '#0B1220', fontSize: 14, fontWeight: '700' },
-});
+}));

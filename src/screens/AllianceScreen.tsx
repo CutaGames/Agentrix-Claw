@@ -3,6 +3,7 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { colors } from '../theme/colors';
 import { useI18n, TranslationDescriptor } from '../stores/i18nStore';
+import { themedStyles } from '../theme/useTheme';
 
 interface Props { navigation: any; }
 
@@ -99,7 +100,7 @@ export default function AllianceScreen({ navigation }: Props) {
   );
 }
 
-const s = StyleSheet.create({
+const s = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   hero: { padding: 24, paddingTop: 16, backgroundColor: '#1e3a8a' },
   badge: { color: '#93c5fd', fontSize: 13, fontWeight: '600', marginBottom: 12 },
@@ -126,4 +127,4 @@ const s = StyleSheet.create({
   ctaTitle: { color: '#fff', fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 16 },
   ctaBtn: { backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 32, paddingVertical: 14 },
   ctaBtnText: { color: '#4f46e5', fontSize: 16, fontWeight: '700' },
-});
+}));

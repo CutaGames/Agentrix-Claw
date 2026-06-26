@@ -10,6 +10,7 @@ import { useI18n, Language } from '../stores/i18nStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { API_BASE } from '../config/env';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { themedStyles } from '../theme/useTheme';
 
 // ─── App Version Check ──────────────────────────────────────────
 interface AppVersionInfo {
@@ -424,7 +425,7 @@ export const SettingsScreen: React.FC = () => {
   );
 };
 
-const settingsStyles = StyleSheet.create({
+const settingsStyles = themedStyles(() => StyleSheet.create({
   langRow: {
     flexDirection: 'row',
     gap: 12,
@@ -496,4 +497,4 @@ const settingsStyles = StyleSheet.create({
     paddingVertical: 4,
     marginLeft: 10,
   },
-});
+}));

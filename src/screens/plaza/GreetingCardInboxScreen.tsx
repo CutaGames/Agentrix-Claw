@@ -25,6 +25,7 @@ import {
   redeemGreetingCard,
   GreetingCardView,
 } from '../../services/greeting.api';
+import { themedStyles } from '../../theme/useTheme';
 
 type Mode = 'inbox' | 'outbox';
 
@@ -175,7 +176,7 @@ function Card({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 40 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary, marginBottom: 12 },
@@ -220,4 +221,4 @@ const styles = StyleSheet.create({
     marginTop: 40,
     paddingHorizontal: 20,
   },
-});
+}));

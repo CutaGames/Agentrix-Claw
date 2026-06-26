@@ -18,6 +18,7 @@ import {
   TASK_TYPE_CONFIG,
 } from '../services/taskMarketplace.api';
 import { useI18n } from '../stores/i18nStore';
+import { themedStyles } from '../theme/useTheme';
 
 const TYPE_LABEL_ZH: Record<string, string> = {
   development: '开发',
@@ -233,7 +234,7 @@ export function PostTaskScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, padding: 16 },
   section: { marginBottom: 20 },
   label: { fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 },
@@ -301,4 +302,4 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   submitBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
-});
+}));

@@ -27,6 +27,7 @@ import { apiFetch } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
 import type { SocialStackParamList, MainTabParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type RouteT = RouteProp<SocialStackParamList, 'UserProfile'>;
 type Nav = CompositeNavigationProp<
@@ -115,12 +116,12 @@ function ScoreRing({ score }: { score: number }) {
     </View>
   );
 }
-const rs = StyleSheet.create({
+const rs = themedStyles(() => StyleSheet.create({
   ring: { width: 72, height: 72, borderRadius: 36, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
   fill: { width: 62, height: 62, borderRadius: 31, alignItems: 'center', justifyContent: 'center' },
   score: { fontSize: 22, fontWeight: '900' },
   label: { fontSize: 9, color: colors.textMuted },
-});
+}));
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
@@ -404,7 +405,7 @@ function StatCell({ icon, value, label }: { icon: string; value: number; label: 
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgPrimary },
   loading: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center' },
   list: { paddingBottom: 24 },
@@ -496,5 +497,5 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', paddingTop: 40, gap: 8 },
   emptyIcon: { fontSize: 36 },
   emptyText: { fontSize: 14, color: colors.textMuted },
-});
+}));
 

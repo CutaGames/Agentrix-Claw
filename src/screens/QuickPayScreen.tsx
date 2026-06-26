@@ -4,6 +4,7 @@ import { View, Text, ScrollView, StyleSheet, TextInput, TouchableOpacity, Share 
 import { Card } from '../components/Card';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { colors } from '../theme/colors';
+import { themedStyles } from '../theme/useTheme';
 
 const mockPlans = [
   { id: '1', name: '标准 10%', rate: 10 },
@@ -159,7 +160,7 @@ export const QuickPayScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -371,4 +372,4 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 14,
   },
-});
+}));

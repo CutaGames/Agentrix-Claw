@@ -10,6 +10,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
+import { themedStyles } from '../../theme/useTheme';
 
 export interface LoadingWithTimeoutProps {
   /** Whether the async operation is still running. */
@@ -98,7 +99,7 @@ export function LoadingWithTimeout({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   idle: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -133,6 +134,6 @@ const styles = StyleSheet.create({
   actionRetryText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
   actionCancel: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border },
   actionCancelText: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
-});
+}));
 
 export default LoadingWithTimeout;

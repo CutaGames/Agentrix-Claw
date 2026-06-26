@@ -29,6 +29,7 @@ import {
 } from '../../services/mobilePetSdk';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
+import { themedStyles } from '../../theme/useTheme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const PARENT_CARD_W = (SCREEN_W - 48 - 12) / 2;
@@ -277,7 +278,7 @@ export function BreedScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 48 },
   subtitle: { color: colors.textSecondary, fontSize: 13, marginBottom: 16, lineHeight: 18 },
@@ -371,6 +372,6 @@ const styles = StyleSheet.create({
   resultTitle: { color: colors.text, fontSize: 14, fontWeight: '600', marginBottom: 6 },
   resultMeta: { color: colors.textMuted, fontSize: 12 },
   resultMsg: { color: colors.textSecondary, fontSize: 12, marginTop: 6 },
-});
+}));
 
 export default BreedScreen;

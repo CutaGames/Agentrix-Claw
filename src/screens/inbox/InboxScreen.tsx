@@ -18,6 +18,7 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { NotificationCenterScreen } from '../notifications/NotificationCenterScreen';
+import { themedStyles } from '../../theme/useTheme';
 
 export function InboxScreen() {
   const navigation = useNavigation<any>();
@@ -62,7 +63,7 @@ export function InboxScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   topBar: {
     flexDirection: 'row',
@@ -97,4 +98,4 @@ const styles = StyleSheet.create({
   approvalCard: { borderColor: colors.accent },
   summaryValue: { fontSize: 22, fontWeight: '800', color: colors.textPrimary },
   summaryLabel: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
-});
+}));

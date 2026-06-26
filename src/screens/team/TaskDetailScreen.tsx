@@ -9,6 +9,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
+import { themedStyles } from '../../theme/useTheme';
 
 // ──────────────────────────────────────────────
 // Types
@@ -614,7 +615,7 @@ export function TaskDetailScreen() {
 // ──────────────────────────────────────────────
 // Styles
 // ──────────────────────────────────────────────
-const s = StyleSheet.create({
+const s = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, gap: 12, paddingBottom: 40 },
   // Error
@@ -738,4 +739,4 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, marginTop: 4,
   },
   metaRow: { fontSize: 11, color: colors.textMuted },
-});
+}));

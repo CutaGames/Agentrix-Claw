@@ -60,6 +60,75 @@ export interface ComputerUseFocusWindowArgs {
   windowId: string;
 }
 
+// ── Desktop GUI hardening (需求 4, P1) ───────────────────────────────────────
+
+/**
+ * How a grounding pass obtained its elements. Property 8 (降级显式): the model
+ * can always tell whether coordinates are trustworthy.
+ */
+export type GroundingMode = 'accessibility_tree' | 'ocr_fallback' | 'degraded';
+
+/** Risk tier for a native-GUI action, aligned with backend PolicyEvaluator. */
+export type NativeActionRisk = 'read' | 'medium' | 'high' | 'redline';
+
+/** Native-GUI action kind, for risk classification. */
+export type NativeActionKind = 'inspect' | 'focus' | 'click' | 'type' | 'key_combo';
+
+/** One interactable element with a stable set-of-marks id (`m1`, `m2`, …). */
+export interface GroundingElement {
+  /** Set-of-marks id, stable within a single grounding pass. */
+  mark: string;
+  /** Accessibility control type, or `ocr_text` / `icon` for OCR fallback. */
+  role: string;
+  /** Accessible name / label / OCR text. */
+  name: string;
+  /** Physical-pixel bounds `[x, y, w, h]`. */
+  bounds: [number, number, number, number];
+  interactable: boolean;
+  /** 0–1; AX elements ~1.0, OCR detections lower. */
+  confidence: number;
+}
+
+/** Grounding of one window: mode + set-of-marks elements + degradation reason. */
+export interface GroundingResult {
+  windowId: string;
+  appName: string;
+  mode: GroundingMode;
+  elements: GroundingElement[];
+  /**
+   * Present whenever `mode !== 'accessibility_tree'`. The UI/model MUST surface
+   * this instead of guessing coordinates (Property 8).
+   */
+  degradedReason?: string | null;
+}
+
+/** Result of a focus attempt — `isActive` is verified, never assumed. */
+export interface WindowFocusResult {
+  windowId: string;
+  appName: string;
+  /** True only if the OS confirms this window became the foreground window. */
+  isActive: boolean;
+  /** `set_foreground` (verified), `unsupported`, or `failed: <reason>`. */
+  mode: string;
+}
+
+/**
+ * Pick a click point for a grounded element by its set-of-marks id. Returns
+ * `null` when the grounding is degraded or the mark is missing — callers MUST
+ * NOT fall back to guessing pixels (mirrors the Rust `resolve`).
+ */
+export function resolveMarkCenter(
+  result: GroundingResult,
+  mark: string,
+): { x: number; y: number } | null {
+  if (result.mode === 'degraded') return null;
+  const el = result.elements.find((e) => e.mark === mark);
+  if (!el || !el.interactable) return null;
+  const [x, y, w, h] = el.bounds;
+  return { x: x + Math.floor(w / 2), y: y + Math.floor(h / 2) };
+}
+
+
 export interface ComputerUseBrowserNavigateArgs {
   url: string;
   /** 默认走独立 profile；true 时使用用户主 Chrome（需 high-risk 审批） */
@@ -95,6 +164,8 @@ export const COMPUTER_USE_TOOLS: ComputerUseToolMeta[] = [
   { name: 'computer_use.screenshot',              description: 'Capture a screenshot of screen or window.',               risk: 'low',      allowRemember: true  },
   { name: 'computer_use.window_tree',             description: 'Inspect accessibility tree of an authorized app.',        risk: 'low',      allowRemember: true  },
   { name: 'computer_use.focus_window',            description: 'Bring a window to foreground.',                           risk: 'low',      allowRemember: true  },
+  { name: 'computer_use.ground_active_window',    description: 'Accessibility-tree set-of-marks grounding of the focused window.', risk: 'low', allowRemember: true },
+  { name: 'computer_use.focus_window_active',     description: 'Focus a window by title and verify is_active.',           risk: 'low',      allowRemember: true  },
   { name: 'computer_use.browser_navigate',        description: 'Open a URL in CDP-controlled browser.',                   risk: 'medium',   allowRemember: true  },
   { name: 'computer_use.browser_eval',            description: 'Evaluate JS in current browser tab.',                     risk: 'high',     allowRemember: false },
   { name: 'computer_use.browser_click_selector',  description: 'Click an element by CSS selector.',                       risk: 'medium',   allowRemember: true  },

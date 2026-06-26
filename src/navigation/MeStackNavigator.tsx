@@ -22,6 +22,7 @@ import { WearableHubScreen } from '../screens/agent/WearableHubScreen';
 import { SubscribePlanScreen } from '../screens/me/SubscribePlanScreen';
 import { AxpCenterScreen } from '../screens/me/AxpCenterScreen';
 import { AxpRewardShopScreen } from '../screens/me/AxpRewardShopScreen';
+import { PetEarningsScreen } from '../screens/me/PetEarningsScreen';
 import { ToyBindingScreen } from '../screens/me/ToyBindingScreen';
 // P-9 Q1 — re-home orphaned pet screens (T6.7). These exist as components
 // but were not mounted in any navigator after the legacy PetStack was
@@ -32,6 +33,12 @@ import { BreedScreen } from '../screens/pet/BreedScreen';
 import { PetPlaygroundScreen } from '../screens/pet/PetPlaygroundScreen';
 import { SkinMarketplaceScreen } from '../screens/pet/SkinMarketplaceScreen';
 import { MemoryManagementScreen } from '../screens/agent/MemoryManagementScreen';
+import { AgentOpsHubScreen } from '../screens/agent-ops/AgentOpsHubScreen';
+import { DueDiligenceScreen } from '../screens/agent-ops/DueDiligenceScreen';
+import { MonitorsScreen } from '../screens/agent-ops/MonitorsScreen';
+import { DeliverablesScreen } from '../screens/agent-ops/DeliverablesScreen';
+import { ReliabilityScreen } from '../screens/agent-ops/ReliabilityScreen';
+import { AgentEconomicStatusScreen } from '../screens/agent-ops/AgentEconomicStatusScreen';
 import { useI18n } from '../stores/i18nStore';
 
 const Stack = createNativeStackNavigator<MeStackParamList>();
@@ -67,6 +74,7 @@ export function MeStackNavigator() {
       <Stack.Screen name="WearableHub" component={WearableHubScreen} options={{ title: t({ en: 'Wearable Devices', zh: '可穿戴设备' }) }} />
       <Stack.Screen name="Subscribe" component={SubscribePlanScreen} options={{ title: t({ en: 'Subscribe', zh: '订阅' }) }} />
       <Stack.Screen name="AxpCenter" component={AxpCenterScreen} options={{ title: t({ en: 'AXP Center', zh: 'AXP 中心' }) }} />
+      <Stack.Screen name="PetEarnings" component={PetEarningsScreen} options={{ title: t({ en: 'Earnings Center', zh: '收益中心' }) }} />
       <Stack.Screen name="AxpRewardShop" component={AxpRewardShopScreen} options={{ title: t({ en: 'Redeem Shop', zh: '兑换中心' }) }} />
       <Stack.Screen name="ToyBinding" component={ToyBindingScreen} options={{ title: t({ en: 'Devices', zh: '设备管理' }) }} />
 
@@ -77,6 +85,14 @@ export function MeStackNavigator() {
       <Stack.Screen name="PetPlayground" component={PetPlaygroundScreen} options={{ title: t({ en: 'Playground', zh: '玩乐' }) }} />
       <Stack.Screen name="PetSkinMarketplace" component={SkinMarketplaceScreen} options={{ title: t({ en: 'Skin Market', zh: '皮肤市场' }) }} />
       <Stack.Screen name="MemoryManagement" component={MemoryManagementScreen} options={{ title: t({ en: 'Memory', zh: '记忆' }) }} />
+
+      {/* Crypto-Native Agent Ops (Agent 自运营) */}
+      <Stack.Screen name="AgentOpsHub" component={AgentOpsHubScreen} options={{ title: t({ en: 'Agent Ops', zh: 'Agent 自运营' }) }} />
+      <Stack.Screen name="AgentOpsDueDiligence" component={DueDiligenceScreen} options={{ title: t({ en: 'Due Diligence', zh: '尽职调查' }) }} />
+      <Stack.Screen name="AgentOpsMonitors" component={MonitorsScreen} options={{ title: t({ en: 'Monitors', zh: '监控告警' }) }} />
+      <Stack.Screen name="AgentOpsDeliverables" component={DeliverablesScreen} options={{ title: t({ en: 'Deliverables', zh: '交付物' }) }} />
+      <Stack.Screen name="AgentOpsReliability" component={ReliabilityScreen} options={{ title: t({ en: 'Reliability', zh: '可靠性指标' }) }} />
+      <Stack.Screen name="AgentOpsEconomicStatus" component={AgentEconomicStatusScreen} options={{ title: t({ en: 'Economic Status', zh: '经济身份状态' }) }} />
     </Stack.Navigator>
   );
 }

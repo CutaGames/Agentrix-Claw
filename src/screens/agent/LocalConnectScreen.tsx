@@ -31,6 +31,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { mapRawInstance } from '../../services/auth';
 import { bindOpenClaw } from '../../services/openclaw.service';
 import type { AgentStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'LocalConnect'>;
 type Route = RouteProp<AgentStackParamList, 'LocalConnect'>;
@@ -300,7 +301,7 @@ export function LocalConnectScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 20, paddingTop: 32, paddingBottom: 48 },
 
@@ -383,4 +384,4 @@ const styles = StyleSheet.create({
   btnSecondaryText: { color: colors.textMuted, fontWeight: '600', fontSize: 14 },
   linkBtn: { alignItems: 'center', paddingVertical: 10, marginTop: 4 },
   linkBtnText: { color: colors.accent, fontSize: 13, textDecorationLine: 'underline' },
-});
+}));

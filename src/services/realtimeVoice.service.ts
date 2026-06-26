@@ -70,6 +70,7 @@ export class RealtimeVoiceService {
   private appStateSubscription: { remove: () => void } | null = null;
   private pendingTexts: string[] = [];
   private e2eCleanup: (() => void) | null = null;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(callbacks: RealtimeVoiceCallbacks) {
     this.callbacks = callbacks;
@@ -140,6 +141,7 @@ export class RealtimeVoiceService {
       addVoiceDiagnostic('realtime-voice', 'socket-disconnected', { reason, intentional: this.intentionallyClosed });
       this.sessionId = null;
       this.pendingTexts = [];
+      this.stopHeartbeat();
       if (this.intentionallyClosed) {
         this.setState('disconnected');
         this.callbacks.onDisconnect('intentional');
@@ -163,6 +165,7 @@ export class RealtimeVoiceService {
         this.callbacks.onSessionReady?.(this.sessionId);
       }
       this.flushPendingTexts();
+      this.startHeartbeat();
     });
 
     socket.on('voice:transcript:interim', (payload: { text?: string }) => {
@@ -354,6 +357,7 @@ export class RealtimeVoiceService {
   disconnect(): void {
     this.intentionallyClosed = true;
     this.removeAppStateListener();
+    this.stopHeartbeat();
     this.e2eCleanup?.();
     this.e2eCleanup = null;
 
@@ -369,6 +373,26 @@ export class RealtimeVoiceService {
     this.sessionId = null;
     this.pendingTexts = [];
     this.setState('disconnected');
+  }
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    // App-layer keepalive: refreshes the backend voice session's idle timer +
+    // Session Fabric heartbeat, and lets us notice a half-open socket sooner
+    // than the socket.io engine ping alone. ~20s cadence (well under the
+    // backend's idle sweep).
+    this.pingTimer = setInterval(() => {
+      if (this.socket?.connected && this.sessionId) {
+        this.socket.emit('voice:ping', { sessionId: this.sessionId });
+      }
+    }, 20_000);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
   }
 
   private flushPendingTexts(): void {

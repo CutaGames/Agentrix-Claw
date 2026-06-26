@@ -10,6 +10,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { colors } from '../../theme/colors';
 import { listWorldNews, getLeaderboard } from '../../services/aeon/aeonApi';
 import type { AeonNewsItem, AeonLeaderboardEntry } from '../../../shared/types/aeon-world';
+import { themedStyles } from '../../theme/useTheme';
 
 export default function AeonNewsScreen() {
   const navigation = useNavigation<any>();
@@ -89,7 +90,7 @@ export default function AeonNewsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12 },
   back: { minWidth: 64 }, backText: { color: colors.textPrimary, fontSize: 16, fontWeight: '600' },
@@ -109,4 +110,4 @@ const styles = StyleSheet.create({
   rankNum: { fontSize: 16, fontWeight: '800', width: 40, color: colors.textPrimary },
   rankName: { flex: 1, color: colors.textPrimary, fontSize: 14, fontWeight: '600' },
   rankAxp: { color: colors.accent, fontSize: 14, fontWeight: '800' },
-});
+}));

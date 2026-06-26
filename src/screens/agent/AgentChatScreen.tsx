@@ -51,6 +51,7 @@ import type { StreamEvent } from '../../../shared/stream-parser';
 import {
   publishConversation,
   consumePendingPrefill,
+  getConversationSnapshot,
   type ConversationMessageSnapshot,
 } from '../../services/conversationStore';
 
@@ -373,6 +374,7 @@ import {
   buildDisplayMessageText as _buildDisplayMessageText,
   stripInlineMarkdown as _stripInlineMarkdown,
 } from './chatMessage.utils';
+import { themedStyles } from '../../theme/useTheme';
 const extractUrlsFromMessage = _extractUrlsFromMessage;
 const getCopyableMessageText = _getCopyableMessageText;
 const buildDisplayMessageText = _buildDisplayMessageText;
@@ -874,14 +876,27 @@ export function AgentChatScreen() {
     runtimeCapabilities: localVoiceRuntimeCapabilities,
   });
   const duplexUsesRealtimeChannel = localVoicePlan.useRealtimeVoiceChannel;
-  const remoteResolvedModelId = (!isLocalOnlyModelId(agentPreferredModel) ? agentPreferredModel : null)
+  // The user's explicit pick in the model selector wins over a (possibly stale)
+  // per-agent preferredModel. We only treat it as "explicitly chosen" when it
+  // differs from the bare default (claude-haiku-4-5) so users who never touched
+  // the selector still inherit their agent's preferred model as before.
+  // Fixes: voice was sending the agent's stale preferredModel (e.g. a
+  // copilot gemini-3.1-pro that the user's plan rejects → 400) instead of the
+  // BYO model the user actually selected (e.g. Claude Sonnet 4.6).
+  const userPickedModelId = selectedModelId
+    && selectedModelId !== 'claude-haiku-4-5'
+    && !isLocalOnlyModelId(selectedModelId)
+    ? selectedModelId
+    : null;
+  const remoteResolvedModelId = userPickedModelId
+    || (!isLocalOnlyModelId(agentPreferredModel) ? agentPreferredModel : null)
     || (!isLocalOnlyModelId(activeInstance?.resolvedModel) ? activeInstance?.resolvedModel : null)
     || (!isLocalOnlyModelId(selectedModelId) ? selectedModelId : null)
     || 'claude-haiku-4-5';
   // The effective model ID to display and send
   const effectiveModelId = isLocalModelSelected
     ? selectedModelId
-    : agentPreferredModel || activeInstance?.resolvedModel || selectedModelId;
+    : (userPickedModelId || agentPreferredModel || activeInstance?.resolvedModel || selectedModelId);
 
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
   const storageKey = `chat_hist_${instanceId}`;
@@ -1654,6 +1669,30 @@ export function AgentChatScreen() {
         setInput((prev) => (prev ? prev : note));
       }
     }, [voiceMode, setVoiceMode])
+  );
+
+  // Merge any pet-ball VOICE turns the ConversationBubble wrote to the shared
+  // store while Summon was not focused, so they appear here too (one history).
+  // Dedup by id; only adds turns we don't already have. Becomes permanent
+  // (persisted to MMKV + re-published) once merged.
+  useFocusEffect(
+    React.useCallback(() => {
+      const snap = getConversationSnapshot();
+      if (!snap.messages.length) return;
+      setMessages((prev) => {
+        const have = new Set(prev.map((m) => m.id));
+        const additions = snap.messages
+          .filter((m) => !have.has(m.id) && m.id !== 'welcome' && m.role !== 'system' && !!m.content)
+          .map((m) => ({
+            id: m.id,
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+            createdAt: m.createdAt || Date.now(),
+          } as Message));
+        if (additions.length === 0) return prev;
+        return [...prev, ...additions].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+      });
+    }, [])
   );
 
   // Diagnostic: log render state when voice mode is requested via navigation.
@@ -3507,7 +3546,7 @@ export function AgentChatScreen() {
 }
 
 // ─── Spatial Flow Styles ────────────────────────────────────────────────────
-const sf = StyleSheet.create({
+const sf = themedStyles(() => StyleSheet.create({
   // ── Message layout (borderless) ──
   msgContainer: {
     flexDirection: 'row',
@@ -3789,9 +3828,9 @@ const sf = StyleSheet.create({
     color: colors.textMuted,
     paddingLeft: 4,
   },
-});
+}));
 
-const executionModeStyles = StyleSheet.create({
+const executionModeStyles = themedStyles(() => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3815,9 +3854,9 @@ const executionModeStyles = StyleSheet.create({
   },
   chipText: { color: colors.textMuted, fontSize: 11 },
   chipTextActive: { color: '#fff', fontWeight: '600' },
-});
+}));
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   chatBar: {
     flexDirection: 'row',
@@ -4361,4 +4400,4 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-});
+}));

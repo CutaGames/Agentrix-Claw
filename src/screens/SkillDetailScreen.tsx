@@ -13,6 +13,7 @@ import { colors } from '../theme/colors';
 import { marketplaceApi, SkillDetail, ReviewItem } from '../services/marketplace.api';
 import { referralApi } from '../services/referral.api';
 import { ShareSheet } from '../components/promote/ShareSheet';
+import { themedStyles } from '../theme/useTheme';
 
 interface Props {
   route: { params: { skillId: string; skillName: string } };
@@ -295,7 +296,7 @@ export function SkillDetailScreen({ route, navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -645,4 +646,4 @@ const styles = StyleSheet.create({
   },
   successActionPrimary: { color: '#fff', fontSize: 15, fontWeight: '700' },
   successActionSecondary: { color: colors.muted, fontSize: 15, fontWeight: '600' },
-});
+}));

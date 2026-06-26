@@ -260,11 +260,32 @@ export const referralApi = {
     }
   },
 
-  // 生成推广文案
-  generateShareText(skill?: { name: string; price: number; priceUnit: string; shortUrl: string }): string {
-    if (skill) {
-      return `🔥 Check out "${skill.name}" on Agentrix — only $${skill.price}/${skill.priceUnit}!\n💰 Earn commission when friends buy through your link\n👉 ${skill.shortUrl}`;
+  // ===== Pet Earning Flywheel — C 端拉新裂变（需求 4）=====
+
+  // 注册成功后归因 + 发放双边拉新奖励（带深链 ref）— POST /referral/track-signup
+  async trackSignup(ref: string, channel?: string): Promise<{
+    attributed: boolean;
+    reason?: string;
+    relationId?: string;
+    inviterUserId?: string;
+    alreadyExisted?: boolean;
+  }> {
+    return apiFetch('/referral/track-signup', {
+      method: 'POST',
+      body: JSON.stringify({ ref, channel }),
+    });
+  },
+
+  // 我的拉新战绩 — GET /referral/my-flywheel
+  async getMyFlywheel(): Promise<{
+    invited: number;
+    rewardedSignups: number;
+    totalGmvRewardAxp: number;
+  }> {
+    try {
+      return await apiFetch('/referral/my-flywheel');
+    } catch {
+      return { invited: 0, rewardedSignups: 0, totalGmvRewardAxp: 0 };
     }
-    return '🚀 Agentrix Commerce — AI Skills Marketplace\n🤖 100+ AI skills, pay-per-use\n💰 Earn 10% referral commission\n👉 https://agentrix.top/r/abc123';
   },
 };

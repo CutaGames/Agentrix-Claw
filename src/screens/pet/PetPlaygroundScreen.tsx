@@ -43,6 +43,7 @@ import {
 } from '../../services/petPhase6Sdk';
 import { getPetState } from '../../services/mobilePetSdk';
 import type { PetState } from '../../../shared/types/agentrix-presence';
+import { themedStyles } from '../../theme/useTheme';
 
 type Tab = 'growth' | 'achievements' | 'memories' | 'minigames' | 'breeding';
 
@@ -819,7 +820,7 @@ function ErrorText({ msg }: { msg: string }): React.ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   tabBarScroll: { flexGrow: 0, flexShrink: 0, maxHeight: 56 },
   tabBar: { gap: 6, paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center' },
@@ -937,4 +938,4 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   statusPillText: { fontSize: 10, fontWeight: '600' },
-});
+}));

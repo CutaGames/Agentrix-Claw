@@ -102,23 +102,25 @@ export const LEGACY_ROUTE_MAP: Record<string, string> = {
 
   // ========== Discover → Plaza ==========
   'agentrix://discover': 'agentrix://plaza',
-  'agentrix://discover/predict': 'agentrix://plaza/play/predict',
+  // 玩乐已下线 → 集市 root
+  'agentrix://discover/predict': 'agentrix://plaza',
   'agentrix://discover/marketplace': 'agentrix://plaza/skills',
-  'agentrix://discover/feed': 'agentrix://plaza/feed',
-  'agentrix://discover/post/*': 'agentrix://plaza/feed/post/*',
-  'agentrix://discover/user/*': 'agentrix://plaza/feed/user/*',
+  // 广场已下线 → 集市 root
+  'agentrix://discover/feed': 'agentrix://plaza',
+  'agentrix://discover/post/*': 'agentrix://plaza',
+  'agentrix://discover/user/*': 'agentrix://plaza',
   'agentrix://discover/task-market': 'agentrix://plaza/tasks',
   'agentrix://discover/task/*': 'agentrix://plaza/tasks/*',
 
-  // ========== Social → Plaza·Feed / Plaza·Messaging ==========
-  'agentrix://social': 'agentrix://plaza/feed',
-  'agentrix://social/feed': 'agentrix://plaza/feed',
-  'agentrix://social/post/*': 'agentrix://plaza/feed/post/*',
-  'agentrix://social/user/*': 'agentrix://plaza/feed/user/*',
-  'agentrix://social/dm/list': 'agentrix://plaza/messaging',
-  'agentrix://social/dm/*': 'agentrix://plaza/messaging/*',
-  'agentrix://social/group/*': 'agentrix://plaza/messaging/group/*',
-  'agentrix://social/chat-list': 'agentrix://plaza/messaging',
+  // ========== Social → 集市 root(广场/私信已下线) ==========
+  'agentrix://social': 'agentrix://plaza',
+  'agentrix://social/feed': 'agentrix://plaza',
+  'agentrix://social/post/*': 'agentrix://plaza',
+  'agentrix://social/user/*': 'agentrix://plaza',
+  'agentrix://social/dm/list': 'agentrix://plaza',
+  'agentrix://social/dm/*': 'agentrix://plaza',
+  'agentrix://social/group/*': 'agentrix://plaza',
+  'agentrix://social/chat-list': 'agentrix://plaza',
   'agentrix://social/listener': 'agentrix://me/advanced/social-listener',
 
   // ========== Me (most unchanged, a few repositioned) ==========
@@ -143,7 +145,7 @@ export const LEGACY_ROUTE_MAP: Record<string, string> = {
   'agentrix://quick-pay': 'agentrix://me/wallet',
   'agentrix://identity-activation': 'agentrix://me',
   'agentrix://identity-activation/*': 'agentrix://me',
-  'agentrix://airdrop': 'agentrix://plaza/feed',
+  'agentrix://airdrop': 'agentrix://plaza',
   'agentrix://alliance': 'agentrix://me/advanced/alliance',
 
   // ========== Marketplace Action Deep Links (Web → Mobile) ==========
@@ -157,15 +159,13 @@ export const LEGACY_ROUTE_MAP: Record<string, string> = {
   'agentrix://install_skill': 'agentrix://plaza/skills',
   'agentrix://accept_task': 'agentrix://plaza/tasks',
 
-  // ========== Co-Raising & Greeting Deep Links (Sprint E) ==========
-  // Mobile share → Web landing → universal link back to App
-  //   agentrix://co_raising?inviteToken={tok}
-  //   agentrix://greeting?cardToken={tok}
-  'agentrix://co_raising': 'agentrix://home/co-raising/landing',
-  'agentrix://co-raising': 'agentrix://home/co-raising/landing',
-  'agentrix://co-raising/*': 'agentrix://home/co-raising/landing/*',
-  'agentrix://greeting': 'agentrix://plaza/greeting-inbox',
-  'agentrix://greeting/*': 'agentrix://plaza/greeting-inbox/*',
+  // ========== Co-Raising & Greeting Deep Links (已下线 → 集市 root) ==========
+  // 共养/贺卡功能随广场/玩乐整体下线,旧分享链接降级到集市落地页。
+  'agentrix://co_raising': 'agentrix://plaza',
+  'agentrix://co-raising': 'agentrix://plaza',
+  'agentrix://co-raising/*': 'agentrix://plaza',
+  'agentrix://greeting': 'agentrix://plaza',
+  'agentrix://greeting/*': 'agentrix://plaza',
 
   // ========== Toy activation (NFC / QR on packaging) ==========
   'agentrix://toy/activate': 'agentrix://me/devices/toy',
@@ -215,12 +215,12 @@ export const LEGACY_ROUTE_MAP: Record<string, string> = {
   // World Engine (already under WorldStack but legacy used home/pet/world-*)
   'agentrix://home/pet/world-scan': 'agentrix://world/scan',
   'agentrix://home/pet/world-assets': 'agentrix://world/inventory',
-  // Co-Raising → Plaza co-raising entry (where the screens are registered)
-  'agentrix://home/co-raising': 'agentrix://plaza/co-raising/invite',
-  'agentrix://home/co-raising/landing': 'agentrix://plaza/co-raising/invite',
-  'agentrix://home/co-raising/landing/*': 'agentrix://plaza/co-raising/invite',
-  'agentrix://home/co-raising/invite': 'agentrix://plaza/co-raising/invite',
-  'agentrix://home/co-raising/activity': 'agentrix://plaza/co-raising/invite',
+  // Co-Raising → 集市 root(共养功能已下线)
+  'agentrix://home/co-raising': 'agentrix://plaza',
+  'agentrix://home/co-raising/landing': 'agentrix://plaza',
+  'agentrix://home/co-raising/landing/*': 'agentrix://plaza',
+  'agentrix://home/co-raising/invite': 'agentrix://plaza',
+  'agentrix://home/co-raising/activity': 'agentrix://plaza',
   // Plan Approval reused via global Inbox modal
   'agentrix://home/approvals': 'agentrix://inbox',
   // NFT Mint → World create (closest real destination)
@@ -306,9 +306,9 @@ const MARKETPLACE_ACTION_MAP: Record<string, (params: URLSearchParams) => string
   bid: (p) => `plaza/pets/skins/${p.get('resourceId') || ''}`,
   install_skill: (p) => `plaza/skills/install/${p.get('resourceId') || ''}`,
   accept_task: (p) => `plaza/tasks/${p.get('resourceId') || ''}`,
-  co_raising: (p) => `home/co-raising/landing?token=${p.get('inviteToken') || p.get('token') || ''}`,
-  'co-raising': (p) => `home/co-raising/landing?token=${p.get('inviteToken') || p.get('token') || ''}`,
-  greeting: (p) => `plaza/greeting-inbox?token=${p.get('cardToken') || p.get('token') || ''}`,
+  co_raising: () => `plaza`,
+  'co-raising': () => `plaza`,
+  greeting: () => `plaza`,
 };
 
 /**

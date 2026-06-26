@@ -35,6 +35,7 @@ import {
   type PetTeamMemberDto,
   type PetTeamRole,
 } from '../../services/mobilePetSdk';
+import { themedStyles } from '../../theme/useTheme';
 
 const ROLE_LABELS: Record<PetTeamRole, { emoji: string; cn: string; desc: string }> = {
   finance:    { emoji: '💰', cn: '财务管家',  desc: '预算 / 报销 / 复盘' },
@@ -330,7 +331,7 @@ export function PetTeamScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 48 },
   center: { alignItems: 'center', justifyContent: 'center' },
@@ -439,6 +440,6 @@ const styles = StyleSheet.create({
     borderColor: colors.danger,
   },
   dangerBtnText: { color: colors.danger, fontSize: 13, fontWeight: '500' },
-});
+}));
 
 export default PetTeamScreen;

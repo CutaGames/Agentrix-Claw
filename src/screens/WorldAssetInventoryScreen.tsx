@@ -442,13 +442,7 @@ export default function WorldAssetInventoryScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>世界资产</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TouchableOpacity
-            style={styles.battleFab}
-            onPress={() => (navigation as any).navigate('WorldBattlePicker')}
-            testID="world-asset-inventory-battle"
-          >
-            <Text style={styles.scanFabText}>⚔</Text>
-          </TouchableOpacity>
+          {/* 战斗子系统已退役(需求 11.1):移除"对战"入口。 */}
           <TouchableOpacity
             style={styles.scanFab}
             onPress={handleOpenScanner}

@@ -163,7 +163,18 @@ export function CompanionBall(props: CompanionBallProps) {
     };
   }, [props.navigationRef]);
 
-  const layoutStore = useCompanionLayoutStore();
+  // IMPORTANT: subscribe with GRANULAR selectors, never the whole store.
+  // `useCompanionLayoutStore()` (no selector) returns a NEW state object on
+  // every store mutation, so any effect that listed the store object in its
+  // deps re-ran on every `set(...)` — and since those effects CALL setters
+  // (setLocked / setLowPower), each run mutated the store → new object →
+  // effect re-ran → setter → ... = "Maximum update depth exceeded" (the real
+  // slot=ball mount crash confirmed via /voice/companion-crash telemetry).
+  // Zustand action references are stable, so selecting them individually is
+  // safe to use in effect deps without looping.
+  const isLocked = useCompanionLayoutStore((s) => s.isLocked);
+  const setLocked = useCompanionLayoutStore((s) => s.setLocked);
+  const setLowPower = useCompanionLayoutStore((s) => s.setLowPower);
   const activePet = useActivePet();
 
   const topTab = resolveTopTab(navState);
@@ -185,10 +196,10 @@ export function CompanionBall(props: CompanionBallProps) {
   // captures touches before they reach GlobalFloatingBall's PanResponder.
   // Cheap + safe: doesn't break inner state, just suspends interaction.
   useEffect(() => {
-    layoutStore.setLocked(mode === 'signing');
+    setLocked(mode === 'signing');
     // Cleanup: ensure unlock on unmount so refresh doesn't strand the lock.
-    return () => layoutStore.setLocked(false);
-  }, [mode, layoutStore]);
+    return () => setLocked(false);
+  }, [mode, setLocked]);
 
   // Detect low-power mode for sprite fps drop (R1.10). Battery API may be
   // unavailable on some emulators / iOS dev builds; default to false.
@@ -199,9 +210,9 @@ export function CompanionBall(props: CompanionBallProps) {
     (async () => {
       try {
         const status = await Battery.getPowerStateAsync();
-        if (!cancelled) layoutStore.setLowPower(!!status.lowPowerMode);
+        if (!cancelled) setLowPower(!!status.lowPowerMode);
         const sub = Battery.addLowPowerModeListener((s) => {
-          if (!cancelled) layoutStore.setLowPower(!!s.lowPowerMode);
+          if (!cancelled) setLowPower(!!s.lowPowerMode);
         });
         removeListener = () => sub.remove();
       } catch {
@@ -213,7 +224,7 @@ export function CompanionBall(props: CompanionBallProps) {
       cancelled = true;
       removeListener?.();
     };
-  }, [layoutStore]);
+  }, [setLowPower]);
 
   // Emit periodic mount diagnostic so the R12.2 missing-ball watchdog
   // can fire if the ball stops mounting on a tab.
@@ -255,7 +266,7 @@ export function CompanionBall(props: CompanionBallProps) {
           mode is 'signing'. Positioned over the entire screen (not just
           the ball) because we want to prevent ALL interaction during
           mpc-wallet biometric prompt. */}
-      {layoutStore.isLocked && (
+      {isLocked && (
         <View
           style={[StyleSheet.absoluteFillObject, styles.signingLock]}
           pointerEvents="auto"

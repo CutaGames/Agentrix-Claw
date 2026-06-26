@@ -25,6 +25,7 @@ import { apiFetch } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
 import type { AgentStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentSpace'>;
 type RouteT = RouteProp<AgentStackParamList, 'AgentSpace'>;
@@ -293,7 +294,7 @@ export function AgentSpaceScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgPrimary },
   topBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -350,4 +351,4 @@ const styles = StyleSheet.create({
   sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   sendBtnDisabled: { opacity: 0.4 },
   sendBtnText: { color: '#000', fontSize: 18, marginLeft: 2 },
-});
+}));

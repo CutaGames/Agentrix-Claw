@@ -15,6 +15,7 @@ import { showAxpToast } from '../../stores/axpToastStore';
 import { useCapableDevices } from '../../hooks/useCapableDevices';
 import type { ExecutionPreference } from '../../services/compute.api';
 import { useI18n } from '../../stores/i18nStore';
+import { themedStyles } from '../../theme/useTheme';
 
 type Mode = 'text' | 'image';
 type Tier = 'free' | 'budget' | 'standard' | 'premium';
@@ -108,7 +109,7 @@ function PetCreationStepper({ status, hasError }: { status: string; hasError: bo
   );
 }
 
-const stepperStyles = StyleSheet.create({
+const stepperStyles = themedStyles(() => StyleSheet.create({
   wrap: { marginTop: 8, marginBottom: 8 },
   row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 },
   step: { alignItems: 'center', width: 56 },
@@ -132,7 +133,7 @@ const stepperStyles = StyleSheet.create({
   labelActive: { color: '#e5e7eb' },
   labelFailed: { color: '#fca5a5' },
   status: { marginTop: 10, fontSize: 12, color: '#cbd5e1', textAlign: 'center' },
-});
+}));
 
 // ── Quota Progress Bar ─────────────────────────────────────────────────────
 
@@ -188,7 +189,7 @@ function QuotaProgressBar() {
   );
 }
 
-const quotaStyles = StyleSheet.create({
+const quotaStyles = themedStyles(() => StyleSheet.create({
   container: {
     marginBottom: 16,
     padding: 12,
@@ -227,7 +228,7 @@ const quotaStyles = StyleSheet.create({
   barExhausted: {
     backgroundColor: '#f87171',
   },
-});
+}));
 
 export function PetCreatorScreen() {
   const [mode, setMode] = useState<Mode>('text');
@@ -514,7 +515,7 @@ export function PetCreatorScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   title: { color: colors.text, fontSize: 22, fontWeight: '700' },
   sub: { color: colors.textSecondary, fontSize: 12, marginTop: 4, marginBottom: 8 },
@@ -556,4 +557,4 @@ const styles = StyleSheet.create({
   providerName: { color: colors.text, fontSize: 14, fontWeight: '600' },
   providerSub: { color: colors.textSecondary, fontSize: 11, marginTop: 2 },
   providerStrength: { color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 2 },
-});
+}));

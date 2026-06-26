@@ -26,6 +26,7 @@ import {
   sendEmailCode,
   loginWithEmailCode,
 } from '../services/auth';
+import { themedStyles } from '../theme/useTheme';
 
 const { width } = Dimensions.get('window');
 
@@ -297,7 +298,7 @@ export const LoginScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   scrollContent: { flexGrow: 1, paddingHorizontal: 24, justifyContent: 'center', paddingVertical: 28 },
 
@@ -419,4 +420,4 @@ const styles = StyleSheet.create({
   footer: { paddingTop: 24, paddingBottom: 8, alignItems: 'center' },
   footerText: { fontSize: 11, color: colors.muted + '80', textAlign: 'center', lineHeight: 16 },
   footerLink: { color: colors.primary, textDecorationLine: 'underline' },
-});
+}));

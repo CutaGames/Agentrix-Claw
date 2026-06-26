@@ -25,6 +25,7 @@ import { installSkillToInstance } from '../../services/openclaw.service';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n, type Language } from '../../stores/i18nStore';
 import type { MarketStackParamList, ShareCardRouteParams } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<MarketStackParamList, 'SkillDetail'>;
 type RouteT = RouteProp<MarketStackParamList, 'SkillDetail'>;
@@ -480,7 +481,7 @@ export function ClawSkillDetailScreen() {
 
 // ── Styles ──────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   scrollView: { flex: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgPrimary },
@@ -545,4 +546,4 @@ const styles = StyleSheet.create({
   buyBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   promoteBtn: { flex: 1, backgroundColor: '#f97316' + '20', borderRadius: 14, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#f97316' + '55' },
   promoteBtnText: { color: '#fb923c', fontWeight: '700', fontSize: 14 },
-});
+}));

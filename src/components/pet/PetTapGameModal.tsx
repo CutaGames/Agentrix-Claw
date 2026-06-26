@@ -31,6 +31,7 @@ import { colors } from '../../theme/colors';
 import { submitMinigameScore, type MinigameKey } from '../../services/petPhase6Sdk';
 import { playPetFx } from '../../services/petInteractionFx';
 import { celebratePet } from '../../services/petModeAdapters';
+import { themedStyles } from '../../theme/useTheme';
 
 const GAME_DURATION_MS = 30_000;
 const FOOD_EMOJIS = ['🍖', '🍗', '🍣', '🍱', '🍙', '🍤', '🥩', '🍪', '🥯', '🥨'];
@@ -279,7 +280,7 @@ export function PetTapGameModal({ visible, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.65)',
@@ -355,4 +356,4 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
   },
   foodEmoji: { fontSize: 26 },
-});
+}));

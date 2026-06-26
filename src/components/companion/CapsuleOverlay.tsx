@@ -26,6 +26,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 export interface CapsuleOverlayProps {
   visible: boolean;
@@ -111,7 +112,7 @@ export function CapsuleOverlay({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   capsule: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -129,4 +130,4 @@ const styles = StyleSheet.create({
   },
   emoji: { fontSize: 16 },
   text: { fontSize: 13, fontWeight: '600', flexShrink: 1 },
-});
+}));

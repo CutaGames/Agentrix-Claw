@@ -15,6 +15,7 @@ import {
 import { colors } from '../theme/colors';
 import { useI18n } from '../stores/i18nStore';
 import { showAxpToast } from '../stores/axpToastStore';
+import { themedStyles } from '../theme/useTheme';
 
 export interface LevelUpModalProps {
   visible: boolean;
@@ -90,7 +91,7 @@ export function LevelUpModal({
 
 const CYAN = '#22d3ee';
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
@@ -166,4 +167,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-});
+}));

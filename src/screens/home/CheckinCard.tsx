@@ -16,6 +16,7 @@ import { useI18n } from '../../stores/i18nStore';
 import { colors } from '../../theme/colors';
 import { doCheckin, fetchCheckinStatus } from '../../services/axp.api';
 import { showAxpToast } from '../../stores/axpToastStore';
+import { themedStyles } from '../../theme/useTheme';
 
 export function CheckinCard() {
   const { t } = useI18n();
@@ -114,7 +115,7 @@ export function CheckinCard() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   card: {
     backgroundColor: 'rgba(34,211,238,0.08)',
     borderRadius: 16,
@@ -155,4 +156,4 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginBottom: 12,
   },
-});
+}));

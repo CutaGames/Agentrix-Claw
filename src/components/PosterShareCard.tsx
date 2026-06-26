@@ -15,6 +15,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '../theme/colors';
 import { useI18n } from '../stores/i18nStore';
+import { themedStyles } from '../theme/useTheme';
 
 export interface PosterShareCardProps {
   petName: string;
@@ -119,7 +120,7 @@ export function PosterShareCard({
 
 const CYAN = '#22d3ee';
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   poster: {
     width: 1080,
     height: 1920,
@@ -314,4 +315,4 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 1,
   },
-});
+}));

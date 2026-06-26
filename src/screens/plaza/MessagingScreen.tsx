@@ -23,6 +23,7 @@ import { useQuery } from '@tanstack/react-query';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { listConversations, Conversation } from '../../services/messaging.api';
+import { themedStyles } from '../../theme/useTheme';
 
 function formatTime(ts: number): string {
   const diff = Date.now() - ts;
@@ -141,7 +142,7 @@ export function MessagingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary },
@@ -189,4 +190,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   badgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-});
+}));

@@ -4,6 +4,7 @@ import { colors } from '../theme/colors';
 import { SUPPORTED_MODELS, ModelId, ModelOption } from '../stores/settingsStore';
 import { useI18n } from '../stores/i18nStore';
 import { apiFetch } from '../services/api';
+import { themedStyles } from '../theme/useTheme';
 
 const { width } = Dimensions.get('window');
 
@@ -105,7 +106,7 @@ export function SelectEngineModal({ visible, onClose, selectedModelId, onSelect 
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   content: { backgroundColor: colors.bgSecondary, width: '100%', borderRadius: 24, padding: 24, paddingBottom: 32 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'center', marginBottom: 6 },
@@ -130,4 +131,4 @@ const styles = StyleSheet.create({
   badge: { fontSize: 10, fontWeight: '700', color: colors.textMuted, backgroundColor: colors.bgPrimary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
   badgeActive: { color: colors.accent, backgroundColor: colors.accent + '22' },
   checkIcon: { fontSize: 18, color: colors.accent, fontWeight: 'bold' }
-});
+}));

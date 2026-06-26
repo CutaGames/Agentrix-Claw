@@ -28,6 +28,7 @@ import {
   activateSkin,
 } from '../../services/mobilePetSdk';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 export function WardrobeScreen() {
   const navigation = useNavigation<any>();
@@ -165,7 +166,7 @@ export function WardrobeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 48 },
   subtitle: { color: colors.textSecondary, fontSize: 13, marginBottom: 16, lineHeight: 18 },
@@ -230,6 +231,6 @@ const styles = StyleSheet.create({
   },
   activateBtnActive: { opacity: 0.55 },
   activateBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
-});
+}));
 
 export default WardrobeScreen;

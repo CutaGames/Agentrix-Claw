@@ -28,6 +28,7 @@ import {
   TaskSearchItem,
 } from '../../services/marketSearch.api';
 import type { PlazaStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<PlazaStackParamList, 'PlazaRoot'>;
 
@@ -226,7 +227,7 @@ export function PlazaSearchModal({ visible, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: {
     flexDirection: 'row',
@@ -278,4 +279,4 @@ const styles = StyleSheet.create({
   resultName: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
   resultMeta: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
   resultArrow: { fontSize: 18, fontWeight: '600', color: colors.textMuted },
-});
+}));

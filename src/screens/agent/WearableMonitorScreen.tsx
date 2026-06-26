@@ -23,6 +23,7 @@ import {
   type TelemetrySample,
   type TriggerEvent,
 } from '../../services/wearables/wearableTypes';
+import { themedStyles } from '../../theme/useTheme';
 
 type ScreenTab = 'live' | 'rules' | 'history';
 
@@ -486,7 +487,7 @@ function HistoryTab({
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
-const st = StyleSheet.create({
+const st = themedStyles(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgPrimary },
 
   // Header
@@ -625,4 +626,4 @@ const st = StyleSheet.create({
     borderRadius: 15, alignItems: 'center', justifyContent: 'center',
   },
   ackBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
-});
+}));

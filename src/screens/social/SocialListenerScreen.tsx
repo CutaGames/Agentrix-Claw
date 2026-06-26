@@ -25,6 +25,7 @@ import { Linking } from 'react-native';
 import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useI18n } from '../../stores/i18nStore';
+import { themedStyles } from '../../theme/useTheme';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -779,7 +780,7 @@ export function SocialListenerScreen() {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, gap: 12, paddingBottom: 40 },
 
@@ -1025,4 +1026,4 @@ const styles = StyleSheet.create({
     borderWidth: 1, backgroundColor: colors.bgCard,
   },
   comingSoonText: { fontSize: 13, fontWeight: '600' },
-});
+}));

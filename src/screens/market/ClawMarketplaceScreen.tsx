@@ -12,6 +12,8 @@ import { searchOpenClawHub, invalidateHubCache } from '../../services/openclawHu
 import { useI18n } from '../../stores/i18nStore';
 import type { MarketStackParamList } from '../../navigation/types';
 import TaskMarketScreen from '../TaskMarketScreen';
+import LeverageSportsMarketScreen from '../LeverageSportsMarketScreen';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<MarketStackParamList, 'Marketplace'>;
 
@@ -45,7 +47,7 @@ const FALLBACK_RESOURCES = [
 ];
 
 // OpenClaw Hub skills tab — uses the OpenClaw Hub search service
-function OpenClawSkillsTab() {
+export function OpenClawSkillsTab() {
   const navigation = useNavigation<Nav>();
   const { t, language } = useI18n();
   const [category, setCategory] = useState('All');
@@ -149,7 +151,7 @@ function OpenClawSkillsTab() {
 }
 
 // Resources & Goods tab — paid APIs/compute, falls back to mock data
-function ResourcesTab() {
+export function ResourcesTab() {
   const navigation = useNavigation<Nav>();
   const { t, language } = useI18n();
   const [category, setCategory] = useState('All');
@@ -188,12 +190,11 @@ function ResourcesTab() {
 
   return (
     <View style={styles.tabContainer}>
-      {/* TEST zone banner for Resources */}
-      <View style={{ backgroundColor: '#ef444418', borderBottomWidth: 1, borderBottomColor: '#ef444433', paddingVertical: 6, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-        <View style={{ backgroundColor: '#ef4444', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
-          <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>TEST</Text>
-        </View>
-        <Text style={{ color: '#ef4444', fontSize: 12, fontWeight: '600' }}>Resource marketplace is under development</Text>
+      {/* 资源段：低调的开发中提示（弱化原 TEST 红色横幅） */}
+      <View style={{ paddingVertical: 6, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+          {t({ en: 'Resource marketplace is being expanded', zh: '资源与商品市场持续扩充中' })}
+        </Text>
       </View>
       <View style={styles.searchRow}>
           <TextInput
@@ -264,7 +265,7 @@ function ResourcesTab() {
 
 export function ClawMarketplaceScreen() {
   const { t, language } = useI18n();
-  const [activeTab, setActiveTab] = useState<'skills' | 'tasks' | 'resources'>('skills');
+  const [activeTab, setActiveTab] = useState<'skills' | 'tasks' | 'resources' | 'lsm'>('skills');
 
   return (
     <View style={styles.container}>
@@ -283,6 +284,12 @@ export function ClawMarketplaceScreen() {
           <Text style={[styles.tabText, activeTab === 'tasks' && styles.tabTextActive]}>{t({ en: 'Task Market', zh: '任务市场' })}</Text>
         </TouchableOpacity>
         <TouchableOpacity
+          style={[styles.tabItem, activeTab === 'lsm' && styles.tabItemActive]}
+          onPress={() => setActiveTab('lsm')}
+        >
+          <Text style={[styles.tabText, activeTab === 'lsm' && styles.tabTextActive]}>{t({ en: 'Sports Predictions', zh: '赛事预测' })}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={[styles.tabItem, activeTab === 'resources' && styles.tabItemActive]}
           onPress={() => setActiveTab('resources')}
         >
@@ -294,13 +301,14 @@ export function ClawMarketplaceScreen() {
       <View style={styles.content}>
         {activeTab === 'skills' && <OpenClawSkillsTab />}
         {activeTab === 'tasks' && <TaskMarketScreen />}
+        {activeTab === 'lsm' && <LeverageSportsMarketScreen />}
         {activeTab === 'resources' && <ResourcesTab />}
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   tabBar: {
     flexDirection: 'row',
@@ -372,4 +380,4 @@ const styles = StyleSheet.create({
   skillFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
   skillPrice: { fontSize: 13, fontWeight: '700', color: colors.accent },
   ratingText: { fontSize: 12, color: colors.textMuted },
-});
+}));

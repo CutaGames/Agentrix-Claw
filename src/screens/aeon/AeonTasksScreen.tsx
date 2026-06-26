@@ -16,6 +16,7 @@ import { useAuthStore } from '../../stores/authStore';
 import {
   listOpenTasks, postTask, acceptTask, type AeonTaskDto,
 } from '../../services/aeon/aeonApi';
+import { themedStyles } from '../../theme/useTheme';
 
 export default function AeonTasksScreen() {
   const navigation = useNavigation<any>();
@@ -163,7 +164,7 @@ function stateLabel(s: string): string {
   }
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12 },
   back: { minWidth: 64 }, backText: { color: colors.textPrimary, fontSize: 16, fontWeight: '600' },
@@ -193,4 +194,4 @@ const styles = StyleSheet.create({
   cancelText: { color: colors.textMuted, fontSize: 14 },
   confirmBtn: { flex: 1, paddingVertical: 13, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center' },
   confirmText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-});
+}));

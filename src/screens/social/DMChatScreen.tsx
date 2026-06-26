@@ -18,6 +18,7 @@ import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import type { SocialStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type DMChatRouteProp = RouteProp<SocialStackParamList, 'DirectMessage'>;
 
@@ -189,7 +190,7 @@ export function DMChatScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bgPrimary },
   header: {
     flexDirection: 'row',
@@ -263,4 +264,4 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { opacity: 0.4 },
   sendIcon: { color: '#fff', fontSize: 16 },
-});
+}));

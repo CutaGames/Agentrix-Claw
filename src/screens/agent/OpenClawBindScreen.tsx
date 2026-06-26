@@ -11,6 +11,7 @@ import { bindOpenClaw } from '../../services/openclaw.service';
 import { startQrBindSession, waitForQrBind, mapRawInstance } from '../../services/auth';
 import { QrCode } from '../../components/common/QrCode';
 import type { AgentStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'OpenClawBind'>;
 
@@ -172,7 +173,7 @@ export function OpenClawBindScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 24, paddingTop: 24, paddingBottom: 40, gap: 16 },
   title: { fontSize: 22, fontWeight: '800', color: colors.textPrimary },
@@ -197,4 +198,4 @@ const styles = StyleSheet.create({
   qrCode: { fontSize: 10, color: colors.textMuted, fontFamily: 'monospace' },
   qrStatus: { fontSize: 14, color: colors.textMuted, fontWeight: '600' },
   qrError: { fontSize: 14, color: colors.error, textAlign: 'center' },
-});
+}));

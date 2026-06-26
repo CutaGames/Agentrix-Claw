@@ -32,6 +32,7 @@ import {
   type BrowseListingsQuery,
 } from '../../services/worldEngineApi';
 import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<WorldStackParamList, 'WorldAssetMarketplace'>;
 
@@ -225,7 +226,7 @@ export function WorldMarketplaceScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12 },
   backBtn: { paddingVertical: 6, paddingRight: 8, minWidth: 64 },
@@ -260,6 +261,6 @@ const styles = StyleSheet.create({
   cardPrice: { color: colors.accent, fontSize: 15, fontWeight: '800', marginTop: 4 },
   buyBtn: { backgroundColor: colors.accent, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10, marginLeft: 8 },
   buyBtnText: { color: '#04222b', fontSize: 14, fontWeight: '700' },
-});
+}));
 
 export default WorldMarketplaceScreen;

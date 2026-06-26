@@ -23,6 +23,7 @@ import {
   markMPCBackupCompleted,
 } from '../../services/mpcWallet';
 import type { MeStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<MeStackParamList>;
 type Step = 'intro' | 'creating' | 'backup' | 'confirm';
@@ -258,7 +259,7 @@ export function WalletSetupScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgPrimary },
   container: { padding: 20, paddingBottom: 40, gap: 16 },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
@@ -346,4 +347,4 @@ const styles = StyleSheet.create({
   },
   warningTitle: { color: colors.textPrimary, fontSize: 14, fontWeight: '700', marginBottom: 8 },
   warningText: { color: colors.textSecondary, fontSize: 13, lineHeight: 20 },
-});
+}));

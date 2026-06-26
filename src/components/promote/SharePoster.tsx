@@ -14,6 +14,7 @@ import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import QRCode from 'react-native-qrcode-svg';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const POSTER_W = SCREEN_W - 48;
@@ -196,7 +197,7 @@ export function SharePoster({ visible, onClose, skillName, skillPrice, skillPric
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { alignItems: 'center', paddingVertical: 8 },
   // Theme
   themeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12, flexWrap: 'wrap', justifyContent: 'center' },
@@ -241,4 +242,4 @@ const styles = StyleSheet.create({
   shareBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   closeBtn: { padding: 8 },
   closeBtnText: { color: colors.primary, fontSize: 13 },
-});
+}));

@@ -13,6 +13,7 @@ import { colors } from '../../theme/colors';
 import { apiFetch } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import type { SocialStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<SocialStackParamList, 'DirectMessage'>;
 type Route = RouteProp<SocialStackParamList, 'DirectMessage'>;
@@ -274,7 +275,7 @@ export function DirectMessageScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bgPrimary },
   kav: { flex: 1 },
   msgList: { padding: 16, paddingBottom: 8 },
@@ -337,5 +338,5 @@ const styles = StyleSheet.create({
   pickerItemName: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
   pickerItemDesc: { fontSize: 12, color: colors.textSecondary },
   pickerItemPrice: { fontSize: 13, fontWeight: '700', color: colors.accent, marginLeft: 12 },
-});
+}));
 

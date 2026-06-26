@@ -1,21 +1,12 @@
 /**
- * WorldHubScreen — 🌍 World Tab root (P-9 Companion Redesign T2.1).
+ * WorldHubScreen — 🌍 世界 Tab 首屏(World Creation & Feed,task 7.1)。
  *
- * Phase 1 spec R3 — kills the "World Engine is the 12th drawer cell on
- * Home" problem by promoting it to a tier-1 tab. The user sees:
- *   - Top: swipeable banners (quota, pending battles, recent assets)
- *   - 2x2 main CTA grid: scan / inventory / battle / dungeon
- *   - "Create digital character" section: text generation / photo→3D / world scan
- *   - Bottom: World Asset marketplace entry
- *
- * Phase 1 simplifications:
- *   - Banners are static placeholders; live data wiring deferred to T3.x
- *     once `presence:world-engine.battle-pending` and `asset.ready` events
- *     (already shipped backend per Task 0.5) feed companionEvents.
- *   - Marketplace entry now routes to the real browse/buy screen (2026-06-01).
- *
- * Cohort guard (R3.5): if `world_engine_enabled` flag returns false, render
- * a "coming soon" panel instead of the CTA grid.
+ * spec: ui-design §1/§2;需求 10.1–10.5。
+ *   - 围绕单一核心循环组织:**创作 / 浏览 / 我的世界**,收敛旧版约 14 个并列入口
+ *     与 3 个重叠"世界"概念。
+ *   - 新用户(无创作):单主线 —— 一句话创作 + 两个浏览入口。
+ *   - 老用户(有创作):回我的世界 + 我的创作 + 创作流推荐。
+ *   - 不再出现战斗/副本/决策对战/UGC 战斗规则/拍照→3D(需求 10.5,已退役)。
  */
 import React, { useCallback, useState } from 'react';
 import {
@@ -24,481 +15,186 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Pressable,
-  Image,
-  Alert,
+  TextInput,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors } from '../../theme/colors';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useColors, useThemedStyles, type Palette } from '../../theme/useTheme';
 import { useI18n } from '../../stores/i18nStore';
-import { fetchWorldEngineFlag, listWorldAssets } from '../../services/worldEngineApi';
-import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-
-type Nav = NativeStackNavigationProp<WorldStackParamList, 'WorldRoot'>;
-
-interface CTACardProps {
-  emoji: string;
-  title: string;
-  subtitle?: string;
-  onPress: () => void;
-  onLongPress?: () => void;
-  testID?: string;
-}
-
-function CTACard({ emoji, title, subtitle, onPress, onLongPress, testID }: CTACardProps) {
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.ctaCard, pressed && styles.ctaCardPressed]}
-      onPress={onPress}
-      onLongPress={onLongPress}
-      testID={testID}
-    >
-      <Text style={styles.ctaEmoji}>{emoji}</Text>
-      <Text style={styles.ctaTitle}>{title}</Text>
-      {subtitle ? <Text style={styles.ctaSubtitle}>{subtitle}</Text> : null}
-    </Pressable>
-  );
-}
+import { discoverCreations, listMyCreations } from '../../services/creationApi';
+import type { CreationDiscoveryItem, Creation } from '../../../shared/types/creation';
 
 export function WorldHubScreen() {
-  const navigation = useNavigation<Nav>();
   const { t } = useI18n();
+  const navigation = useNavigation<any>();
+  const c = useColors();
+  const styles = useThemedStyles(makeStyles);
 
-  // Cohort guard: query the same admin_configs `world_engine_enabled` flag
-  // that the backend already enforces (production row was inserted in
-  // Task 5 of the World Engine "Not Found" fix). On mobile we read it via
-  // an authenticated probe of any cohort-gated endpoint to know whether
-  // to render the hub vs the coming-soon panel.
-  const flagQ = useQuery({
-    queryKey: ['world-engine-flag'],
-    queryFn: fetchWorldEngineFlag,
-    staleTime: 5 * 60_000,
-    retry: 1,
-  });
+  const [seed, setSeed] = useState('');
+  const [mine, setMine] = useState<Creation[]>([]);
+  const [hot, setHot] = useState<CreationDiscoveryItem[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
-  // 用户资产 — 决定首屏是"新用户引导"还是"已有角色的玩家中心"。
-  const assetsQ = useQuery({
-    queryKey: ['world-assets', 'hub'],
-    queryFn: () => listWorldAssets({ sort: 'newest', limit: 6 }),
-    staleTime: 30_000,
-    retry: 1,
-  });
-  const assets = assetsQ.data?.items ?? [];
-  const hasAssets = assets.length > 0;
-
-  // 候补名单: 后端暂无专用接口, 用本地持久化记录用户意愿(灰度放量时可读取上报)。
-  const WAITLIST_KEY = 'world_engine_waitlist_joined';
-  const [waitlistJoined, setWaitlistJoined] = useState(false);
-  React.useEffect(() => {
-    AsyncStorage.getItem(WAITLIST_KEY).then((v) => setWaitlistJoined(v === '1')).catch(() => {});
-  }, []);
-  const onJoinWaitlist = useCallback(async () => {
+  const load = useCallback(async () => {
     try {
-      await AsyncStorage.setItem(WAITLIST_KEY, '1');
-    } catch {
-      /* ignore */
+      const [mineRes, feedRes] = await Promise.all([
+        listMyCreations().catch(() => ({ items: [] as Creation[] })),
+        discoverCreations({ mode: 'feed', sort: 'hot', limit: 6 }).catch(() => null),
+      ]);
+      setMine(mineRes.items ?? []);
+      if (feedRes && feedRes.mode === 'feed') setHot(feedRes.items);
+    } finally {
+      setLoaded(true);
     }
-    setWaitlistJoined(true);
-    Alert.alert(
-      t({ en: "You're on the list", zh: '已加入候补名单' }),
-      t({
-        en: "We'll notify you the moment World Engine opens to your account.",
-        zh: 'World Engine 向你的账号开放时,我们会第一时间通知你。',
-      }),
-    );
-  }, [t]);
+  }, []);
 
-  const onScan = useCallback(
-    (mode: 'quick' | 'detail' | 'room' = 'quick') => {
-      navigation.navigate('WorldEngineScanner', { mode });
-    },
-    [navigation],
-  );
-  const onInventory = useCallback(() => navigation.navigate('WorldAssetInventory'), [navigation]);
-  const onBattle = useCallback(() => navigation.navigate('WorldBattlePicker'), [navigation]);
-  const onDungeon = useCallback(() => navigation.navigate('WorldDungeonExplorer', {}), [navigation]);
-  const onWorldFeed = useCallback(() => navigation.navigate('WorldFeed'), [navigation]);
-  const onAeon = useCallback(() => navigation.navigate('AeonMap'), [navigation]);
-  const onUgc = useCallback(() => navigation.navigate('WorldUgcRuleSets'), [navigation]);
-  const onPetCreator = useCallback(() => navigation.navigate('PetCreator'), [navigation]);
-  const onPhotoToPet = useCallback(() => navigation.navigate('PetCameraScan'), [navigation]);
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  // Phase 1: feature flag off → render coming-soon panel
-  if (flagQ.data && !flagQ.data.enabled) {
-    return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <View style={styles.comingSoon}>
-          <Text style={styles.comingSoonEmoji}>🌍</Text>
-          <Text style={styles.comingSoonTitle}>
-            {t({ en: 'World Engine — Coming Soon', zh: 'World Engine 即将开放' })}
-          </Text>
-          <Text style={styles.comingSoonBody}>
-            {t({
-              en: "Scan real-world objects, generate AI characters, build dungeons. We're rolling this out to a small cohort first.",
-              zh: '扫描真实物体生成 AI 角色,建造你的副本。我们正在小范围灰度,很快开放给所有用户。',
-            })}
-          </Text>
-          <TouchableOpacity
-            style={[styles.waitlistBtn, waitlistJoined && styles.waitlistBtnJoined]}
-            onPress={onJoinWaitlist}
-            disabled={waitlistJoined}
-          >
-            <Text style={styles.waitlistBtnText}>
-              {waitlistJoined
-                ? t({ en: '✓ On the waitlist', zh: '✓ 已加入候补' })
-                : t({ en: 'Join Waitlist', zh: '加入候补名单' })}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    );
-  }
+  const onCreate = useCallback(() => {
+    navigation.navigate('CreationCreator');
+  }, [navigation]);
+
+  const hasCreations = mine.length > 0;
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      testID="world-hub-scroll"
-    >
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} testID="world-hub-scroll">
       <View style={styles.header}>
         <Text style={styles.title}>🌍 {t({ en: 'World', zh: '世界' })}</Text>
-        <Text style={styles.subtitle}>
-          {t({ en: 'Aeon — a living world you build with your AI.', zh: '永曜城 · 和你的 AI 一起共建的活世界' })}
-        </Text>
+        <Text style={styles.subtitle}>{t({ en: 'A living world you build with your AI', zh: '和你的 AI 一起共建的活世界' })}</Text>
       </View>
 
-      {/* HERO — 永曜城 是 World tab 的核心体验入口。
-          进去就能在真实地球地图上圈地、建造、社交、和 AI 一起经营,参与感最强。 */}
-      <Pressable
-        style={({ pressed }) => [styles.aeonHero, pressed && styles.heroPressed]}
-        onPress={onAeon}
-        testID="world-hero-aeon"
-      >
-        <Text style={styles.heroEmoji}>🏙️</Text>
-        <Text style={styles.heroTitle}>
-          {t({ en: 'Enter Aeon — the shared living world', zh: '进入永曜城 · 大家共建的活世界' })}
-        </Text>
-        <Text style={styles.heroSub}>
-          {t({
-            en: 'Claim land on the real map, build your place, meet neighbors, run a business with your AI.',
-            zh: '在真实地图上圈地、建造、串门、和你的 AI 一起开店经营',
-          })}
-        </Text>
-        <View style={styles.heroBtn}>
-          <Text style={styles.heroBtnText}>{t({ en: 'Enter Aeon', zh: '进入永曜城' })}</Text>
-        </View>
-      </Pressable>
-
-      {/* 次级:把现实变成角色,带进永曜城 */}
-      <Pressable
-        style={({ pressed }) => [styles.scanStrip, pressed && styles.heroPressed]}
-        onPress={() => onScan('quick')}
-        onLongPress={() => onScan('detail')}
-        testID="world-hero-scan"
-      >
-        <Text style={styles.scanStripEmoji}>📷</Text>
-        <View style={styles.worldFeedTextWrap}>
-          <Text style={styles.scanStripTitle}>
-            {t({ en: 'Scan anything → a character for your world', zh: '拍一下身边的东西 → 变成你世界里的角色' })}
-          </Text>
-          <Text style={styles.worldFeedSub}>
-            {t({ en: 'AI gives it a name, stats & skills in seconds. Long-press for Detail / Room.', zh: '拍 1 张,AI 几秒给它名字属性技能。长按选 精细 / 房间扫描' })}
-          </Text>
-        </View>
-        <Text style={styles.worldFeedArrow}>→</Text>
-      </Pressable>
-
-      {/* 已有角色 → 角色卷轴 + 玩法入口; 新用户 → 不展示空的战斗/副本 */}
-      {hasAssets ? (
-        <>
-          {/* 我的世界(角色动态)—— 永曜城里"你不在时角色们在忙什么"的剧情线 */}
-          <Pressable
-            style={({ pressed }) => [styles.worldFeedEntry, pressed && styles.heroPressed]}
-            onPress={onWorldFeed}
-            testID="world-feed-entry"
-          >
-            <Text style={styles.worldFeedEmoji}>📖</Text>
-            <View style={styles.worldFeedTextWrap}>
-              <Text style={styles.worldFeedTitle}>
-                {t({ en: 'My characters’ stories', zh: '我的角色动态' })}
-              </Text>
-              <Text style={styles.worldFeedSub}>
-                {t({ en: 'See what your residents did in Aeon while you were away', zh: '看看你不在时,你在永曜城的居民们经历了什么' })}
-              </Text>
-            </View>
-            <Text style={styles.worldFeedArrow}>→</Text>
-          </Pressable>
-
-          <View style={styles.rosterHeader}>
-            <Text style={styles.sectionHeader}>
-              🎒 {t({ en: 'My Characters', zh: '我的角色' })}
-            </Text>
-            <TouchableOpacity onPress={onInventory}>
-              <Text style={styles.seeAll}>{t({ en: 'See all', zh: '查看全部' })} →</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rosterRow}>
-            {assets.map((a) => (
-              <Pressable
-                key={a.id}
-                style={styles.rosterCard}
-                onPress={onInventory}
-              >
-                <View style={styles.rosterThumb}>
-                  {a.portraitUrl || a.styledMeshUrl ? (
-                    <Image
-                      source={{ uri: (a.styledMeshUrl as string) || (a.portraitUrl as string) }}
-                      style={styles.rosterThumbImg}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <Text style={styles.rosterThumbEmoji}>
-                      {a.generationStatus && a.generationStatus !== 'complete' && a.generationStatus !== 'card_ready' ? '⏳' : '🦊'}
-                    </Text>
-                  )}
-                </View>
-                <Text style={styles.rosterName} numberOfLines={1}>{a.name}</Text>
-                <Text style={styles.rosterMeta}>Lv.{a.level} · {a.battleWins}W</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-
-          <View style={styles.actionRow}>
-            <CTACard
-              emoji="⚔️"
-              title={t({ en: 'Battle', zh: '战斗' })}
-              subtitle={t({ en: 'Challenge or replay', zh: '挑战 / 回放' })}
-              onPress={onBattle}
-              testID="world-cta-battle"
-            />
-            <CTACard
-              emoji="🏰"
-              title={t({ en: 'Dungeon', zh: '副本' })}
-              subtitle={t({ en: 'Share code / scan room', zh: '分享码 / 扫房间' })}
-              onPress={onDungeon}
-              testID="world-cta-dungeon"
-            />
-          </View>
-
-          <View style={styles.actionRow}>
-            <CTACard
-              emoji="🎮"
-              title={t({ en: 'Decision Battle', zh: '决策对战' })}
-              subtitle={t({ en: 'You call the moves', zh: '你来出招' })}
-              onPress={onBattle}
-              testID="world-cta-decision-battle"
-            />
-            <CTACard
-              emoji="🛠️"
-              title={t({ en: 'My Game Modes', zh: '我的玩法' })}
-              subtitle={t({ en: 'Create & share', zh: '创建并分享' })}
-              onPress={onUgc}
-              testID="world-cta-ugc"
-            />
-          </View>
-        </>
+      {/* 主线:老用户=回我的城;新用户=一句话创作 */}
+      {hasCreations ? (
+        <TouchableOpacity style={styles.hero} onPress={() => navigation.navigate('MyWorld')} testID="world-hub-myworld">
+          <Text style={styles.heroEmoji}>🏙️</Text>
+          <Text style={styles.heroTitle}>{t({ en: 'My World', zh: '回到我的世界' })}</Text>
+          <Text style={styles.heroSub}>{t({ en: `${mine.length} creations · manage, earn, set Agent budget`, zh: `${mine.length} 个创作 · 管理 / 收益 / Agent 代付额度` })}</Text>
+          <View style={styles.heroBtn}><Text style={styles.heroBtnText}>{t({ en: 'Enter', zh: '进入' })}</Text></View>
+        </TouchableOpacity>
       ) : (
-        <View style={[styles.banner, styles.bannerInfo]}>
-          <Text style={styles.bannerText}>
-            {t({
-              en: '💡 Scan your first object to get a character, then bring it into Aeon — claim land, build, and let it live & work there.',
-              zh: '💡 先拍一个东西得到你的第一个角色,再把它带进永曜城 —— 圈地、建造,让它在城里生活和工作。',
-            })}
-          </Text>
+        <View style={styles.hero}>
+          <Text style={styles.heroEmoji}>✨</Text>
+          <Text style={styles.heroTitle}>{t({ en: 'Build something with AI', zh: '和 AI 一起造点什么' })}</Text>
+          <Text style={styles.heroSub}>{t({ en: 'Describe a place / game / shop — AI builds it', zh: '描述一个场所 / 游戏 / 店铺,AI 帮你造出来' })}</Text>
+          <TextInput
+            style={styles.seedInput}
+            placeholder={t({ en: 'e.g. a late-night pour-over cafe', zh: '例如:一家深夜手冲咖啡馆' })}
+            placeholderTextColor={c.textMuted}
+            value={seed}
+            onChangeText={setSeed}
+            onSubmitEditing={onCreate}
+            returnKeyType="go"
+          />
+          <TouchableOpacity style={styles.heroBtn} onPress={onCreate} testID="world-hub-create">
+            <Text style={styles.heroBtnText}>✨ {t({ en: 'Let AI generate', zh: '让 AI 生成' })}</Text>
+          </TouchableOpacity>
         </View>
       )}
 
-      {/* Create-digital-character section (R3.2 — moved from Home drawer) */}
-      <Text style={styles.sectionHeader}>
-        ✨ {t({ en: 'Create a digital character', zh: '创造数字角色' })}
-      </Text>
-      <View style={styles.creatorRow}>
-        <CTACard
-          emoji="✨"
-          title={t({ en: 'Text Pet', zh: '文字创生' })}
-          subtitle={t({ en: 'Describe it, AI builds it', zh: '描述它,AI 造出来' })}
-          onPress={onPetCreator}
-          testID="world-cta-text-pet"
-        />
-        <CTACard
-          emoji="📸"
-          title={t({ en: 'Photo → 3D Pet', zh: '拍照→3D' })}
-          subtitle={t({ en: '8-12 angles, ~90s', zh: '8-12 张照片,~90 秒' })}
-          onPress={onPhotoToPet}
-          testID="world-cta-photo-pet"
-        />
+      {/* 浏览入口:创作流 / 地图(+ 老用户的新建) */}
+      <View style={styles.browseRow}>
+        <TouchableOpacity style={styles.browseCard} onPress={() => navigation.navigate('CreationFeed')} testID="world-hub-feed">
+          <Text style={styles.browseEmoji}>🎬</Text>
+          <Text style={styles.browseLabel}>{t({ en: 'Feed', zh: '刷创作流' })}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.browseCard} onPress={() => navigation.navigate('UnifiedWorldMap')} testID="world-hub-map">
+          <Text style={styles.browseEmoji}>🗺️</Text>
+          <Text style={styles.browseLabel}>{t({ en: 'World Map', zh: '逛世界地图' })}</Text>
+        </TouchableOpacity>
+        {hasCreations ? (
+          <TouchableOpacity style={styles.browseCard} onPress={onCreate} testID="world-hub-create2">
+            <Text style={styles.browseEmoji}>✨</Text>
+            <Text style={styles.browseLabel}>{t({ en: 'Create', zh: '新建创作' })}</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.browseCard} onPress={() => navigation.navigate('MyWorld')} testID="world-hub-myworld2">
+            <Text style={styles.browseEmoji}>🗂️</Text>
+            <Text style={styles.browseLabel}>{t({ en: 'My World', zh: '我的世界' })}</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      {/* Bottom: marketplace entry (real browse/buy screen) */}
-      <TouchableOpacity
-        style={styles.marketplaceEntry}
-        onPress={() => navigation.navigate('WorldAssetMarketplace')}
-        testID="world-cta-marketplace"
-      >
-        <Text style={styles.marketplaceText}>
-          🛒 {t({ en: 'World Asset Marketplace', zh: '世界资产市场' })} →
-        </Text>
-      </TouchableOpacity>
+      {/* 我的创作(老用户) */}
+      {hasCreations ? (
+        <>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>🗂️ {t({ en: 'My Creations', zh: '我的创作' })}</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('MyWorld')}><Text style={styles.seeAll}>{t({ en: 'All', zh: '全部' })} →</Text></TouchableOpacity>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rosterRow}>
+            {mine.slice(0, 8).map((c) => (
+              <TouchableOpacity key={c.id} style={styles.rosterCard} onPress={() => navigation.navigate('CreationDetail', { creationId: c.id, title: c.title })}>
+                <View style={styles.rosterThumb}><Text style={styles.rosterEmoji}>{c.type === 'shop' ? '🛒' : c.type === 'game' ? '🎮' : '🏛️'}</Text></View>
+                <Text style={styles.rosterName} numberOfLines={1}>{c.title}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </>
+      ) : null}
+
+      {/* 热门创作推荐 */}
+      {hot.length > 0 ? (
+        <>
+          <Text style={styles.sectionTitle}>🔥 {t({ en: 'Trending', zh: '此刻热门' })}</Text>
+          {hot.map((item) => {
+            const playable = item.type === 'game' || item.type === 'drama' || item.canEnter;
+            const emoji = item.type === 'shop' ? '🛒' : item.type === 'game' ? '🎮' : item.type === 'drama' ? '🎭' : item.type === 'livestream' ? '🔴' : '🏛️';
+            const go = () =>
+              playable
+                ? navigation.navigate('CreationExperience', { creationId: item.id, type: item.type, title: item.title })
+                : navigation.navigate('CreationDetail', { creationId: item.id, title: item.title });
+            return (
+              <TouchableOpacity key={item.id} style={styles.hotRow} onPress={go}>
+                <Text style={styles.hotEmoji}>{emoji}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.hotTitle} numberOfLines={1}>{item.title}</Text>
+                  <Text style={styles.hotMeta} numberOfLines={1}>{item.creator.name ?? t({ en: 'creator', zh: '创作者' })} · 🔥 {item.metrics?.sales ?? 0}</Text>
+                </View>
+                <Text style={styles.hotArrow}>{playable ? '▶' : '›'}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </>
+      ) : loaded && !hasCreations ? (
+        <Text style={styles.dim}>{t({ en: 'Be the first to create in this world.', zh: '来当这个世界的第一个创作者。' })}</Text>
+      ) : null}
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bgPrimary },
+function makeStyles(c: Palette) { return StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bgPrimary },
   content: { padding: 16, paddingBottom: 80 },
   header: { marginBottom: 16 },
-  title: { fontSize: 24, fontWeight: '700', color: colors.textPrimary, marginBottom: 4 },
-  subtitle: { fontSize: 13, color: colors.textMuted },
-  bannerStack: { marginBottom: 16, gap: 8 },
-  banner: {
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  bannerInfo: {
-    backgroundColor: 'rgba(167,139,250,0.10)',
-    borderColor: 'rgba(167,139,250,0.30)',
-  },
-  bannerText: { color: colors.textPrimary, fontSize: 13 },
+  title: { fontSize: 24, fontWeight: '700', color: c.textPrimary, marginBottom: 4 },
+  subtitle: { fontSize: 13, color: c.textMuted },
 
-  ctaGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 24,
-  },
-  ctaCard: {
-    width: '48%',
-    backgroundColor: colors.bgCard,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    minHeight: 108,
-    justifyContent: 'flex-start',
-  },
-  ctaCardPressed: { opacity: 0.7 },
-  ctaEmoji: { fontSize: 28, marginBottom: 6 },
-  ctaTitle: { fontSize: 15, fontWeight: '600', color: colors.textPrimary, marginBottom: 2 },
-  ctaSubtitle: { fontSize: 11, color: colors.textMuted },
-
-  // HERO
-  hero: {
-    backgroundColor: 'rgba(99,102,241,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(99,102,241,0.35)',
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  // Aeon hero (primary World entry)
-  aeonHero: {
-    backgroundColor: 'rgba(99,102,241,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(99,102,241,0.4)',
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  // Secondary scan strip (row style)
-  scanStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bgCard,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-  },
-  scanStripEmoji: { fontSize: 30, marginRight: 12 },
-  scanStripTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary, marginBottom: 2 },
-  heroPressed: { opacity: 0.85 },
-  heroEmoji: { fontSize: 48, marginBottom: 8 },
-  heroTitle: { fontSize: 19, fontWeight: '800', color: colors.textPrimary, textAlign: 'center', marginBottom: 6 },
-  heroSub: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginBottom: 16, lineHeight: 19 },
-  heroBtn: { backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 32 },
+  hero: { backgroundColor: 'rgba(99,102,241,0.14)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)', borderRadius: 20, padding: 22, alignItems: 'center', marginBottom: 16 },
+  heroEmoji: { fontSize: 44, marginBottom: 8 },
+  heroTitle: { fontSize: 19, fontWeight: '800', color: c.textPrimary, textAlign: 'center', marginBottom: 6 },
+  heroSub: { fontSize: 13, color: c.textSecondary, textAlign: 'center', marginBottom: 14, lineHeight: 19 },
+  seedInput: { alignSelf: 'stretch', backgroundColor: c.bgPrimary, borderRadius: 12, borderWidth: 1, borderColor: c.border, color: c.textPrimary, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, marginBottom: 12 },
+  heroBtn: { backgroundColor: c.primary, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 32 },
   heroBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  heroHint: { fontSize: 11, color: colors.textMuted, marginTop: 10 },
 
-  // Roster
-  rosterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  seeAll: { fontSize: 13, color: colors.accent, fontWeight: '600' },
+  browseRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+  browseCard: { flex: 1, backgroundColor: c.bgCard, borderRadius: 14, paddingVertical: 18, alignItems: 'center', borderWidth: 1, borderColor: c.border },
+  browseEmoji: { fontSize: 26, marginBottom: 6 },
+  browseLabel: { fontSize: 13, fontWeight: '600', color: c.textPrimary },
 
-  // World feed entry
-  worldFeedEntry: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(52,211,153,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(52,211,153,0.30)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-  },
-  worldFeedEmoji: { fontSize: 32, marginRight: 12 },
-  aeonEntry: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(99,102,241,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(99,102,241,0.30)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-  },
-  worldFeedTextWrap: { flex: 1 },
-  worldFeedTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginBottom: 2 },
-  worldFeedSub: { fontSize: 12, color: colors.textMuted, lineHeight: 16 },
-  worldFeedArrow: { fontSize: 20, color: colors.accent, fontWeight: '700', marginLeft: 8 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  sectionTitle: { fontSize: 14, fontWeight: '700', color: c.textPrimary, marginBottom: 10, marginTop: 4 },
+  seeAll: { fontSize: 13, color: c.accent, fontWeight: '600' },
 
   rosterRow: { marginBottom: 16 },
   rosterCard: { width: 96, marginRight: 10, alignItems: 'center' },
-  rosterThumb: {
-    width: 96, height: 96, borderRadius: 14, backgroundColor: colors.bgCard,
-    borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: 6, overflow: 'hidden',
-  },
-  rosterThumbEmoji: { fontSize: 40 },
-  rosterThumbImg: { width: '100%', height: '100%' },
-  rosterName: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, maxWidth: 96 },
-  rosterMeta: { fontSize: 11, color: colors.textMuted },
-  actionRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+  rosterThumb: { width: 96, height: 96, borderRadius: 14, backgroundColor: c.bgCard, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  rosterEmoji: { fontSize: 40 },
+  rosterName: { fontSize: 13, fontWeight: '600', color: c.textPrimary, maxWidth: 96 },
 
-  sectionHeader: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: 10,
-    marginTop: 4,
-  },
-  creatorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
-
-  marketplaceEntry: {
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bgCard,
-    alignItems: 'center',
-  },
-  marketplaceText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
-
-  comingSoon: { padding: 24, alignItems: 'center', marginTop: 60 },
-  comingSoonEmoji: { fontSize: 56, marginBottom: 16 },
-  comingSoonTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, marginBottom: 12, textAlign: 'center' },
-  comingSoonBody: { fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 22, marginBottom: 24 },
-  waitlistBtn: {
-    backgroundColor: colors.accent,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 24,
-  },
-  waitlistBtnJoined: { backgroundColor: colors.bgSecondary, borderWidth: 1, borderColor: colors.accent },
-  waitlistBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
-});
+  hotRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.bgCard, borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: c.border },
+  hotEmoji: { fontSize: 24 },
+  hotTitle: { color: c.textPrimary, fontSize: 15, fontWeight: '700' },
+  hotMeta: { color: c.textMuted, fontSize: 12, marginTop: 4 },
+  hotArrow: { color: c.textMuted, fontSize: 22 },
+  dim: { color: c.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: 20 },
+}); }

@@ -118,6 +118,36 @@ export function clearConversation(): void {
   notify();
 }
 
+/**
+ * Append messages to the live snapshot (dedup by id) and notify. Used by the
+ * ConversationBubble's in-bubble realtime VOICE so those turns land in the
+ * shared conversation — the bubble shows them, and AgentChatScreen merges any
+ * it doesn't already have on focus (so Summon sees pet-ball voice chats too).
+ * No-op for ids already present.
+ */
+export function appendConversationMessages(
+  msgs: ConversationMessageSnapshot[],
+  agentName?: string | null,
+): void {
+  if (!msgs?.length) return;
+  const have = new Set(_snapshot.messages.map((m) => m.id));
+  const additions = msgs.filter((m) => m.id && !have.has(m.id));
+  if (additions.length === 0) {
+    if (agentName && agentName !== _snapshot.agentName) {
+      _snapshot = { ..._snapshot, agentName, version: _snapshot.version + 1 };
+      notify();
+    }
+    return;
+  }
+  _snapshot = {
+    ..._snapshot,
+    agentName: agentName ?? _snapshot.agentName,
+    messages: [..._snapshot.messages, ...additions],
+    version: _snapshot.version + 1,
+  };
+  notify();
+}
+
 /** Subscribe to snapshot changes. Returns an unsubscribe fn. */
 export function subscribeConversation(listener: Listener): () => void {
   _listeners.add(listener);

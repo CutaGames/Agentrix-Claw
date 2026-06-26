@@ -15,6 +15,7 @@ import { colors } from '../theme/colors';
 import { personalApi } from '../services/api';
 import { Card } from '../components/Card';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { themedStyles } from '../theme/useTheme';
 
 type RootStackParamList = {
   StrategyDetail: {
@@ -290,7 +291,7 @@ export default function StrategyDetailScreen({ route, navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -506,4 +507,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-});
+}));

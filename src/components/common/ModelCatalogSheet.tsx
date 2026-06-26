@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
+import { themedStyles } from '../../theme/useTheme';
 
 export interface ModelCatalogEntry {
   id: string;
@@ -213,7 +214,7 @@ export function ModelCatalogSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000099' },
   sheet: {
     backgroundColor: colors.bgCard,
@@ -273,6 +274,6 @@ const styles = StyleSheet.create({
   badgeText: { color: colors.accent, fontSize: 10, fontWeight: '700' },
   rowCheck: { color: colors.accent, fontSize: 18, fontWeight: '700' },
   empty: { textAlign: 'center', color: colors.textMuted, fontSize: 13, paddingVertical: 40, paddingHorizontal: 32, lineHeight: 20 },
-});
+}));
 
 export default ModelCatalogSheet;

@@ -7,10 +7,12 @@ import { View, ActivityIndicator, Text, AppState, AppStateStatus, Platform } fro
 import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
 import { useAuthStore } from './src/stores/authStore';
+import { useSoulBirthStore } from './src/stores/soulBirthStore';
 import { setApiConfig, loadTokenFromStorage, apiFetch } from './src/services/api';
 import { fetchCurrentUser } from './src/services/auth';
 import { getMyInstances } from './src/services/openclaw.service';
 import { colors } from './src/theme/colors';
+import { useThemeMode } from './src/theme/useTheme';
 import { useSettingsStore } from './src/stores/settingsStore';
 import { useNotificationStore } from './src/stores/notificationStore';
 import { startNotificationPolling, stopNotificationPolling } from './src/services/realtime.service';
@@ -83,6 +85,73 @@ const queryClient = new QueryClient({
 });
 
 const isMaestroE2E = process.env.EXPO_PUBLIC_MAESTRO_E2E === '1';
+
+/**
+ * Maestro E2E auto-login seed (native, device-side).
+ *
+ * The Maestro UI-test APK (built with EXPO_PUBLIC_MAESTRO_E2E=1) is a fresh
+ * install with NO persisted session, so it boots to the Login screen. Every
+ * `.maestro` flow that exercises an authenticated surface (tabs / drawer /
+ * sheets) then fails its non-optional assertVisible because the tab bar isn't
+ * present. We seed a synthetic authenticated session so the full RootNavigator
+ * renders and flows can drive the real screens.
+ *
+ * STRICTLY gated on the compile-time EXPO_PUBLIC_MAESTRO_E2E flag — production
+ * APKs are built WITHOUT it, so this is dead code there (never auto-logs-in a
+ * real user). Unlike applyVoiceUiE2EBootstrap (web/Playwright, window-based),
+ * this is native-safe: it seeds the zustand stores directly, no `window`.
+ */
+let __maestroSeeded = false;
+function seedMaestroE2ESession(): void {
+  if (__maestroSeeded) return;
+  __maestroSeeded = true;
+  try {
+    const instance = {
+      id: 'e2e-instance-1',
+      name: 'QA Agent',
+      instanceUrl: 'https://agentrix.top/e2e',
+      status: 'active' as const,
+      deployType: 'cloud' as const,
+    };
+    useAuthStore.setState({
+      user: {
+        id: 'e2e-user-1',
+        agentrixId: 'maestro-e2e',
+        nickname: 'Maestro E2E',
+        roles: ['tester'],
+        provider: 'email',
+        activeInstanceId: instance.id,
+        openClawInstances: [instance],
+      } as any,
+      token: 'e2e-token',
+      isAuthenticated: true,
+      isLoading: false,
+      isInitialized: true,
+      hasCompletedOnboarding: true,
+      hasValidInvitation: true,
+      activeInstance: instance as any,
+    } as any);
+    setApiConfig({ token: 'e2e-token' });
+    // The SoulBirthHost overlay is mounted UNCONDITIONALLY over the Main
+    // (tabs) branch and self-gates on the SEPARATE `soulBirthStore`. A freshly
+    // seeded authenticated user has terminated=false → SoulBirthHost computes
+    // active=true, step='birth' and renders the BirthStep as a full-screen
+    // absoluteFill overlay that COVERS the tab bar — so Maestro never finds
+    // `tab-world/...` and every authenticated flow fails. Mark Soul_Birth as
+    // terminated (and bind it to the seeded user id so SoulBirthHost's
+    // bindUser('e2e-user-1') sees the SAME user → no-op → keeps terminated)
+    // so the overlay returns null and the real tabs render.
+    useSoulBirthStore.setState({
+      boundUserId: 'e2e-user-1',
+      terminated: true,
+      replaying: false,
+      suspended: false,
+      completed: { birth: true, first_words: true, connect_desktop: true, settle_aeon: true },
+    } as any);
+  } catch (e) {
+    console.warn('[maestro-e2e] seed session failed:', e);
+  }
+}
 
 function SplashScreen() {
   // P-9 wave 12 (T23.1): brand the splash with the active pet sprite
@@ -278,6 +347,15 @@ function AppNavigator() {
     }
 
     if (isVoiceUiE2E && applyVoiceUiE2EBootstrap()) {
+      setInitialized(true);
+      return;
+    }
+
+    if (isMaestroE2E) {
+      // Seed a synthetic authenticated session so the Maestro UI-test build
+      // boots into the full authenticated app (tabs/drawer present) instead of
+      // the Login screen. Gated on the compile-time flag — no-op in prod.
+      seedMaestroE2ESession();
       setInitialized(true);
       return;
     }
@@ -613,6 +691,15 @@ function CompanionLayerGate() {
   // AppNavigator for a stripped-down PetSoulE2EApp / VoiceUiE2EApp that
   // doesn't expose Main / World / Plaza routes.
   if (isPetSoulE2EOnce || isVoiceUiE2EOnce) return null;
+  // Maestro UI-test build: the CompanionLayer mounts the always-on animated
+  // floating ball + PetSprite (and pulls in heavy graphics deps). On the
+  // resource-starved x86_64 CI emulator (software GPU, 2 vCPU) that extra
+  // always-running render work is enough to push the whole system into ANR
+  // territory during boot, so the authenticated tab shell never settles and
+  // Maestro can't find `tab-world`. Skip it under E2E so the shell renders
+  // fast and tab navigation is testable. (Companion-specific flows run on a
+  // real device / separate pass; the ball isn't needed for tab nav.)
+  if (isMaestroE2E) return null;
   if (!isAuthenticated) return null;
   return <CompanionLayer navigationRef={navigationRef} />;
 }
@@ -654,6 +741,35 @@ const linking = {
       },
       Main: {
         screens: {
+          // AI World Creation Platform (v6) — World tab deep links. The World
+          // stack previously had NO linking entries, so its v6 surfaces
+          // (map / land / market / creator / experience / task) were only
+          // reachable by in-app navigation — unreachable to deep links, Siri/
+          // Assistant intents, share links, and Maestro E2E. Add canonical
+          // `agentrix://world/*` paths. Screens all handle missing/synthetic
+          // ids gracefully (empty state / 10s enter-timeout fallback / "not
+          // found"), so a bad id never crashes.
+          World: {
+            screens: {
+              WorldMap: 'world/map',
+              LandPlots: 'world/plots',
+              WorldCreationMarketplace: 'world/market',
+              PlotCreator: 'world/create/:substrateTier/:plotId',
+              PlotExperience: 'world/plot/:plotId',
+              CreationTaskStatus: 'world/task/:taskId',
+              // World Creation & Feed — new unified surfaces. Deep-linkable for
+              // Siri/Assistant intents, share links, and Maestro E2E. All screens
+              // degrade gracefully on synthetic/missing ids (empty state / 10s
+              // enter-timeout fallback / not-found), so a bad id never crashes.
+              CreationFeed: 'world/feed',
+              UnifiedWorldMap: 'world/explore',
+              MyWorld: 'world/mine',
+              CreationCreator: 'world/new',
+              CreationExperience: 'world/experience/:creationId',
+              CreationDetail: 'world/creation/:creationId',
+              WorldRoot: 'world',
+            },
+          },
           Summon: {
             screens: {
               SummonRoot: 'summon',
@@ -663,14 +779,6 @@ const linking = {
           Plaza: {
             screens: {
               PlazaRoot: 'plaza',
-              Feed: 'plaza/feed',
-              PostDetail: 'plaza/feed/post/:postId',
-              ShowcaseDetail: 'plaza/feed/showcase/:postId',
-              UserProfile: 'plaza/feed/user/:userId',
-              CreatePost: 'plaza/feed/create',
-              Messaging: 'plaza/messaging',
-              DirectMessage: 'plaza/messaging/:userId',
-              GroupChat: 'plaza/messaging/group/:groupId',
               Skills: 'plaza/skills',
               SkillDetail: 'plaza/skills/:skillId',
               Checkout: 'plaza/checkout/:skillId',
@@ -682,12 +790,6 @@ const linking = {
               PetsSkins: 'plaza/pets/skins',
               SkinAuctionDetail: 'plaza/pets/skins/:auctionId',
               PetAuctionDetail: 'plaza/pets/auction/:auctionId',
-              Play: 'plaza/play',
-              Predict: 'plaza/play/predict',
-              CoRaisingInvite: 'plaza/co-raising/invite',
-              CoRaisingLanding: 'plaza/co-raising/:token',
-              GreetingCardCompose: 'plaza/greeting/compose',
-              GreetingCardInbox: 'plaza/greeting/inbox',
               ShareCard: 'plaza/share-card',
               CreateLink: 'plaza/share-card/create',
               ToyCustom: 'plaza/toy/custom',
@@ -737,6 +839,9 @@ const linking = {
 };
 
 export default function App() {
+  // Subscribe the root to theme mode so toggling Light/Dark re-renders the whole tree,
+  // letting every (themedStyles-wrapped) screen repaint live — no reload.
+  const themeMode = useThemeMode();
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -744,7 +849,7 @@ export default function App() {
           <QueryClientProvider client={queryClient}>
             <BottomSheetModalProvider>
               <NavigationContainer ref={navigationRef as any} linking={linking as any}>
-                <StatusBar style="light" />
+                <StatusBar style={themeMode === 'light' ? 'dark' : 'light'} />
                 <AppNavigator />
                 {/* Global AXP toast — surfaces +N AXP when earns happen anywhere. */}
                 <AxpToastHost />

@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { referralApi } from '../services/referral.api';
+import { themedStyles } from '../theme/useTheme';
 
 interface Props {
   route: { params: { skillId: string; skillName: string; skillPrice: number; skillPriceUnit: string } };
@@ -138,7 +139,7 @@ export function CreateLinkScreen({ route, navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -290,4 +291,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 22,
   },
-});
+}));

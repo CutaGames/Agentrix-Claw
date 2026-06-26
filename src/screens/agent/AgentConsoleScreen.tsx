@@ -19,6 +19,7 @@ import { switchInstanceModel } from '../../services/openclaw.service';
 import { useI18n } from '../../stores/i18nStore';
 import { fetchOperationsContinuity } from '../../services/operations';
 import { taskMarketplaceApi } from '../../services/taskMarketplace.api';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'AgentConsole'>;
 
@@ -590,7 +591,7 @@ export function AgentConsoleScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 40, gap: 12 },
   empty: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
@@ -757,4 +758,4 @@ const styles = StyleSheet.create({
   permSummaryLabel: { flex: 1, fontSize: 14, color: colors.textPrimary },
   permSummaryBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 6 },
   permSummaryBadgeText: { fontSize: 11, fontWeight: '700' },
-});
+}));

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, ActivityIndicator } from 'react-nativ
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../services/api';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 const STATUS_COLOR: Record<string, string> = {
   completed: colors.success,
@@ -48,7 +49,7 @@ export function MyOrdersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   list: { padding: 16, gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgCard, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: colors.border },
@@ -58,4 +59,4 @@ const styles = StyleSheet.create({
   orderStatus: { fontSize: 12, fontWeight: '600', textTransform: 'capitalize' },
   orderAmount: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
   empty: { textAlign: 'center', color: colors.textMuted, fontSize: 14, marginTop: 40 },
-});
+}));

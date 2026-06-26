@@ -6,6 +6,7 @@ import {
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { apiFetch } from '../../services/api';
+import { themedStyles } from '../../theme/useTheme';
 
 // ─── Types (mirrors backend catalog) ────────────────────────────
 
@@ -687,7 +688,7 @@ export function ApiKeysScreen() {
 
 // ─── Styles ─────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16 },
   title: { fontSize: 22, fontWeight: '700', color: colors.textPrimary, marginBottom: 6 },
@@ -806,4 +807,4 @@ const styles = StyleSheet.create({
   },
   tokenGuideTitle: { fontSize: 13, fontWeight: '700', color: colors.textPrimary, marginBottom: 8 },
   tokenGuideStep: { fontSize: 12, color: colors.textSecondary, lineHeight: 20, marginBottom: 4 },
-});
+}));

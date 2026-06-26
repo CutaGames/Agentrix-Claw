@@ -11,6 +11,7 @@ import { useI18n } from '../../stores/i18nStore';
 import { loginWithGoogle, loginWithApple, loginWithDiscord, loginWithEmail, registerWithEmail } from '../../services/auth';
 import { loginWithOpenClaw, loginAsGuest } from '../../services/auth';
 import type { AuthStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 const { width } = Dimensions.get('window');
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
@@ -359,7 +360,7 @@ export function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000000' },
   content: { padding: 24, paddingTop: 100, paddingBottom: 40 },
   header: { alignItems: 'center', marginBottom: 48 },
@@ -476,5 +477,5 @@ const styles = StyleSheet.create({
   openclawEntryArrow: { fontSize: 20, color: '#ff6b6b', fontWeight: '500' },
 
   footer: { marginTop: 40, textAlign: 'center', fontSize: 12, color: colors.textMuted, lineHeight: 20 },
-});
+}));
 

@@ -2,6 +2,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 type MarketCategory = 'resources' | 'skills' | 'tasks';
 
@@ -40,7 +41,7 @@ export function CategoryTabs({ active, onChange }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -83,4 +84,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: 1,
   },
-});
+}));

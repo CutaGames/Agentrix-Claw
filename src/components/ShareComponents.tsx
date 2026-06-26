@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { socialShareService } from '../services/socialShare';
+import { themedStyles } from '../theme/useTheme';
 
 // QRCode — loaded lazily so the app doesn't crash if SVG isn't linked
 let QRCode: any = null;
@@ -238,7 +239,7 @@ export function QuickShare({ type, data, children, buttonStyle }: QuickShareProp
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -339,4 +340,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-});
+}));

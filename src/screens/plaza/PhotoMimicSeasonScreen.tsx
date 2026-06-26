@@ -32,6 +32,7 @@ import {
   type PhotoMimicSeason,
   type PhotoMimicEntry,
 } from '../../services/photoMimic.api';
+import { themedStyles } from '../../theme/useTheme';
 
 export function PhotoMimicSeasonScreen() {
   const { t } = useI18n();
@@ -259,7 +260,7 @@ function SubmitModal({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   content: { padding: 16, paddingBottom: 40 },
   center: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center', padding: 24 },
@@ -297,4 +298,4 @@ const styles = StyleSheet.create({
   modalInput: { backgroundColor: colors.bgPrimary, borderRadius: 10, padding: 12, fontSize: 14, color: colors.textPrimary, borderWidth: 1, borderColor: colors.border, marginBottom: 10 },
   modalSubmitBtn: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
   modalSubmitText: { color: '#0B1220', fontSize: 15, fontWeight: '800' },
-});
+}));

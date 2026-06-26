@@ -15,6 +15,7 @@ import { apiFetch } from '../../services/api';
 import { colors } from '../../theme/colors';
 import type { AgentStackParamList } from '../../navigation/types';
 import { useI18n } from '../../stores/i18nStore';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<AgentStackParamList, 'WorkflowList'>;
 
@@ -237,7 +238,7 @@ export function WorkflowListScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -281,4 +282,4 @@ const styles = StyleSheet.create({
   runBtn: { borderWidth: 1, borderColor: colors.accent + '44' },
   deleteBtn: {},
   deleteBtnText: { fontSize: 18, color: '#ef4444', fontWeight: '700' },
-});
+}));

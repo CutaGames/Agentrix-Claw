@@ -9,6 +9,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { handleOAuthCallback } from '../../services/auth';
 import { navRefReset } from '../../navigation/navigationRef';
 import type { AuthStackParamList } from '../../navigation/types';
+import { themedStyles } from '../../theme/useTheme';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'AuthCallback'>;
 type RouteT = RouteProp<AuthStackParamList, 'AuthCallback'>;
@@ -129,9 +130,9 @@ function extractParam(url: string, key: string): string | null {
   }
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary, alignItems: 'center', justifyContent: 'center', gap: 16 },
   message: { fontSize: 16, color: colors.textPrimary, textAlign: 'center', paddingHorizontal: 32 },
   successIcon: { fontSize: 48 },
   errorIcon: { fontSize: 48 },
-});
+}));

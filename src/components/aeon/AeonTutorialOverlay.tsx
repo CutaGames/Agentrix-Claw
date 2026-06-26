@@ -9,6 +9,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { colors } from '../../theme/colors';
+import { themedStyles } from '../../theme/useTheme';
 
 export interface AeonTutorialStep {
   icon: string;
@@ -120,7 +121,7 @@ export function AeonTutorialOverlay({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -147,4 +148,4 @@ const styles = StyleSheet.create({
   ctaText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   dismiss: { paddingVertical: 10, alignItems: 'center', marginTop: 4 },
   dismissText: { color: colors.textMuted, fontSize: 13 },
-});
+}));
