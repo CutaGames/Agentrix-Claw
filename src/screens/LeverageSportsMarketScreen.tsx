@@ -17,6 +17,8 @@ import {
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { useI18n } from '../stores/i18nStore';
+import { useNavigation } from '@react-navigation/native';
+import { WORLDCUP_COVER_IMG } from '../constants/posterAssets';
 import {
   lsmApi,
   LsmMarketView,
@@ -57,6 +59,43 @@ export default function LeverageSportsMarketScreen() {
   const { language } = useI18n();
   const zh = language === 'zh';
   const tr = (en: string, z: string) => (zh ? z : en);
+  const navigation = useNavigation<any>();
+
+  // 分享世界杯主题海报（每场都可分享，含图片 + 赔率 + 二维码深链）。
+  const onShareMatch = useCallback(
+    (m: LsmMarketView) => {
+      const lbls = [m.homeTeam, m.awayTeam, zh ? '平局' : 'Draw'];
+      const oddsStr = m.odds
+        .map((o) => `${lbls[o.outcomeIdx]} ${o.fairOdds.toFixed(2)}`)
+        .join('  ·  ');
+      const score =
+        m.homeScore != null && m.awayScore != null ? `${m.homeScore} : ${m.awayScore}` : '';
+      const statusZh =
+        m.status === 'live' ? '滚球进行中' : m.status === 'pre' ? '即将开赛' : m.status === 'final' ? '完场' : '';
+      try {
+        navigation.navigate('ShareCard', {
+          shareUrl: `https://agentrix.top/sports?m=${encodeURIComponent(m.id)}`,
+          title: `${m.homeTeam} vs ${m.awayTeam}`,
+          subtitle: m.league || (zh ? '世界杯滚球预测' : 'World Cup Live Predictions'),
+          headerEmoji: '🏆',
+          imageUrl: WORLDCUP_COVER_IMG,
+          categoryLabel: zh ? '世界杯' : 'World Cup',
+          priceLabel: score || undefined,
+          statsLabel: oddsStr,
+          description: zh
+            ? `${statusZh}${score ? '  比分 ' + score : ''} · 在 Agentrix 用 AXP 杠杆预测，扫码即玩。`
+            : `${m.status.toUpperCase()}${score ? '  ' + score : ''} · Leverage-predict with AXP on Agentrix. Scan to play.`,
+          tags: ['WorldCup', 'Agentrix', m.sport || 'soccer'],
+          ctaLabel: zh ? '扫码下注' : 'Scan to predict',
+          accentFrom: '#7c3aed',
+          accentTo: '#1d4ed8',
+        });
+      } catch {
+        /* navigation unavailable */
+      }
+    },
+    [navigation, zh],
+  );
 
   const [tab, setTab] = useState<Tab>('markets');
   const [markets, setMarkets] = useState<LsmMarketView[]>([]);
@@ -70,6 +109,9 @@ export default function LeverageSportsMarketScreen() {
   const [ticketMarket, setTicketMarket] = useState<LsmMarketView | null>(null);
   const [ticketOutcome, setTicketOutcome] = useState(0);
   const [cashingOutId, setCashingOutId] = useState<string | null>(null);
+  // 持仓详情（点击单子打开）+ 订单关联盘口（展示队名/赔率）
+  const [detailOrder, setDetailOrder] = useState<LsmOrder | null>(null);
+  const [orderMarkets, setOrderMarkets] = useState<Record<string, LsmMarketView>>({});
   // 金额输入弹窗（跨平台，替代仅 iOS 的 Alert.prompt）
   const [amountPrompt, setAmountPrompt] = useState<{
     title: string;
@@ -96,8 +138,21 @@ export default function LeverageSportsMarketScreen() {
         ]);
         const seen = new Set(live.map((m) => m.id));
         setMarkets([...live, ...recent.filter((m) => !seen.has(m.id))]);
-      } else if (tab === 'orders') setOrders(await lsmApi.myOrders());
-      else {
+      } else if (tab === 'orders') {
+        const list = await lsmApi.myOrders();
+        setOrders(list);
+        // 拉取订单关联盘口（队名/联赛/赔率），用于持仓卡与详情的专业信息展示
+        const ids = Array.from(new Set(list.map((o) => o.marketId)));
+        const missing = ids.filter((id) => !orderMarkets[id]);
+        if (missing.length) {
+          const fetched = await Promise.all(
+            missing.map((id) => lsmApi.getMarket(id).catch(() => null)),
+          );
+          const map: Record<string, LsmMarketView> = {};
+          fetched.forEach((m) => { if (m) map[m.id] = m; });
+          if (Object.keys(map).length) setOrderMarkets((prev) => ({ ...prev, ...map }));
+        }
+      } else {
         const [vs, ps] = await Promise.all([
           lsmApi.listVaults(),
           lsmApi.myPositions().catch(() => [] as LsmVaultPosition[]),
@@ -267,7 +322,7 @@ export default function LeverageSportsMarketScreen() {
           contentContainerStyle={styles.list}
           stickySectionHeadersEnabled={false}
           ListHeaderComponent={
-            <WorldCupHero market={pickFeaturedMarket(markets)} zh={zh} onPick={openTicket} />
+            <WorldCupHero market={pickFeaturedMarket(markets)} zh={zh} onPick={openTicket} onShare={onShareMatch} />
           }
           ListEmptyComponent={
             <Empty
@@ -279,7 +334,7 @@ export default function LeverageSportsMarketScreen() {
             <Text style={styles.sectionHeader}>{section.title}</Text>
           )}
           renderItem={({ item }) => (
-            <MarketCard market={item} zh={zh} onPick={openTicket} />
+            <MarketCard market={item} zh={zh} onPick={openTicket} onShare={onShareMatch} />
           )}
         />
       ) : tab === 'orders' ? (
@@ -292,8 +347,11 @@ export default function LeverageSportsMarketScreen() {
           renderItem={({ item }) => (
             <OrderCard
               order={item}
+              market={orderMarkets[item.marketId] || null}
+              zh={zh}
               tr={tr}
               onCashOut={handleCashOut}
+              onOpen={() => setDetailOrder(item)}
               cashingOut={cashingOutId === item.id}
             />
           )}
@@ -355,6 +413,16 @@ export default function LeverageSportsMarketScreen() {
       />
 
       <AmountPromptModal prompt={amountPrompt} tr={tr} onClose={() => setAmountPrompt(null)} />
+
+      <PositionDetailSheet
+        order={detailOrder}
+        market={detailOrder ? orderMarkets[detailOrder.marketId] || null : null}
+        zh={zh}
+        tr={tr}
+        onClose={() => setDetailOrder(null)}
+        onCashOut={(o) => { setDetailOrder(null); handleCashOut(o); }}
+        cashingOut={!!detailOrder && cashingOutId === detailOrder.id}
+      />
     </View>
   );
 }
@@ -388,10 +456,12 @@ function MarketCard({
   market,
   zh,
   onPick,
+  onShare,
 }: {
   market: LsmMarketView;
   zh: boolean;
   onPick: (m: LsmMarketView, idx: number) => void;
+  onShare?: (m: LsmMarketView) => void;
 }) {
   const labels = [market.homeTeam, market.awayTeam, zh ? '平局' : 'Draw'];
   return (
@@ -400,7 +470,19 @@ function MarketCard({
         <Text style={styles.matchText} numberOfLines={1}>
           {market.homeTeam} vs {market.awayTeam}
         </Text>
-        <StatusBadge status={market.status} stale={market.stale} zh={zh} />
+        <View style={styles.headRight}>
+          <StatusBadge status={market.status} stale={market.stale} zh={zh} />
+          {onShare && (
+            <TouchableOpacity
+              style={styles.shareIconBtn}
+              onPress={() => onShare(market)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              testID={`lsm-share-${market.id}`}
+            >
+              <Text style={styles.shareIconText}>📤</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
       <Text style={styles.matchMeta}>{matchMeta(market, zh)}</Text>
       <View style={styles.oddsBtnRow}>
@@ -415,11 +497,18 @@ function MarketCard({
               {labels[o.outcomeIdx]}
             </Text>
             <Text style={styles.oddsBtnVal}>{o.fairOdds.toFixed(2)}</Text>
+            <Text style={styles.oddsImplied}>{impliedPct(o.fairOdds)}</Text>
           </TouchableOpacity>
         ))}
       </View>
     </View>
   );
+}
+
+/** 隐含概率（1/赔率），下注决策的专业参考。 */
+function impliedPct(odds: number): string {
+  if (!odds || odds <= 0) return '';
+  return `${Math.round((1 / odds) * 100)}%`;
 }
 
 function StatusBadge({ status, stale, zh }: { status: string; stale: boolean; zh: boolean }) {
@@ -438,15 +527,28 @@ function StatusBadge({ status, stale, zh }: { status: string; stale: boolean; zh
   );
 }
 
+function outcomeName(market: LsmMarketView | null, idx: number, zh: boolean): string {
+  if (!market) return zh ? `选项 ${idx + 1}` : `Outcome ${idx + 1}`;
+  if (idx === 0) return market.homeTeam;
+  if (idx === 1) return market.awayTeam;
+  return zh ? '平局' : 'Draw';
+}
+
 function OrderCard({
   order,
+  market,
+  zh,
   tr,
   onCashOut,
+  onOpen,
   cashingOut,
 }: {
   order: LsmOrder;
+  market: LsmMarketView | null;
+  zh: boolean;
   tr: (e: string, z: string) => string;
   onCashOut: (o: LsmOrder) => void;
+  onOpen: () => void;
   cashingOut: boolean;
 }) {
   const statusColor: Record<string, string> = {
@@ -456,29 +558,34 @@ function OrderCard({
     refunded: '#6b7280',
     cashed_out: '#6b7280',
   };
+  const statusZh: Record<string, string> = {
+    open: '持仓中', won: '已赢', lost: '已输', refunded: '已退款', cashed_out: '已平仓',
+  };
   const isOpen = order.status === 'open';
   const canCashOut = isOpen && order.cashoutValue != null;
   const cashoutPnl = order.cashoutValue != null ? order.cashoutValue - order.stake : 0;
+  const title = market ? `${market.homeTeam} vs ${market.awayTeam}` : tr('Match', '比赛');
   return (
-    <View style={styles.card}>
+    <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={onOpen} testID={`lsm-order-${order.id}`}>
       <View style={styles.cardHead}>
-        <Text style={styles.matchText}>
-          {tr('Stake', '保证金')} {order.stake} × {order.leverage}x @ {order.entryOdds.toFixed(2)}
-        </Text>
+        <Text style={styles.matchText} numberOfLines={1}>{title}</Text>
         <View style={[styles.badge, { backgroundColor: statusColor[order.status] || '#6b7280' }]}>
-          <Text style={styles.badgeText}>{order.status.toUpperCase()}</Text>
+          <Text style={styles.badgeText}>{zh ? (statusZh[order.status] || order.status) : order.status.toUpperCase()}</Text>
         </View>
       </View>
+      <Text style={styles.orderSideText}>
+        {tr('Backing', '看好')}: <Text style={styles.orderSideStrong}>{outcomeName(market, order.outcomeIdx, zh)}</Text>
+        {'   @ '}{order.entryOdds.toFixed(2)}（{impliedPct(order.entryOdds)}）
+      </Text>
       <View style={styles.orderMeta}>
         <Text style={styles.metaText}>
-          {tr('Notional', '名义')}: {order.notional} AXP
+          {tr('Stake', '保证金')} {order.stake} × {order.leverage}x · {tr('Notional', '名义')} {order.notional}
         </Text>
         <Text style={[styles.metaText, { color: order.closePnl >= 0 ? '#16a34a' : '#dc2626' }]}>
-          PnL: {order.closePnl >= 0 ? '+' : ''}{order.closePnl} AXP
+          PnL: {order.closePnl >= 0 ? '+' : ''}{order.closePnl}
         </Text>
       </View>
 
-      {/* 未结订单：实时可兑现值 + 平仓 */}
       {isOpen && (
         <>
           <View style={styles.orderMeta}>
@@ -491,20 +598,108 @@ function OrderCard({
               <Text style={styles.metaText}>{tr('Unavailable', '暂不可平仓')}</Text>
             )}
           </View>
-          <TouchableOpacity
-            style={[styles.cashoutBtn, (!canCashOut || cashingOut) && styles.oddsBtnDisabled]}
-            onPress={() => onCashOut(order)}
-            disabled={!canCashOut || cashingOut}
-            testID={`lsm-cashout-${order.id}`}
-          >
-            {cashingOut ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.cashoutBtnText}>{tr('Cash Out', '平仓')}</Text>
-            )}
-          </TouchableOpacity>
+          <View style={styles.orderActionRow}>
+            <Text style={styles.tapHint}>{tr('Tap for details ›', '点击查看详情 ›')}</Text>
+            <TouchableOpacity
+              style={[styles.cashoutBtnSm, (!canCashOut || cashingOut) && styles.oddsBtnDisabled]}
+              onPress={() => onCashOut(order)}
+              disabled={!canCashOut || cashingOut}
+              testID={`lsm-cashout-${order.id}`}
+            >
+              {cashingOut ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.cashoutBtnText}>{tr('Cash Out', '平仓')}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </>
       )}
+      {!isOpen && <Text style={styles.tapHint}>{tr('Tap for details ›', '点击查看详情 ›')}</Text>}
+    </TouchableOpacity>
+  );
+}
+
+/** 持仓详情底部抽屉（点击单子打开）：完整赛事/方向/赔率/敞口/盈亏 + 平仓。 */
+function PositionDetailSheet({
+  order,
+  market,
+  zh,
+  tr,
+  onClose,
+  onCashOut,
+  cashingOut,
+}: {
+  order: LsmOrder | null;
+  market: LsmMarketView | null;
+  zh: boolean;
+  tr: (e: string, z: string) => string;
+  onClose: () => void;
+  onCashOut: (o: LsmOrder) => void;
+  cashingOut: boolean;
+}) {
+  if (!order) return null;
+  const isOpen = order.status === 'open';
+  const canCashOut = isOpen && order.cashoutValue != null;
+  const cashoutPnl = order.cashoutValue != null ? order.cashoutValue - order.stake : 0;
+  const liveOdds = market?.odds?.find((o) => o.outcomeIdx === order.outcomeIdx)?.fairOdds ?? null;
+  const created = new Date(order.createdAt).toLocaleString(zh ? 'zh-CN' : 'en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
+        <View style={styles.sheet}>
+          <View style={styles.handle} />
+          <ScrollView keyboardShouldPersistTaps="handled">
+            <Text style={styles.title}>{market ? `${market.homeTeam} vs ${market.awayTeam}` : tr('Position', '持仓详情')}</Text>
+            <Text style={styles.subtitle}>
+              {market?.league ? market.league + ' · ' : ''}{tr('Backing', '看好')} {outcomeName(market, order.outcomeIdx, zh)}
+            </Text>
+
+            <View style={styles.detailBox}>
+              <DetailRow label={tr('Status', '状态')} value={zh ? order.status : order.status.toUpperCase()} />
+              <DetailRow label={tr('Entry odds', '入场赔率')} value={`${order.entryOdds.toFixed(2)}（${impliedPct(order.entryOdds)}）`} />
+              {liveOdds != null && <DetailRow label={tr('Current odds', '当前赔率')} value={`${liveOdds.toFixed(2)}（${impliedPct(liveOdds)}）`} />}
+              <DetailRow label={tr('Stake (margin)', '保证金')} value={`${order.stake} AXP`} />
+              <DetailRow label={tr('Leverage', '杠杆')} value={`${order.leverage}x`} />
+              <DetailRow label={tr('Notional', '名义敞口')} value={`${order.notional} AXP`} />
+              <DetailRow label={tr('Max profit', '最大盈利')} value={`+${order.maxProfit} AXP`} color="#16a34a" />
+              {isOpen && order.cashoutValue != null && (
+                <DetailRow label={tr('Cash-out value', '当前可兑现')} value={`${order.cashoutValue} AXP（${cashoutPnl >= 0 ? '+' : ''}${cashoutPnl}）`} color={cashoutPnl >= 0 ? '#16a34a' : '#dc2626'} />
+              )}
+              {!isOpen && <DetailRow label={tr('Realized PnL', '已结盈亏')} value={`${order.closePnl >= 0 ? '+' : ''}${order.closePnl} AXP`} color={order.closePnl >= 0 ? '#16a34a' : '#dc2626'} />}
+              {!isOpen && <DetailRow label={tr('Payout', '派彩')} value={`${order.payout} AXP`} />}
+              <DetailRow label={tr('Opened', '开仓时间')} value={created} />
+            </View>
+
+            {isOpen && (
+              <TouchableOpacity
+                style={[styles.placeBtn, (!canCashOut || cashingOut) && styles.placeBtnDisabled]}
+                onPress={() => onCashOut(order)}
+                disabled={!canCashOut || cashingOut}
+              >
+                {cashingOut ? <ActivityIndicator color="#fff" /> : (
+                  <Text style={styles.placeBtnText}>
+                    {canCashOut ? tr('Cash Out Now', '立即平仓') : tr('Cash out unavailable', '暂不可平仓')}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
+            <Text style={styles.disclaimer}>
+              {tr('AXP is non-withdrawable, platform-only. Not investment advice.', 'AXP 不可提现、仅站内用途。非投资建议。')}
+            </Text>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function DetailRow({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <View style={styles.detailRow2}>
+      <Text style={styles.detailLabel2}>{label}</Text>
+      <Text style={[styles.detailValue2, color ? { color } : null]}>{value}</Text>
     </View>
   );
 }
@@ -848,6 +1043,19 @@ const styles = StyleSheet.create({
   cashoutVal: { fontSize: 13, fontWeight: '800', marginTop: 4 },
   cashoutBtn: { backgroundColor: '#0891b2', borderRadius: 10, paddingVertical: 11, alignItems: 'center', marginTop: 10 },
   cashoutBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  headRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  shareIconBtn: { paddingHorizontal: 4, paddingVertical: 2 },
+  shareIconText: { fontSize: 16 },
+  oddsImplied: { fontSize: 10, color: colors.textSecondary, marginTop: 2 },
+  orderSideText: { fontSize: 13, color: colors.textSecondary, marginBottom: 6 },
+  orderSideStrong: { color: colors.text, fontWeight: '800' },
+  orderActionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, gap: 10 },
+  tapHint: { fontSize: 11, color: colors.primary, fontWeight: '700', marginTop: 8 },
+  cashoutBtnSm: { backgroundColor: '#0891b2', borderRadius: 10, paddingVertical: 9, paddingHorizontal: 18, alignItems: 'center' },
+  detailBox: { backgroundColor: colors.background, borderRadius: 12, padding: 14, marginTop: 12 },
+  detailRow2: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 },
+  detailLabel2: { fontSize: 13, color: colors.textSecondary },
+  detailValue2: { fontSize: 14, fontWeight: '700', color: colors.text },
   badgeRow: { flexDirection: 'row', gap: 6 },
   vaultBtnRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
   secondaryBtn: { backgroundColor: colors.background, borderRadius: 10, paddingVertical: 11, alignItems: 'center', borderWidth: 1, borderColor: colors.border },

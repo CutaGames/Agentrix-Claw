@@ -214,10 +214,17 @@ export function OrderTicket({ visible, market, outcomeIdx, onClose, onPlaced }: 
                 <ActivityIndicator color={colors.primary} />
               ) : preview ? (
                 <>
+                  <Row label={tr('Implied Prob.', '隐含概率')} value={`${Math.round((1 / preview.tradableOdds) * 100)}%`} />
                   <Row label={tr('Notional', '名义敞口')} value={`${preview.notional} AXP`} />
                   <Row label={tr('Max Profit', '最大盈利')} value={`+${preview.maxProfit} AXP`} valueColor="#16a34a" />
                   <Row label={tr('Max Loss', '最大亏损')} value={`-${preview.maxLoss} AXP`} valueColor="#dc2626" />
                   <Row label={tr('Win Payout', '获胜派彩')} value={`${preview.winPayout} AXP`} bold />
+                  {stakeNum > 0 && (
+                    <Row label={tr('Payout Multiple', '赔付倍数')} value={`${(preview.winPayout / stakeNum).toFixed(2)}x`} />
+                  )}
+                  {preview.slippageBps > 0 && (
+                    <Row label={tr('Slippage', '滑点')} value={`${(preview.slippageBps / 100).toFixed(2)}%`} />
+                  )}
                 </>
               ) : (
                 <Text style={styles.hint}>{tr('Enter margin to preview', '输入保证金查看预览')}</Text>

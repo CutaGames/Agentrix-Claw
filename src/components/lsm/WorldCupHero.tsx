@@ -44,9 +44,11 @@ interface Props {
   zh: boolean;
   /** 点击 Hero（或赔率）打开下单抽屉。 */
   onPick: (market: LsmMarketView, outcomeIdx: number) => void;
+  /** 分享世界杯海报（可选）。 */
+  onShare?: (market: LsmMarketView) => void;
 }
 
-export function WorldCupHero({ market, zh, onPick }: Props) {
+export function WorldCupHero({ market, zh, onPick, onShare }: Props) {
   if (!market) return null;
   const tr = (en: string, z: string) => (zh ? z : en);
   const labels = [market.homeTeam, market.awayTeam, zh ? '平局' : 'Draw'];
@@ -84,6 +86,16 @@ export function WorldCupHero({ market, zh, onPick }: Props) {
             <View style={[styles.statusBadge, market.status === 'live' && !market.stale && styles.statusLive]}>
               <Text style={styles.statusText}>{statusText}</Text>
             </View>
+            {onShare && (
+              <TouchableOpacity
+                style={styles.heroShareBtn}
+                onPress={() => onShare(market)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                testID="lsm-hero-share"
+              >
+                <Text style={styles.heroShareText}>📤 {tr('Share', '分享')}</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {!!market.league && <Text style={styles.league}>{market.league}</Text>}
@@ -129,6 +141,8 @@ const styles = StyleSheet.create({
   statusBadge: { backgroundColor: 'rgba(107,114,128,0.9)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   statusLive: { backgroundColor: 'rgba(220,38,38,0.95)' },
   statusText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  heroShareBtn: { backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
+  heroShareText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   league: { color: '#cbd5e1', fontSize: 12, fontWeight: '600', marginBottom: 4 },
   matchText: { color: '#fff', fontSize: 22, fontWeight: '900', marginBottom: 14 },
   vs: { color: '#94a3b8', fontSize: 16, fontWeight: '700' },

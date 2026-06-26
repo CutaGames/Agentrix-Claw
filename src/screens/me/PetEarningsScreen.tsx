@@ -33,6 +33,7 @@ import {
 import { fetchAxpHistory, AxpLedgerEntry } from '../../services/axp.api';
 import { referralApi } from '../../services/referral.api';
 import { fetchOpportunities, acceptOpportunity, Opportunity } from '../../services/petEarnings.api';
+import { KITSUNE_DEFAULT_IMG } from '../../constants/posterAssets';
 import { Alert } from 'react-native';
 
 const RANGES: Array<{ key: EarningRange; label: { en: string; zh: string } }> = [
@@ -106,6 +107,7 @@ export function PetEarningsScreen() {
           title: t({ en: 'Adopt an AI pet that earns', zh: '来养一只会赚钱的 AI 萌宠' }),
           subtitle: t({ en: 'Sign up with my link — we both get 200 AXP', zh: '用我的链接注册，双方各得 200 AXP' }),
           headerEmoji: '🐾',
+          imageUrl: KITSUNE_DEFAULT_IMG,
           description: t({ en: 'Your pet earns in the marketplace. When you trade, I earn 2% as AXP.', zh: 'AI 萌宠在集市替你赚钱；你成交，我还能拿 2% AXP 返佣。' }),
           ctaLabel: t({ en: 'Scan to join', zh: '扫码加入' }),
           accentFrom: '#7c3aed',
