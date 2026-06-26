@@ -280,7 +280,6 @@ export function AxpRewardShopScreen() {
       <View style={styles.balanceHeader}>
         <Text style={styles.balanceLabel}>{t({ en: 'Available', zh: '可用余额' })}</Text>
         <Text style={styles.balanceValue}>💎 {balance.toLocaleString()} AXP</Text>
-        <Text style={styles.balanceSub}>≈ ${(balance * 0.001).toFixed(2)}</Text>
       </View>
 
       {/* Catalog */}
@@ -350,8 +349,8 @@ export function AxpRewardShopScreen() {
 
       <Text style={styles.footer}>
         {t({
-          en: '1 AXP = $0.001 · Redeemed items are non-refundable · AXP expires 12 months from earn date.',
-          zh: '1 AXP = $0.001 · 兑换不可退 · AXP 获得后 12 个月过期。',
+          en: 'Redeemed items are non-refundable · AXP expires 12 months from earn date.',
+          zh: '兑换不可退 · AXP 获得后 12 个月过期。',
         })}
       </Text>
     </ScrollView>

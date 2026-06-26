@@ -27,10 +27,6 @@ import {
 } from '../../services/axp.api';
 import { themedStyles } from '../../theme/useTheme';
 
-function formatUsd(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
 function directionIcon(d: AxpLedgerEntry['direction']): string {
   switch (d) {
     case 'earn': return '📈';
@@ -138,8 +134,8 @@ export function AxpCenterScreen() {
 
       <Text style={styles.footer}>
         {t({
-          en: '1 AXP = $0.001 · expires 12 months from earn date.',
-          zh: '1 AXP = $0.001 · 获得后 12 个月过期。',
+          en: 'AXP expires 12 months from earn date.',
+          zh: 'AXP 获得后 12 个月过期。',
         })}
       </Text>
       <Text style={styles.disclaimer}>
@@ -160,12 +156,10 @@ function BalanceBlock({
   t: any;
 }) {
   const bal = balance?.balance ?? 0;
-  const usd = balance?.usd_value_cents ?? 0;
   return (
     <View style={styles.balanceCard}>
       <Text style={styles.balanceLabel}>{t({ en: 'Balance', zh: '余额' })}</Text>
       <Text style={styles.balanceValue}>{bal.toLocaleString()}</Text>
-      <Text style={styles.balanceSub}>≈ {formatUsd(usd)}</Text>
       <View style={styles.statsRow}>
         <Stat label={t({ en: 'Earned', zh: '累计赚取' })} value={balance?.lifetime_earned ?? 0} />
         <Stat label={t({ en: 'Spent', zh: '累计消耗' })} value={balance?.lifetime_spent ?? 0} />

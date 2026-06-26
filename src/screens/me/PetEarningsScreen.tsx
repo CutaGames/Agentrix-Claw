@@ -1,7 +1,7 @@
 /**
  * PetEarningsScreen — 萌宠收益中心（Pet Earning Flywheel 需求 2）。
  *
- * 聚合展示萌宠通过所有集市渠道赚到的收益：AXP 余额(+$ 折算) + USDT 集市收入、
+ * 聚合展示萌宠通过所有集市渠道赚到的收益：AXP 余额（平台积分，无法币折算）+ USDT 集市收入、
  * 按来源分类占比、收益走势、收益明细。数据来自 /api/v1/pet-earnings/*。
  * AXP 与 USDT 分单位展示，不相加。
  */
@@ -26,6 +26,8 @@ import {
   fetchEarningSummary,
   fetchEarningBreakdown,
   fetchEarningTimeline,
+  fetchPetEconomicProfile,
+  enablePetEarning,
   EarningRange,
 } from '../../services/petEarnings.api';
 import { fetchAxpHistory, AxpLedgerEntry } from '../../services/axp.api';
@@ -66,6 +68,26 @@ export function PetEarningsScreen() {
   const historyQ = useQuery({ queryKey: ['pe-history'], queryFn: () => fetchAxpHistory(30), staleTime: 30_000, retry: 1 });
   const flywheelQ = useQuery({ queryKey: ['pe-flywheel'], queryFn: () => referralApi.getMyFlywheel(), staleTime: 30_000, retry: 1 });
   const opportunitiesQ = useQuery({ queryKey: ['pe-opportunities'], queryFn: () => fetchOpportunities(10), staleTime: 30_000, retry: 1 });
+  const profileQ = useQuery({ queryKey: ['pe-economic-profile'], queryFn: fetchPetEconomicProfile, staleTime: 30_000, retry: 1 });
+  const [enabling, setEnabling] = useState(false);
+
+  const onEnableEarning = useCallback(async () => {
+    setEnabling(true);
+    try {
+      const r = await enablePetEarning();
+      Alert.alert(
+        t({ en: 'Earning enabled', zh: '赚钱能力已开通' }),
+        r.alreadyBound
+          ? t({ en: 'Your pet is already set up to earn.', zh: '你的萌宠已具备赚钱能力。' })
+          : t({ en: 'Your pet now has a wallet and can earn in the marketplace.', zh: '萌宠已拥有钱包，可在集市赚钱了。' }),
+      );
+      profileQ.refetch(); summaryQ.refetch();
+    } catch (e: any) {
+      Alert.alert(t({ en: 'Failed', zh: '开通失败' }), e?.message || t({ en: 'Please try again.', zh: '请稍后再试。' }));
+    } finally {
+      setEnabling(false);
+    }
+  }, [t, profileQ, summaryQ]);
 
   const onRefresh = useCallback(() => {
     summaryQ.refetch(); breakdownQ.refetch(); timelineQ.refetch(); historyQ.refetch();
@@ -100,6 +122,7 @@ export function PetEarningsScreen() {
   }, [t, opportunitiesQ]);
 
   const summary = summaryQ.data;
+  const profile = profileQ.data;
   const breakdown = breakdownQ.data ?? [];
   const axpItems = breakdown.filter((b) => b.unit === 'AXP');
   const usdtItems = breakdown.filter((b) => b.unit === 'USDT');
@@ -147,6 +170,44 @@ export function PetEarningsScreen() {
       <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('AxpRewardShop')}>
         <Text style={styles.actionBtnText}>🛍 {t({ en: 'Redeem', zh: '去兑付' })}</Text>
       </TouchableOpacity>
+
+      {/* 萌宠 = 会赚钱的经济主体（需求 3 / 任务 5.2）*/}
+      <Text style={styles.sectionHeader}>{t({ en: 'Your Earning Pet', zh: '会赚钱的萌宠' })}</Text>
+      <View style={styles.flywheelCard}>
+        {profileQ.isLoading && !profile ? (
+          <ActivityIndicator color={colors.accent} />
+        ) : profile?.earning?.enabled ? (
+          <>
+            <View style={styles.flywheelStats}>
+              <Stat label={t({ en: 'Credit', zh: '信用分' })} value={Math.round(profile.earning.creditScore ?? 0)} />
+              <Stat label={t({ en: 'Used Today', zh: '今日已用' })} value={Math.round(profile.earning.usedTodayAmount ?? 0)} />
+              <Stat label={t({ en: 'Deals', zh: '成交数' })} value={Math.round(profile.earning.totalTransactions ?? 0)} />
+            </View>
+            <Text style={styles.flywheelHint}>
+              {t({
+                en: `${profile.pet?.name ?? 'Your pet'} has a wallet and earns in the marketplace. Daily spend cap protects you.`,
+                zh: `${profile.pet?.name ?? '你的萌宠'} 已有钱包并在集市赚钱，日限额为你兜底风控。`,
+              })}
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.flywheelHint}>
+              {t({
+                en: 'Enable earning to give your pet a wallet so it can accept marketplace tasks and earn for you.',
+                zh: '开通赚钱能力后，萌宠会获得钱包，可在集市接活替你赚钱。',
+              })}
+            </Text>
+            <TouchableOpacity style={[styles.inviteBtn, enabling && { opacity: 0.6 }]} disabled={enabling} onPress={onEnableEarning}>
+              {enabling ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.actionBtnText}>⚡ {t({ en: 'Enable Earning', zh: '开通赚钱能力' })}</Text>
+              )}
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
 
       {/* 区间切换 */}
       <View style={styles.rangeRow}>

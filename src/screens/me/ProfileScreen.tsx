@@ -240,8 +240,6 @@ export function ProfileScreen() {
               {axpQ.data?.balance?.toLocaleString() ?? '0'}
             </Text>
             <Text style={styles.walletMuted}>
-              ≈ ${((axpQ.data?.usd_value_cents ?? 0) / 100).toFixed(2)}
-              {' · '}
               {quota?.axp_cashback_bps
                 ? t({
                     en: `${quota.axp_cashback_bps / 100}% cashback on purchases`,

@@ -443,10 +443,6 @@ const WalletCardSection = React.memo(function WalletCardSection({
 }: WalletCardProps) {
   const axp = detail?.axp ?? null;
   const axpText = axp ? String(axp.balance) : '—';
-  const usdText =
-    axp && typeof axp.usd_value_cents === 'number'
-      ? `$${(axp.usd_value_cents / 100).toFixed(2)}`
-      : '—';
   return (
     <SectionCard
       title="💰 钱包"
@@ -456,10 +452,6 @@ const WalletCardSection = React.memo(function WalletCardSection({
         <View style={styles.walletCol}>
           <Text style={styles.walletLabel}>AXP</Text>
           <Text style={styles.walletValue}>{axpText}</Text>
-        </View>
-        <View style={styles.walletCol}>
-          <Text style={styles.walletLabel}>≈ USD</Text>
-          <Text style={styles.walletValue}>{usdText}</Text>
         </View>
         <View style={styles.walletCol}>
           <Text style={styles.walletLabel}>USDC</Text>

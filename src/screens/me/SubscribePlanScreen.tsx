@@ -204,7 +204,7 @@ export function SubscribePlanScreen() {
   // 1 AXP = $0.001 → price in AXP = priceCents / 0.1
   const priceInAxp = selectedPriceCents > 0 ? Math.floor(selectedPriceCents / 0.1) : 0;
   const maxAxpDiscount = Math.min(axpBalance, Math.floor(priceInAxp * 0.2));
-  const discountUsd = axpToApply * 0.001;
+  const discountPct = priceInAxp > 0 ? (axpToApply / priceInAxp) * 100 : 0;
 
   const onSelectTier = useCallback(
     (tier: SubscriptionTier) => {
@@ -348,8 +348,8 @@ export function SubscribePlanScreen() {
             <View style={styles.axpDiscountInfo}>
               <Text style={styles.axpDiscountText}>
                 {t({
-                  en: `Apply ${axpToApply} AXP = save $${discountUsd.toFixed(3)}`,
-                  zh: `使用 ${axpToApply} AXP = 节省 $${discountUsd.toFixed(3)}`,
+                  en: `Apply ${axpToApply} AXP = ${discountPct.toFixed(1)}% off`,
+                  zh: `使用 ${axpToApply} AXP = 抵扣 ${discountPct.toFixed(1)}%`,
                 })}
               </Text>
             </View>
