@@ -24,6 +24,7 @@
  */
 
 import { Linking } from 'react-native';
+import { captureRefFromUrl } from '../referralAttribution';
 
 // ── Intent surface types ──────────────────────────────────────────────────
 
@@ -175,10 +176,16 @@ let detachLinking: (() => void) | null = null;
 export function attachLinkingListener(): () => void {
   if (detachLinking) return detachLinking; // idempotent
   const sub = Linking.addEventListener('url', (event) => {
+    // Referral attribution (需求 4.5): capture inviter ref from any deep link
+    // so it can be replayed at signup. Non-blocking, runs before intent routing.
+    void captureRefFromUrl(event.url);
     void handleDeepLink(event.url);
   });
   Linking.getInitialURL().then((url) => {
-    if (url) void handleDeepLink(url);
+    if (url) {
+      void captureRefFromUrl(url);
+      void handleDeepLink(url);
+    }
   });
   detachLinking = () => {
     sub.remove();

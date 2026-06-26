@@ -9,6 +9,7 @@ import { apiFetch, saveTokenToStorage, setApiConfig, getApiConfig } from './api'
 import { useAuthStore, AuthUser, AuthProvider, OpenClawInstance } from '../stores/authStore';
 import { ensureMPCWallet } from './mpcWallet';
 import { bindOpenClaw, BindPayload, pollBindSession, createBindSession, getMyInstances } from './openclaw.service';
+import { peekPendingRef, clearPendingRef } from './referralAttribution';
 
 export { bindOpenClaw };
 
@@ -398,10 +399,12 @@ export async function sendEmailCode(email: string): Promise<{ success: boolean; 
 }
 
 export async function loginWithEmailCode(email: string, code: string): Promise<AuthUser> {
+  const { ref, channel } = await peekPendingRef();
   const loginResult = await apiFetch<LoginResponse>('/auth/email/verify-code', {
     method: 'POST',
-    body: JSON.stringify({ email, code }),
+    body: JSON.stringify({ email, code, ...(ref ? { ref, channel } : {}) }),
   });
+  if (ref) { void clearPendingRef(); }
 
   return handleLoginResult(loginResult, 'email');
 }
@@ -418,10 +421,12 @@ export async function loginWithEmail(email: string, password: string): Promise<A
 }
 
 export async function registerWithEmail(email: string, password: string): Promise<AuthUser> {
+  const { ref, channel } = await peekPendingRef();
   const registerResult = await apiFetch<LoginResponse>('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, ...(ref ? { ref, channel } : {}) }),
   });
+  if (ref) { void clearPendingRef(); }
 
   return handleLoginResult(registerResult, 'email');
 }

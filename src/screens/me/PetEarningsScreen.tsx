@@ -94,8 +94,27 @@ export function PetEarningsScreen() {
   }, [summaryQ, breakdownQ, timelineQ, historyQ]);
 
   const onInvite = useCallback(async () => {
+    let link = '';
     try {
-      const link = await referralApi.getMyLink();
+      link = await referralApi.getMyLink();
+    } catch { /* fall through to share fallback */ }
+    // 拉新海报（需求 4.5）：跳分享海报屏（含二维码深链 ?ref=），而非纯链接。
+    if (link) {
+      try {
+        navigation.navigate('ShareCard', {
+          shareUrl: link,
+          title: t({ en: 'Adopt an AI pet that earns', zh: '来养一只会赚钱的 AI 萌宠' }),
+          subtitle: t({ en: 'Sign up with my link — we both get 200 AXP', zh: '用我的链接注册，双方各得 200 AXP' }),
+          headerEmoji: '🐾',
+          description: t({ en: 'Your pet earns in the marketplace. When you trade, I earn 2% as AXP.', zh: 'AI 萌宠在集市替你赚钱；你成交，我还能拿 2% AXP 返佣。' }),
+          ctaLabel: t({ en: 'Scan to join', zh: '扫码加入' }),
+          accentFrom: '#7c3aed',
+          accentTo: '#2563eb',
+        });
+        return;
+      } catch { /* navigation unavailable → plain share */ }
+    }
+    try {
       await Share.share({
         message: t({
           en: `Join me on Agentrix — your AI pet earns for you. Sign up with my link and we both get 200 AXP: ${link}`,
@@ -103,7 +122,7 @@ export function PetEarningsScreen() {
         }),
       });
     } catch { /* user cancelled or share unavailable */ }
-  }, [t]);
+  }, [navigation, t]);
 
   const onAccept = useCallback(async (op: Opportunity) => {
     try {
