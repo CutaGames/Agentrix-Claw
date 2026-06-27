@@ -22,6 +22,8 @@ export function ShareCardScreen() {
     categoryLabel,
     priceLabel,
     statsLabel,
+    priceCaption,
+    statsCaption,
     description,
     tags,
     ctaLabel,
@@ -45,6 +47,8 @@ export function ShareCardScreen() {
           categoryLabel={categoryLabel}
           priceLabel={priceLabel}
           statsLabel={statsLabel}
+          priceCaption={priceCaption}
+          statsCaption={statsCaption}
           description={description}
           tags={tags}
           ctaLabel={ctaLabel}
