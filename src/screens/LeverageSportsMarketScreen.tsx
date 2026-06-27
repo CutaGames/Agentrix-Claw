@@ -84,6 +84,8 @@ export default function LeverageSportsMarketScreen() {
           categoryLabel: zh ? '世界杯' : 'World Cup',
           priceLabel: score || undefined,
           statsLabel: oddsStr,
+          priceCaption: zh ? '比分' : 'Score',
+          statsCaption: zh ? '赔率' : 'Odds',
           description: zh
             ? `${statusZh}${score ? '  比分 ' + score : ''} · 在 Agentrix 用 AXP 杠杆预测，扫码即玩。`
             : `${m.status.toUpperCase()}${score ? '  ' + score : ''} · Leverage-predict with AXP on Agentrix. Scan to play.`,
