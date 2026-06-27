@@ -75,6 +75,10 @@ export type ShareCardRouteParams = {
   categoryLabel?: string;
   priceLabel?: string;
   statsLabel?: string;
+  /** Caption override for the priceLabel metric (e.g. "比分/Score" for matches). */
+  priceCaption?: string;
+  /** Caption override for the statsLabel metric (e.g. "赔率/Odds" for matches). */
+  statsCaption?: string;
   description?: string;
   tags?: string[];
   ctaLabel?: string;
@@ -143,6 +147,8 @@ export type MeStackParamList = {
   AxpRewardShop: undefined;
   /** Pet Earning Flywheel — 萌宠收益中心（聚合 AXP + USDT 集市收入 + 分类/走势/明细）。 */
   PetEarnings: undefined;
+  /** 萌宠链上授权（Agent Protocol Stack 需求 6.1/6.2）：AP2 mandate 授权/撤销 + 链上动作记录。 */
+  OnchainAuth: undefined;
   // Sprint 4: Toy Binding
   ToyBinding: undefined;
   // P-9 Q1: re-home the orphaned pet screens here (T6.7). PetDetailSheet's
