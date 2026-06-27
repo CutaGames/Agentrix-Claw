@@ -27,6 +27,10 @@ export interface ShareCardProps {
   categoryLabel?: string;
   priceLabel?: string;
   statsLabel?: string;
+  /** Caption override for the priceLabel metric (defaults to "Price/价格"). */
+  priceCaption?: string;
+  /** Caption override for the statsLabel metric (defaults to "Highlights/亮点"). */
+  statsCaption?: string;
   description?: string;
   tags?: string[];
   ctaLabel?: string;
@@ -49,6 +53,8 @@ export function ShareCardView({
   categoryLabel,
   priceLabel,
   statsLabel,
+  priceCaption,
+  statsCaption,
   description,
   tags,
   ctaLabel,
@@ -143,13 +149,13 @@ export function ShareCardView({
             <View style={styles.metricsRow}>
               {priceLabel ? (
                 <View style={styles.metricCard}>
-                  <Text style={styles.metricLabel}>{t({ en: 'Price', zh: '价格' })}</Text>
+                  <Text style={styles.metricLabel}>{priceCaption ?? t({ en: 'Price', zh: '价格' })}</Text>
                   <Text style={styles.metricValue}>{priceLabel}</Text>
                 </View>
               ) : null}
               {statsLabel ? (
                 <View style={styles.metricCard}>
-                  <Text style={styles.metricLabel}>{t({ en: 'Highlights', zh: '亮点' })}</Text>
+                  <Text style={styles.metricLabel}>{statsCaption ?? t({ en: 'Highlights', zh: '亮点' })}</Text>
                   <Text style={styles.metricValue} numberOfLines={2}>{statsLabel}</Text>
                 </View>
               ) : null}
