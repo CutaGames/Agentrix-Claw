@@ -54,6 +54,13 @@ import {
   getConversationSnapshot,
   type ConversationMessageSnapshot,
 } from '../../services/conversationStore';
+// 对话内全网机会：检索 + 结果卡片（围栏内接单/下单），升级主对话框而非独立屏。
+import {
+  searchAggregatedOpportunities,
+  type AggCategory,
+  type AggregatedListing,
+} from '../../services/aggregatedMarket.api';
+import { OpportunityCards } from '../../components/agent/OpportunityCards';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -206,6 +213,8 @@ interface Message {
   error?: boolean;
   createdAt: number;
   thoughts?: string[]; // Added for Thought Chain UI
+  /** 对话内「全网机会」检索结果卡片（/ard/search → 卡片 → 围栏内接单/下单）。 */
+  aggCards?: AggregatedListing[];
 }
 
 function formatAttachmentSize(size?: number | null) {
@@ -213,6 +222,40 @@ function formatAttachmentSize(size?: number | null) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * 对话内「全网机会」检索意图识别（保守，避免误伤普通对话）。
+ *  - slash 前缀：`/找`、`/搜`、`/机会`、`/market`、`/find` → 去前缀后作为 query。
+ *  - 或：同时命中「动作词」+「品类词」。
+ * 返回 { matched, query, category }；category 命中品类词时给出，否则 null（全部）。
+ */
+function detectMarketIntent(raw: string): { matched: boolean; query: string; category: AggCategory | null } {
+  const text = raw.trim();
+  const lower = text.toLowerCase();
+  const catOf = (s: string): AggCategory | null => {
+    if (/(任务|接单|赏金|外包|bounty|gig|\btask\b)/.test(s)) return 'task';
+    if (/(预测|赔率|下注|polymarket|kalshi|predict|odds)/.test(s)) return 'prediction';
+    if (/(技能|工具|\bskill\b|\btool\b)/.test(s)) return 'skill';
+    if (/(租|雇|\bagent\b|助理)/.test(s)) return 'agent_rental';
+    if (/(资源|数据源|订阅|\bapi\b|\bresource\b|feed)/.test(s)) return 'resource';
+    return null;
+  };
+  // slash 命令。
+  const slash = text.match(/^\/(找|搜|搜索|机会|market|find|search)\s*(.*)$/i);
+  if (slash) {
+    const q = slash[2].trim();
+    return { matched: true, query: q, category: catOf(q.toLowerCase()) };
+  }
+  // 动作词 + 品类词。
+  const hasAction = /(找|搜|检索|有什么|推荐|find|search|look for|browse)/.test(lower);
+  const category = catOf(lower);
+  // 空投单独允许（动作词 + 空投/airdrop），归为 null（airdrop 不在 AggCategory 检索品类，走全部）。
+  const hasAirdrop = /(空投|airdrop|未发币|撸毛)/.test(lower);
+  if (hasAction && (category || hasAirdrop)) {
+    return { matched: true, query: text, category };
+  }
+  return { matched: false, query: text, category: null };
 }
 
 /**
@@ -1775,6 +1818,59 @@ export function AgentChatScreen() {
     const shouldDisplayUserTurn = !isSyntheticContinueTurn;
     if ((!text && attachments.length === 0) || sending || uploadingAttachment) return;
 
+    // ── 对话内「全网机会」检索意图拦截（升级主对话框：检索 → 结果卡片 → 围栏内接单/下单）──
+    // 触发条件（保守，避免误伤普通对话）：① slash 前缀 /找 /搜 /机会 /market；或
+    // ② 同时含「动作词(找/搜/检索/有什么/推荐/find/search)」+「品类词(任务/接单/预测/空投/技能/工具/
+    // agent/资源/task/prediction/airdrop/skill/resource)」。命中则本地检索渲染卡片，不走 LLM。
+    if (text && !isSyntheticContinueTurn && attachments.length === 0) {
+      const market = detectMarketIntent(text);
+      if (market.matched) {
+        const userMsg: Message = { id: `user-${Date.now()}`, role: 'user', content: text, createdAt: Date.now() };
+        const assistantMsg: Message = {
+          id: `agg-${Date.now()}`,
+          role: 'assistant',
+          content: t({ en: 'Searching the network…', zh: '正在为你检索全网机会…' }),
+          streaming: true,
+          createdAt: Date.now(),
+        };
+        setMessages((prev) => [...prev, userMsg, assistantMsg]);
+        setInput('');
+        scrollToBottom(true, true);
+        try {
+          const listings = await searchAggregatedOpportunities({
+            text: market.query,
+            category: market.category ?? undefined,
+            pageSize: 8,
+          });
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsg.id
+                ? {
+                    ...m,
+                    streaming: false,
+                    content: listings.length
+                      ? t({ en: `Found ${listings.length} opportunities:`, zh: `为你找到 ${listings.length} 条机会：` })
+                      : t({ en: 'No matching opportunities. Try another category or keyword.', zh: '没有找到匹配的机会，换个品类或关键词试试。' }),
+                    aggCards: listings.length ? listings : undefined,
+                  }
+                : m,
+            ),
+          );
+        } catch {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsg.id
+                ? { ...m, streaming: false, error: true, content: t({ en: 'Search failed, please retry.', zh: '检索失败，请重试。' }) }
+                : m,
+            ),
+          );
+        } finally {
+          scrollToBottom(true, true);
+        }
+        return; // 机会检索为本地能力，不进入 LLM 流式。
+      }
+    }
+
     clearAutoContinueTimer();
     clearPendingAutoContinue();
     if (!isSyntheticContinueTurn) {
@@ -2733,15 +2829,22 @@ export function AgentChatScreen() {
 
   const renderMessage = useCallback(({ item }: { item: Message }) => {
     return (
-      <MessageBubble
-        item={item}
-        onSpeak={handleSpeakMessage}
-        onStopSpeaking={stopSpeaking}
-        speakingMessageId={speakingMessageId}
-        onPreviewImage={handlePreviewImage}
-        onQuoteMessage={handleQuoteMessage}
-        onExportNote={handleExportNote}
-      />
+      <View>
+        <MessageBubble
+          item={item}
+          onSpeak={handleSpeakMessage}
+          onStopSpeaking={stopSpeaking}
+          speakingMessageId={speakingMessageId}
+          onPreviewImage={handlePreviewImage}
+          onQuoteMessage={handleQuoteMessage}
+          onExportNote={handleExportNote}
+        />
+        {item.aggCards && item.aggCards.length > 0 ? (
+          <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
+            <OpportunityCards listings={item.aggCards} />
+          </View>
+        ) : null}
+      </View>
     );
   }, [handleExportNote, handlePreviewImage, handleQuoteMessage, handleSpeakMessage, speakingMessageId, stopSpeaking]);
 
