@@ -24,7 +24,6 @@ import { AxpCenterScreen } from '../screens/me/AxpCenterScreen';
 import { AxpRewardShopScreen } from '../screens/me/AxpRewardShopScreen';
 import { PetEarningsScreen } from '../screens/me/PetEarningsScreen';
 import { DigestPosterScreen } from '../screens/me/DigestPosterScreen';
-import { OpportunityAssistantScreen } from '../screens/agent/OpportunityAssistantScreen';
 import { OnchainAuthScreen } from '../screens/me/OnchainAuthScreen';
 import { ToyBindingScreen } from '../screens/me/ToyBindingScreen';
 // P-9 Q1 — re-home orphaned pet screens (T6.7). These exist as components
@@ -79,7 +78,6 @@ export function MeStackNavigator() {
       <Stack.Screen name="AxpCenter" component={AxpCenterScreen} options={{ title: t({ en: 'AXP Center', zh: 'AXP 中心' }) }} />
       <Stack.Screen name="PetEarnings" component={PetEarningsScreen} options={{ title: t({ en: 'Earnings Center', zh: '收益中心' }) }} />
       <Stack.Screen name="DigestPoster" component={DigestPosterScreen} options={{ title: t({ en: 'Daily Digest', zh: '机会日报' }) }} />
-      <Stack.Screen name="OpportunityAssistant" component={OpportunityAssistantScreen} options={{ title: t({ en: 'Opportunity Assistant', zh: '机会助手' }) }} />
       <Stack.Screen name="OnchainAuth" component={OnchainAuthScreen} options={{ title: t({ en: 'On-chain Authorization', zh: '链上授权' }) }} />
       <Stack.Screen name="AxpRewardShop" component={AxpRewardShopScreen} options={{ title: t({ en: 'Redeem Shop', zh: '兑换中心' }) }} />
       <Stack.Screen name="ToyBinding" component={ToyBindingScreen} options={{ title: t({ en: 'Devices', zh: '设备管理' }) }} />

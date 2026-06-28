@@ -410,18 +410,6 @@ export function PetEarningsScreen() {
 
       {/* 全网机会日报 · 可转发海报入口 */}
       <Text style={styles.sectionHeader}>{t({ en: 'Daily Digest', zh: '机会日报' })}</Text>
-      <TouchableOpacity style={styles.onchainCard} onPress={() => navigation.navigate('OpportunityAssistant')} activeOpacity={0.85}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.onchainTitle}>💬 {t({ en: 'Opportunity Assistant', zh: '机会助手（对话检索 + 接单）' })}</Text>
-          <Text style={styles.onchainHint}>
-            {t({
-              en: 'Chat to search tasks / predictions / airdrops / skills across the network and accept within limits.',
-              zh: '用对话检索全网任务 / 预测 / 空投 / 技能，限额内一键接单下单。',
-            })}
-          </Text>
-        </View>
-        <Text style={styles.onchainChevron}>›</Text>
-      </TouchableOpacity>
       <TouchableOpacity style={styles.onchainCard} onPress={() => navigation.navigate('DigestPoster')} activeOpacity={0.85}>
         <View style={{ flex: 1 }}>
           <Text style={styles.onchainTitle}>🪂 {t({ en: 'Daily Opportunity Digest', zh: '全网机会日报' })}</Text>

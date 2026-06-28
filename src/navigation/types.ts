@@ -149,8 +149,6 @@ export type MeStackParamList = {
   PetEarnings: undefined;
   /** 全网机会日报 · 可转发海报（拉 /aggregation/digest/today，竖版长图 + 系统分享）。 */
   DigestPoster: undefined;
-  /** 对话式全网机会助手（检索 + 卡片 + 围栏内接单/下单；/ard/search + /ard/participate）。 */
-  OpportunityAssistant: undefined;
   /** 萌宠链上授权（Agent Protocol Stack 需求 6.1/6.2）：AP2 mandate 授权/撤销 + 链上动作记录。 */
   OnchainAuth: undefined;
   // Sprint 4: Toy Binding
