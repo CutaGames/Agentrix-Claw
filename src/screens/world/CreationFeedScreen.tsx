@@ -38,6 +38,7 @@ import {
   Pressable,
   ActivityIndicator,
   RefreshControl,
+  Alert,
   type ViewToken,
   type LayoutChangeEvent,
   type ListRenderItemInfo,
@@ -49,7 +50,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
-import { discoverCreations } from '../../services/creationApi';
+import { discoverCreations, discoverCreationsPublic } from '../../services/creationApi';
+import { useAuthStore } from '../../stores/authStore';
 import { preloadPreviewUris, selectUrisToPrefetch, shouldRenderPreview } from '../../services/creationFeed';
 import { CreationCard } from './components/CreationCard';
 import { ShopQuickOrder } from './components/ShopQuickOrder';
@@ -79,6 +81,8 @@ export function CreationFeedScreen() {
   const navigation = useNavigation<Nav>();
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
+  // G1:游客态可刷;未登录走公开只读发现,写动作(下单)在动作处引导登录。
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const [sort, setSort] = useState<FeedSort>('newest');
   /** 分页容器的精确像素高度(用 onLayout 测量,作为单卡高度,保证整屏吸附)。 */
@@ -106,14 +110,18 @@ export function CreationFeedScreen() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['creation-feed', sort],
+    queryKey: ['creation-feed', sort, isAuthenticated],
     queryFn: async ({ pageParam }) => {
-      const res = await discoverCreations({
-        mode: 'feed',
+      const params = {
+        mode: 'feed' as const,
         cursor: pageParam ?? undefined,
         sort,
         limit: PAGE_LIMIT,
-      });
+      };
+      // 未登录 → 公开只读发现(G1);已登录 → 常规发现(未来含关注个性化)。
+      const res = isAuthenticated
+        ? await discoverCreations(params)
+        : await discoverCreationsPublic(params);
       // discoverCreations 是判别联合;feed 形态必返回 DiscoverFeedResponse。
       return res as DiscoverFeedResponse;
     },
@@ -194,8 +202,16 @@ export function CreationFeedScreen() {
    * 不进入完整体验即可成交(需求 5.7),由 ShopQuickOrder 经 invoke(order) 权威结算。
    */
   const onShopOrder = useCallback((item: CreationDiscoveryItem) => {
+    // G1 写动作门:游客下单前引导登录(动作处,非入口拦截)。
+    if (!isAuthenticated) {
+      Alert.alert(
+        t({ en: 'Sign in to order', zh: '登录后即可下单' }),
+        t({ en: 'Own your own agent to shop, order and let it pay for you.', zh: '拥有你自己的 agent,即可下单、让它替你付款。' }),
+      );
+      return;
+    }
     setOrderItem(item);
-  }, []);
+  }, [isAuthenticated, t]);
 
   /**
    * task 3.6:livestream/stage「进行中直接进入」(需求 5.8)。

@@ -344,6 +344,18 @@ export async function discoverCreations(
   return unified<DiscoverAgentSearchResponse>(`/discover${toQuery(query as Record<string, unknown>)}`);
 }
 
+/**
+ * 游客(未登录)发现 —— 走公开只读端点 `/v1/creations/public/discover`(G1)。
+ * 仅 feed/map;无个性化;后端只返回 published/listed + 匿名限流。
+ */
+export async function discoverCreationsPublic(
+  query: DiscoverCreationsQuery,
+): Promise<DiscoverCreationsResponse> {
+  return apiFetch<DiscoverCreationsResponse>(
+    `${BASE}/public/discover${toQuery(query as Record<string, unknown>)}`,
+  );
+}
+
 // ============================================================
 // §6 POST /v1/creations/:id/enter — 进入体验(人端)
 // 需求 6.1–6.7
