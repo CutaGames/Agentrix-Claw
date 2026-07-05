@@ -61,6 +61,10 @@ import {
   type AggregatedListing,
 } from '../../services/aggregatedMarket.api';
 import { OpportunityCards } from '../../components/agent/OpportunityCards';
+import { LsmCards, type LsmCard } from '../../components/lsm/LsmCards';
+import { detectLsmIntent, filterMarketsByQuery } from '../../services/lsmChatIntent';
+import { lsmToolResultToCard } from '../../services/lsmToolCard';
+import { lsmApi } from '../../services/lsm.api';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -215,6 +219,8 @@ interface Message {
   thoughts?: string[]; // Added for Thought Chain UI
   /** 对话内「全网机会」检索结果卡片（/ard/search → 卡片 → 围栏内接单/下单）。 */
   aggCards?: AggregatedListing[];
+  /** 对话内「赛事预测（LSM）」结果卡片（盘口/预览/下单/持仓/平仓）。 */
+  lsmCards?: LsmCard[];
 }
 
 function formatAttachmentSize(size?: number | null) {
@@ -1470,6 +1476,25 @@ export function AgentChatScreen() {
   }, []);
 
   const handleStructuredStreamEvent = useCallback((event: StreamEvent) => {
+    // B（LLM 工具）：lsm_* 工具结果 → 映射为 LsmCard 挂到最近的助手气泡，与 A 共用渲染层。
+    if (event.type === 'tool_result' && (event as any).success && typeof (event as any).toolName === 'string'
+        && (event as any).toolName.startsWith('lsm_')) {
+      const card = lsmToolResultToCard((event as any).toolName, (event as any).result);
+      if (card) {
+        setMessages((prev) => {
+          for (let i = prev.length - 1; i >= 0; i--) {
+            if (prev[i].role === 'assistant') {
+              const next = [...prev];
+              next[i] = { ...prev[i], lsmCards: [...(prev[i].lsmCards ?? []), card] };
+              return next;
+            }
+          }
+          return prev;
+        });
+      }
+      return;
+    }
+
     if (event.type !== 'done') {
       return;
     }
@@ -1823,6 +1848,59 @@ export function AgentChatScreen() {
     // ② 同时含「动作词(找/搜/检索/有什么/推荐/find/search)」+「品类词(任务/接单/预测/空投/技能/工具/
     // agent/资源/task/prediction/airdrop/skill/resource)」。命中则本地检索渲染卡片，不走 LLM。
     if (text && !isSyntheticContinueTurn && attachments.length === 0) {
+      // ── LSM 赛事预测意图（A 兜底/加速）：体育盘口/持仓明确措辞 → 本地直出 LsmCards，不走 LLM。──
+      const lsm = detectLsmIntent(text);
+      if (lsm.matched) {
+        const userMsg: Message = { id: `user-${Date.now()}`, role: 'user', content: text, createdAt: Date.now() };
+        const assistantMsg: Message = {
+          id: `lsm-${Date.now()}`,
+          role: 'assistant',
+          content: lsm.kind === 'positions'
+            ? t({ en: 'Loading your positions…', zh: '正在加载你的持仓…' })
+            : t({ en: 'Loading live markets…', zh: '正在加载可下注盘口…' }),
+          streaming: true,
+          createdAt: Date.now(),
+        };
+        setMessages((prev) => [...prev, userMsg, assistantMsg]);
+        setInput('');
+        scrollToBottom(true, true);
+        try {
+          let cards: LsmCard[] = [];
+          let summary = '';
+          if (lsm.kind === 'positions') {
+            const orders = await lsmApi.myOrders(20);
+            cards = [{ kind: 'positions', positions: orders }];
+            summary = orders.length
+              ? t({ en: `You have ${orders.length} position(s):`, zh: `你当前有 ${orders.length} 笔持仓：` })
+              : t({ en: 'You have no positions yet.', zh: '你还没有持仓。' });
+          } else {
+            const live = await lsmApi.listLive(undefined, 12);
+            const filtered = filterMarketsByQuery(live, lsm.query);
+            cards = filtered.length ? [{ kind: 'markets', markets: filtered.slice(0, 8) }] : [];
+            summary = filtered.length
+              ? t({ en: `Found ${Math.min(filtered.length, 8)} market(s). Tap Bet to place in-chat:`, zh: `找到 ${Math.min(filtered.length, 8)} 个盘口，点「下注」即可在对话内下单：` })
+              : t({ en: 'No live markets right now.', zh: '当前没有可下注的盘口。' });
+          }
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsg.id
+                ? { ...m, streaming: false, content: summary, lsmCards: cards.length ? cards : undefined }
+                : m,
+            ),
+          );
+        } catch {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsg.id
+                ? { ...m, streaming: false, error: true, content: t({ en: 'Load failed, please retry.', zh: '加载失败，请重试。' }) }
+                : m,
+            ),
+          );
+        } finally {
+          scrollToBottom(true, true);
+        }
+        return; // LSM 为本地能力，不进入 LLM 流式。
+      }
       const market = detectMarketIntent(text);
       if (market.matched) {
         const userMsg: Message = { id: `user-${Date.now()}`, role: 'user', content: text, createdAt: Date.now() };
@@ -2842,6 +2920,13 @@ export function AgentChatScreen() {
         {item.aggCards && item.aggCards.length > 0 ? (
           <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
             <OpportunityCards listings={item.aggCards} />
+          </View>
+        ) : null}
+        {item.lsmCards && item.lsmCards.length > 0 ? (
+          <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
+            {item.lsmCards.map((c, i) => (
+              <LsmCards key={`${item.id}-lsm-${i}`} card={c} onFollowUp={(txt) => handleSendRef.current?.(txt)} />
+            ))}
           </View>
         ) : null}
       </View>

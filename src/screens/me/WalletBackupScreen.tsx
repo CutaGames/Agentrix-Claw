@@ -10,7 +10,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
-import { getRecoveryCode, getStoredShardA, markMPCBackupCompleted } from '../../services/mpcWallet';
+import { getRecoveryCode, getStoredShardA, markMPCBackupCompleted, verifyAndConfirmBackup } from '../../services/mpcWallet';
 import type { MeStackParamList } from '../../navigation/types';
 import { themedStyles } from '../../theme/useTheme';
 
@@ -62,12 +62,25 @@ export function WalletBackupScreen() {
   };
 
   const handleDone = async () => {
-    await markMPCBackupCompleted();
-    Alert.alert(
-      t({ en: 'Backup Saved', zh: '备份已确认' }),
-      t({ en: 'Your MPC recovery code has been marked as backed up.', zh: '已将你的 MPC 恢复码标记为完成备份。' }),
-      [{ text: t({ en: 'OK', zh: '知道了' }), onPress: () => navigation.goBack() }],
-    );
+    // 服务端可验证的回读校验（need 1.2）：对本地恢复码计算 proof 并经服务端确认。
+    // 失败或服务端不可用时退回本地标记（诚实：仍提示用户已在本地确认）。
+    try {
+      const res = await verifyAndConfirmBackup();
+      Alert.alert(
+        t({ en: 'Backup Confirmed', zh: '备份已确认' }),
+        res.mode === 'verified'
+          ? t({ en: 'Your recovery code was verified and marked as backed up.', zh: '恢复码已通过服务端校验并标记为完成备份。' })
+          : t({ en: 'Backup marked complete.', zh: '备份已标记完成。' }),
+        [{ text: t({ en: 'OK', zh: '知道了' }), onPress: () => navigation.goBack() }],
+      );
+    } catch (e: any) {
+      await markMPCBackupCompleted();
+      Alert.alert(
+        t({ en: 'Backup Saved (local)', zh: '备份已确认（本地）' }),
+        t({ en: 'Marked as backed up on this device.', zh: '已在本设备标记为完成备份。' }),
+        [{ text: t({ en: 'OK', zh: '知道了' }), onPress: () => navigation.goBack() }],
+      );
+    }
   };
 
   const hasLocalShard = !!shardA;

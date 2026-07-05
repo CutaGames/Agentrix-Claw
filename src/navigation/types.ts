@@ -79,6 +79,12 @@ export type ShareCardRouteParams = {
   priceCaption?: string;
   /** Caption override for the statsLabel metric (e.g. "赔率/Odds" for matches). */
   statsCaption?: string;
+  /**
+   * Optional structured odds list (1X2). When present, the poster renders a
+   * dedicated full-width "赔率 / Odds" panel so every outcome stays legible
+   * (no truncation). Used by the sports/World Cup match share flow.
+   */
+  oddsList?: Array<{ label: string; value: string; impliedPct?: string; highlight?: boolean }>;
   description?: string;
   tags?: string[];
   ctaLabel?: string;

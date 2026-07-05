@@ -1,7 +1,7 @@
 /**
  * Share card utilities — builds deep-link URLs for poster sharing.
  *
- * Used by PosterShareCard and any share flow that needs a trackable URL.
+ * Used by any share flow (e.g. ShareCardView / DigestPosterScreen) that needs a trackable URL.
  */
 
 const BASE_URL = 'https://agentrix.top/share';

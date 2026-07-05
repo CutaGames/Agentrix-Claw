@@ -21,15 +21,23 @@ import { useI18n } from '../stores/i18nStore';
 import { useNavigation } from '@react-navigation/native';
 import { WORLDCUP_COVER_IMG } from '../constants/posterAssets';
 import { teamFlagUrl } from '../utils/teamFlags';
+import { buildMatchOddsList } from '../utils/matchOdds';
 import {
   lsmApi,
   LsmMarketView,
   LsmOrder,
   LsmVaultView,
   LsmVaultPosition,
+  LsmWalletBalance,
+  LsmAsset,
+  LSM_CHAINS,
+  getLsmChain,
+  formatAsset,
 } from '../services/lsm.api';
 import { OrderTicket } from '../components/lsm/OrderTicket';
 import { WorldCupHero, pickFeaturedMarket } from '../components/lsm/WorldCupHero';
+import * as Clipboard from 'expo-clipboard';
+import { checkMPCWallet } from '../services/mpcWallet';
 
 /** 赛事列表分组：live → pre（含暂停）→ settled（完场/作废）。 */
 type MarketGroupKey = 'live' | 'pre' | 'settled';
@@ -66,24 +74,22 @@ export default function LeverageSportsMarketScreen() {
   // 分享世界杯主题海报（每场都可分享，含图片 + 赔率 + 二维码深链）。
   const onShareMatch = useCallback(
     (m: LsmMarketView) => {
-      const lbls = [m.homeTeam, m.awayTeam, zh ? '平局' : 'Draw'];
-      const oddsStr = m.odds
-        .map((o) => `${lbls[o.outcomeIdx]} ${o.fairOdds.toFixed(2)}`)
-        .join('  ·  ');
+      // 结构化 1X2 赔率（主/平/客），由专属赔率面板完整渲染，不再被截断。
+      const oddsList = buildMatchOddsList(m, zh);
       const score =
         m.homeScore != null && m.awayScore != null ? `${m.homeScore} : ${m.awayScore}` : '';
       const statusZh =
         m.status === 'live' ? '滚球进行中' : m.status === 'pre' ? '即将开赛' : m.status === 'final' ? '完场' : '';
       try {
         navigation.navigate('ShareCard', {
-          shareUrl: `https://agentrix.top/sports?m=${encodeURIComponent(m.id)}`,
+          shareUrl: 'https://polymarket.agentrix.top',
           title: `${m.homeTeam} vs ${m.awayTeam}`,
           subtitle: m.league || (zh ? '世界杯滚球预测' : 'World Cup Live Predictions'),
           headerEmoji: '🏆',
           imageUrl: WORLDCUP_COVER_IMG,
           categoryLabel: zh ? '世界杯' : 'World Cup',
           priceLabel: score || undefined,
-          statsLabel: oddsStr,
+          oddsList,
           priceCaption: zh ? '比分' : 'Score',
           statsCaption: zh ? '赔率' : 'Odds',
           description: zh
@@ -111,6 +117,9 @@ export default function LeverageSportsMarketScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  // 双币余额（AXP + 链上 USDC）+ 钱包充提弹窗
+  const [balance, setBalance] = useState<LsmWalletBalance>({ axp: 0, usdc: 0 });
+  const [walletOpen, setWalletOpen] = useState(false);
 
   const [ticketMarket, setTicketMarket] = useState<LsmMarketView | null>(null);
   const [ticketOutcome, setTicketOutcome] = useState(0);
@@ -132,6 +141,11 @@ export default function LeverageSportsMarketScreen() {
     },
     [],
   );
+
+  const loadBalance = useCallback(async () => {
+    const b = await lsmApi.walletBalance();
+    setBalance(b);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -178,10 +192,15 @@ export default function LeverageSportsMarketScreen() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    loadBalance();
+  }, [loadBalance]);
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
+    loadBalance();
     load();
-  }, [load]);
+  }, [load, loadBalance]);
 
   const openTicket = (m: LsmMarketView, idx: number) => {
     if (!m.tradable) {
@@ -318,6 +337,23 @@ export default function LeverageSportsMarketScreen() {
         ))}
       </View>
 
+      {/* 双币余额条 + 钱包/充提入口 */}
+      <View style={styles.balanceBar}>
+        <View style={styles.balancePills}>
+          <View style={styles.balancePill}>
+            <Text style={styles.balancePillLabel}>AXP</Text>
+            <Text style={styles.balancePillVal}>{balance.axp}</Text>
+          </View>
+          <View style={styles.balancePill}>
+            <Text style={styles.balancePillLabel}>USDC</Text>
+            <Text style={styles.balancePillVal}>{(balance.usdc / 100).toFixed(2)}</Text>
+          </View>
+        </View>
+        <TouchableOpacity style={styles.walletBtn} onPress={() => setWalletOpen(true)} testID="lsm-wallet-entry">
+          <Text style={styles.walletBtnText}>{tr('Wallet', '钱包/充提')}</Text>
+        </TouchableOpacity>
+      </View>
+
       {loading && !refreshing ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
       ) : tab === 'markets' ? (
@@ -370,6 +406,7 @@ export default function LeverageSportsMarketScreen() {
           contentContainerStyle={styles.list}
           ListHeaderComponent={
             <View>
+              <OnchainSolvencyBanner />
               <View style={styles.vaultIntro}>
                 <Text style={styles.vaultIntroText}>
                   {tr(
@@ -419,6 +456,15 @@ export default function LeverageSportsMarketScreen() {
       />
 
       <AmountPromptModal prompt={amountPrompt} tr={tr} onClose={() => setAmountPrompt(null)} />
+
+      <WalletModal
+        visible={walletOpen}
+        balance={balance}
+        tr={tr}
+        zh={zh}
+        onClose={() => setWalletOpen(false)}
+        onChanged={loadBalance}
+      />
 
       <PositionDetailSheet
         order={detailOrder}
@@ -581,8 +627,13 @@ function OrderCard({
     <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={onOpen} testID={`lsm-order-${order.id}`}>
       <View style={styles.cardHead}>
         <Text style={styles.matchText} numberOfLines={1}>{title}</Text>
-        <View style={[styles.badge, { backgroundColor: statusColor[order.status] || '#6b7280' }]}>
-          <Text style={styles.badgeText}>{zh ? (statusZh[order.status] || order.status) : order.status.toUpperCase()}</Text>
+        <View style={styles.badgeRow}>
+          <View style={[styles.badge, { backgroundColor: order.asset === 'USDC' ? '#0891b2' : '#7c3aed' }]}>
+            <Text style={styles.badgeText}>{order.asset}</Text>
+          </View>
+          <View style={[styles.badge, { backgroundColor: statusColor[order.status] || '#6b7280' }]}>
+            <Text style={styles.badgeText}>{zh ? (statusZh[order.status] || order.status) : order.status.toUpperCase()}</Text>
+          </View>
         </View>
       </View>
       <Text style={styles.orderSideText}>
@@ -591,10 +642,10 @@ function OrderCard({
       </Text>
       <View style={styles.orderMeta}>
         <Text style={styles.metaText}>
-          {tr('Stake', '保证金')} {order.stake} × {order.leverage}x · {tr('Notional', '名义')} {order.notional}
+          {tr('Stake', '保证金')} {formatAsset(order.stake, order.asset)} × {order.leverage}x · {tr('Notional', '名义')} {formatAsset(order.notional, order.asset)}
         </Text>
         <Text style={[styles.metaText, { color: order.closePnl >= 0 ? '#16a34a' : '#dc2626' }]}>
-          PnL: {order.closePnl >= 0 ? '+' : ''}{order.closePnl}
+          PnL: {order.closePnl >= 0 ? '+' : ''}{formatAsset(order.closePnl, order.asset)}
         </Text>
       </View>
 
@@ -604,7 +655,7 @@ function OrderCard({
             <Text style={styles.metaText}>{tr('Cash-out value', '当前可兑现')}</Text>
             {order.cashoutValue != null ? (
               <Text style={[styles.cashoutVal, { color: cashoutPnl >= 0 ? '#16a34a' : '#dc2626' }]}>
-                {order.cashoutValue} AXP（{cashoutPnl >= 0 ? '+' : ''}{cashoutPnl}）
+                {formatAsset(order.cashoutValue, order.asset)}（{cashoutPnl >= 0 ? '+' : ''}{formatAsset(cashoutPnl, order.asset)}）
               </Text>
             ) : (
               <Text style={styles.metaText}>{tr('Unavailable', '暂不可平仓')}</Text>
@@ -670,17 +721,18 @@ function PositionDetailSheet({
 
             <View style={styles.detailBox}>
               <DetailRow label={tr('Status', '状态')} value={zh ? order.status : order.status.toUpperCase()} />
+              <DetailRow label={tr('Asset', '计价资产')} value={order.asset} />
               <DetailRow label={tr('Entry odds', '入场赔率')} value={`${order.entryOdds.toFixed(2)}（${impliedPct(order.entryOdds)}）`} />
               {liveOdds != null && <DetailRow label={tr('Current odds', '当前赔率')} value={`${liveOdds.toFixed(2)}（${impliedPct(liveOdds)}）`} />}
-              <DetailRow label={tr('Stake (margin)', '保证金')} value={`${order.stake} AXP`} />
+              <DetailRow label={tr('Stake (margin)', '保证金')} value={formatAsset(order.stake, order.asset)} />
               <DetailRow label={tr('Leverage', '杠杆')} value={`${order.leverage}x`} />
-              <DetailRow label={tr('Notional', '名义敞口')} value={`${order.notional} AXP`} />
-              <DetailRow label={tr('Max profit', '最大盈利')} value={`+${order.maxProfit} AXP`} color="#16a34a" />
+              <DetailRow label={tr('Notional', '名义敞口')} value={formatAsset(order.notional, order.asset)} />
+              <DetailRow label={tr('Max profit', '最大盈利')} value={`+${formatAsset(order.maxProfit, order.asset)}`} color="#16a34a" />
               {isOpen && order.cashoutValue != null && (
-                <DetailRow label={tr('Cash-out value', '当前可兑现')} value={`${order.cashoutValue} AXP（${cashoutPnl >= 0 ? '+' : ''}${cashoutPnl}）`} color={cashoutPnl >= 0 ? '#16a34a' : '#dc2626'} />
+                <DetailRow label={tr('Cash-out value', '当前可兑现')} value={`${formatAsset(order.cashoutValue, order.asset)}（${cashoutPnl >= 0 ? '+' : ''}${formatAsset(cashoutPnl, order.asset)}）`} color={cashoutPnl >= 0 ? '#16a34a' : '#dc2626'} />
               )}
-              {!isOpen && <DetailRow label={tr('Realized PnL', '已结盈亏')} value={`${order.closePnl >= 0 ? '+' : ''}${order.closePnl} AXP`} color={order.closePnl >= 0 ? '#16a34a' : '#dc2626'} />}
-              {!isOpen && <DetailRow label={tr('Payout', '派彩')} value={`${order.payout} AXP`} />}
+              {!isOpen && <DetailRow label={tr('Realized PnL', '已结盈亏')} value={`${order.closePnl >= 0 ? '+' : ''}${formatAsset(order.closePnl, order.asset)}`} color={order.closePnl >= 0 ? '#16a34a' : '#dc2626'} />}
+              {!isOpen && <DetailRow label={tr('Payout', '派彩')} value={formatAsset(order.payout, order.asset)} />}
               <DetailRow label={tr('Opened', '开仓时间')} value={created} />
             </View>
 
@@ -698,7 +750,9 @@ function PositionDetailSheet({
               </TouchableOpacity>
             )}
             <Text style={styles.disclaimer}>
-              {tr('AXP is non-withdrawable, platform-only. Not investment advice.', 'AXP 不可提现、仅站内用途。非投资建议。')}
+              {order.asset === 'USDC'
+                ? tr('USDC settles on-chain (testnet). Not investment advice.', 'USDC 为链上结算（测试网）。非投资建议。')
+                : tr('AXP is non-withdrawable, platform-only. Not investment advice.', 'AXP 不可提现、仅站内用途。非投资建议。')}
             </Text>
           </ScrollView>
         </View>
@@ -715,6 +769,41 @@ function DetailRow({ label, value, color }: { label: string; value: string; colo
     </View>
   );
 }
+
+/** 链上偿付横幅（USDC 金库信任可视化）：合约储备 vs 内部负债 + isSolvent，只读、失败静默。 */
+function OnchainSolvencyBanner() {
+  const { language } = useI18n();
+  const zh = language === 'zh';
+  const [s, setS] = useState<Awaited<ReturnType<typeof lsmApi.onchainSolvency>>>(null);
+  useEffect(() => {
+    let alive = true;
+    lsmApi.onchainSolvency().then((r) => { if (alive) setS(r); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  if (!s || !s.available) return null;
+  const ok = s.solvent !== false;
+  const fmt = (n: number | null) => (n == null ? '—' : `${Math.round(n).toLocaleString()} USDC`);
+  return (
+    <View style={[solvStyles.wrap, { borderColor: ok ? '#16a34a55' : '#d9770655', backgroundColor: ok ? '#16a34a11' : '#d9770611' }]}>
+      <Text style={[solvStyles.title, { color: ok ? '#16a34a' : '#d97706' }]}>
+        {ok ? (zh ? '● 链上储备已验证' : '● On-chain reserves verified') : (zh ? '● 链上储备核对中' : '● Reserves reconciling')}
+      </Text>
+      <Text style={solvStyles.sub}>
+        {zh ? '合约储备' : 'Reserve'} {fmt(s.reserveUsdc)} · {zh ? '内部负债' : 'Liabilities'} {fmt(s.liabilitiesUsdc)}
+      </Text>
+      <Text style={solvStyles.note}>
+        {zh ? 'LP 资金与交易结算实时锚定至 CollateralVault（测试网）' : 'LP capital & settlement anchored to CollateralVault (testnet)'}
+      </Text>
+    </View>
+  );
+}
+
+const solvStyles = StyleSheet.create({
+  wrap: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 10, gap: 3 },
+  title: { fontSize: 13, fontWeight: '800' },
+  sub: { fontSize: 12, color: colors.text, fontWeight: '600' },
+  note: { fontSize: 10, color: colors.textSecondary },
+});
 
 function VaultCard({
   vault,
@@ -993,6 +1082,252 @@ function AmountPromptModal({
   );
 }
 
+/**
+ * 钱包充提弹窗（双币）：
+ *  - AXP：站内积分，免费玩、不可提现，仅展示余额。
+ *  - USDC：链上真实稳定币（测试网）。支持多链（Injective EVM / BSC）。
+ *    充值：向所选链的 CollateralVault 地址转入 USDC → 粘贴 txHash 提交后端入账。
+ *    提现：经后端中继把 USDC 打到指定地址（默认带出当前 MPC 钱包地址）。
+ */
+function WalletModal({
+  visible,
+  balance,
+  tr,
+  zh,
+  onClose,
+  onChanged,
+}: {
+  visible: boolean;
+  balance: LsmWalletBalance;
+  tr: (e: string, z: string) => string;
+  zh: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit');
+  const [chainId, setChainId] = useState<number>(LSM_CHAINS[0]?.chainId ?? 1439);
+  const [txHash, setTxHash] = useState('');
+  const [amount, setAmount] = useState('');
+  const [toAddress, setToAddress] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const chain = getLsmChain(chainId);
+
+  // 打开时重置 + 预填 MPC 钱包地址（作为默认提现地址）+ 立即刷新余额（修"显示 0"）
+  useEffect(() => {
+    if (!visible) return;
+    setMode('deposit');
+    setChainId(LSM_CHAINS[0]?.chainId ?? 1439);
+    setTxHash('');
+    setAmount('');
+    setBusy(false);
+    setCopied(false);
+    onChanged(); // 打开钱包即重新拉取余额，避免展示挂载时的陈旧 0
+    checkMPCWallet()
+      .then((r) => {
+        if (r?.wallet?.walletAddress) setToAddress(r.wallet.walletAddress);
+      })
+      .catch(() => {/* 无钱包则留空，用户手动填写 */});
+  }, [visible]);
+
+  const copyVault = useCallback(async () => {
+    if (!chain) return;
+    await Clipboard.setStringAsync(chain.vault);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }, [chain]);
+
+  const submitDeposit = useCallback(async () => {
+    const hash = txHash.trim();
+    setBusy(true);
+    try {
+      if (hash) {
+        // 快速路径：提交 txHash 立即验真入账。
+        const r = await lsmApi.walletDeposit({ chainId, txHash: hash });
+        Alert.alert(
+          tr('Deposit submitted', '充值已提交'),
+          r?.credited != null
+            ? tr(`Credited ${formatAsset(r.credited, 'USDC')}`, `已入账 ${formatAsset(r.credited, 'USDC')}`)
+            : tr('Pending confirmation', '等待确认入账'),
+        );
+        setTxHash('');
+      } else {
+        // 无哈希：把 USDC 转到金库地址后，后端对账器约 30s 自动入账（免粘哈希）。
+        Alert.alert(
+          tr('Auto-credit', '自动入账'),
+          tr(
+            'After your USDC transfer to the vault confirms, it is credited automatically within ~30s. Pull to refresh.',
+            '把 USDC 转入上方金库地址并确认后，约 30 秒内自动入账，无需粘贴哈希。下拉可刷新余额。',
+          ),
+        );
+      }
+      onChanged();
+    } catch (e: any) {
+      Alert.alert(tr('Deposit failed', '充值失败'), mapErr(e, tr));
+    } finally {
+      setBusy(false);
+    }
+  }, [txHash, chainId, tr, onChanged]);
+
+  const submitWithdraw = useCallback(async () => {
+    const usdc = Number(amount) || 0;
+    const units = Math.round(usdc * 100); // USDC → 最小单位 0.01 USDC
+    const addr = toAddress.trim();
+    if (units <= 0) {
+      Alert.alert(tr('Invalid amount', '金额无效'), tr('Enter a positive USDC amount', '请输入正数 USDC 金额'));
+      return;
+    }
+    if (units > balance.usdc) {
+      Alert.alert(tr('Insufficient USDC', 'USDC 余额不足'), tr('Amount exceeds your USDC balance', '提现金额超过 USDC 余额'));
+      return;
+    }
+    if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+      Alert.alert(tr('Invalid address', '地址无效'), tr('Enter a valid 0x… address', '请输入有效的 0x… 地址'));
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await lsmApi.walletWithdraw({ amount: units, toAddress: addr, chainId });
+      Alert.alert(
+        tr('Withdraw submitted', '提现已提交'),
+        r?.txHash
+          ? tr(`Relayed on-chain: ${r.txHash.slice(0, 10)}…`, `已链上中继：${r.txHash.slice(0, 10)}…`)
+          : tr('Processing', '处理中'),
+      );
+      setAmount('');
+      onChanged();
+    } catch (e: any) {
+      Alert.alert(tr('Withdraw failed', '提现失败'), mapErr(e, tr));
+    } finally {
+      setBusy(false);
+    }
+  }, [amount, toAddress, chainId, balance.usdc, tr, onChanged]);
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
+        <View style={styles.sheet}>
+          <View style={styles.handle} />
+          <ScrollView keyboardShouldPersistTaps="handled">
+            <Text style={styles.title}>{tr('Wallet', '钱包 / 充提')}</Text>
+
+            {/* 双币余额 */}
+            <View style={styles.walletBalRow}>
+              <View style={styles.walletBalCard}>
+                <Text style={styles.walletBalLabel}>AXP</Text>
+                <Text style={styles.walletBalVal}>{balance.axp}</Text>
+                <Text style={styles.walletBalHint}>{tr('Platform points', '站内积分')}</Text>
+              </View>
+              <View style={styles.walletBalCard}>
+                <Text style={styles.walletBalLabel}>USDC</Text>
+                <Text style={styles.walletBalVal}>{(balance.usdc / 100).toFixed(2)}</Text>
+                <Text style={styles.walletBalHint}>{tr('On-chain (testnet)', '链上·测试网')}</Text>
+              </View>
+            </View>
+
+            {/* 充值 / 提现切换 */}
+            <View style={styles.assetRowLocal}>
+              {(['deposit', 'withdraw'] as const).map((m) => (
+                <TouchableOpacity
+                  key={m}
+                  style={[styles.assetChipLocal, mode === m && styles.assetChipLocalActive]}
+                  onPress={() => setMode(m)}
+                  testID={`lsm-wallet-${m}`}
+                >
+                  <Text style={[styles.assetTextLocal, mode === m && styles.assetTextLocalActive]}>
+                    {m === 'deposit' ? tr('Deposit USDC', '充值 USDC') : tr('Withdraw USDC', '提现 USDC')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* 链选择器（多链） */}
+            <Text style={styles.fieldLabel}>{tr('Network', '结算链')}</Text>
+            <View style={styles.chainRow}>
+              {LSM_CHAINS.map((c) => (
+                <TouchableOpacity
+                  key={c.chainId}
+                  style={[styles.chainChip, chainId === c.chainId && styles.chainChipActive]}
+                  onPress={() => setChainId(c.chainId)}
+                  testID={`lsm-chain-${c.chainId}`}
+                >
+                  <Text style={[styles.chainChipText, chainId === c.chainId && styles.chainChipTextActive]} numberOfLines={1}>
+                    {c.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {mode === 'deposit' ? (
+              <>
+                <Text style={styles.fieldLabel}>{tr('Send USDC to this vault', '将 USDC 转入金库地址')}</Text>
+                <TouchableOpacity style={styles.addrBox} onPress={copyVault} activeOpacity={0.7}>
+                  <Text style={styles.addrText} numberOfLines={1}>{chain?.vault || '—'}</Text>
+                  <Text style={styles.addrCopy}>{copied ? `✓ ${tr('Copied', '已复制')}` : `📋 ${tr('Copy', '复制')}`}</Text>
+                </TouchableOpacity>
+                <Text style={styles.walletNote}>
+                  {tr(
+                    'Token: USDC (6 decimals). After the transfer confirms it is credited automatically in ~30s. (Optional) paste the tx hash below for instant credit.',
+                    '代币：USDC（6 位精度）。转账确认后约 30 秒自动入账；（可选）在下方粘贴交易哈希可即时到账。',
+                  )}
+                </Text>
+                <Text style={styles.fieldLabel}>{tr('Deposit tx hash (optional)', '交易哈希（可选·加速入账）')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={txHash}
+                  onChangeText={setTxHash}
+                  placeholder="0x…"
+                  placeholderTextColor={colors.textSecondary}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity style={[styles.placeBtn, busy && styles.placeBtnDisabled]} onPress={submitDeposit} disabled={busy}>
+                  {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.placeBtnText}>{tr('Submit deposit', '提交入账')}</Text>}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.fieldLabel}>{tr('Amount (USDC)', '提现金额 (USDC)')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={amount}
+                  onChangeText={setAmount}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textSecondary}
+                />
+                <Text style={styles.walletNote}>
+                  {tr(`Available: ${(balance.usdc / 100).toFixed(2)} USDC`, `可提现：${(balance.usdc / 100).toFixed(2)} USDC`)}
+                </Text>
+                <Text style={styles.fieldLabel}>{tr('To address', '提现到地址')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={toAddress}
+                  onChangeText={setToAddress}
+                  placeholder="0x…"
+                  placeholderTextColor={colors.textSecondary}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity style={[styles.placeBtn, busy && styles.placeBtnDisabled]} onPress={submitWithdraw} disabled={busy}>
+                  {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.placeBtnText}>{tr('Withdraw', '确认提现')}</Text>}
+                </TouchableOpacity>
+              </>
+            )}
+
+            <Text style={styles.disclaimerLocal}>
+              {tr(
+                'USDC is testnet only. AXP is non-withdrawable, platform-only.',
+                'USDC 为测试网资产。AXP 不可提现、仅站内用途。',
+              )}
+            </Text>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function mapErr(e: any, tr: (e: string, z: string) => string): string {
   const msg: string = e?.message || '';
   if (msg.includes('VAULT_DEPOSIT_LOCKED')) return tr('Deposit still locked', '存款仍在锁定期');
@@ -1099,4 +1434,34 @@ const styles = StyleSheet.create({
   scopeChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   scopeChipText: { fontSize: 12, color: colors.text, fontWeight: '600' },
   scopeChipTextActive: { color: '#fff' },
+  // 双币余额条 + 钱包入口
+  balanceBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border },
+  balancePills: { flexDirection: 'row', gap: 10 },
+  balancePill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.background, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: colors.border },
+  balancePillLabel: { fontSize: 11, fontWeight: '800', color: colors.textSecondary },
+  balancePillVal: { fontSize: 14, fontWeight: '800', color: colors.text },
+  walletBtn: { backgroundColor: colors.primary, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
+  walletBtnText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  // WalletModal
+  walletBalRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  walletBalCard: { flex: 1, backgroundColor: colors.background, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
+  walletBalLabel: { fontSize: 12, fontWeight: '800', color: colors.textSecondary },
+  walletBalVal: { fontSize: 22, fontWeight: '900', color: colors.text, marginTop: 4 },
+  walletBalHint: { fontSize: 10, color: colors.textMuted, marginTop: 2 },
+  assetRowLocal: { flexDirection: 'row', gap: 8, marginTop: 16 },
+  assetChipLocal: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
+  assetChipLocalActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  assetTextLocal: { fontSize: 14, fontWeight: '800', color: colors.text },
+  assetTextLocalActive: { color: '#fff' },
+  chainRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 },
+  chainChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
+  chainChipActive: { backgroundColor: '#0891b2', borderColor: '#0891b2' },
+  chainChipText: { fontSize: 12, color: colors.text, fontWeight: '700' },
+  chainChipTextActive: { color: '#fff' },
+  addrBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, backgroundColor: colors.background, borderRadius: 10, paddingVertical: 11, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.border },
+  addrText: { color: '#2563eb', fontSize: 12, flex: 1, fontFamily: 'monospace' },
+  addrCopy: { color: '#1d4ed8', fontSize: 12, fontWeight: '800' },
+  walletNote: { fontSize: 11, color: colors.textSecondary, lineHeight: 16, marginTop: 8 },
+  disclaimer: { fontSize: 11, color: colors.textSecondary, textAlign: 'center', marginTop: 12, lineHeight: 16 },
+  disclaimerLocal: { fontSize: 11, color: colors.textSecondary, textAlign: 'center', marginTop: 14, lineHeight: 16 },
 });

@@ -22,6 +22,7 @@ export function ShareCardScreen() {
     categoryLabel,
     priceLabel,
     statsLabel,
+    oddsList,
     priceCaption,
     statsCaption,
     description,
@@ -47,6 +48,7 @@ export function ShareCardScreen() {
           categoryLabel={categoryLabel}
           priceLabel={priceLabel}
           statsLabel={statsLabel}
+          oddsList={oddsList}
           priceCaption={priceCaption}
           statsCaption={statsCaption}
           description={description}

@@ -29,6 +29,7 @@ import ViewShot, { CaptureOptions } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { useI18n } from '../../stores/i18nStore';
 import { getApiConfig } from '../../services/api';
+import { digestPosterShareUrl } from '../../services/aggregatedMarketView';
 
 interface DigestItem {
   title: string;
@@ -89,7 +90,7 @@ export function DigestPosterScreen() {
     void load();
   }, [load]);
 
-  const shareUrl = payload?.shareUrl || `${SITE_BASE}/digest/${payload?.date ?? 'today'}`;
+  const shareUrl = digestPosterShareUrl(payload, SITE_BASE);
 
   const captureAndShare = useCallback(async () => {
     if (!payload) return;
