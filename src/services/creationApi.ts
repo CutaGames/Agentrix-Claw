@@ -40,6 +40,7 @@ import type {
   // §4 publish
   PublishCreationRequest,
   PublishCreationResponse,
+  QualityCheckCreationResponse,
   // §5 discover
   DiscoverCreationsQuery,
   DiscoverCreationsResponse,
@@ -283,6 +284,19 @@ export async function publishCreation(
     shareCode: r.shareCode,
     error: r.error,
   };
+}
+
+/**
+ * 发布前质量门预检(world-growth-engine 阶段 3.1)。只读、不改状态;
+ * 返回各维度 pass/fail + 可行动 reasons + 该类型是否会被强制拦截(enforced)。
+ * 机器面新能力,直连统一端点。
+ */
+export async function checkCreationQuality(
+  id: string,
+): Promise<QualityCheckCreationResponse> {
+  return unified<QualityCheckCreationResponse>(`/${encodeURIComponent(id)}/quality-check`, {
+    method: 'POST',
+  });
 }
 
 // ============================================================

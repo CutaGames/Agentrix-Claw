@@ -407,7 +407,10 @@ export type WorldCreationErrorCode =
   | 'MODERATION_REJECTED'
   | 'QUOTA_EXCEEDED'
   | 'LOAD_TIMEOUT'
-  | 'NOT_ORIGINAL_CREATOR';
+  | 'NOT_ORIGINAL_CREATOR'
+  // 发布前质量门未过(区别于 MODERATION_REJECTED 的"违规";这是"不够好/不可用")。
+  // world-growth-engine 质量门:内容保留、可改重生(对齐需求 3.3 语义)。
+  | 'QUALITY_REJECTED';
 
 /** A structured error returned by the platform (design §Error Handling). */
 export interface WorldCreationError {

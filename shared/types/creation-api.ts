@@ -41,6 +41,8 @@ import type {
   WorldCreationError,
 } from './world-creation';
 
+import type { CreationQualityResult } from './creation-quality';
+
 import type {
   ContinuumEditRequest,
   ContinuumEditResponse,
@@ -217,8 +219,19 @@ export interface PublishCreationResponse {
   shareCode?: string;
   /** 发布时派生的能力清单版本(单调递增,需求 1.11 / Property 5)。 */
   manifestVersion?: number;
-  /** 审核拒绝时的结构化原因(MODERATION_REJECTED);内容保留不丢失(需求 3.3)。 */
+  /** 审核拒绝(MODERATION_REJECTED)/ 质量门未过(QUALITY_REJECTED)时的结构化原因;内容保留不丢失(需求 3.3)。 */
   error?: WorldCreationError;
+}
+
+/**
+ * POST /v1/creations/:id/quality-check — 发布前质量门预检响应（world-growth-engine 阶段 3.1）。
+ * 只读、不改状态;让创作者在发布前就看到"够不够好、差在哪"。
+ */
+export interface QualityCheckCreationResponse {
+  /** 质量门综合结果（各维度 pass/fail + 可行动 reasons）。 */
+  quality: CreationQualityResult;
+  /** 该类型是否会被质量门强制拦截（true=不达标将无法发布）。 */
+  enforced: boolean;
 }
 
 // ============================================================

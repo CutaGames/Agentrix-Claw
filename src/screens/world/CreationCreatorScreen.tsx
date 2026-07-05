@@ -29,6 +29,7 @@ import {
   createCreation,
   continueCreation,
   publishCreation,
+  checkCreationQuality,
   importCreationGame,
   generateDrama,
   generateCreationCover,
@@ -300,11 +301,32 @@ export default function CreationCreatorScreen() {
     if (!creationId) return;
     setPublishing(true);
     try {
+      // 发布前质量门预检(阶段 3.1/4.1):首发商业型不达标先给可行动提示,避免直接发布失败。
+      try {
+        const pre = await checkCreationQuality(creationId);
+        if (pre.enforced && !pre.quality.pass) {
+          const reasons = pre.quality.failed.flatMap((f) => f.reasons);
+          Alert.alert(
+            t({ en: 'Almost there — quality check', zh: '差一点 · 质量检查' }),
+            (reasons.length ? reasons : [t({ en: 'Please improve the creation before publishing.', zh: '发布前请先完善创作。' })]).join('\n\n'),
+          );
+          return;
+        }
+      } catch {
+        // 预检失败(网络等)不阻断:交给发布时的服务端权威判定兜底。
+      }
+
       const res = await publishCreation(creationId);
       if (!res.published) {
+        const isQuality = res.error?.error === 'QUALITY_REJECTED';
         Alert.alert(
-          t({ en: 'Publish rejected', zh: '发布被拒' }),
-          res.error?.detail ?? t({ en: 'Moderation rejected.', zh: '审核未通过。' }),
+          isQuality
+            ? t({ en: 'Quality check not passed', zh: '质量未达标' })
+            : t({ en: 'Publish rejected', zh: '发布被拒' }),
+          res.error?.detail ??
+            (isQuality
+              ? t({ en: 'Please improve the creation and try again.', zh: '请完善创作后重试。' })
+              : t({ en: 'Moderation rejected.', zh: '审核未通过。' })),
         );
         return;
       }
