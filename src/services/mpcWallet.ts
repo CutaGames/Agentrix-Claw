@@ -294,6 +294,37 @@ export async function signAndSendManaged(params: {
     }),
   });
 }
+
+/**
+ * 构造「用户主权钱包」的 x402 付款函数（agent-economy-hardening · R6，需求 4.1 / 4.3）。
+ *
+ * 返回一个 `UserWalletPayFn`（见 `aggregatedMarket.api`），供聚合代成交 `payment_required`
+ * 回填时调用：用**用户自己的** MPC 自托管钱包在对应链发 `erc20_transfer`，把 USDC 转给
+ * x402 收款地址（分佣合约），返回真 txHash。gas 由 relayer 代付（需 MPC_ONCHAIN_TX_ENABLED）。
+ *
+ * 与平台托管 agent autopay（后端 `AgentAutopayService` + `PlatformAgentWallet`）并存、互不影响：
+ * 此处是客户端用用户钱包主动付款，autopay 是后端对平台托管 agent 自付。
+ */
+export function makeUserWalletX402Payer(params: {
+  walletAddress: string;
+  userId: string;
+  agentId?: string;
+}) {
+  return async (p: { chainId: number; token: string; to: string; amountHuman: string }) => {
+    return signAndSendManaged({
+      walletAddress: params.walletAddress,
+      userId: params.userId,
+      agentId: params.agentId,
+      intent: {
+        kind: 'erc20_transfer',
+        chainId: p.chainId,
+        token: p.token,
+        to: p.to,
+        amount: p.amountHuman,
+      },
+    });
+  };
+}
  * 1. 检查是否已有钱包
  * 2. 如果没有，自动创建
  * 3. 存储分片 A 到 SecureStore

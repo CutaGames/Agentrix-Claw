@@ -2,11 +2,11 @@
  * OpportunityCards — 对话内「全网机会结果卡片」可复用组件（移动端）。
  *
  * 渲染一组聚合检索结果（AggregatedListing），每卡含来源徽标 / 品类 / 报价，以及围栏内
- * 「接单 / 下注 / 购买 / 雇佣」按钮（→ participateInListing → POST /ard/participate）；仅链接
+ * 「接单 / 下注 / 购买 / 雇佣」按钮（→ participateInListing → POST /aggregation/participate）；仅链接
  * 发现的条目显示「跳转外部」。供**主对话框**（AgentChatScreen）与机会助手屏共用，实现
  * 「在对话里展示检索结果 + 直接接单/下单」。
  *
- * 自洽：内部管理 busy / 成交结果态；不依赖外部状态。后端 /ard/search、/ard/participate 已就绪。
+ * 自洽：内部管理 busy / 成交结果态；不依赖外部状态。后端 /ard/search、/aggregation/participate 已就绪。
  */
 import React, { useCallback, useState } from 'react';
 import {
@@ -30,7 +30,9 @@ import {
   type ParticipationAction,
   type ParticipateResult,
 } from '../../services/aggregatedMarket.api';
-import { posterShareUrl, posterEmojiFor } from '../../services/aggregatedMarketView';
+import { posterEmojiFor } from '../../services/aggregatedMarketView';
+import { buildShareIntent, opportunityToShareIntent } from '../../services/shareIntent';
+import { recordGrowthEvent } from '../../services/growthEvents';
 
 const CATEGORY_LABEL: Record<AggCategory, { en: string; zh: string }> = {
   task: { en: 'Task', zh: '任务' },
@@ -69,9 +71,16 @@ export function OpportunityCards({ listings }: OpportunityCardsProps) {
   /** 当前要生成海报的条目（null = 海报弹窗关闭）。 */
   const [posterListing, setPosterListing] = useState<AggregatedListing | null>(null);
 
-  /** 海报可扫码链接：优先外链，否则回退站点机会详情页。 */
+  /** 海报可扫码链接:统一经 buildShareIntent 产出带 ?ref 归因的 URL(优先外链,否则站内机会详情)。 */
   const shareUrlFor = useCallback(
-    (listing: AggregatedListing) => posterShareUrl(listing),
+    (listing: AggregatedListing) =>
+      buildShareIntent(
+        opportunityToShareIntent({
+          identifier: listing.identifier,
+          title: listing.displayName,
+          externalUrl: listing.externalUrl ?? undefined,
+        }),
+      ).attributedUrl,
     [],
   );
 
@@ -132,9 +141,7 @@ export function OpportunityCards({ listings }: OpportunityCardsProps) {
               <Text style={[styles.resultLine, result.ok ? styles.resultOk : styles.resultWarn]}>
                 {result.ok
                   ? t({ en: `Done · ${result.status}`, zh: `已成交 · ${result.status}` })
-                  : result.status === 'backend_gap'
-                    ? t({ en: 'Accept backend pending; use external link.', zh: '代成交后端待上线，请用跳转外部' })
-                    : t({ en: `Not completed: ${result.reason || result.status}`, zh: `未完成：${result.reason || result.status}` })}
+                  : t({ en: `Not completed: ${result.reason || result.status}`, zh: `未完成：${result.reason || result.status}` })}
               </Text>
             ) : null}
             <View style={styles.cardBtnRow}>
@@ -192,6 +199,7 @@ export function OpportunityCards({ listings }: OpportunityCardsProps) {
               {posterListing ? (
                 <ShareCardView
                   shareUrl={shareUrlFor(posterListing)}
+                  onShare={() => recordGrowthEvent({ eventType: 'share', sourceType: 'marketplace', sourceEntityId: posterListing.identifier, channel: 'poster' })}
                   title={posterListing.displayName}
                   subtitle={
                     posterListing.internal

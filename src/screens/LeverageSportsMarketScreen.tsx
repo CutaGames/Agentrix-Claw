@@ -22,6 +22,8 @@ import { useNavigation } from '@react-navigation/native';
 import { WORLDCUP_COVER_IMG } from '../constants/posterAssets';
 import { teamFlagUrl } from '../utils/teamFlags';
 import { buildMatchOddsList } from '../utils/matchOdds';
+import { buildShareIntent, predictionToShareIntent } from '../services/shareIntent';
+import { recordGrowthEvent } from '../services/growthEvents';
 import {
   lsmApi,
   LsmMarketView,
@@ -80,9 +82,21 @@ export default function LeverageSportsMarketScreen() {
         m.homeScore != null && m.awayScore != null ? `${m.homeScore} : ${m.awayScore}` : '';
       const statusZh =
         m.status === 'live' ? '滚球进行中' : m.status === 'pre' ? '即将开赛' : m.status === 'final' ? '完场' : '';
+      // 统一增长归因:预测分享 → 带 ?ref 的 /lsm/market 链接 + share 事件(sourceType=prediction)。
+      const built = buildShareIntent(
+        predictionToShareIntent({
+          marketId: m.id,
+          title: `${m.homeTeam} vs ${m.awayTeam}`,
+          oddsList,
+          homeImageUrl: teamFlagUrl(m.homeTeam) || undefined,
+          awayImageUrl: teamFlagUrl(m.awayTeam) || undefined,
+          channel: 'match_poster',
+        }),
+      );
+      recordGrowthEvent({ eventType: 'share', sourceType: 'prediction', sourceEntityId: m.id, attributionRef: built.attributionRef, channel: 'match_poster' });
       try {
         navigation.navigate('ShareCard', {
-          shareUrl: 'https://polymarket.agentrix.top',
+          shareUrl: built.attributedUrl,
           title: `${m.homeTeam} vs ${m.awayTeam}`,
           subtitle: m.league || (zh ? '世界杯滚球预测' : 'World Cup Live Predictions'),
           headerEmoji: '🏆',
