@@ -325,6 +325,9 @@ export function makeUserWalletX402Payer(params: {
     });
   };
 }
+
+/**
+ * 确保当前社交登录用户拥有 MPC 钱包（幂等）。
  * 1. 检查是否已有钱包
  * 2. 如果没有，自动创建
  * 3. 存储分片 A 到 SecureStore
