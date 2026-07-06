@@ -35,8 +35,10 @@ import {
   generateCreationCover,
   illustrateDrama,
   setCreationOfferings,
+  getCreationManifest,
 } from '../../services/creationApi';
 import type { CreationType } from '../../../shared/types/creation';
+import type { McpToolDescriptor } from '../../../shared/types/creation';
 import type { SubstrateTier } from '../../../shared/types/world-creation';
 import type { CreationMode } from '../../../shared/types/world-creation-api';
 import { themedStyles } from '../../theme/useTheme';
@@ -79,6 +81,9 @@ export default function CreationCreatorScreen() {
   const [instruction, setInstruction] = useState('');
   const [shareCode, setShareCode] = useState<string | null>(null);
   const [manifestVersion, setManifestVersion] = useState<number | null>(null);
+  // task 4.5：发布后拉取「自动派生的 Agent 能力清单」只读展示（体现一次标注两端复用、不写接口）。
+  const [manifestTools, setManifestTools] = useState<McpToolDescriptor[] | null>(null);
+  const [manifestLoading, setManifestLoading] = useState(false);
 
   const [generating, setGenerating] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -332,6 +337,12 @@ export default function CreationCreatorScreen() {
       }
       setShareCode(res.shareCode ?? null);
       setManifestVersion(res.manifestVersion ?? null);
+      // task 4.5：发布成功后拉取自动派生的 Agent 能力清单（只读展示）。失败静默降级（不阻断发布）。
+      setManifestLoading(true);
+      getCreationManifest(creationId)
+        .then((m) => setManifestTools(Array.isArray(m?.manifest?.tools) ? m.manifest.tools : []))
+        .catch(() => setManifestTools(null))
+        .finally(() => setManifestLoading(false));
       Alert.alert(
         t({ en: 'Published', zh: '发布成功' }),
         res.shareCode
@@ -366,6 +377,24 @@ export default function CreationCreatorScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* task 4.6：扫描实物创作入口（📷）。走多角度扫描 → 质量门 → 资产生成，
+            而非"单张原图直接当角色"（质量门在扫描/重建管线内强制，不达标不出成品）。 */}
+        <TouchableOpacity
+          style={styles.scanEntry}
+          onPress={() => navigation.navigate('WorldEngineScanner', { mode: 'quick' })}
+          testID="creator-scan-entry"
+        >
+          <Text style={styles.scanEntryText}>
+            📷 {t({ en: 'Or: scan a real object', zh: '或：扫描实物生成' })}
+          </Text>
+          <Text style={styles.scanEntryHint}>
+            {t({
+              en: 'Multi-angle capture → quality-gated 3D asset (not a single raw photo).',
+              zh: '多角度采集 → 经质量门生成 3D 资产（非单张原图直接成形）。',
+            })}
+          </Text>
+        </TouchableOpacity>
 
         {/* drama 引导:互动剧 = 分支叙事 + 选择 + AXP 解锁,prompt 给"题材/人设/冲突"。 */}
         {type === 'drama' ? (
@@ -608,6 +637,16 @@ export default function CreationCreatorScreen() {
             {manifestVersion != null ? (
               <Text style={styles.cardHint}>🤖 {t({ en: 'Agent capabilities ready', zh: 'Agent 能力已就绪' })} (manifest v{manifestVersion})</Text>
             ) : null}
+
+            {/* task 4.5：自动识别的供给 + 自动生成的 Agent 能力（只读展示）。 */}
+            {manifestLoading ? (
+              <View style={styles.derivedBox}>
+                <ActivityIndicator color={colors.accent} size="small" />
+              </View>
+            ) : manifestTools && manifestTools.length > 0 ? (
+              <DerivedCapabilitiesPanel tools={manifestTools} t={t} />
+            ) : null}
+
             <TouchableOpacity
               style={styles.manageBtn}
               onPress={() => navigation.navigate('MyWorld')}
@@ -630,6 +669,77 @@ export default function CreationCreatorScreen() {
           {publishing ? <ActivityIndicator color="#fff" /> : <Text style={styles.publishBtnText}>{t({ en: 'Submit for review & publish', zh: '提交审核并发布' })}</Text>}
         </TouchableOpacity>
       </View>
+    </View>
+  );
+}
+
+/** 标准动词 → 展示元数据（图标 + 人/机可读标签）。 */
+const VERB_META: Record<string, { emoji: string; label: { en: string; zh: string } }> = {
+  order: { emoji: '🛒', label: { en: 'Order', zh: '下单' } },
+  book: { emoji: '📅', label: { en: 'Book', zh: '预约' } },
+  subscribe: { emoji: '🔔', label: { en: 'Subscribe', zh: '订阅' } },
+  donate: { emoji: '🎁', label: { en: 'Donate', zh: '打赏' } },
+  query: { emoji: '🔍', label: { en: 'Query', zh: '查询' } },
+  message: { emoji: '💬', label: { en: 'Message', zh: '留言' } },
+};
+
+/**
+ * task 4.5 —「自动识别供给 + 自动生成 Agent 能力」只读展示面板。
+ * 从发布派生的能力清单（`manifest.tools`）投影：① 识别到的供给（按 offeringId 去重）；
+ * ② 每个 Agent 可调用能力（MCP 工具，只读）。体现"一次标注两端复用、创作者不写接口"。
+ */
+function DerivedCapabilitiesPanel({
+  tools,
+  t,
+}: {
+  tools: McpToolDescriptor[];
+  t: any;
+}) {
+  const offeringIds = Array.from(
+    new Set(tools.map((x) => x.offeringId).filter((x): x is string => !!x)),
+  );
+  return (
+    <View style={styles.derivedBox} testID="creator-derived-capabilities">
+      {offeringIds.length > 0 ? (
+        <>
+          <Text style={styles.derivedTitle}>
+            🧩 {t({ en: 'Recognized offerings', zh: '自动识别到的供给' })} ({offeringIds.length})
+          </Text>
+          <Text style={styles.derivedNote}>
+            {t({
+              en: 'Auto-recognized from your creation. Edit prices in the shop products section above (shop) or in Manage.',
+              zh: '由创作自动识别。价格可在上方商品区（店铺）或「我的世界」中修改。',
+            })}
+          </Text>
+        </>
+      ) : null}
+
+      <Text style={[styles.derivedTitle, { marginTop: offeringIds.length > 0 ? 12 : 0 }]}>
+        🤖 {t({ en: 'Agent-callable capabilities (auto-generated)', zh: '已自动生成的 Agent 能力（只读）' })} ({tools.length})
+      </Text>
+      <Text style={styles.derivedNote}>
+        {t({
+          en: 'Agents can call these standard tools — you never wrote an API. One annotation, both ends.',
+          zh: 'Agent 可调用以下标准能力——你没写任何接口。一次标注，人机两端复用。',
+        })}
+      </Text>
+      {tools.map((tool, idx) => {
+        const meta = VERB_META[tool.verb] ?? { emoji: '⚙️', label: { en: tool.verb, zh: tool.verb } };
+        return (
+          <View key={`${tool.name}-${idx}`} style={styles.toolRow}>
+            <Text style={styles.toolEmoji}>{meta.emoji}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toolName} numberOfLines={1}>
+                {tool.name}
+                {tool.consumes ? <Text style={styles.toolConsumes}>  · {t({ en: 'billable', zh: '消费类' })}</Text> : null}
+              </Text>
+              {tool.description ? (
+                <Text style={styles.toolDesc} numberOfLines={2}>{tool.description}</Text>
+              ) : null}
+            </View>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -684,6 +794,21 @@ const styles = themedStyles(() => StyleSheet.create({
   cardHint: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: 6 },
   manageBtn: { marginTop: 12, backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
   manageBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+
+  // task 4.6 扫描入口
+  scanEntry: { marginTop: 10, backgroundColor: colors.bgCard, borderRadius: 12, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed', padding: 12 },
+  scanEntryText: { color: colors.textPrimary, fontSize: 14, fontWeight: '700' },
+  scanEntryHint: { color: colors.textMuted, fontSize: 11, lineHeight: 16, marginTop: 4 },
+
+  // task 4.5 自动派生面板
+  derivedBox: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
+  derivedTitle: { color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  derivedNote: { color: colors.textMuted, fontSize: 11, lineHeight: 16, marginBottom: 8 },
+  toolRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 6, borderTopWidth: 1, borderTopColor: 'rgba(148,163,184,0.15)' },
+  toolEmoji: { fontSize: 16, marginTop: 1 },
+  toolName: { color: colors.textPrimary, fontSize: 13, fontWeight: '600' },
+  toolConsumes: { color: '#eab308', fontSize: 11, fontWeight: '600' },
+  toolDesc: { color: colors.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 2 },
 
   footer: { padding: 16, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bgSecondary },
   publishBtn: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
