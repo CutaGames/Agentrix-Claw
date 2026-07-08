@@ -18,6 +18,7 @@ import {
   RefreshControl,
   Switch,
   Alert,
+  TextInput,
 } from 'react-native';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -73,6 +74,13 @@ export function SovereigntyControlPlaneScreen() {
   const paramId = route.params?.agentAccountId;
   const qc = useQueryClient();
   const [busyCap, setBusyCap] = useState<string | null>(null);
+  const [editingLimits, setEditingLimits] = useState(false);
+  const [savingLimits, setSavingLimits] = useState(false);
+  const [limitDraft, setLimitDraft] = useState<{ single: string; daily: string; monthly: string }>({
+    single: '',
+    daily: '',
+    monthly: '',
+  });
 
   // 未显式传入 agentAccountId 时，经链上授权总览（服务端按 JWT 解析主宠 AgentAccount）自动解析。
   const resolveQuery = useQuery({
@@ -129,6 +137,42 @@ export function SovereigntyControlPlaneScreen() {
       }
     },
     [agentAccountId, qc, t],
+  );
+
+  const beginEditLimits = useCallback((v: AuthorizationView) => {
+    setLimitDraft({
+      single: String(v.spendingLimits?.singleTxLimit ?? 0),
+      daily: String(v.spendingLimits?.dailyLimit ?? 0),
+      monthly: String(v.spendingLimits?.monthlyLimit ?? 0),
+    });
+    setEditingLimits(true);
+  }, []);
+
+  const saveLimits = useCallback(
+    async (currency?: string) => {
+      if (!agentAccountId) return;
+      const single = Number(limitDraft.single);
+      const daily = Number(limitDraft.daily);
+      const monthly = Number(limitDraft.monthly);
+      if ([single, daily, monthly].some((n) => !Number.isFinite(n) || n < 0)) {
+        Alert.alert(t({ en: 'Invalid', zh: '无效数值' }), t({ en: 'Limits must be non-negative numbers.', zh: '限额必须为非负数。' }));
+        return;
+      }
+      setSavingLimits(true);
+      try {
+        const v = await patchAuthorizations(agentAccountId, {
+          spendingLimits: { singleTxLimit: single, dailyLimit: daily, monthlyLimit: monthly, currency: currency || 'USDC' },
+        });
+        qc.setQueryData(['authorizations', agentAccountId], v);
+        qc.invalidateQueries({ queryKey: ['authorizations-audit', agentAccountId] });
+        setEditingLimits(false);
+      } catch (e: any) {
+        Alert.alert(t({ en: 'Failed', zh: '保存失败' }), e?.message || '');
+      } finally {
+        setSavingLimits(false);
+      }
+    },
+    [agentAccountId, limitDraft, qc, t],
   );
 
   if (!agentAccountId) {
@@ -197,18 +241,47 @@ export function SovereigntyControlPlaneScreen() {
         <Text style={styles.customHint}>{t({ en: 'Custom (per-item overrides)', zh: '自定义（逐项覆盖）' })}</Text>
       )}
 
-      {/* 支付限额 */}
-      <Text style={styles.sectionTitle}>{t({ en: 'Spending Limits', zh: '支付限额' })}</Text>
+      {/* 支付限额（可编辑） */}
+      <View style={styles.sectionTitleRow}>
+        <Text style={styles.sectionTitle}>{t({ en: 'Spending Limits', zh: '支付限额' })}</Text>
+        {!editingLimits ? (
+          <TouchableOpacity onPress={() => beginEditLimits(view)}>
+            <Text style={styles.editLink}>✏️ {t({ en: 'Edit', zh: '编辑' })}</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={{ flexDirection: 'row', gap: 14 }}>
+            <TouchableOpacity onPress={() => setEditingLimits(false)} disabled={savingLimits}>
+              <Text style={styles.cancelLink}>{t({ en: 'Cancel', zh: '取消' })}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => saveLimits(view.spendingLimits?.currency)} disabled={savingLimits}>
+              <Text style={styles.editLink}>{savingLimits ? t({ en: 'Saving…', zh: '保存中…' }) : t({ en: 'Save', zh: '保存' })}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
       <View style={styles.limitsCard}>
-        <LimitRow label={t({ en: 'Single', zh: '单笔' })} value={view.spendingLimits?.singleTxLimit} currency={view.spendingLimits?.currency} />
-        <LimitRow label={t({ en: 'Daily', zh: '每日' })} value={view.spendingLimits?.dailyLimit} currency={view.spendingLimits?.currency} />
-        <LimitRow label={t({ en: 'Monthly', zh: '每月' })} value={view.spendingLimits?.monthlyLimit} currency={view.spendingLimits?.currency} />
-        <View style={styles.limitRow}>
-          <Text style={styles.limitLabel}>{t({ en: 'Remaining today', zh: '今日剩余' })}</Text>
-          <Text style={styles.limitValue}>
-            {view.usage.remainingDaily == null ? '—' : `${view.usage.remainingDaily} ${view.spendingLimits?.currency || ''}`}
-          </Text>
-        </View>
+        {editingLimits ? (
+          <>
+            <LimitEditRow label={t({ en: 'Single', zh: '单笔' })} value={limitDraft.single} currency={view.spendingLimits?.currency} onChange={(v) => setLimitDraft((d) => ({ ...d, single: v }))} />
+            <LimitEditRow label={t({ en: 'Daily', zh: '每日' })} value={limitDraft.daily} currency={view.spendingLimits?.currency} onChange={(v) => setLimitDraft((d) => ({ ...d, daily: v }))} />
+            <LimitEditRow label={t({ en: 'Monthly', zh: '每月' })} value={limitDraft.monthly} currency={view.spendingLimits?.currency} onChange={(v) => setLimitDraft((d) => ({ ...d, monthly: v }))} />
+            <Text style={styles.clientManagedHint}>
+              {t({ en: 'Limits are enforced by the on-chain settlement fence.', zh: '限额由链上结算围栏强制执行；测试网稳定币计价，非投资建议。' })}
+            </Text>
+          </>
+        ) : (
+          <>
+            <LimitRow label={t({ en: 'Single', zh: '单笔' })} value={view.spendingLimits?.singleTxLimit} currency={view.spendingLimits?.currency} />
+            <LimitRow label={t({ en: 'Daily', zh: '每日' })} value={view.spendingLimits?.dailyLimit} currency={view.spendingLimits?.currency} />
+            <LimitRow label={t({ en: 'Monthly', zh: '每月' })} value={view.spendingLimits?.monthlyLimit} currency={view.spendingLimits?.currency} />
+            <View style={styles.limitRow}>
+              <Text style={styles.limitLabel}>{t({ en: 'Remaining today', zh: '今日剩余' })}</Text>
+              <Text style={styles.limitValue}>
+                {view.usage.remainingDaily == null ? '—' : `${view.usage.remainingDaily} ${view.spendingLimits?.currency || ''}`}
+              </Text>
+            </View>
+          </>
+        )}
       </View>
 
       {/* 能力开关 */}
@@ -328,11 +401,46 @@ function LimitRow({ label, value, currency }: { label: string; value?: number; c
   );
 }
 
+function LimitEditRow({
+  label,
+  value,
+  currency,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  currency?: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <View style={styles.limitRow}>
+      <Text style={styles.limitLabel}>{label}</Text>
+      <View style={styles.limitInputWrap}>
+        <TextInput
+          style={styles.limitInput}
+          value={value}
+          onChangeText={(txt) => onChange(txt.replace(/[^0-9.]/g, ''))}
+          keyboardType="decimal-pad"
+          placeholder="0"
+          placeholderTextColor={colors.textMuted}
+        />
+        <Text style={styles.limitCurrency}>{currency || 'USDC'}</Text>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgPrimary, paddingHorizontal: 16 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgPrimary, padding: 24 },
   hint: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
   sectionTitle: { color: colors.textPrimary, fontSize: 15, fontWeight: '700', marginTop: 20, marginBottom: 10 },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: 10 },
+  editLink: { color: colors.accent, fontSize: 14, fontWeight: '700' },
+  cancelLink: { color: colors.textMuted, fontSize: 14 },
+  limitInputWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  limitInput: { minWidth: 80, textAlign: 'right', color: colors.textPrimary, fontSize: 14, fontWeight: '600', borderBottomWidth: 1, borderBottomColor: colors.accent, paddingVertical: 2 },
+  limitCurrency: { color: colors.textMuted, fontSize: 12 },
   tierRow: { flexDirection: 'row', gap: 8 },
   tierChip: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.bgSecondary, alignItems: 'center', borderWidth: 1, borderColor: 'transparent' },
   tierChipActive: { borderColor: colors.accent, backgroundColor: colors.bgSecondary },

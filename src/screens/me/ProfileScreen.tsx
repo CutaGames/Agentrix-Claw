@@ -275,6 +275,22 @@ export function ProfileScreen() {
         </View>
       ) : null}
 
+      {/* ── Agent 主权：授权中枢一级入口（S1）── */}
+      <Section title={t({ en: 'Agent Sovereignty', zh: 'Agent 主权' })}>
+        <MenuItem
+          icon="🛡️"
+          label={t({ en: 'Authorization Center', zh: '授权中枢' })}
+          onPress={() => navigation.navigate('SovereigntyControlPlane')}
+          testID="me-authorization-center"
+        />
+        <MenuItem
+          icon="💰"
+          label={t({ en: 'Earnings Center', zh: '收益中心' })}
+          onPress={() => navigation.navigate('PetEarnings')}
+          testID="me-earnings-center"
+        />
+      </Section>
+
       {/* ── 4. My & Promote ─────────────────────────── */}
       <Section title={t({ en: 'My stuff', zh: '我的' })}>
         <MenuItem icon="📦" label={t({ en: 'Orders', zh: '订单' })} onPress={() => navigation.navigate('MyOrders')} testID="me-orders" />

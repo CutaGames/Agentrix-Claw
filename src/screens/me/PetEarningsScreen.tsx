@@ -316,11 +316,22 @@ export function PetEarningsScreen() {
             <Stat label={t({ en: 'Spent', zh: '累计消耗' })} value={summary?.axp.lifetimeSpent ?? 0} />
             <Stat label={t({ en: 'Expired', zh: '已过期' })} value={summary?.axp.lifetimeExpired ?? 0} />
           </View>
-          {(summary?.usdt.lifetimeEarned ?? 0) > 0 && (
-            <View style={styles.usdtRow}>
-              <Text style={styles.usdtLabel}>{t({ en: 'USDT (marketplace)', zh: 'USDT 集市收入' })}</Text>
-              <Text style={styles.usdtValue}>{(summary?.usdt.lifetimeEarned ?? 0).toLocaleString()} USDT</Text>
-            </View>
+          {/* 链上稳定币收入（USDC/USDT）——始终展示，让经济体可感知；0 时显示引导态。 */}
+          <View style={styles.usdtRow}>
+            <Text style={styles.usdtLabel}>{t({ en: 'On-chain stablecoin (USDC/USDT)', zh: '链上稳定币收入 (USDC/USDT)' })}</Text>
+            <Text style={styles.usdtValue}>
+              {(summary?.usdt.lifetimeEarned ?? 0) > 0
+                ? `${(summary?.usdt.lifetimeEarned ?? 0).toLocaleString()} ${t({ en: '', zh: '' })}USDC/USDT`
+                : t({ en: '— (testnet)', zh: '— (测试网)' })}
+            </Text>
+          </View>
+          {(summary?.usdt.lifetimeEarned ?? 0) === 0 && (
+            <Text style={styles.usdtHint}>
+              {t({
+                en: 'Your agent settles marketplace deals in on-chain stablecoin (testnet). Earnings appear here once it closes a paid deal.',
+                zh: 'agent 在集市的成交以链上稳定币结算（测试网）。它完成一笔付费成交后，收入会显示在这里。',
+              })}
+            </Text>
           )}
         </View>
       )}
@@ -910,6 +921,7 @@ const styles = themedStyles(() => StyleSheet.create({
   usdtRow: { flexDirection: 'row', justifyContent: 'space-between', alignSelf: 'stretch', marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
   usdtLabel: { fontSize: 12, color: colors.textMuted },
   usdtValue: { fontSize: 14, fontWeight: '700', color: '#10b981' },
+  usdtHint: { fontSize: 11, color: colors.textMuted, marginTop: 6, lineHeight: 16 },
   actionBtn: { backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginBottom: 16 },
   actionBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   rangeRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },

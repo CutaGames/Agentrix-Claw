@@ -344,6 +344,13 @@ export function GlobalFloatingBall({
   ).current;
 
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // #1 fix: once a long-press fires this gesture, the release must NOT also fire a tap.
+  const longPressFiredRef = useRef(false);
+  // #1 fix: PanResponder is created once (useRef) and would capture stale handleTap/handleLongPress
+  // closures; call through refs so the gesture always runs the LATEST handlers (esp. after pet
+  // state changes / override binding). Assigned after the useCallback defs below.
+  const handleTapRef = useRef<() => void>(() => {});
+  const handleLongPressRef = useRef<() => void>(() => {});
   const isDragging = useRef(false);
   const wakeListenerRef = useRef<SpeechWakeWordService | LocalWakeWordService | null>(null);
   const navigatingToChatRef = useRef(false);
@@ -531,13 +538,15 @@ export function GlobalFloatingBall({
       onMoveShouldSetPanResponder: (_, gesture) =>
         Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5,
       onPanResponderGrant: () => {
+        longPressFiredRef.current = false;
         Animated.spring(magneticX, { toValue: MAGNETIC_OFFSET, useNativeDriver: false, friction: 6 }).start();
         Animated.spring(magneticY, { toValue: -MAGNETIC_OFFSET, useNativeDriver: false, friction: 6 }).start();
 
         longPressTimer.current = setTimeout(() => {
           if (!isDragging.current) {
+            longPressFiredRef.current = true;
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-            handleLongPress();
+            handleLongPressRef.current();
           }
         }, LONG_PRESS_DURATION);
 
@@ -566,8 +575,10 @@ export function GlobalFloatingBall({
         const currentX = (pan.x as any)._value ?? screenW - BALL_SIZE - EDGE_MARGIN;
         const currentY = (pan.y as any)._value ?? screenH - 200;
 
-        if (!isDragging.current) handleTap();
+        // Only fire a tap if it wasn't a drag AND the long-press didn't already fire.
+        if (!isDragging.current && !longPressFiredRef.current) handleTapRef.current();
         isDragging.current = false;
+        longPressFiredRef.current = false;
         snapToEdge(currentX, currentY);
       },
     })
@@ -735,6 +746,10 @@ export function GlobalFloatingBall({
     setBallState('listening');
     onVoiceActivate?.();
   }, [isMinimized, onVoiceActivate, onLongPressOverride]);
+
+  // #1 fix: keep the gesture refs pointing at the latest handlers (PanResponder captured once).
+  handleTapRef.current = handleTap;
+  handleLongPressRef.current = handleLongPress;
 
   const handleQuickSend = useCallback(() => {
     const text = quickInput.trim();
