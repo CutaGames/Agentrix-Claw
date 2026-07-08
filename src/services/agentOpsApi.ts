@@ -398,6 +398,64 @@ export async function fetchAgentEconomicStatus(agentId: string): Promise<AgentEc
   return unwrap<AgentEconomicStatus>(await apiFetch(`/agent-accounts/${agentId}/economic-status`));
 }
 
+// ── Economic Identity Card (agent-wallet-identity-tangibility 需求 6/7/8) ──
+
+export type CardStatus = 'enabled' | 'pending' | 'not_enabled' | 'failed';
+
+export interface EconomicIdentityCard {
+  agentUniqueId: string;
+  ownerId?: string;
+  wallet: {
+    status: CardStatus;
+    type: 'mpc' | 'external' | 'none';
+    address?: string;
+    explorerUrl?: string;
+    balances: { platform: string; onchain?: string; currency: string };
+  };
+  backup: { status: 'enabled' | 'not_enabled'; confirmedAt?: string };
+  onchain: { status: CardStatus; txHash?: string; explorerUrl?: string; chain?: string };
+  credit: {
+    status: CardStatus;
+    creditScore: number;
+    riskLevel: string;
+    level: 'None' | 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
+  };
+  earnings: {
+    status: CardStatus;
+    totalTx: number;
+    totalAmount: string;
+    currency: string;
+    success: number;
+    failed: number;
+  };
+  tradable: { status: 'roadmap'; note: string };
+  compliance: { disclosures: string[] };
+}
+
+export interface AgentLedgerItem {
+  id: string;
+  time: string;
+  type: string;
+  amount: string;
+  currency: string;
+  status: string;
+}
+
+export interface AgentLedger {
+  items: AgentLedgerItem[];
+  empty: boolean;
+  emptyHint?: string;
+  currency: string;
+}
+
+export async function fetchEconomicIdentityCard(agentId: string): Promise<EconomicIdentityCard> {
+  return unwrap<EconomicIdentityCard>(await apiFetch(`/agent-accounts/${agentId}/economic-identity`));
+}
+
+export async function fetchAgentLedger(agentId: string): Promise<AgentLedger> {
+  return unwrap<AgentLedger>(await apiFetch(`/agent-accounts/${agentId}/ledger`));
+}
+
 // ── Team dashboard / metering ──────────────────────────────────────────────
 
 export type BillingMode = 'subscription' | 'rental' | 'per_result';

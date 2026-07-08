@@ -115,6 +115,56 @@ export function computeLimitGuard(
   };
 }
 
+// ── 移动端机会海报数据映射（C9 / 需求 7.1 / 7.3） ────────────────────────────
+//
+// 把对话卡片「生成海报」(OpportunityCards) 与日报海报屏 (DigestPosterScreen) 共用的
+// 纯数据映射抽到此处作为单一真源，使其可被根 jest（node 环境、无 RN 渲染）覆盖。
+// 渲染（ShareCardView / ViewShot 截图 / expo-sharing 系统分享）仍在组件侧。
+
+/** 站点基址：无外链条目回退到站内机会/日报详情页（可被 QR 扫码打开）。 */
+export const POSTER_SITE_BASE = 'https://agentrix.top';
+
+/** 各品类海报头部 emoji（无封面图时用）。 */
+export const POSTER_CATEGORY_EMOJI: Record<AggCategory, string> = {
+  task: '🎯',
+  prediction: '🔮',
+  skill: '🛠️',
+  agent_rental: '🤖',
+  resource: '📊',
+};
+
+/** 无品类时的海报默认 emoji。 */
+export const POSTER_DEFAULT_EMOJI = '🌐';
+
+/** 机会卡片海报头部 emoji（品类缺失时回退默认）。 */
+export function posterEmojiFor(category: AggCategory | null | undefined): string {
+  return category ? POSTER_CATEGORY_EMOJI[category] : POSTER_DEFAULT_EMOJI;
+}
+
+/**
+ * 单条机会海报的可扫码分享链接：优先外部条目链接，否则回退站内机会详情页。
+ * identifier 经 encodeURIComponent 防止 urn 冒号/特殊字符破坏 URL。
+ */
+export function posterShareUrl(
+  listing: Pick<AggregatedListing, 'externalUrl' | 'identifier'>,
+  siteBase: string = POSTER_SITE_BASE,
+): string {
+  if (listing.externalUrl) return listing.externalUrl;
+  return `${siteBase}/opportunity/${encodeURIComponent(listing.identifier ?? '')}`;
+}
+
+/**
+ * 日报海报的可扫码分享链接：优先后端给的 shareUrl，否则回退站内日报详情页（按日期）。
+ */
+export function digestPosterShareUrl(
+  payload: { shareUrl?: string | null; date?: string | null } | null | undefined,
+  siteBase: string = POSTER_SITE_BASE,
+): string {
+  const explicit = payload?.shareUrl;
+  if (explicit) return explicit;
+  return `${siteBase}/digest/${payload?.date ?? 'today'}`;
+}
+
 /** 费率明细行（label 为 i18n 对，value 为已格式化字符串）。 */
 export interface FeeLine {
   key: 'rate' | 'fee' | 'net';

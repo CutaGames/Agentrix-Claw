@@ -12,15 +12,17 @@
  *     返回内部 + 已聚合外部条目混合排序，带 `score` 与 `source` 徽标（task 19.1 已接入）。
  *     移动端 API_BASE 已含 `/api` 前缀，故此处路径为 `/ard/search`。
  *   - **代成交（L3 执行核 + 围栏，需求 10.2）/ 结算（L4，需求 10.3）**：业务逻辑在
- *     `AggregationParticipationService.participate`（task 19.2，走 `mcp.service` 执行核 +
+ *     `AggregationParticipationService.participate`（走 `mcp.service` 执行核 +
  *     `OnchainFenceGuard`/`spendingLimits`/AP2 双围栏 + `SettlementCoreService` + 单一
- *     `FeeResolverService` 费率源），但 **尚无面向用户的 REST 控制器**。
+ *     `FeeResolverService` 费率源），面向用户 REST 端点 `POST /api/aggregation/participate`
+ *     （`AggregationController`）已就绪，并在 `canAccept=true` 时按连接器分流至聚合引擎执行序
+ *     （内部自营 offering x402 链上结算即经此路径）。
  *
- * 本 client 按既有约定（user 维度，服务端从 JWT 解析用户萌宠的 AgentAccount）调用约定端点
- * `/ard/participate`；端点上线前以 graceful fallback 返回结构化 `backend_gap` 状态、检索失败
- * 时返回空集，避免界面崩溃。后端补 REST 控制器见 **任务 22.1**（见 BACKEND_GAP 注释）。
+ * 本 client 按既有约定（user 维度，服务端从 JWT 解析用户萌宠的 AgentAccount）调用
+ * `/aggregation/participate`；检索失败时返回空集，避免界面崩溃。
  */
 import { apiFetch } from './api';
+import { getLsmChain } from './lsm.api';
 
 // ── 品类（与聚合 spec 的 5 品类对齐） ─────────────────────────────────────────
 export type AggCategory = 'task' | 'prediction' | 'skill' | 'agent_rental' | 'resource';
@@ -296,9 +298,7 @@ export type ParticipationStatus =
   | 'settled'
   | 'rejected'
   | 'payment_required'
-  | 'executed_unsettled'
-  /** 后端 REST 控制器未上线（任务 22.1）→ 前端降级态，不代表真实失败。 */
-  | 'backend_gap';
+  | 'executed_unsettled';
 
 export interface ParticipateResult {
   ok: boolean;
@@ -313,6 +313,29 @@ export interface ParticipateResult {
   };
   /** x402 支付要求（status=payment_required 时给出，简化展示）。 */
   paymentRequirements?: any;
+  /**
+   * 本次成交使用的幂等键（精确一次）。`payment_required` 时**必须**复用它携 proof 重放
+   * （需求 4.1），故一并回传给调用方。
+   */
+  idempotencyKey?: string;
+}
+
+/**
+ * x402 付款凭证（用户主权钱包 pay-first 回填，需求 4.1 / 4.2）。
+ * 与后端 `X402PaymentProof`（`settlement.types.ts`）同形：客户端在对应链完成 USDC 支付后，
+ * 携 `{ txHash, network, asset }` 重放**同一 idempotencyKey**，后端经多链验真精确一次结算。
+ */
+export interface X402Proof {
+  /** 链上交易哈希（用户钱包付款回执）。 */
+  txHash?: string;
+  /** x402 付款载荷（如签名授权，可选）。 */
+  paymentPayload?: string;
+  /** 付款方声明金额（与要求额比对，可选）。 */
+  paidAmount?: number;
+  /** 结算网络（如 `injective-testnet` / `bsc`）。 */
+  network?: string;
+  /** 结算资产（如 `USDC`）。 */
+  asset?: string;
 }
 
 export interface ParticipateInput {
@@ -322,6 +345,16 @@ export interface ParticipateInput {
   mandateId?: string;
   /** 通道（默认 offchain）。 */
   lane?: 'onchain' | 'offchain';
+  /**
+   * 幂等键（精确一次）。**proof 回填重放时必须复用**首次 `payment_required` 返回的
+   * 同一 idempotencyKey（需求 4.1），否则会被后端视为新成交、可能重复扣款。
+   * 缺省时自动生成（首次成交路径）。
+   */
+  idempotencyKey?: string;
+  /**
+   * x402 付款凭证（用户钱包链上付款后回填，需求 4.1）。携带时后端跳过 402、经多链验真结算。
+   */
+  proof?: X402Proof;
 }
 
 /** 生成幂等键（Hermes 无 crypto.randomUUID 时的可移植实现）。 */
@@ -343,15 +376,15 @@ function normalizeFeeBreakdown(f: any): FeeBreakdownView | undefined {
 /**
  * 对聚合条目代成交（接单 / 购买 / 订阅）。
  *
- * BACKEND_GAP(任务 22.1)：`POST /ard/participate`（包裹
- * `AggregationParticipationService.participate`）的面向用户 REST 控制器尚未实现 →
- * 端点缺失（404/501）时返回结构化 `backend_gap` 状态，界面提示「围栏内代成交后端待接入」，
- * 不抛错、不伪造成功。服务端从 JWT 解析用户萌宠的 AgentAccount（承载
- * spendingLimits/usedTodayAmount 围栏），故请求体不下发任何凭证（需求 9.2）。
+ * 调用面向用户端点 `POST /api/aggregation/participate`（`AggregationController` 包裹
+ * `AggregationParticipationService.participate`）：L3 执行核 + spendingLimits/AP2 双围栏 +
+ * L4 结算 + 单一 FeeResolver 费率源；`canAccept=true` 时按连接器分流至聚合引擎执行序。
+ * 服务端从 JWT 解析用户萌宠的 AgentAccount（承载 spendingLimits/usedTodayAmount 围栏），
+ * 故请求体不下发任何凭证（需求 9.2）。
  */
 export async function participateInListing(input: ParticipateInput): Promise<ParticipateResult> {
   const { listing } = input;
-  // 仅链接发现条目（无授权代成交能力）：前端直接给出可读拒绝，避免无谓请求（需求 10.2）。
+  // 仅链接发现条目（无授权代成交能力）：前端直接给出可读拒绝，避免无谓请求（需求 3.4）。
   if (!listing.canAccept) {
     return {
       ok: false,
@@ -360,7 +393,10 @@ export async function participateInListing(input: ParticipateInput): Promise<Par
     };
   }
 
-  const body = {
+  // 幂等键：proof 回填重放时复用首次返回的同一 key（需求 4.1），否则自动生成。
+  const idempotencyKey = input.idempotencyKey || makeIdempotencyKey();
+
+  const body: Record<string, any> = {
     listing: {
       source: listing.connectorSource,
       externalId: listing.externalId,
@@ -376,11 +412,22 @@ export async function participateInListing(input: ParticipateInput): Promise<Par
     action: input.action,
     mandateId: input.mandateId,
     lane: input.lane ?? 'offchain',
-    idempotencyKey: makeIdempotencyKey(),
+    idempotencyKey,
   };
+  // x402 proof 回填（需求 4.1）：后端 adaptParticipate 把顶层 proof 并入 settlement.proof，
+  // 经 toEngineContext 透传至引擎 ctx.proof → 跳过 402 → 多链验真结算。仅传白名单字段。
+  if (input.proof && (input.proof.txHash || input.proof.paymentPayload)) {
+    body.proof = {
+      ...(input.proof.txHash ? { txHash: input.proof.txHash } : {}),
+      ...(input.proof.paymentPayload ? { paymentPayload: input.proof.paymentPayload } : {}),
+      ...(input.proof.network ? { network: input.proof.network } : {}),
+      ...(input.proof.asset ? { asset: input.proof.asset } : {}),
+      ...(typeof input.proof.paidAmount === 'number' ? { paidAmount: input.proof.paidAmount } : {}),
+    };
+  }
 
   try {
-    const raw = await apiFetch<any>('/ard/participate', {
+    const raw = await apiFetch<any>('/aggregation/participate', {
       method: 'POST',
       body: JSON.stringify(body),
     });
@@ -398,19 +445,158 @@ export async function participateInListing(input: ParticipateInput): Promise<Par
           }
         : undefined,
       paymentRequirements: raw?.paymentRequirements,
+      idempotencyKey,
     };
   } catch (e: any) {
     const msg = String(e?.message || '');
-    // 端点未上线（404 Not Found / 501 Not Implemented / Cannot POST）→ 降级 backend_gap。
-    if (/404|501|not found|not implemented|cannot post/i.test(msg)) {
-      return {
-        ok: false,
-        status: 'backend_gap',
-        reason: msg || 'participate endpoint not available',
-      };
-    }
-    return { ok: false, status: 'rejected', reason: msg || 'participate failed' };
+    return { ok: false, status: 'rejected', reason: msg || 'participate failed', idempotencyKey };
   }
+}
+
+// ── 用户主权钱包 x402 proof 回填（需求 4.1 / 4.2 / 4.3）─────────────────────
+
+/**
+ * x402 网络名 → 结算链 chainId 映射（测试网优先）。
+ * token 地址由 `lsm.api` 的 `LSM_CHAINS` 单一来源解析（避免散落硬编码，与充值/结算同一口径）。
+ */
+const X402_NETWORK_CHAIN: Record<string, number> = {
+  injective: 1439,
+  'injective-testnet': 1439,
+  'injective-evm-testnet': 1439,
+  bsc: 97,
+  'bsc-testnet': 97,
+  bnb: 97,
+};
+
+/** 从 x402 支付要求解析出用户钱包付款所需的链上参数（需求 4.1）。 */
+export interface X402PaymentOption {
+  /** 结算网络名（回填 proof.network）。 */
+  network: string;
+  /** 结算资产符号（回填 proof.asset）。 */
+  asset: string;
+  /** 收款地址（分佣合约）。 */
+  payTo: string;
+  /** 结算链 chainId。 */
+  chainId: number;
+  /** 该链 USDC 代币合约地址。 */
+  usdcToken: string;
+  /** 人类可读付款金额（USDC，供钱包 erc20_transfer 按 decimals 换算）。 */
+  amountHuman: string;
+}
+
+/**
+ * 从后端 `payment_required` 的 `paymentRequirements`（x402 信封）解析首个可用支付方案，
+ * 归一为用户钱包链上付款所需参数。网络不在支持表 / 收款地址缺失时返回 null（失败闭合，
+ * 不发起链上付款），需求 4.1 / 6.1。
+ */
+export function extractX402PaymentOption(
+  paymentRequirements: any,
+  fallbackAmount?: number,
+): X402PaymentOption | null {
+  const accept = paymentRequirements?.accepts?.[0];
+  if (!accept || typeof accept !== 'object') return null;
+  const network = String(accept.network ?? '').trim();
+  const payTo = String(accept.payTo ?? '').trim();
+  if (!network || !payTo) return null;
+
+  const chainId = X402_NETWORK_CHAIN[network.toLowerCase()];
+  if (!chainId) return null; // 未支持的链：失败闭合。
+  const chain = getLsmChain(chainId);
+  if (!chain) return null;
+
+  const asset = String(accept.asset ?? 'USDC').trim() || 'USDC';
+  // maxAmountRequired 为最小单位（USDC 6 位精度）字符串；换算回人类可读金额供钱包按 decimals 转账。
+  const atomic = Number(accept.maxAmountRequired);
+  let amountHuman: string;
+  if (Number.isFinite(atomic) && atomic > 0) {
+    amountHuman = String(atomic / 1e6);
+  } else if (typeof fallbackAmount === 'number' && fallbackAmount > 0) {
+    amountHuman = String(fallbackAmount);
+  } else {
+    return null;
+  }
+
+  return { network, asset, payTo, chainId, usdcToken: chain.usdc, amountHuman };
+}
+
+/**
+ * 用户钱包链上付款函数（依赖注入，避免服务层直接耦合 expo / mpcWallet 原生依赖，
+ * 且便于测试与「平台托管 autopay」路径并存，需求 4.3）。
+ *
+ * 典型实现：调 `mpcWallet.signAndSendManaged({ intent:{ kind:'erc20_transfer', ... } })`，
+ * 用**用户自己的**（MPC 自托管）钱包在对应链把 USDC 转给 `to`（分佣合约），返回真 txHash。
+ */
+export type UserWalletPayFn = (params: {
+  chainId: number;
+  token: string;
+  to: string;
+  amountHuman: string;
+}) => Promise<{ txHash: string; status: 'submitted' | 'confirmed' | 'failed'; reason?: string }>;
+
+/**
+ * 用户主权钱包 x402 proof 回填：pay-first → 用户钱包链上付 USDC → 携 proof 重放**同一
+ * idempotencyKey**（需求 4.1 / 4.2）。
+ *
+ * @param input   首次成交的入参（listing/action 等）。
+ * @param pending 首次返回的 `payment_required` 结果（携 paymentRequirements + idempotencyKey）。
+ * @param pay     用户钱包付款函数（返回 txHash）。
+ *
+ * 流程：
+ *  ① 校验 pending 为 payment_required 且带 paymentRequirements + idempotencyKey；
+ *  ② 解析支付方案（网络/收款地址/金额/token）；不支持则失败闭合、不发起付款；
+ *  ③ 用户钱包链上付 USDC（失败/未开放 → 返回结构化 rejected，不重放）；
+ *  ④ 携 proof + **同一 idempotencyKey** 重放 `participateInListing`（后端多链验真、精确一次）。
+ *
+ * 与平台托管 agent autopay 并存：autopay 在后端引擎内对平台托管 agent 生效（无需 proof），
+ * 本路径是**用户主权钱包**在客户端完成付款后回填 proof，二者互不影响（需求 4.3）。
+ */
+export async function payWithUserWalletAndReplay(
+  input: ParticipateInput,
+  pending: ParticipateResult,
+  pay: UserWalletPayFn,
+): Promise<ParticipateResult> {
+  if (pending.status !== 'payment_required') {
+    return { ok: false, status: 'rejected', reason: 'not-payment-required' };
+  }
+  if (!pending.idempotencyKey) {
+    // 无法复用同一 idempotencyKey → 拒绝重放（避免重复扣款，需求 4.1）。
+    return { ok: false, status: 'rejected', reason: 'missing-idempotency-key' };
+  }
+  const option = extractX402PaymentOption(pending.paymentRequirements, input.listing.gmv);
+  if (!option) {
+    return { ok: false, status: 'rejected', reason: 'unsupported-payment-network' };
+  }
+
+  let payResult: { txHash: string; status: string; reason?: string };
+  try {
+    payResult = await pay({
+      chainId: option.chainId,
+      token: option.usdcToken,
+      to: option.payTo,
+      amountHuman: option.amountHuman,
+    });
+  } catch (e: any) {
+    return { ok: false, status: 'rejected', reason: `wallet-pay-error: ${String(e?.message || e)}` };
+  }
+  if (!payResult || payResult.status === 'failed' || !payResult.txHash) {
+    return {
+      ok: false,
+      status: 'rejected',
+      reason: payResult?.reason ? `wallet-pay-failed: ${payResult.reason}` : 'wallet-pay-failed',
+      idempotencyKey: pending.idempotencyKey,
+    };
+  }
+
+  // 携 proof + 同一 idempotencyKey 重放（需求 4.1 / 4.2）。
+  return participateInListing({
+    ...input,
+    idempotencyKey: pending.idempotencyKey,
+    proof: {
+      txHash: payResult.txHash,
+      network: option.network,
+      asset: option.asset,
+    },
+  });
 }
 
 // ── 聚合成交流水 / 对账（需求 10.3，收益中心展示） ───────────────────────────
@@ -451,9 +637,9 @@ function normalizeSettlement(s: any): AggregatedSettlementRow {
 /**
  * 拉取聚合成交流水与对账（需求 10.3：聚合成交真实收支入统一账本、参与偿付能力对账）。
  *
- * BACKEND_GAP(任务 22.1)：`GET /ard/aggregated-settlements`（按用户萌宠 AgentAccount
- * 过滤 commission/payment 中 assetType ∈ {aggregated_web2, aggregated_web3} 的流水）
- * 尚未实现 → 端点缺失时静默降级为空列表，收益中心展示空态引导。
+ * 调用 `GET /api/ard/aggregated-settlements`（`ArdManagementController`，聚合
+ * `AggregationParticipation` 引擎代成交记录 + 关联 `Payment` 落账，返回每笔
+ * { 金额、feeBreakdown、链上 txHash、状态 }）；出错时静默降级为空列表，收益中心展示空态引导。
  */
 export async function fetchAggregatedSettlements(limit = 20): Promise<AggregatedSettlementRow[]> {
   try {

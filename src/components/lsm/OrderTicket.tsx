@@ -13,10 +13,10 @@ import {
 } from 'react-native';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
-import { lsmApi, LsmMarketView, LsmPreview } from '../../services/lsm.api';
+import { lsmApi, LsmMarketView, LsmPreview, LsmAsset, formatAsset } from '../../services/lsm.api';
 import { OddsHistoryChart } from './OddsHistoryChart';
 
-const LEVERAGES = [1, 2, 5, 10, 20];
+const LEVERAGES = [1, 2, 5, 10];
 
 interface Props {
   visible: boolean;
@@ -39,6 +39,7 @@ export function OrderTicket({ visible, market, outcomeIdx, onClose, onPlaced }: 
 
   const [stake, setStake] = useState('100');
   const [leverage, setLeverage] = useState(2);
+  const [asset, setAsset] = useState<LsmAsset>('AXP');
   const [preview, setPreview] = useState<LsmPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -47,7 +48,21 @@ export function OrderTicket({ visible, market, outcomeIdx, onClose, onPlaced }: 
   const prevOddsRef = useRef<number | null>(null);
   const [oddsDir, setOddsDir] = useState<'up' | 'down' | null>(null);
 
-  const stakeNum = Math.max(0, Math.floor(Number(stake) || 0));
+  // 提交给后端的保证金（资产最小单位）：AXP=整数点数；USDC=最小单位 0.01 USDC（用户输入 USDC，×100）。
+  const rawStake = Number(stake) || 0;
+  const stakeNum =
+    asset === 'USDC' ? Math.max(0, Math.round(rawStake * 100)) : Math.max(0, Math.floor(rawStake));
+
+  /** 切换计价资产并重置保证金为该资产的默认值。 */
+  const switchAsset = useCallback((next: LsmAsset) => {
+    setAsset(next);
+    setStake(next === 'USDC' ? '5' : '100');
+    setPreview(null);
+    setError(null);
+    setRetryOdds(null);
+    prevOddsRef.current = null;
+    setOddsDir(null);
+  }, []);
 
   const runPreview = useCallback(async () => {
     if (!market || stakeNum <= 0) {
@@ -62,6 +77,7 @@ export function OrderTicket({ visible, market, outcomeIdx, onClose, onPlaced }: 
         outcomeIdx,
         stake: stakeNum,
         leverage,
+        asset,
       });
       // 赔率涨跌方向
       const prev = prevOddsRef.current;
@@ -77,7 +93,7 @@ export function OrderTicket({ visible, market, outcomeIdx, onClose, onPlaced }: 
     } finally {
       setLoading(false);
     }
-  }, [market, outcomeIdx, stakeNum, leverage]);
+  }, [market, outcomeIdx, stakeNum, leverage, asset]);
 
   // 防抖预览（金额/杠杆联动）
   useEffect(() => {
@@ -91,6 +107,7 @@ export function OrderTicket({ visible, market, outcomeIdx, onClose, onPlaced }: 
     if (visible) {
       setStake('100');
       setLeverage(2);
+      setAsset('AXP');
       setPreview(null);
       setError(null);
       setRetryOdds(null);
@@ -111,6 +128,7 @@ export function OrderTicket({ visible, market, outcomeIdx, onClose, onPlaced }: 
         stake: stakeNum,
         leverage,
         quotedOdds: quoted,
+        asset,
       });
       onPlaced?.();
       onClose();
@@ -133,14 +151,18 @@ export function OrderTicket({ visible, market, outcomeIdx, onClose, onPlaced }: 
       } else if (msg.includes('RISK_LIMIT')) {
         setError(tr('Exceeds vault risk limit', '超过金库风险上限'));
       } else if (msg.includes('insufficient')) {
-        setError(tr('Insufficient AXP balance', 'AXP 余额不足'));
+        setError(
+          asset === 'USDC'
+            ? tr('Insufficient USDC balance', 'USDC 余额不足')
+            : tr('Insufficient AXP balance', 'AXP 余额不足'),
+        );
       } else {
         setError(msg || tr('Order failed', '下单失败'));
       }
     } finally {
       setSubmitting(false);
     }
-  }, [market, preview, submitting, retryOdds, stakeNum, leverage, outcomeIdx]);
+  }, [market, preview, submitting, retryOdds, stakeNum, leverage, outcomeIdx, asset]);
 
   if (!market) return null;
 
@@ -156,6 +178,25 @@ export function OrderTicket({ visible, market, outcomeIdx, onClose, onPlaced }: 
             </Text>
             <Text style={styles.subtitle}>
               {tr('Backing', '看好')}: {outcomeLabel(market, outcomeIdx, zh)}
+            </Text>
+
+            {/* 计价资产切换：AXP（免费玩）/ USDC（链上真实·测试网） */}
+            <View style={styles.assetRow}>
+              {(['AXP', 'USDC'] as LsmAsset[]).map((a) => (
+                <TouchableOpacity
+                  key={a}
+                  style={[styles.assetChip, asset === a && styles.assetChipActive]}
+                  onPress={() => switchAsset(a)}
+                  testID={`lsm-asset-${a}`}
+                >
+                  <Text style={[styles.assetText, asset === a && styles.assetTextActive]}>{a}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.assetHint}>
+              {asset === 'USDC'
+                ? tr('USDC: real on-chain settlement (testnet).', 'USDC：链上真实结算（测试网）。')
+                : tr('AXP: free-to-play, platform points.', 'AXP：免费玩，站内积分。')}
             </Text>
 
             {/* 赔率 + 涨跌徽标 */}
@@ -182,13 +223,15 @@ export function OrderTicket({ visible, market, outcomeIdx, onClose, onPlaced }: 
             />
 
             {/* 保证金输入 */}
-            <Text style={styles.fieldLabel}>{tr('Margin (AXP)', '保证金 (AXP)')}</Text>
+            <Text style={styles.fieldLabel}>
+              {asset === 'USDC' ? tr('Margin (USDC)', '保证金 (USDC)') : tr('Margin (AXP)', '保证金 (AXP)')}
+            </Text>
             <TextInput
               style={styles.input}
-              keyboardType="number-pad"
+              keyboardType={asset === 'USDC' ? 'decimal-pad' : 'number-pad'}
               value={stake}
               onChangeText={setStake}
-              placeholder="100"
+              placeholder={asset === 'USDC' ? '5' : '100'}
               placeholderTextColor={colors.textSecondary}
             />
 
@@ -215,16 +258,23 @@ export function OrderTicket({ visible, market, outcomeIdx, onClose, onPlaced }: 
               ) : preview ? (
                 <>
                   <Row label={tr('Implied Prob.', '隐含概率')} value={`${Math.round((1 / preview.tradableOdds) * 100)}%`} />
-                  <Row label={tr('Notional', '名义敞口')} value={`${preview.notional} AXP`} />
-                  <Row label={tr('Max Profit', '最大盈利')} value={`+${preview.maxProfit} AXP`} valueColor="#16a34a" />
-                  <Row label={tr('Max Loss', '最大亏损')} value={`-${preview.maxLoss} AXP`} valueColor="#dc2626" />
-                  <Row label={tr('Win Payout', '获胜派彩')} value={`${preview.winPayout} AXP`} bold />
+                  <Row label={tr('Notional', '名义敞口')} value={formatAsset(preview.notional, asset)} />
+                  <Row label={tr('Max Profit', '最大盈利')} value={`+${formatAsset(preview.maxProfit, asset)}`} valueColor="#16a34a" />
+                  <Row label={tr('Max Loss', '最大亏损')} value={`-${formatAsset(preview.maxLoss, asset)}`} valueColor="#dc2626" />
+                  <Row label={tr('Win Payout', '获胜派彩')} value={formatAsset(preview.winPayout, asset)} bold />
                   {stakeNum > 0 && (
                     <Row label={tr('Payout Multiple', '赔付倍数')} value={`${(preview.winPayout / stakeNum).toFixed(2)}x`} />
+                  )}
+                  {preview.openFee != null && preview.openFee > 0 && (
+                    <Row label={tr('Open Fee', '开仓费')} value={`-${formatAsset(preview.openFee, asset)}`} valueColor={colors.textSecondary} />
+                  )}
+                  {preview.liquidationOdds != null && (
+                    <Row label={tr('Liquidation Odds', '强平赔率')} value={`≥ ${preview.liquidationOdds.toFixed(2)}`} valueColor="#d97706" />
                   )}
                   {preview.slippageBps > 0 && (
                     <Row label={tr('Slippage', '滑点')} value={`${(preview.slippageBps / 100).toFixed(2)}%`} />
                   )}
+                  <LiquidationBuffer tradableOdds={preview.tradableOdds} liquidationOdds={preview.liquidationOdds ?? null} zh={zh} />
                 </>
               ) : (
                 <Text style={styles.hint}>{tr('Enter margin to preview', '输入保证金查看预览')}</Text>
@@ -250,10 +300,15 @@ export function OrderTicket({ visible, market, outcomeIdx, onClose, onPlaced }: 
             </TouchableOpacity>
 
             <Text style={styles.disclaimer}>
-              {tr(
-                'AXP is non-withdrawable, platform-only. Not investment advice.',
-                'AXP 不可提现、仅站内用途。非投资建议。',
-              )}
+              {asset === 'USDC'
+                ? tr(
+                    'USDC settles on-chain (testnet). Not investment advice.',
+                    'USDC 为链上结算（测试网）。非投资建议。',
+                  )
+                : tr(
+                    'AXP is non-withdrawable, platform-only. Not investment advice.',
+                    'AXP 不可提现、仅站内用途。非投资建议。',
+                  )}
             </Text>
           </ScrollView>
         </View>
@@ -283,6 +338,55 @@ function Row({
   );
 }
 
+/**
+ * 强平缓冲条：可成交赔率还能上涨多少（比例）才触及强平线。杠杆越高缓冲越小。
+ * headroom = (liquidationOdds − tradableOdds) / tradableOdds。绿>50% / 琥珀>20% / 红。
+ */
+function LiquidationBuffer({
+  tradableOdds,
+  liquidationOdds,
+  zh,
+}: {
+  tradableOdds: number;
+  liquidationOdds: number | null;
+  zh: boolean;
+}) {
+  if (liquidationOdds == null || !(tradableOdds > 0)) return null;
+  const headroom = Math.max(0, (liquidationOdds - tradableOdds) / tradableOdds);
+  const pct = Math.round(headroom * 100);
+  const fill = Math.max(6, Math.min(100, pct));
+  const tone = headroom > 0.5 ? '#16a34a' : headroom > 0.2 ? '#d97706' : '#dc2626';
+  return (
+    <View style={bufStyles.wrap}>
+      <View style={bufStyles.head}>
+        <Text style={bufStyles.label}>
+          {zh ? '强平缓冲 · 赔率触及 ' : 'Liquidation buffer · triggers at '}
+          <Text style={{ color: '#d97706', fontWeight: '800' }}>≥{liquidationOdds.toFixed(2)}</Text>
+        </Text>
+        <Text style={[bufStyles.pct, { color: tone }]}>+{pct}%</Text>
+      </View>
+      <View style={bufStyles.track}>
+        <View style={[bufStyles.fill, { width: `${fill}%`, backgroundColor: tone }]} />
+      </View>
+      <Text style={bufStyles.note}>
+        {zh
+          ? '滚球中赔率涨破强平线 → 按残值结算并收强平罚金；倍数越高缓冲越小。'
+          : 'If live odds rise past the line, the position is liquidated at residual value (fee applies). Higher leverage = tighter buffer.'}
+      </Text>
+    </View>
+  );
+}
+
+const bufStyles = StyleSheet.create({
+  wrap: { marginTop: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 },
+  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  label: { fontSize: 11, color: colors.textSecondary, flex: 1 },
+  pct: { fontSize: 12, fontWeight: '800' },
+  track: { height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: 3 },
+  note: { fontSize: 10, color: colors.textSecondary, marginTop: 6, lineHeight: 15 },
+});
+
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
@@ -299,6 +403,20 @@ const styles = StyleSheet.create({
   oddsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
   oddsLabel: { fontSize: 14, color: colors.textSecondary },
   oddsValWrap: { flexDirection: 'row', alignItems: 'center' },
+  assetRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  assetChip: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  assetChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  assetText: { fontSize: 15, fontWeight: '800', color: colors.text },
+  assetTextActive: { color: '#fff' },
+  assetHint: { fontSize: 12, color: colors.textSecondary, marginTop: 6 },
   oddsVal: { fontSize: 22, fontWeight: '800', color: colors.primary },
   oddsDir: { fontSize: 16, marginLeft: 6 },
   fieldLabel: { fontSize: 13, color: colors.textSecondary, marginTop: 14, marginBottom: 6 },

@@ -79,6 +79,12 @@ export type ShareCardRouteParams = {
   priceCaption?: string;
   /** Caption override for the statsLabel metric (e.g. "赔率/Odds" for matches). */
   statsCaption?: string;
+  /**
+   * Optional structured odds list (1X2). When present, the poster renders a
+   * dedicated full-width "赔率 / Odds" panel so every outcome stays legible
+   * (no truncation). Used by the sports/World Cup match share flow.
+   */
+  oddsList?: Array<{ label: string; value: string; impliedPct?: string; highlight?: boolean }>;
   description?: string;
   tags?: string[];
   ctaLabel?: string;
@@ -151,6 +157,9 @@ export type MeStackParamList = {
   DigestPoster: undefined;
   /** 萌宠链上授权（Agent Protocol Stack 需求 6.1/6.2）：AP2 mandate 授权/撤销 + 链上动作记录。 */
   OnchainAuth: undefined;
+  /** Agent 主权 · 授权中枢（S1）：权限档/限额/能力开关/模型音色/审计（env 门控，默认关）。
+   *  agentAccountId 可省略 → 屏内经链上授权总览自动解析绑定的主宠 AgentAccount。 */
+  SovereigntyControlPlane: { agentAccountId?: string } | undefined;
   // Sprint 4: Toy Binding
   ToyBinding: undefined;
   // P-9 Q1: re-home the orphaned pet screens here (T6.7). PetDetailSheet's

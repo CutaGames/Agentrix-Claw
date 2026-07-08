@@ -38,6 +38,7 @@ import { fetchOpportunities, acceptOpportunity, Opportunity } from '../../servic
 import {
   searchAggregatedOpportunities,
   participateInListing,
+  payWithUserWalletAndReplay,
   fetchAggregatedSettlements,
   AggregatedListing,
   AggCategory,
@@ -45,6 +46,8 @@ import {
   ParticipateResult,
   AggregatedSettlementRow,
 } from '../../services/aggregatedMarket.api';
+import { makeUserWalletX402Payer } from '../../services/mpcWallet';
+import { useAuthStore } from '../../stores/authStore';
 import {
   CATEGORY_LABELS,
   actionForCategory,
@@ -165,6 +168,42 @@ export function PetEarningsScreen() {
       setParticipating(false);
     }
   }, [selected, aggSettlementsQ, summaryQ]);
+
+  /**
+   * 用户主权钱包 x402 proof 回填闭环（R4/R6，task7）：当首次代成交返回 `payment_required`
+   * （x402 pay-first、平台托管 autopay 未接管）时，用**用户自己的** MPC 自托管钱包在对应链付
+   * USDC → 携 proof 重放同一 idempotencyKey → 后端多链验真、精确一次结算。失败闭合、不重复扣款。
+   */
+  const onPayWithWallet = useCallback(async () => {
+    if (!selected || !participateResult || participateResult.status !== 'payment_required') return;
+    const user = useAuthStore.getState().user;
+    const walletAddress = user?.walletAddress;
+    if (!walletAddress || !user?.id) {
+      setParticipateResult({
+        ...participateResult,
+        reason: 'no-wallet',
+      });
+      return;
+    }
+    setParticipating(true);
+    try {
+      const payer = makeUserWalletX402Payer({ walletAddress, userId: user.id });
+      const r = await payWithUserWalletAndReplay(
+        { listing: selected, action: actionForCategory(selected.category) },
+        participateResult,
+        payer,
+      );
+      setParticipateResult(r);
+      if (r.ok) {
+        aggSettlementsQ.refetch();
+        summaryQ.refetch();
+      }
+    } catch (e: any) {
+      setParticipateResult({ ok: false, status: 'rejected', reason: e?.message || 'wallet-pay-error' });
+    } finally {
+      setParticipating(false);
+    }
+  }, [selected, participateResult, aggSettlementsQ, summaryQ]);
 
   const onEnableEarning = useCallback(async () => {
     setEnabling(true);
@@ -336,6 +375,20 @@ export function PetEarningsScreen() {
             {t({
               en: 'Grant your pet a spending cap to pay on-chain, review or revoke it, and see on-chain activity.',
               zh: '给萌宠授权链上代付额度、查看/撤销，并查看链上动作记录。',
+            })}
+          </Text>
+        </View>
+        <Text style={styles.onchainChevron}>›</Text>
+      </TouchableOpacity>
+
+      {/* 授权中枢入口（Agent 主权 · S1；后端 env 门控关时屏内显示未启用）*/}
+      <TouchableOpacity style={styles.onchainCard} onPress={() => navigation.navigate('SovereigntyControlPlane')}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.onchainTitle}>🛡️ {t({ en: 'Authorization Center', zh: '授权中枢' })}</Text>
+          <Text style={styles.onchainHint}>
+            {t({
+              en: 'One place to set permission tier, spending caps, capabilities, model & voice — every switch is real, revocable anytime.',
+              zh: '一处设置权限档、支付限额、能力开关、模型与音色——每个开关都真实生效、可随时收回。',
             })}
           </Text>
         </View>
@@ -530,6 +583,7 @@ export function PetEarningsScreen() {
       participating={participating}
       result={participateResult}
       onConfirm={onParticipate}
+      onPayWithWallet={onPayWithWallet}
       onClose={closeListing}
       t={t}
     />
@@ -660,6 +714,7 @@ function ParticipateModal({
   participating,
   result,
   onConfirm,
+  onPayWithWallet,
   onClose,
   t,
 }: {
@@ -669,6 +724,7 @@ function ParticipateModal({
   participating: boolean;
   result: ParticipateResult | null;
   onConfirm: () => void;
+  onPayWithWallet: () => void;
   onClose: () => void;
   t: any;
 }) {
@@ -757,7 +813,7 @@ function ParticipateModal({
                 <TouchableOpacity style={styles.modalCancelBtn} onPress={onClose}>
                   <Text style={styles.modalCancelText}>{t({ en: 'Close', zh: '关闭' })}</Text>
                 </TouchableOpacity>
-                {listing.canAccept && (!result || result.status === 'rejected' || result.status === 'backend_gap') ? (
+                {listing.canAccept && (!result || result.status === 'rejected') ? (
                   <TouchableOpacity
                     style={[styles.modalConfirmBtn, (participating || blockedByLimit) && { opacity: 0.5 }]}
                     disabled={participating || blockedByLimit}
@@ -767,6 +823,21 @@ function ParticipateModal({
                       <ActivityIndicator color="#fff" size="small" />
                     ) : (
                       <Text style={styles.modalConfirmText}>{confirmLabel}</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
+                {result && result.status === 'payment_required' ? (
+                  <TouchableOpacity
+                    style={[styles.modalConfirmBtn, participating && { opacity: 0.5 }]}
+                    disabled={participating}
+                    onPress={onPayWithWallet}
+                  >
+                    {participating ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={styles.modalConfirmText}>
+                        {t({ en: 'Pay with my wallet', zh: '用我的钱包支付并完成' })}
+                      </Text>
                     )}
                   </TouchableOpacity>
                 ) : null}
@@ -798,25 +869,28 @@ function ResultBanner({ result, t }: { result: ParticipateResult; t: any }) {
       break;
     case 'payment_required':
       color = '#eab308';
-      msg = t({ en: 'Payment required (x402).', zh: '需付款（x402）。' });
-      break;
-    case 'backend_gap':
-      color = colors.textMuted;
-      msg = t({
-        en: 'Participation backend not wired yet (task 22.1). Discovery + limits/fees preview work.',
-        zh: '围栏内代成交后端待接入（任务 22.1）。检索与限额/费率预览已可用。',
-      });
+      msg = t({ en: 'Payment required (x402) — pay with your wallet to complete.', zh: '需链上付款（x402）——用你的钱包支付即可完成成交。' });
       break;
     default:
       color = '#ef4444';
       msg =
         result.reason === 'link-discovery-only'
           ? t({ en: 'Link-discovery only — no internal deal path.', zh: '仅链接发现，无内部成交路径。' })
-          : t({ en: 'Rejected.', zh: '已拒绝。' }) + (result.reason ? ` (${result.reason})` : '');
+          : result.reason === 'no-wallet'
+            ? t({ en: 'No wallet found — set up your wallet first.', zh: '未找到钱包——请先开通钱包。' })
+            : result.reason === 'unsupported-payment-network'
+              ? t({ en: 'Unsupported payment network.', zh: '暂不支持该结算链。' })
+              : t({ en: 'Rejected.', zh: '已拒绝。' }) + (result.reason ? ` (${result.reason})` : '');
   }
+  const txHash = result.l3?.txHash;
   return (
     <View style={[styles.resultBanner, { borderColor: color }]}>
       <Text style={[styles.resultText, { color }]}>{msg}</Text>
+      {txHash ? (
+        <Text style={[styles.resultText, { color: '#94a3b8', fontSize: 11, marginTop: 4 }]} numberOfLines={1}>
+          {t({ en: 'On-chain tx: ', zh: '链上交易：' })}{txHash}
+        </Text>
+      ) : null}
     </View>
   );
 }

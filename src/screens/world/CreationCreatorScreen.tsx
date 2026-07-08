@@ -29,16 +29,62 @@ import {
   createCreation,
   continueCreation,
   publishCreation,
+  checkCreationQuality,
   importCreationGame,
   generateDrama,
   generateCreationCover,
   illustrateDrama,
   setCreationOfferings,
+  getCreationManifest,
 } from '../../services/creationApi';
 import type { CreationType } from '../../../shared/types/creation';
+import type { McpToolDescriptor } from '../../../shared/types/creation';
+import type { Fulfillment, FulfillmentType } from '../../../shared/types/creation';
 import type { SubstrateTier } from '../../../shared/types/world-creation';
 import type { CreationMode } from '../../../shared/types/world-creation-api';
 import { themedStyles } from '../../theme/useTheme';
+
+/** 店铺商品编辑行（含「如何交付」声明,world-shop-fulfillment R1.4）。 */
+interface ProductRow {
+  name: string;
+  priceAxp: string;
+  description: string;
+  /** 交付方式:voucher（数字凭证）/ agent（Agent 履约）/ support（支持创作者）/ manual（手动交付）。 */
+  deliveryType: FulfillmentType;
+  /** voucher·auto 模式的可发放库存（deliveryType==='voucher' 且未填码表时用）。 */
+  voucherStock: string;
+  /** voucher·list 模式的预置兑换码（每行一条；填写则库存=码数量）。 */
+  voucherCodes: string;
+}
+
+/** 「如何交付」候选（创作器 UI 采集,R1.4）。 */
+const DELIVERY_TYPES: { value: FulfillmentType; emoji: string; label: { en: string; zh: string } }[] = [
+  { value: 'voucher', emoji: '🎟️', label: { en: 'Voucher', zh: '数字凭证' } },
+  { value: 'agent', emoji: '🤖', label: { en: 'Agent', zh: 'Agent 履约' } },
+  { value: 'support', emoji: '💗', label: { en: 'Support', zh: '支持创作者' } },
+  { value: 'manual', emoji: '✍️', label: { en: 'Manual', zh: '手动交付' } },
+];
+
+/**
+ * 由编辑行构造一份合法 fulfillment 声明（与后端 sanitizeFulfillment / 质量门口径一致）。
+ * voucher:填了码表 → list 模式（库存=码数）；否则 auto 模式（用 voucherStock）。
+ */
+function buildFulfillment(p: ProductRow): Fulfillment {
+  if (p.deliveryType === 'voucher') {
+    const codes = p.voucherCodes
+      .split(/\r?\n/)
+      .map((c) => c.trim())
+      .filter((c) => c.length > 0);
+    if (codes.length > 0) {
+      return { type: 'voucher', voucher: { stock: codes.length, codeMode: 'list', codes } };
+    }
+    const stock = Math.max(0, Math.floor(Number(p.voucherStock) || 0));
+    return { type: 'voucher', voucher: { stock, codeMode: 'auto' } };
+  }
+  if (p.deliveryType === 'agent') return { type: 'agent', agent: { verb: 'message' } };
+  if (p.deliveryType === 'support') return { type: 'support' };
+  return { type: 'manual' };
+}
 
 const TYPES: { value: CreationType; emoji: string; label: { en: string; zh: string } }[] = [
   // game 置顶为默认(当前最成熟、真实可玩的类型)。
@@ -78,6 +124,9 @@ export default function CreationCreatorScreen() {
   const [instruction, setInstruction] = useState('');
   const [shareCode, setShareCode] = useState<string | null>(null);
   const [manifestVersion, setManifestVersion] = useState<number | null>(null);
+  // task 4.5：发布后拉取「自动派生的 Agent 能力清单」只读展示（体现一次标注两端复用、不写接口）。
+  const [manifestTools, setManifestTools] = useState<McpToolDescriptor[] | null>(null);
+  const [manifestLoading, setManifestLoading] = useState(false);
 
   const [generating, setGenerating] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -87,9 +136,10 @@ export default function CreationCreatorScreen() {
   const [embedUrl, setEmbedUrl] = useState('');
   const [embedding, setEmbedding] = useState(false);
   const [artBusy, setArtBusy] = useState(false);
-  // 店铺商品编辑(type==='shop'):简单 {name, priceAxp, description} 行。
-  const [products, setProducts] = useState<Array<{ name: string; priceAxp: string; description: string }>>([
-    { name: '', priceAxp: '', description: '' },
+  // 店铺商品编辑(type==='shop'):{name, priceAxp, description} + 「如何交付」声明
+  // (world-shop-fulfillment R1.4):deliveryType + voucher 库存/码。
+  const [products, setProducts] = useState<ProductRow[]>([
+    { name: '', priceAxp: '', description: '', deliveryType: 'voucher', voucherStock: '', voucherCodes: '' },
   ]);
   const [savingProducts, setSavingProducts] = useState(false);
 
@@ -120,8 +170,14 @@ export default function CreationCreatorScreen() {
   const onSaveProducts = useCallback(async () => {
     if (!creationId) return;
     const items = products
-      .map((p) => ({ name: p.name.trim(), priceAxp: Math.max(0, Math.round(Number(p.priceAxp) || 0)), description: p.description.trim() || undefined }))
-      .filter((p) => p.name);
+      .filter((p) => p.name.trim())
+      .map((p) => ({
+        name: p.name.trim(),
+        priceAxp: Math.max(0, Math.round(Number(p.priceAxp) || 0)),
+        description: p.description.trim() || undefined,
+        // 「如何交付」声明随商品一并保存（R1.4）。
+        fulfillment: buildFulfillment(p),
+      }));
     if (items.length === 0) {
       Alert.alert(t({ en: 'Add a product', zh: '先加个商品' }), t({ en: 'Enter at least one product name.', zh: '至少填一个商品名称。' }));
       return;
@@ -300,16 +356,43 @@ export default function CreationCreatorScreen() {
     if (!creationId) return;
     setPublishing(true);
     try {
+      // 发布前质量门预检(阶段 3.1/4.1):首发商业型不达标先给可行动提示,避免直接发布失败。
+      try {
+        const pre = await checkCreationQuality(creationId);
+        if (pre.enforced && !pre.quality.pass) {
+          const reasons = pre.quality.failed.flatMap((f) => f.reasons);
+          Alert.alert(
+            t({ en: 'Almost there — quality check', zh: '差一点 · 质量检查' }),
+            (reasons.length ? reasons : [t({ en: 'Please improve the creation before publishing.', zh: '发布前请先完善创作。' })]).join('\n\n'),
+          );
+          return;
+        }
+      } catch {
+        // 预检失败(网络等)不阻断:交给发布时的服务端权威判定兜底。
+      }
+
       const res = await publishCreation(creationId);
       if (!res.published) {
+        const isQuality = res.error?.error === 'QUALITY_REJECTED';
         Alert.alert(
-          t({ en: 'Publish rejected', zh: '发布被拒' }),
-          res.error?.detail ?? t({ en: 'Moderation rejected.', zh: '审核未通过。' }),
+          isQuality
+            ? t({ en: 'Quality check not passed', zh: '质量未达标' })
+            : t({ en: 'Publish rejected', zh: '发布被拒' }),
+          res.error?.detail ??
+            (isQuality
+              ? t({ en: 'Please improve the creation and try again.', zh: '请完善创作后重试。' })
+              : t({ en: 'Moderation rejected.', zh: '审核未通过。' })),
         );
         return;
       }
       setShareCode(res.shareCode ?? null);
       setManifestVersion(res.manifestVersion ?? null);
+      // task 4.5：发布成功后拉取自动派生的 Agent 能力清单（只读展示）。失败静默降级（不阻断发布）。
+      setManifestLoading(true);
+      getCreationManifest(creationId)
+        .then((m) => setManifestTools(Array.isArray(m?.manifest?.tools) ? m.manifest.tools : []))
+        .catch(() => setManifestTools(null))
+        .finally(() => setManifestLoading(false));
       Alert.alert(
         t({ en: 'Published', zh: '发布成功' }),
         res.shareCode
@@ -481,26 +564,83 @@ export default function CreationCreatorScreen() {
                   {t({ en: 'Add products with an AXP price. Buyers pay AXP (server-authoritative), credited to you.', zh: '添加带 AXP 价格的商品。买家用 AXP 购买(服务端权威结算),收入归你。' })}
                 </Text>
                 {products.map((p, idx) => (
-                  <View key={idx} style={styles.shopRow}>
-                    <TextInput
-                      style={[styles.input, { flex: 2, marginBottom: 0 }]}
-                      value={p.name}
-                      onChangeText={(v) => setProducts((prev) => prev.map((x, i) => (i === idx ? { ...x, name: v } : x)))}
-                      placeholder={t({ en: 'Product name', zh: '商品名' })}
-                      placeholderTextColor={colors.textMuted}
-                    />
-                    <TextInput
-                      style={[styles.input, { flex: 1, marginBottom: 0 }]}
-                      value={p.priceAxp}
-                      onChangeText={(v) => setProducts((prev) => prev.map((x, i) => (i === idx ? { ...x, priceAxp: v.replace(/[^0-9]/g, '') } : x)))}
-                      placeholder="AXP"
-                      placeholderTextColor={colors.textMuted}
-                      keyboardType="number-pad"
-                    />
+                  <View key={idx} style={styles.productBlock} testID={`creator-shop-product-${idx}`}>
+                    <View style={styles.shopRow}>
+                      <TextInput
+                        style={[styles.input, { flex: 2, marginBottom: 0 }]}
+                        value={p.name}
+                        onChangeText={(v) => setProducts((prev) => prev.map((x, i) => (i === idx ? { ...x, name: v } : x)))}
+                        placeholder={t({ en: 'Product name', zh: '商品名' })}
+                        placeholderTextColor={colors.textMuted}
+                      />
+                      <TextInput
+                        style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                        value={p.priceAxp}
+                        onChangeText={(v) => setProducts((prev) => prev.map((x, i) => (i === idx ? { ...x, priceAxp: v.replace(/[^0-9]/g, '') } : x)))}
+                        placeholder="AXP"
+                        placeholderTextColor={colors.textMuted}
+                        keyboardType="number-pad"
+                      />
+                    </View>
+
+                    {/* 「如何交付」选择(R1.4)。 */}
+                    <Text style={styles.deliveryLabel}>{t({ en: 'How to deliver', zh: '如何交付' })}</Text>
+                    <View style={styles.deliveryRow}>
+                      {DELIVERY_TYPES.map((d) => {
+                        const active = p.deliveryType === d.value;
+                        return (
+                          <TouchableOpacity
+                            key={d.value}
+                            testID={`creator-delivery-${idx}-${d.value}`}
+                            style={[styles.deliveryChip, active && styles.deliveryChipActive]}
+                            onPress={() => setProducts((prev) => prev.map((x, i) => (i === idx ? { ...x, deliveryType: d.value } : x)))}
+                          >
+                            <Text style={[styles.deliveryChipText, active && styles.deliveryChipTextActive]}>
+                              {d.emoji} {t(d.label)}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    {/* voucher 型:库存 / 预置码(R2.1)。填了码表则库存=码数量。 */}
+                    {p.deliveryType === 'voucher' ? (
+                      <View style={styles.voucherConfig}>
+                        <TextInput
+                          testID={`creator-voucher-stock-${idx}`}
+                          style={[styles.input, { marginBottom: 8 }]}
+                          value={p.voucherStock}
+                          onChangeText={(v) => setProducts((prev) => prev.map((x, i) => (i === idx ? { ...x, voucherStock: v.replace(/[^0-9]/g, '') } : x)))}
+                          placeholder={t({ en: 'Stock (auto-generated codes)', zh: '库存(自动生成兑换码)' })}
+                          placeholderTextColor={colors.textMuted}
+                          keyboardType="number-pad"
+                        />
+                        <TextInput
+                          testID={`creator-voucher-codes-${idx}`}
+                          style={[styles.input, { minHeight: 64, textAlignVertical: 'top', marginBottom: 0 }]}
+                          value={p.voucherCodes}
+                          onChangeText={(v) => setProducts((prev) => prev.map((x, i) => (i === idx ? { ...x, voucherCodes: v } : x)))}
+                          placeholder={t({ en: 'Or paste preset codes, one per line', zh: '或粘贴预置兑换码,每行一条' })}
+                          placeholderTextColor={colors.textMuted}
+                          multiline
+                        />
+                        <Text style={styles.deliveryHint}>
+                          {t({ en: 'With preset codes, stock equals the number of codes.', zh: '填写预置码时,库存以码数量为准。' })}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.deliveryHint}>
+                        {p.deliveryType === 'agent'
+                          ? t({ en: 'On purchase, your agent gets a fulfillment task; funds held in escrow until done.', zh: '下单后派发履约任务给你的 Agent;完成前货款托管。' })
+                          : p.deliveryType === 'support'
+                            ? t({ en: 'A support receipt (no goods / no monetary return promised).', zh: '生成"支持创作者"回执(不承诺实物或法币收益)。' })
+                            : t({ en: 'You deliver manually; mark done to release funds.', zh: '你手动交付;标记完成后放款。' })}
+                      </Text>
+                    )}
                   </View>
                 ))}
                 <View style={styles.shopBtns}>
-                  <TouchableOpacity onPress={() => setProducts((prev) => [...prev, { name: '', priceAxp: '', description: '' }])}>
+                  <TouchableOpacity onPress={() => setProducts((prev) => [...prev, { name: '', priceAxp: '', description: '', deliveryType: 'voucher', voucherStock: '', voucherCodes: '' }])}>
                     <Text style={styles.addProductText}>＋ {t({ en: 'Add', zh: '加一行' })}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -586,6 +726,16 @@ export default function CreationCreatorScreen() {
             {manifestVersion != null ? (
               <Text style={styles.cardHint}>🤖 {t({ en: 'Agent capabilities ready', zh: 'Agent 能力已就绪' })} (manifest v{manifestVersion})</Text>
             ) : null}
+
+            {/* task 4.5：自动识别的供给 + 自动生成的 Agent 能力（只读展示）。 */}
+            {manifestLoading ? (
+              <View style={styles.derivedBox}>
+                <ActivityIndicator color={colors.accent} size="small" />
+              </View>
+            ) : manifestTools && manifestTools.length > 0 ? (
+              <DerivedCapabilitiesPanel tools={manifestTools} t={t} />
+            ) : null}
+
             <TouchableOpacity
               style={styles.manageBtn}
               onPress={() => navigation.navigate('MyWorld')}
@@ -612,6 +762,77 @@ export default function CreationCreatorScreen() {
   );
 }
 
+/** 标准动词 → 展示元数据（图标 + 人/机可读标签）。 */
+const VERB_META: Record<string, { emoji: string; label: { en: string; zh: string } }> = {
+  order: { emoji: '🛒', label: { en: 'Order', zh: '下单' } },
+  book: { emoji: '📅', label: { en: 'Book', zh: '预约' } },
+  subscribe: { emoji: '🔔', label: { en: 'Subscribe', zh: '订阅' } },
+  donate: { emoji: '🎁', label: { en: 'Donate', zh: '打赏' } },
+  query: { emoji: '🔍', label: { en: 'Query', zh: '查询' } },
+  message: { emoji: '💬', label: { en: 'Message', zh: '留言' } },
+};
+
+/**
+ * task 4.5 —「自动识别供给 + 自动生成 Agent 能力」只读展示面板。
+ * 从发布派生的能力清单（`manifest.tools`）投影：① 识别到的供给（按 offeringId 去重）；
+ * ② 每个 Agent 可调用能力（MCP 工具，只读）。体现"一次标注两端复用、创作者不写接口"。
+ */
+function DerivedCapabilitiesPanel({
+  tools,
+  t,
+}: {
+  tools: McpToolDescriptor[];
+  t: any;
+}) {
+  const offeringIds = Array.from(
+    new Set(tools.map((x) => x.offeringId).filter((x): x is string => !!x)),
+  );
+  return (
+    <View style={styles.derivedBox} testID="creator-derived-capabilities">
+      {offeringIds.length > 0 ? (
+        <>
+          <Text style={styles.derivedTitle}>
+            🧩 {t({ en: 'Recognized offerings', zh: '自动识别到的供给' })} ({offeringIds.length})
+          </Text>
+          <Text style={styles.derivedNote}>
+            {t({
+              en: 'Auto-recognized from your creation. Edit prices in the shop products section above (shop) or in Manage.',
+              zh: '由创作自动识别。价格可在上方商品区（店铺）或「我的世界」中修改。',
+            })}
+          </Text>
+        </>
+      ) : null}
+
+      <Text style={[styles.derivedTitle, { marginTop: offeringIds.length > 0 ? 12 : 0 }]}>
+        🤖 {t({ en: 'Agent-callable capabilities (auto-generated)', zh: '已自动生成的 Agent 能力（只读）' })} ({tools.length})
+      </Text>
+      <Text style={styles.derivedNote}>
+        {t({
+          en: 'Agents can call these standard tools — you never wrote an API. One annotation, both ends.',
+          zh: 'Agent 可调用以下标准能力——你没写任何接口。一次标注，人机两端复用。',
+        })}
+      </Text>
+      {tools.map((tool, idx) => {
+        const meta = VERB_META[tool.verb] ?? { emoji: '⚙️', label: { en: tool.verb, zh: tool.verb } };
+        return (
+          <View key={`${tool.name}-${idx}`} style={styles.toolRow}>
+            <Text style={styles.toolEmoji}>{meta.emoji}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toolName} numberOfLines={1}>
+                {tool.name}
+                {tool.consumes ? <Text style={styles.toolConsumes}>  · {t({ en: 'billable', zh: '消费类' })}</Text> : null}
+              </Text>
+              {tool.description ? (
+                <Text style={styles.toolDesc} numberOfLines={2}>{tool.description}</Text>
+              ) : null}
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 const styles = themedStyles(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bgPrimary },
   scroll: { flex: 1 },
@@ -629,6 +850,15 @@ const styles = themedStyles(() => StyleSheet.create({
   gameGuide: { backgroundColor: colors.bgCard, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12, marginTop: 10 },
   gameGuideTitle: { color: colors.textPrimary, fontSize: 14, fontWeight: '700', marginBottom: 6 },
   shopRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  productBlock: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginTop: 10 },
+  deliveryLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '700', marginTop: 10, marginBottom: 6 },
+  deliveryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  deliveryChip: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  deliveryChipActive: { borderColor: colors.accent, backgroundColor: 'rgba(59,130,246,0.12)' },
+  deliveryChipText: { color: colors.textMuted, fontSize: 12, fontWeight: '700' },
+  deliveryChipTextActive: { color: colors.accent },
+  voucherConfig: { marginTop: 8 },
+  deliveryHint: { color: colors.textMuted, fontSize: 11, lineHeight: 16, marginTop: 6 },
   shopBtns: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
   addProductText: { color: colors.accent, fontSize: 14, fontWeight: '700' },
   gameGuideText: { color: colors.textSecondary, fontSize: 12, lineHeight: 19 },
@@ -662,6 +892,16 @@ const styles = themedStyles(() => StyleSheet.create({
   cardHint: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: 6 },
   manageBtn: { marginTop: 12, backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
   manageBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+
+  // task 4.5 自动派生面板
+  derivedBox: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
+  derivedTitle: { color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  derivedNote: { color: colors.textMuted, fontSize: 11, lineHeight: 16, marginBottom: 8 },
+  toolRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 6, borderTopWidth: 1, borderTopColor: 'rgba(148,163,184,0.15)' },
+  toolEmoji: { fontSize: 16, marginTop: 1 },
+  toolName: { color: colors.textPrimary, fontSize: 13, fontWeight: '600' },
+  toolConsumes: { color: '#eab308', fontSize: 11, fontWeight: '600' },
+  toolDesc: { color: colors.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 2 },
 
   footer: { padding: 16, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bgSecondary },
   publishBtn: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },

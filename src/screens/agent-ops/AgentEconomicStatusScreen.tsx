@@ -21,6 +21,7 @@ import {
   type CapabilityStatus,
 } from '../../services/agentOpsApi';
 import type { MeStackParamList } from '../../navigation/types';
+import { AgentEconomicIdentityCard } from '../../components/agent/AgentEconomicIdentityCard';
 
 type EcoRoute = RouteProp<MeStackParamList, 'AgentOpsEconomicStatus'>;
 
@@ -70,7 +71,12 @@ export function AgentEconomicStatusScreen() {
       ) : statusQ.isError || !s ? (
         <Text style={styles.empty}>{t({ en: 'Failed to load economic status.', zh: '加载经济身份状态失败。' })}</Text>
       ) : (
-        <Content s={s} styles={styles} c={c} t={t} />
+        <>
+          {/* 具象化：经济身份卡（钱包/备份/链上/信用/赚取/可交易 + 分享） */}
+          <AgentEconomicIdentityCard agentId={agentId as string} />
+          <View style={{ height: 8 }} />
+          <Content s={s} styles={styles} c={c} t={t} />
+        </>
       )}
     </ScrollView>
   );

@@ -21,12 +21,13 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useColors, useThemedStyles, type Palette } from '../../theme/useTheme';
 import { useI18n } from '../../stores/i18nStore';
-import { discoverCreations } from '../../services/creationApi';
+import { discoverCreations, checkinCreation } from '../../services/creationApi';
 import type { CreationDiscoveryItem } from '../../../shared/types/creation';
 
 // ── 地图画布尺寸(大于屏幕 → 可平移)。2×2 城区。 ──
@@ -97,6 +98,10 @@ export default function UnifiedWorldMapScreen() {
   const styles = useThemedStyles(makeStyles);
   const [markers, setMarkers] = useState<CreationDiscoveryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // task 6.3：地图⇄列表降级视图、附近领地筛选、签到态。
+  const [view, setView] = useState<'map' | 'list'>('map');
+  const [nearbyOnly, setNearbyOnly] = useState(false);
+  const [checkinBusy, setCheckinBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -148,6 +153,55 @@ export default function UnifiedWorldMapScreen() {
 
   const total = markers.length;
 
+  /** 地理锚定（可签到/算"附近领地"）：绑定真实 POI 或带 geo 坐标。 */
+  const isGeoAnchored = useCallback(
+    (item: CreationDiscoveryItem) => !!item.poi || !!(item.geo && Number.isFinite(item.geo.lat) && Number.isFinite(item.geo.lng)),
+    [],
+  );
+
+  /** 签到（task 6.3）：取设备定位 → checkinCreation → 提示 AXP 奖励。失败友好降级。 */
+  const onCheckin = useCallback(
+    async (item: CreationDiscoveryItem) => {
+      setCheckinBusy(item.id);
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+        const Location = require('expo-location');
+        const perm = await Location.requestForegroundPermissionsAsync();
+        if (perm?.status !== 'granted') {
+          Alert.alert(t({ en: 'Location needed', zh: '需要定位' }), t({ en: 'Enable location to check in at this place.', zh: '开启定位权限后可在此地签到。' }));
+          return;
+        }
+        const pos: any = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy?.Low ?? 2 }),
+          new Promise((resolve) => setTimeout(() => resolve(null), 10_000)),
+        ]);
+        if (!pos?.coords) {
+          Alert.alert(t({ en: 'Location unavailable', zh: '定位不可用' }), t({ en: 'Could not get your location. Try again.', zh: '未能获取定位，请重试。' }));
+          return;
+        }
+        const r = await checkinCreation(item.id, { location: { lat: pos.coords.latitude, lng: pos.coords.longitude } });
+        if (r.checkedIn) {
+          Alert.alert(
+            t({ en: 'Checked in 🎉', zh: '签到成功 🎉' }),
+            t({ en: `+${r.awardedAxp ?? 0} AXP${r.streakDays ? ` · ${r.streakDays}-day streak` : ''}`, zh: `+${r.awardedAxp ?? 0} AXP${r.streakDays ? ` · 连续 ${r.streakDays} 天` : ''}` }),
+          );
+        } else {
+          Alert.alert(t({ en: 'Not checked in', zh: '未签到' }), t({ en: 'You may be too far from this place.', zh: '你可能离该地点太远。' }));
+        }
+      } catch (e: any) {
+        Alert.alert(t({ en: 'Check-in failed', zh: '签到失败' }), e?.message ?? String(e));
+      } finally {
+        setCheckinBusy(null);
+      }
+    },
+    [t],
+  );
+
+  const listData = useMemo(
+    () => (nearbyOnly ? markers.filter(isGeoAnchored) : markers),
+    [markers, nearbyOnly, isGeoAnchored],
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -155,13 +209,73 @@ export default function UnifiedWorldMapScreen() {
           <Text style={styles.title}>🗺️ {t({ en: 'World Map', zh: '世界地图' })}</Text>
           <Text style={styles.subtitle}>{t({ en: `${total} places · drag to explore`, zh: `${total} 个地点 · 拖动探索` })}</Text>
         </View>
-        <TouchableOpacity style={styles.switchBtn} onPress={() => navigation.navigate('CreationFeed')} testID="map-switch-feed">
-          <Text style={styles.switchText}>🎬 {t({ en: 'Feed', zh: '创作流' })}</Text>
-        </TouchableOpacity>
+        <View style={styles.headerBtns}>
+          {/* task 6.3：地图⇄列表切换（列表 = MapLibre 不可用时的降级选址）。 */}
+          <TouchableOpacity style={styles.switchBtn} onPress={() => setView((v) => (v === 'map' ? 'list' : 'map'))} testID="map-toggle-view">
+            <Text style={styles.switchText}>{view === 'map' ? `📋 ${t({ en: 'List', zh: '列表' })}` : `🗺️ ${t({ en: 'Map', zh: '地图' })}`}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.switchBtn} onPress={() => navigation.navigate('CreationFeed')} testID="map-switch-feed">
+            <Text style={styles.switchText}>🎬 {t({ en: 'Feed', zh: '创作流' })}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (
         <View style={styles.center}><ActivityIndicator color={c.accent} /><Text style={styles.dim}>{t({ en: 'Loading map…', zh: '加载地图…' })}</Text></View>
+      ) : view === 'list' ? (
+        <View style={styles.listWrap}>
+          {/* 附近领地筛选（geo/POI 锚定的可签到地点） */}
+          <TouchableOpacity
+            style={[styles.nearbyChip, nearbyOnly && styles.nearbyChipOn]}
+            onPress={() => setNearbyOnly((v) => !v)}
+            testID="map-nearby-toggle"
+          >
+            <Text style={[styles.nearbyChipText, nearbyOnly && styles.nearbyChipTextOn]}>
+              📍 {t({ en: 'Nearby territories (check-in)', zh: '附近的领地（可签到）' })}
+            </Text>
+          </TouchableOpacity>
+          {listData.length === 0 ? (
+            <View style={styles.center}>
+              <Text style={styles.emptyEmoji}>{nearbyOnly ? '📍' : '✨'}</Text>
+              <Text style={styles.dim}>
+                {nearbyOnly
+                  ? t({ en: 'No geo-anchored places yet.', zh: '还没有地理锚定的领地。' })
+                  : t({ en: 'This world is empty. Be the first to create.', zh: '这个世界还很空旷，来当第一个创作者。' })}
+              </Text>
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+              {listData.map((item) => {
+                const geoAnchored = isGeoAnchored(item);
+                return (
+                  <TouchableOpacity key={item.id} style={styles.listRow} onPress={() => onOpen(item)} activeOpacity={0.7} testID={`map-list-row-${item.id}`}>
+                    <Text style={styles.listEmoji}>{markerEmoji(item)}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.listTitle} numberOfLines={1}>{item.title}</Text>
+                      <Text style={styles.listMeta} numberOfLines={1}>
+                        {t(DISTRICTS[districtOf(item)].label)}{item.poi ? ' · 🏪 POI' : geoAnchored ? ' · 📍' : ''}
+                      </Text>
+                    </View>
+                    {geoAnchored ? (
+                      <TouchableOpacity
+                        style={styles.checkinBtn}
+                        onPress={() => onCheckin(item)}
+                        disabled={checkinBusy === item.id}
+                        testID={`map-checkin-${item.id}`}
+                      >
+                        {checkinBusy === item.id ? (
+                          <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                          <Text style={styles.checkinBtnText}>📍 {t({ en: 'Check in', zh: '签到' })}</Text>
+                        )}
+                      </TouchableOpacity>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
       ) : (
         <ScrollView style={styles.scrollV} contentContainerStyle={styles.scrollVContent} showsVerticalScrollIndicator={false}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollHContent}>
@@ -245,8 +359,21 @@ function makeStyles(c: Palette) { return StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12 },
   title: { color: c.textPrimary, fontSize: 20, fontWeight: '800' },
   subtitle: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+  headerBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   switchBtn: { backgroundColor: c.bgCard, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: c.border },
   switchText: { color: c.accent, fontSize: 13, fontWeight: '600' },
+  // task 6.3 列表降级 + 签到
+  listWrap: { flex: 1, paddingHorizontal: 16 },
+  nearbyChip: { alignSelf: 'flex-start', backgroundColor: c.bgCard, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: c.border, marginBottom: 10 },
+  nearbyChipOn: { backgroundColor: c.accent, borderColor: c.accent },
+  nearbyChipText: { color: c.textSecondary, fontSize: 13, fontWeight: '600' },
+  nearbyChipTextOn: { color: '#fff', fontWeight: '700' },
+  listRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.bgCard, borderRadius: 12, borderWidth: 1, borderColor: c.border, padding: 12, marginBottom: 10 },
+  listEmoji: { fontSize: 26 },
+  listTitle: { color: c.textPrimary, fontSize: 15, fontWeight: '700' },
+  listMeta: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+  checkinBtn: { backgroundColor: c.accent, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8, minWidth: 64, alignItems: 'center' },
+  checkinBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
   dim: { color: c.textMuted, fontSize: 13, textAlign: 'center', paddingHorizontal: 24 },
   scrollV: { flex: 1 },

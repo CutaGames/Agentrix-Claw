@@ -27,6 +27,12 @@ export interface ShareCardProps {
   categoryLabel?: string;
   priceLabel?: string;
   statsLabel?: string;
+  /**
+   * Optional structured odds list (1X2). When provided and non-empty, a
+   * dedicated full-width "赔率 / Odds" panel is rendered so every outcome stays
+   * fully readable (no truncation). When absent, behavior is unchanged.
+   */
+  oddsList?: Array<{ label: string; value: string; impliedPct?: string; highlight?: boolean }>;
   /** Caption override for the priceLabel metric (defaults to "Price/价格"). */
   priceCaption?: string;
   /** Caption override for the statsLabel metric (defaults to "Highlights/亮点"). */
@@ -53,6 +59,7 @@ export function ShareCardView({
   categoryLabel,
   priceLabel,
   statsLabel,
+  oddsList,
   priceCaption,
   statsCaption,
   description,
@@ -69,6 +76,7 @@ export function ShareCardView({
   const [capturing, setCapturing] = useState(false);
   const [copied, setCopied] = useState(false);
   const visibleTags = (tags ?? []).filter(Boolean).slice(0, 3);
+  const odds = (oddsList ?? []).filter((o) => o && o.label && o.value);
   const resolvedCta = ctaLabel ?? t({ en: 'Scan to view details', zh: '扫码查看详情' });
 
   const captureAndShare = useCallback(async () => {
@@ -159,6 +167,26 @@ export function ShareCardView({
                   <Text style={styles.metricValue} numberOfLines={2}>{statsLabel}</Text>
                 </View>
               ) : null}
+            </View>
+          ) : null}
+
+          {odds.length > 0 ? (
+            <View style={styles.oddsPanel}>
+              <Text style={styles.oddsCaption}>{t({ en: 'Odds', zh: '赔率' })} · {t({ en: 'Win Probability', zh: '隐含概率' })}</Text>
+              <View style={styles.oddsRow}>
+                {odds.map((o, i) => (
+                  <View
+                    key={`${o.label}-${i}`}
+                    style={[styles.oddsCell, o.highlight ? styles.oddsCellHighlight : null]}
+                  >
+                    <Text style={styles.oddsLabel} numberOfLines={1}>{o.label}</Text>
+                    <Text style={styles.oddsValue} adjustsFontSizeToFit numberOfLines={1}>{o.value}</Text>
+                    {o.impliedPct ? (
+                      <Text style={styles.oddsImplied} numberOfLines={1}>{o.impliedPct}</Text>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
             </View>
           ) : null}
 
@@ -304,6 +332,41 @@ const styles = StyleSheet.create({
   },
   metricLabel: { color: 'rgba(226,232,240,0.74)', fontSize: 11, fontWeight: '700' },
   metricValue: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  oddsPanel: {
+    borderRadius: 20,
+    padding: 16,
+    backgroundColor: 'rgba(8,16,32,0.30)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    gap: 12,
+  },
+  oddsCaption: {
+    color: 'rgba(226,232,240,0.78)',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  oddsRow: { flexDirection: 'row', gap: 10 },
+  oddsCell: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  oddsCellHighlight: {
+    backgroundColor: 'rgba(124,58,237,0.34)',
+    borderColor: 'rgba(196,181,253,0.6)',
+  },
+  oddsLabel: { color: 'rgba(240,246,255,0.86)', fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  oddsValue: { color: '#fff', fontSize: 24, fontWeight: '900', textAlign: 'center' },
+  oddsImplied: { color: 'rgba(226,232,240,0.70)', fontSize: 11, fontWeight: '700', textAlign: 'center' },
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tagChip: {
     paddingHorizontal: 12,

@@ -29,6 +29,9 @@ import ViewShot, { CaptureOptions } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { useI18n } from '../../stores/i18nStore';
 import { getApiConfig } from '../../services/api';
+import { digestPosterShareUrl } from '../../services/aggregatedMarketView';
+import { buildShareIntent, digestToShareIntent } from '../../services/shareIntent';
+import { recordGrowthEvent } from '../../services/growthEvents';
 
 interface DigestItem {
   title: string;
@@ -89,12 +92,15 @@ export function DigestPosterScreen() {
     void load();
   }, [load]);
 
-  const shareUrl = payload?.shareUrl || `${SITE_BASE}/digest/${payload?.date ?? 'today'}`;
+  const built = payload ? buildShareIntent(digestToShareIntent({ date: payload.date })) : null;
+  const shareUrl = built?.attributedUrl ?? digestPosterShareUrl(payload, SITE_BASE);
 
   const captureAndShare = useCallback(async () => {
     if (!payload) return;
     try {
       setCapturing(true);
+      // 统一增长归因:分享即发 share 事件(sourceType=digest)。
+      recordGrowthEvent({ eventType: 'share', sourceType: 'digest', sourceEntityId: payload.date, attributionRef: built?.attributionRef, channel: 'poster' });
       const canShare = await Sharing.isAvailableAsync();
       if (canShare && viewShotRef.current) {
         const opts: CaptureOptions = { format: 'png', quality: 1, result: 'tmpfile' };

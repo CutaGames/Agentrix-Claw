@@ -1,5 +1,6 @@
 import type { Creation, CreationDiscoveryItem, CreationPreview, CreationType, CreationVerb, CapabilityManifest, McpToolDescriptor, Offering } from './creation';
 import type { EcsWorld, SandboxIsolationLevel, SubstrateTier, WorldCreationError } from './world-creation';
+import type { CreationQualityResult } from './creation-quality';
 import type { ContinuumEditRequest, ContinuumEditResponse, CreationDispatchDecision, CreationSurface, CreationTaskDto, ReadonlyAssetHandle } from './world-creation-api';
 import type { MarketplaceCurrency } from './world-engine-api';
 import type { TrustLevel } from './agentrix-presence';
@@ -61,6 +62,10 @@ export interface PublishCreationResponse {
     shareCode?: string;
     manifestVersion?: number;
     error?: WorldCreationError;
+}
+export interface QualityCheckCreationResponse {
+    quality: CreationQualityResult;
+    enforced: boolean;
 }
 export type DiscoverMode = 'map' | 'feed' | 'agentSearch';
 export type FeedSort = 'newest' | 'hot' | 'following' | 'nearby';
@@ -266,4 +271,57 @@ export interface CreationCapabilityManifestDto {
     tools: CreationMcpToolDescriptor[];
     customTools?: CreationMcpToolDescriptor[];
     ecsVersionId: string | null;
+}
+export type FulfillmentOrderType = 'voucher' | 'agent' | 'support' | 'manual';
+export type FulfillmentOrderStatus = 'paid' | 'fulfilled' | 'refunded' | 'failed';
+export type FulfillmentEscrowState = 'none' | 'held' | 'released' | 'refunded';
+export type FulfillmentVoucherStatus = 'issued' | 'redeemed' | 'revoked';
+export interface FulfillmentVoucherView {
+    id: string;
+    orderId: string;
+    creationId: string;
+    offeringId: string;
+    code: string;
+    status: FulfillmentVoucherStatus;
+    issuedAt: number;
+    redeemedAt: number | null;
+}
+export interface FulfillmentOrderView {
+    id: string;
+    creationId: string;
+    creationTitle?: string;
+    offeringId: string;
+    offeringName?: string;
+    amount: string;
+    currency: string;
+    fulfillmentType: FulfillmentOrderType;
+    status: FulfillmentOrderStatus;
+    escrowState: FulfillmentEscrowState;
+    deliverable?: Record<string, unknown> | null;
+    vouchers: FulfillmentVoucherView[];
+    createdAt: number;
+    updatedAt: number;
+}
+export type BuyerFulfillmentOrderView = FulfillmentOrderView;
+export interface SellerFulfillmentOrderView extends FulfillmentOrderView {
+    buyerUserId: string;
+}
+export interface MyFulfillmentOrdersResponse {
+    orders: BuyerFulfillmentOrderView[];
+}
+export interface MyFulfillmentVouchersResponse {
+    vouchers: FulfillmentVoucherView[];
+}
+export interface SellingFulfillmentOrdersResponse {
+    orders: SellerFulfillmentOrderView[];
+}
+export interface RedeemVoucherResponse {
+    voucher: FulfillmentVoucherView;
+}
+export interface CompleteFulfillmentOrderRequest {
+    note?: string;
+    artifact?: Record<string, unknown>;
+}
+export interface CompleteFulfillmentOrderResponse {
+    order: SellerFulfillmentOrderView;
 }

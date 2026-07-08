@@ -25,6 +25,7 @@ import { AxpRewardShopScreen } from '../screens/me/AxpRewardShopScreen';
 import { PetEarningsScreen } from '../screens/me/PetEarningsScreen';
 import { DigestPosterScreen } from '../screens/me/DigestPosterScreen';
 import { OnchainAuthScreen } from '../screens/me/OnchainAuthScreen';
+import { SovereigntyControlPlaneScreen } from '../screens/me/SovereigntyControlPlaneScreen';
 import { ToyBindingScreen } from '../screens/me/ToyBindingScreen';
 // P-9 Q1 — re-home orphaned pet screens (T6.7). These exist as components
 // but were not mounted in any navigator after the legacy PetStack was
@@ -79,6 +80,7 @@ export function MeStackNavigator() {
       <Stack.Screen name="PetEarnings" component={PetEarningsScreen} options={{ title: t({ en: 'Earnings Center', zh: '收益中心' }) }} />
       <Stack.Screen name="DigestPoster" component={DigestPosterScreen} options={{ title: t({ en: 'Daily Digest', zh: '机会日报' }) }} />
       <Stack.Screen name="OnchainAuth" component={OnchainAuthScreen} options={{ title: t({ en: 'On-chain Authorization', zh: '链上授权' }) }} />
+      <Stack.Screen name="SovereigntyControlPlane" component={SovereigntyControlPlaneScreen} options={{ title: t({ en: 'Authorization Center', zh: '授权中枢' }) }} />
       <Stack.Screen name="AxpRewardShop" component={AxpRewardShopScreen} options={{ title: t({ en: 'Redeem Shop', zh: '兑换中心' }) }} />
       <Stack.Screen name="ToyBinding" component={ToyBindingScreen} options={{ title: t({ en: 'Devices', zh: '设备管理' }) }} />
 

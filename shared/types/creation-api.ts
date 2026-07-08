@@ -41,6 +41,8 @@ import type {
   WorldCreationError,
 } from './world-creation';
 
+import type { CreationQualityResult } from './creation-quality';
+
 import type {
   ContinuumEditRequest,
   ContinuumEditResponse,
@@ -217,8 +219,19 @@ export interface PublishCreationResponse {
   shareCode?: string;
   /** 发布时派生的能力清单版本(单调递增,需求 1.11 / Property 5)。 */
   manifestVersion?: number;
-  /** 审核拒绝时的结构化原因(MODERATION_REJECTED);内容保留不丢失(需求 3.3)。 */
+  /** 审核拒绝(MODERATION_REJECTED)/ 质量门未过(QUALITY_REJECTED)时的结构化原因;内容保留不丢失(需求 3.3)。 */
   error?: WorldCreationError;
+}
+
+/**
+ * POST /v1/creations/:id/quality-check — 发布前质量门预检响应（world-growth-engine 阶段 3.1）。
+ * 只读、不改状态;让创作者在发布前就看到"够不够好、差在哪"。
+ */
+export interface QualityCheckCreationResponse {
+  /** 质量门综合结果（各维度 pass/fail + 可行动 reasons）。 */
+  quality: CreationQualityResult;
+  /** 该类型是否会被质量门强制拦截（true=不达标将无法发布）。 */
+  enforced: boolean;
 }
 
 // ============================================================
@@ -667,4 +680,124 @@ export interface CreationCapabilityManifestDto {
   customTools?: CreationMcpToolDescriptor[];
   /** 派生溯源:对应的 ECS 版本(用于一致性校验,Property 5)。 */
   ecsVersionId: string | null;
+}
+
+// ============================================================
+// §12 履约视图:买家「我的订单/凭证」· 卖家「待履约/待核销」· 核销 voucher
+// design: §Components and Interfaces / 前端(移动端);需求 5.2 / 5.3 / 5.4
+// world-shop-fulfillment task 5 —— 单一履约引擎的读侧视图 + 卖家核销端点。
+// ============================================================
+
+/** 订单履约类型（与后端 CreationOrderFulfillmentType 同构）。 */
+export type FulfillmentOrderType = 'voucher' | 'agent' | 'support' | 'manual';
+/** 订单状态（与后端 CreationOrderStatus 同构）。 */
+export type FulfillmentOrderStatus = 'paid' | 'fulfilled' | 'refunded' | 'failed';
+/** 托管状态（与后端 CreationOrderEscrowState 同构）。 */
+export type FulfillmentEscrowState = 'none' | 'held' | 'released' | 'refunded';
+/** 凭证状态（与后端 CreationVoucherStatus 同构）。 */
+export type FulfillmentVoucherStatus = 'issued' | 'redeemed' | 'revoked';
+
+/** 单张 voucher 视图（买家出示 / 卖家核销）。 */
+export interface FulfillmentVoucherView {
+  /** 凭证 id。 */
+  id: string;
+  /** 关联订单 id。 */
+  orderId: string;
+  /** 所属创作 id。 */
+  creationId: string;
+  /** 发放来源 offering id。 */
+  offeringId: string;
+  /** 唯一兑换码。 */
+  code: string;
+  /** 凭证状态。 */
+  status: FulfillmentVoucherStatus;
+  /** 发放时间（epoch millis）。 */
+  issuedAt: number;
+  /** 核销时间（epoch millis；未核销为 null）。 */
+  redeemedAt: number | null;
+}
+
+/** 订单视图基类（买家/卖家共用字段）。 */
+export interface FulfillmentOrderView {
+  /** 订单 id。 */
+  id: string;
+  /** 所属创作 id。 */
+  creationId: string;
+  /** 创作标题（冗余便于展示；创作不存在时可空）。 */
+  creationTitle?: string;
+  /** 下单命中的 offering id。 */
+  offeringId: string;
+  /** offering 名称（冗余便于展示；已变更/移除时可空）。 */
+  offeringName?: string;
+  /** 服务端权威成交金额（字符串保留精度）。 */
+  amount: string;
+  /** 结算币种。 */
+  currency: string;
+  /** 履约类型。 */
+  fulfillmentType: FulfillmentOrderType;
+  /** 订单状态。 */
+  status: FulfillmentOrderStatus;
+  /** 托管状态。 */
+  escrowState: FulfillmentEscrowState;
+  /** 交付物（voucher code / support 回执 / agent·manual 交付说明）。 */
+  deliverable?: Record<string, unknown> | null;
+  /** 关联凭证（voucher 型订单发放的凭证）。 */
+  vouchers: FulfillmentVoucherView[];
+  /** 创建时间（epoch millis）。 */
+  createdAt: number;
+  /** 更新时间（epoch millis）。 */
+  updatedAt: number;
+}
+
+/** 买家侧订单视图（含凭证与履约状态；R5.2）。 */
+export type BuyerFulfillmentOrderView = FulfillmentOrderView;
+
+/** 卖家侧订单视图（额外含买家 id，用于「待履约/待核销」；R5.3）。 */
+export interface SellerFulfillmentOrderView extends FulfillmentOrderView {
+  /** 买家用户 id。 */
+  buyerUserId: string;
+}
+
+/** GET /v1/creations/orders/mine — 买家「我的订单/凭证」响应（R5.2）。 */
+export interface MyFulfillmentOrdersResponse {
+  /** 按创建时间倒序的买家订单。 */
+  orders: BuyerFulfillmentOrderView[];
+}
+
+/** GET /v1/creations/vouchers/mine — 买家「我的凭证」响应（R5.2）。 */
+export interface MyFulfillmentVouchersResponse {
+  /** 按发放时间倒序的买家凭证。 */
+  vouchers: FulfillmentVoucherView[];
+}
+
+/** GET /v1/creations/orders/selling — 卖家「待履约/待核销」响应（R5.3）。 */
+export interface SellingFulfillmentOrdersResponse {
+  /** 按创建时间倒序的卖家订单（可按状态过滤）。 */
+  orders: SellerFulfillmentOrderView[];
+}
+
+/** POST /v1/creations/vouchers/:voucherId/redeem — 核销 voucher 响应（R5.3 / Property 4）。 */
+export interface RedeemVoucherResponse {
+  /** 核销后的凭证（status=redeemed）。 */
+  voucher: FulfillmentVoucherView;
+}
+
+/**
+ * POST /v1/creations/orders/:orderId/complete — 创作者标记 manual/agent 订单完成请求
+ * （world-shop-fulfillment task 7 · R3.3/R4.3）。附交付说明/交付物 → confirm 放款托管。
+ */
+export interface CompleteFulfillmentOrderRequest {
+  /** 交付说明（手动交付备注 / agent 回执说明），随完成记入放款回执，买家可见。 */
+  note?: string;
+  /** 结构化交付物（链接/文件句柄等），随完成记入放款回执，买家可见。 */
+  artifact?: Record<string, unknown>;
+}
+
+/**
+ * POST /v1/creations/orders/:orderId/complete — 响应（R3.3/R4.3）。
+ * 返回放款后的卖家订单视图（escrowState=released、status=fulfilled、deliverable 含交付物）。
+ */
+export interface CompleteFulfillmentOrderResponse {
+  /** 完成放款后的订单视图。 */
+  order: SellerFulfillmentOrderView;
 }

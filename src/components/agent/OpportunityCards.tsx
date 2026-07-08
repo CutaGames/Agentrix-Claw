@@ -2,16 +2,27 @@
  * OpportunityCards — 对话内「全网机会结果卡片」可复用组件（移动端）。
  *
  * 渲染一组聚合检索结果（AggregatedListing），每卡含来源徽标 / 品类 / 报价，以及围栏内
- * 「接单 / 下注 / 购买 / 雇佣」按钮（→ participateInListing → POST /ard/participate）；仅链接
+ * 「接单 / 下注 / 购买 / 雇佣」按钮（→ participateInListing → POST /aggregation/participate）；仅链接
  * 发现的条目显示「跳转外部」。供**主对话框**（AgentChatScreen）与机会助手屏共用，实现
  * 「在对话里展示检索结果 + 直接接单/下单」。
  *
- * 自洽：内部管理 busy / 成交结果态；不依赖外部状态。后端 /ard/search、/ard/participate 已就绪。
+ * 自洽：内部管理 busy / 成交结果态；不依赖外部状态。后端 /ard/search、/aggregation/participate 已就绪。
  */
 import React, { useCallback, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Linking,
+  Alert,
+  Modal,
+  ScrollView,
+} from 'react-native';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
+import { ShareCardView } from '../ShareCardView';
 import {
   participateInListing,
   type AggCategory,
@@ -19,6 +30,9 @@ import {
   type ParticipationAction,
   type ParticipateResult,
 } from '../../services/aggregatedMarket.api';
+import { posterEmojiFor } from '../../services/aggregatedMarketView';
+import { buildShareIntent, opportunityToShareIntent } from '../../services/shareIntent';
+import { recordGrowthEvent } from '../../services/growthEvents';
 
 const CATEGORY_LABEL: Record<AggCategory, { en: string; zh: string }> = {
   task: { en: 'Task', zh: '任务' },
@@ -54,6 +68,21 @@ export function OpportunityCards({ listings }: OpportunityCardsProps) {
   const { t } = useI18n();
   const [busyCard, setBusyCard] = useState<string | null>(null);
   const [cardResult, setCardResult] = useState<Record<string, ParticipateResult>>({});
+  /** 当前要生成海报的条目（null = 海报弹窗关闭）。 */
+  const [posterListing, setPosterListing] = useState<AggregatedListing | null>(null);
+
+  /** 海报可扫码链接:统一经 buildShareIntent 产出带 ?ref 归因的 URL(优先外链,否则站内机会详情)。 */
+  const shareUrlFor = useCallback(
+    (listing: AggregatedListing) =>
+      buildShareIntent(
+        opportunityToShareIntent({
+          identifier: listing.identifier,
+          title: listing.displayName,
+          externalUrl: listing.externalUrl ?? undefined,
+        }),
+      ).attributedUrl,
+    [],
+  );
 
   const onParticipate = useCallback(
     async (listing: AggregatedListing) => {
@@ -112,9 +141,7 @@ export function OpportunityCards({ listings }: OpportunityCardsProps) {
               <Text style={[styles.resultLine, result.ok ? styles.resultOk : styles.resultWarn]}>
                 {result.ok
                   ? t({ en: `Done · ${result.status}`, zh: `已成交 · ${result.status}` })
-                  : result.status === 'backend_gap'
-                    ? t({ en: 'Accept backend pending; use external link.', zh: '代成交后端待上线，请用跳转外部' })
-                    : t({ en: `Not completed: ${result.reason || result.status}`, zh: `未完成：${result.reason || result.status}` })}
+                  : t({ en: `Not completed: ${result.reason || result.status}`, zh: `未完成：${result.reason || result.status}` })}
               </Text>
             ) : null}
             <View style={styles.cardBtnRow}>
@@ -141,10 +168,62 @@ export function OpportunityCards({ listings }: OpportunityCardsProps) {
                   <Text style={styles.cardBtnGhostText}>{t({ en: 'Details', zh: '详情' })}</Text>
                 </TouchableOpacity>
               ) : null}
+              <TouchableOpacity
+                style={[styles.cardBtn, styles.cardBtnGhost]}
+                onPress={() => setPosterListing(listing)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.cardBtnGhostText}>📤 {t({ en: 'Poster', zh: '生成海报' })}</Text>
+              </TouchableOpacity>
             </View>
           </View>
         );
       })}
+
+      {/* 机会海报弹窗：用卡片数据渲染 ShareCardView（含真实二维码），经系统分享转发 */}
+      <Modal
+        visible={posterListing != null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPosterListing(null)}
+      >
+        <View style={styles.posterOverlay}>
+          <View style={styles.posterSheet}>
+            <View style={styles.posterHeader}>
+              <Text style={styles.posterHeaderTitle}>{t({ en: 'Share Poster', zh: '生成机会海报' })}</Text>
+              <TouchableOpacity onPress={() => setPosterListing(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.posterClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={styles.posterScroll} showsVerticalScrollIndicator={false}>
+              {posterListing ? (
+                <ShareCardView
+                  shareUrl={shareUrlFor(posterListing)}
+                  onShare={() => recordGrowthEvent({ eventType: 'share', sourceType: 'marketplace', sourceEntityId: posterListing.identifier, channel: 'poster' })}
+                  title={posterListing.displayName}
+                  subtitle={
+                    posterListing.internal
+                      ? t({ en: 'Agentrix Opportunity', zh: 'Agentrix 机会' })
+                      : t({ en: `From ${posterListing.source}`, zh: `来源 · ${posterListing.source}` })
+                  }
+                  headerEmoji={posterEmojiFor(posterListing.category)}
+                  categoryLabel={posterListing.category ? t(CATEGORY_LABEL[posterListing.category]) : undefined}
+                  description={posterListing.description}
+                  priceLabel={
+                    posterListing.gmv > 0
+                      ? `${posterListing.gmv.toLocaleString()} ${posterListing.currency}`
+                      : t({ en: 'price varies', zh: '价格待定' })
+                  }
+                  statsLabel={posterListing.internal ? t({ en: 'Internal', zh: '自营' }) : posterListing.source}
+                  statsCaption={t({ en: 'Source', zh: '来源' })}
+                  tags={[posterListing.category ?? 'opportunity', posterListing.source].filter(Boolean) as string[]}
+                  ctaLabel={t({ en: 'Scan to view & accept', zh: '扫码查看 / 接单' })}
+                />
+              ) : null}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -170,6 +249,12 @@ const styles = StyleSheet.create({
   cardBtnGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border },
   cardBtnGhostText: { color: colors.textPrimary, fontSize: 13, fontWeight: '700' },
   cardBtnDisabled: { opacity: 0.5 },
+  posterOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  posterSheet: { backgroundColor: colors.bgPrimary, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '92%', paddingBottom: 12 },
+  posterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+  posterHeaderTitle: { color: colors.textPrimary, fontSize: 16, fontWeight: '800' },
+  posterClose: { color: colors.textSecondary, fontSize: 18, fontWeight: '800' },
+  posterScroll: { paddingVertical: 12 },
 });
 
 export default OpportunityCards;

@@ -136,7 +136,7 @@ export declare enum WorldApiCapability {
     ComputeRun = "compute.run"
 }
 export type SandboxIsolationLevel = 'L0' | 'L1' | 'L2';
-export type WorldCreationErrorCode = 'TIER_VIOLATION' | 'CAP_DENIED' | 'PLOT_TAKEN' | 'SCHEMA_INVALID' | 'ASSET_NOT_OWNED' | 'ECONOMY_REJECTED' | 'RESOURCE_EXCEEDED' | 'MODERATION_REJECTED' | 'QUOTA_EXCEEDED' | 'LOAD_TIMEOUT' | 'NOT_ORIGINAL_CREATOR';
+export type WorldCreationErrorCode = 'TIER_VIOLATION' | 'CAP_DENIED' | 'PLOT_TAKEN' | 'SCHEMA_INVALID' | 'ASSET_NOT_OWNED' | 'ECONOMY_REJECTED' | 'RESOURCE_EXCEEDED' | 'MODERATION_REJECTED' | 'QUOTA_EXCEEDED' | 'LOAD_TIMEOUT' | 'NOT_ORIGINAL_CREATOR' | 'QUALITY_REJECTED';
 export interface WorldCreationError {
     error: WorldCreationErrorCode;
     detail: string;

@@ -13,6 +13,23 @@ export interface CreationPreview {
     durationMs?: number;
 }
 export type OfferingKind = 'product' | 'service' | 'ticket' | 'subscription' | 'tip';
+export type FulfillmentType = 'voucher' | 'agent' | 'support' | 'manual';
+export type VoucherCodeMode = 'auto' | 'list';
+export interface Fulfillment {
+    type: FulfillmentType;
+    voucher?: {
+        stock: number;
+        codeMode: VoucherCodeMode;
+        codes?: string[];
+    };
+    agent?: {
+        verb: 'message';
+        brief?: string;
+    };
+    support?: {
+        note?: string;
+    };
+}
 export type CreationVerb = 'query' | 'order' | 'book' | 'message' | 'subscribe' | 'donate';
 export interface Offering {
     id: string;
@@ -22,6 +39,11 @@ export interface Offering {
     price?: {
         axp?: number;
         usd?: number;
+        stablecoin?: {
+            chainId: number;
+            tokenSymbol: string;
+            amount: string;
+        };
     };
     verbs: CreationVerb[];
     availability?: {
@@ -33,6 +55,7 @@ export interface Offering {
         capacity?: number;
     };
     derivedFromEntityId?: string;
+    fulfillment?: Fulfillment;
 }
 export interface McpToolDescriptor {
     name: string;
