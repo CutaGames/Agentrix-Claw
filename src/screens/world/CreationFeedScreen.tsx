@@ -52,7 +52,13 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { discoverCreations, discoverCreationsPublic } from '../../services/creationApi';
 import { useAuthStore } from '../../stores/authStore';
-import { preloadPreviewUris, selectUrisToPrefetch, shouldRenderPreview } from '../../services/creationFeed';
+import {
+  preloadPreviewUris,
+  selectUrisToPrefetch,
+  shouldRenderPreview,
+  isColdStartEmpty,
+  prioritizeRenderableCovers,
+} from '../../services/creationFeed';
 import { CreationCard } from './components/CreationCard';
 import { ShopQuickOrder } from './components/ShopQuickOrder';
 import type { WorldStackParamList } from '../../navigation/WorldStackNavigator';
@@ -132,7 +138,14 @@ export function CreationFeedScreen() {
   });
 
   const items: CreationDiscoveryItem[] = useMemo(
-    () => data?.pages.flatMap((p) => p.items) ?? [],
+    () => {
+      // 后端 feed 仅返回已过 Quality_Gate(published/listed)的创作(R7.3)。
+      // task 9.2:不硬过滤「无 https 封面」的项(否则 Cover_Backfill 跑完前会掏空 Feed),
+      // 改用稳定优先级排序把 Real_Cover_Image 创作前置到首屏,其余仍保留可见
+      // (CreationCard 三态兜底保证非 https 封面也绝不黑屏)。见 creationFeed.prioritizeRenderableCovers。
+      const flat = data?.pages.flatMap((p) => p.items) ?? [];
+      return prioritizeRenderableCovers(flat);
+    },
     [data],
   );
 
@@ -198,6 +211,23 @@ export function CreationFeedScreen() {
   );
 
   /**
+   * world-growth-mobile-experience · task 6.1 · R4.1:Feed 卡片轻点 → 打开创作详情。
+   * 轻点封面/卡体 与 shop/place 主行动均走此,导航到 `CreationDetail`,并把已持有的
+   * 发现投影项(item)一并透传,供详情展示封面 + 标题 + 创作者 + offerings(可下单项)+
+   * 「进入/进去逛逛」按钮(无 get-by-id 端点,避免二次请求)。
+   */
+  const onOpenDetail = useCallback(
+    (item: CreationDiscoveryItem) => {
+      navigation.navigate('CreationDetail', {
+        creationId: item.id,
+        title: item.title,
+        item,
+      });
+    },
+    [navigation],
+  );
+
+  /**
    * task 3.5:shop 卡「流内快捷下单」—— 打开底部弹层(数量 + 下单),走权威交易。
    * 不进入完整体验即可成交(需求 5.7),由 ShopQuickOrder 经 invoke(order) 权威结算。
    */
@@ -240,11 +270,13 @@ export function CreationFeedScreen() {
         onEnter={onEnter}
         onShopOrder={onShopOrder}
         onLivestreamEnter={onLivestreamEnter}
+        // task 6.1 · R4.1:轻点卡体 + shop/place 主行动 → 创作详情(detail-first)。
+        onOpenDetail={onOpenDetail}
         t={t}
         // 其余 slots 留给后续任务:onOpenComments(8.3)。
       />
     ),
-    [pageHeight, insets.top, insets.bottom, activeId, activeIndex, dataSaver, onEnter, onShopOrder, onLivestreamEnter, t],
+    [pageHeight, insets.top, insets.bottom, activeId, activeIndex, dataSaver, onEnter, onShopOrder, onLivestreamEnter, onOpenDetail, t],
   );
 
   // 固定卡高 = 容器高,供 getItemLayout 精确计算偏移(分页吸附 + 滚动性能)。
@@ -305,14 +337,17 @@ export function CreationFeedScreen() {
                 height={pageHeight}
                 text={t({ zh: '加载失败,下拉重试。', en: 'Failed to load. Pull to retry.' })}
               />
-            ) : (
+            ) : isColdStartEmpty({ isLoading, isError, itemCount: items.length }) ? (
+              // R7.4:加载完成、无错误且无可展示创作 → 可读空态 + 引导(去一句话创作 / 刷新 / 逛地图),
+              // 而非空白或加载卡死。isColdStartEmpty 为纯函数,判定可单测。
               <ColdStartPlaceholder
                 height={pageHeight}
                 t={t}
+                onCreate={() => navigation.navigate('CreationCreator')}
                 onRefresh={refetch}
                 onExploreMap={() => navigation.navigate('UnifiedWorldMap')}
               />
-            )
+            ) : null
           }
           ListFooterComponent={
             isFetchingNextPage ? (
@@ -411,11 +446,13 @@ function FeedFullscreenMessage({
 function ColdStartPlaceholder({
   height,
   t,
+  onCreate,
   onRefresh,
   onExploreMap,
 }: {
   height: number;
   t: (d: { zh: string; en: string }) => string;
+  onCreate: () => void;
   onRefresh: () => void;
   onExploreMap: () => void;
 }) {
@@ -427,18 +464,20 @@ function ColdStartPlaceholder({
       </Text>
       <Text style={styles.coldStartText}>
         {t({
-          zh: '创作流暂时没有内容。去逛逛世界地图,或刷新看看新鲜创作。',
-          en: 'No creations yet. Explore the world map, or refresh for fresh ones.',
+          zh: '创作流暂时没有内容。用「一句话创作」开一个属于你的世界,或刷新看看新鲜创作。',
+          en: 'No creations yet. Create your own world in one sentence, or refresh for fresh ones.',
         })}
       </Text>
+      {/* R7.4 主引导:去「一句话创作」(navigate CreationCreator) */}
       <Pressable
-        testID="creation-feed-coldstart-explore"
+        testID="creation-feed-coldstart-create"
         accessibilityRole="button"
         style={({ pressed }) => [styles.coldStartBtn, pressed && styles.coldStartBtnPressed]}
-        onPress={onExploreMap}
+        onPress={onCreate}
       >
-        <Text style={styles.coldStartBtnText}>🗺️ {t({ zh: '逛世界地图', en: 'Explore map' })}</Text>
+        <Text style={styles.coldStartBtnText}>✨ {t({ zh: '一句话创作', en: 'Create in one line' })}</Text>
       </Pressable>
+      {/* R7.4 次引导:刷新创作流(refetch) */}
       <Pressable
         testID="creation-feed-coldstart-refresh"
         accessibilityRole="button"
@@ -446,6 +485,15 @@ function ColdStartPlaceholder({
         onPress={onRefresh}
       >
         <Text style={styles.coldStartBtnGhostText}>↻ {t({ zh: '刷新创作流', en: 'Refresh feed' })}</Text>
+      </Pressable>
+      {/* 附加引导:逛世界地图 */}
+      <Pressable
+        testID="creation-feed-coldstart-explore"
+        accessibilityRole="button"
+        style={({ pressed }) => [styles.coldStartBtnGhost, pressed && styles.coldStartBtnPressed]}
+        onPress={onExploreMap}
+      >
+        <Text style={styles.coldStartBtnGhostText}>🗺️ {t({ zh: '逛世界地图', en: 'Explore map' })}</Text>
       </Pressable>
     </View>
   );

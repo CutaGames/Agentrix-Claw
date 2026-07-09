@@ -32,6 +32,8 @@ import CreationCreatorScreen from '../screens/world/CreationCreatorScreen';
 import CreationExperienceScreen from '../screens/world/CreationExperienceScreen';
 import CreationDetailScreen from '../screens/world/CreationDetailScreen';
 import MyWorldScreen from '../screens/world/MyWorldScreen';
+// world-growth-mobile-experience — task 7.1:买家「我的订单/凭证」(listMyOrders/listMyVouchers)
+import MyOrdersVouchersScreen from '../screens/world/MyOrdersVouchersScreen';
 import UnifiedWorldMapScreen from '../screens/world/UnifiedWorldMapScreen';
 import WorldCharacterCardScreen from '../screens/world/WorldCharacterCardScreen';
 import WorldEngineScannerScreen from '../screens/WorldEngineScannerScreen';
@@ -89,12 +91,36 @@ export type WorldStackParamList = {
   CreationFeed: undefined;
   /** World Creation & Feed — 统一创作器(单一动作:描述→生成→选址→发布)(task 4.4,需求 2.1/2.2/2.9)。 */
   CreationCreator: { type?: import('../../shared/types/creation').CreationType } | undefined;
-  /** World Creation & Feed — 统一体验宿主(玩/买/看/聊)(task 5.3,需求 6.1–6.5)。 */
-  CreationExperience: { creationId: string; type?: import('../../shared/types/creation').CreationType; title?: string };
-  /** World Creation & Feed — 创作详情/留言/分享(task 8.3,需求 8.1–8.4)。 */
-  CreationDetail: { creationId: string; title?: string };
+  /**
+   * World Creation & Feed — 统一体验宿主(玩/买/看/聊)(task 5.3,需求 6.1–6.5)。
+   * world-growth-mobile-experience · task 6.2 · R4.3/4.5:详情页可选透传发现投影项
+   * (`item`),供体验宿主渲染可用预览封面与「无可进入内容」时的降级预览详情视图。
+   */
+  CreationExperience: {
+    creationId: string;
+    type?: import('../../shared/types/creation').CreationType;
+    title?: string;
+    item?: import('../../shared/types/creation').CreationDiscoveryItem;
+  };
+  /**
+   * World Creation & Feed — 创作详情/留言/分享(task 8.3,需求 8.1–8.4)。
+   * world-growth-mobile-experience · task 6.1 · R4.1:Feed 点进详情展示封面 + 标题 +
+   * 创作者 + offerings(可下单项)+「进入/进去逛逛」。因无 get-by-id 端点,Feed 把已持有的
+   * 发现投影项(`CreationDiscoveryItem`)经可选 `item` 透传,供详情富渲染;
+   * 其余调用方(WorldHub/地图/我的世界)不带 `item` 时优雅降级为标题 + 留言。
+   */
+  CreationDetail: {
+    creationId: string;
+    title?: string;
+    item?: import('../../shared/types/creation').CreationDiscoveryItem;
+  };
   /** World Creation & Feed — 我的世界(我的创作 + Agent 代付额度)(task 7.3/9.4,需求 10.4/13.4)。 */
   MyWorld: undefined;
+  /**
+   * world-growth-mobile-experience — 买家「我的订单 / 我的凭证」(task 7.1 · R5.2/5.3)。
+   * 下单成功后从 ShopQuickOrder / 体验宿主可达,校验订单/凭证可见闭环。
+   */
+  MyOrdersVouchers: undefined;
   /** World Creation & Feed — 统一世界地图(标记=Creation)(task 6.x,需求 4.1/4.7)。 */
   UnifiedWorldMap: undefined;
   WorldCharacterCard: {
@@ -225,6 +251,11 @@ export function WorldStackNavigator() {
         name="MyWorld"
         component={MyWorldScreen}
         options={{ title: t({ en: 'My World', zh: '我的世界' }), headerShown: false }}
+      />
+      <Stack.Screen
+        name="MyOrdersVouchers"
+        component={MyOrdersVouchersScreen}
+        options={{ title: t({ en: 'Orders & Vouchers', zh: '订单/凭证' }), headerShown: true }}
       />
       <Stack.Screen
         name="UnifiedWorldMap"

@@ -1,6 +1,16 @@
 // OpenClaw Connection Service
 import { apiFetch } from './api';
 import * as SecureStore from 'expo-secure-store';
+// world-growth-mobile-experience · task 8.2 —— 会话式创作结果的**跨端单一来源解析**
+// （structured meta 事件 / 非流式 toolCalls / 直挂字段）。openclaw.service 与
+// unifiedAgent 两条传输共用同一 `extractConversationalCreate`，保证 AgentChatScreen
+// 无论结果来自哪条 chat 路径都以一致字段与渲染呈现（AGENTS.md 硬规则 2 / R6.6）。
+import {
+  extractConversationalCreate,
+  type ParsedConversationalCreate,
+} from '../../shared/types/conversational-create';
+
+export type { ParsedConversationalCreate } from '../../shared/types/conversational-create';
 
 export interface BindPayload {
   instanceUrl: string;
@@ -120,8 +130,14 @@ export async function sendAgentMessage(instanceId: string, message: string | any
   sessionId: string;
   reply: ChatMessage;
   stopReason?: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | 'abort' | 'error';
+  /**
+   * world-growth-mobile-experience · task 8.2 (R6.1/6.6) —— 若本轮触发了
+   * `create_shop`/`create_place`，解析出的会话式创作结果（供 AgentChatScreen 渲染
+   * ConversationalCreateCard）。非流式 `/chat` 返回 `toolCalls[]`，从中映射为 4-state 契约。
+   */
+  conversationalCreate?: ParsedConversationalCreate;
 }> {
-  return apiFetch(`/openclaw/proxy/${instanceId}/chat`, {
+  const result: any = await apiFetch(`/openclaw/proxy/${instanceId}/chat`, {
     method: 'POST',
     body: JSON.stringify({
       message,
@@ -132,6 +148,8 @@ export async function sendAgentMessage(instanceId: string, message: string | any
       context: ctx ? { ...ctx, sessionId: ctx.sessionId ?? sessionId } : undefined,
     }),
   });
+  const conversationalCreate = extractConversationalCreate(result) ?? undefined;
+  return conversationalCreate ? { ...result, conversationalCreate } : result;
 }
 
 // Get agent chat history
@@ -336,7 +354,12 @@ export function streamAgentChat(
   // R9.3 — optional runtime context (Companion_QA). Carries
   // `{ device, scene/route, taskState }` so the answer is scene-aware. The
   // backend accepts an optional `context` field on the proxy stream path.
-  ctx?: Record<string, any>
+  ctx?: Record<string, any>,
+  // world-growth-mobile-experience · task 8.2 (R6.1/6.6) —— 会话式创作结果回调。
+  // 后端在 create_shop/create_place 执行后透出结构化 meta 事件
+  // `{ type:'meta', kind:'conversational_create', conversationalCreate }`；两条 chat 路径
+  // envelope 一致，经同一 `extractConversationalCreate` 解析，渲染完全一致（R6.6）。
+  onConversationalCreate?: (parsed: ParsedConversationalCreate) => void,
 ): () => void {
   const WS_BASE = 'wss://api.agentrix.top';
   const ws = new WebSocket(
@@ -364,6 +387,10 @@ export function streamAgentChat(
       } else if (data.type === 'done') {
         onDone(fullText);
         ws.close();
+      } else if (onConversationalCreate) {
+        // task 8.2 —— 会话式创作 meta 事件（或任何携带 conversationalCreate 的 envelope）。
+        const parsed = extractConversationalCreate(data);
+        if (parsed) onConversationalCreate(parsed);
       }
     } catch (_) {
       onChunk(e.data as string);
