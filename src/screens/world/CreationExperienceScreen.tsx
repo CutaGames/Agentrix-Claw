@@ -22,6 +22,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Modal,
+  Image,
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { WebView } from 'react-native-webview';
@@ -41,8 +42,19 @@ import { submitGameScore, fetchLeaderboard, coachGame, listTournaments, joinTour
 import GomokuRoom from './GomokuRoom';
 import PongRoom from './PongRoom';
 import DramaRunner from './DramaRunner';
+import { preferredPreviewUri, coverDisplayState } from '../../services/creationFeed';
+import {
+  decideEnterState,
+  hasEnterableContent as sessionHasEnterableContent,
+  navExperienceToDetail,
+  nextRetryTick,
+  type EnterDecision,
+  type WorldNavIntent,
+} from '../../services/creationEnterFlow';
+import { recordTapThrough, recordOrderOutcome } from '../../services/growthEvents';
+import { CoverArt, pickCoverEmoji, TYPE_EMOJI, TYPE_LABEL } from './components/CoverArt';
 import type { AeonCharacterSnapshot, AeonServerEvent } from '../../../shared/types/aeon-sync';
-import type { CreationType, Offering } from '../../../shared/types/creation';
+import type { CreationType, Offering, CreationDiscoveryItem } from '../../../shared/types/creation';
 import type { DramaStory } from '../../../shared/types/drama';
 import type { EnterCreationResponse } from '../../../shared/types/creation-api';
 import type { EcsEntity } from '../../../shared/types/world-creation';
@@ -54,19 +66,52 @@ interface RouteParams {
   creationId: string;
   type?: CreationType;
   title?: string;
+  /**
+   * task 6.2 · R4.3/4.5:详情页透传的发现投影项（封面/创作者/offerings 来源）。
+   * 用于渲染可用预览封面与降级预览视图，无需二次请求;缺省时优雅降级(仅 ECS/offerings)。
+   */
+  item?: CreationDiscoveryItem;
 }
 
 export default function CreationExperienceScreen() {
   const { t } = useI18n();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { creationId, type, title } = (route.params ?? {}) as RouteParams;
+  const { creationId, type, title, item } = (route.params ?? {}) as RouteParams;
 
   const [loading, setLoading] = useState(true);
   const [failReason, setFailReason] = useState<string | null>(null);
   const [session, setSession] = useState<EnterCreationResponse | null>(null);
   const [buyingId, setBuyingId] = useState<string | null>(null);
   const [tipOpen, setTipOpen] = useState(false);
+  // task 6.2 · R4.4:进入失败/超时后的「重试」计数;递增即重跑 enterCreation(不停留空白)。
+  const [retryTick, setRetryTick] = useState(0);
+  const onRetry = useCallback(() => setRetryTick(nextRetryTick), []);
+
+  // task 6.4:进入失败原因码 → 可读 i18n 文案(与既有 then/catch 文案逐字等价)。
+  const enterFailText = useCallback(
+    (d: EnterDecision): string => {
+      switch (d.reasonCode) {
+        case 'missing-id':
+          return t({ en: 'Missing creation id.', zh: '缺少创作标识。' });
+        case 'timeout':
+          return t({ en: 'LOAD_TIMEOUT — failed to enter within 10s.', zh: 'LOAD_TIMEOUT —— 10 秒内未能进入。' });
+        case 'entry-error':
+          return d.detail ?? t({ en: 'Failed to enter.', zh: '进入失败。' });
+        case 'threw':
+          return d.detail || t({ en: 'Failed to enter.', zh: '进入失败。' });
+        default:
+          return t({ en: 'Failed to enter.', zh: '进入失败。' });
+      }
+    },
+    [t],
+  );
+
+  // task 6.4:导航意图 → navigation.navigate(目标屏, 参数)。降级/查看详情共用同一意图,不丢参数。
+  const go = useCallback(
+    (intent: WorldNavIntent) => navigation.navigate(intent.screen, intent.params),
+    [navigation],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -77,7 +122,8 @@ export default function CreationExperienceScreen() {
       setSession(null);
 
       if (!creationId) {
-        setFailReason(t({ en: 'Missing creation id.', zh: '缺少创作标识。' }));
+        // task 6.4:缺少 creationId → 可重试 error 分支(纯决策 decideEnterState)。
+        setFailReason(enterFailText(decideEnterState({ kind: 'missing-id' })));
         setLoading(false);
         return () => { cancelled = true; };
       }
@@ -89,47 +135,78 @@ export default function CreationExperienceScreen() {
       Promise.race([enterCreation(creationId), timeout])
         .then((res) => {
           if (cancelled) return;
-          if ((res as EnterCreationResponse).error) {
-            setFailReason((res as EnterCreationResponse).error!.detail);
-          } else {
+          // task 6.4:成功/服务端 error 的分支判定收敛到纯函数 decideEnterState。
+          const decision = decideEnterState({ kind: 'resolved', response: res as EnterCreationResponse });
+          if (decision.branch === 'experience') {
             setSession(res as EnterCreationResponse);
+            // ── task 6.3 · R4.6:Tap_Through 埋点 ──
+            // Creation_Experience 成功打开会话 = 一次 enter_success(fire-and-forget);
+            // 与详情页的 enter_attempt 配对,供 Tap_Through_Success_Rate 计算。不阻断进入主流程。
+            recordTapThrough('success', creationId);
+          } else {
+            setFailReason(enterFailText(decision));
           }
           setLoading(false);
         })
         .catch((e: any) => {
           if (cancelled) return;
-          setFailReason(
-            e?.message === 'LOAD_TIMEOUT'
-              ? t({ en: 'LOAD_TIMEOUT — failed to enter within 10s.', zh: 'LOAD_TIMEOUT —— 10 秒内未能进入。' })
-              : e?.message || t({ en: 'Failed to enter.', zh: '进入失败。' }),
+          // task 6.4:超时(LOAD_TIMEOUT)/抛错都落到可重试 error 分支。
+          const decision = decideEnterState(
+            e?.message === 'LOAD_TIMEOUT' ? { kind: 'timeout' } : { kind: 'threw', message: e?.message },
           );
+          setFailReason(enterFailText(decision));
           setLoading(false);
         });
 
       return () => { cancelled = true; if (timer) clearTimeout(timer); };
-    }, [creationId, t]),
+    }, [creationId, enterFailText, retryTick]),
   );
 
   const onBuy = useCallback(
     async (offeringId: string, qty = 1) => {
       try {
         setBuyingId(offeringId);
+        // ── task 7.3 · R5.6:Order_Success 埋点 ──
+        // 发起服务端权威结算 = 一次 order_attempt(fire-and-forget);结算成功再发 order_success,
+        // 供 Order_Success_Rate = order_success / order_attempt 计算。不阻断下单主流程。
+        recordOrderOutcome('attempt', creationId, { offeringId, qty });
         const res = await purchaseCreation(creationId, offeringId, qty);
         if (res.ok) {
+          recordOrderOutcome('success', creationId, { offeringId, qty, amount: res.amount });
+          // task 7.1 · R5.2/5.3:成功后提供可达「我的订单/凭证」入口(订单/凭证可见闭环)。
           Alert.alert(
             t({ en: 'Purchase complete', zh: '购买成功' }),
             t({ en: `Charged ${res.amount} AXP (server-authoritative). Paid to the creator.`, zh: `已扣 ${res.amount} AXP(服务端权威),已支付给作者。` }),
+            [
+              {
+                text: t({ en: 'View orders & vouchers', zh: '查看我的订单/凭证' }),
+                onPress: () => navigation.navigate('MyOrdersVouchers'),
+              },
+              { text: t({ en: 'Done', zh: '完成' }), style: 'cancel' },
+            ],
           );
         } else {
-          Alert.alert(t({ en: 'Purchase rejected', zh: '购买被拒' }), t({ en: 'balance unchanged.', zh: '余额未变动。' }));
+          // task 7.2 · R5.4:失败(余额不足/不可下单/服务端拒绝)→ 可读理由 + 明确未扣减 AXP。
+          Alert.alert(
+            t({ en: 'Purchase rejected', zh: '购买被拒' }),
+            t({
+              en: 'The order was declined (insufficient AXP balance, item unavailable, or rejected by the server). No AXP was deducted.',
+              zh: '下单被拒(可能是 AXP 余额不足、该商品当前不可下单,或被服务端拒绝)。未扣减任何 AXP。',
+            }),
+          );
         }
       } catch (e: any) {
-        Alert.alert(t({ en: 'Purchase failed', zh: '购买失败' }), e?.message ?? String(e));
+        // task 7.2 · R5.4:异常同样按失败处理 —— 透出可读理由,并明确成交未发生、未扣减 AXP。
+        const reason = e?.message ?? String(e);
+        Alert.alert(
+          t({ en: 'Purchase failed', zh: '购买失败' }),
+          `${reason}\n${t({ en: 'No AXP was deducted.', zh: '未扣减任何 AXP。' })}`,
+        );
       } finally {
         setBuyingId(null);
       }
     },
-    [creationId, t],
+    [creationId, navigation, t],
   );
 
   const onLike = useCallback(async () => {
@@ -183,14 +260,28 @@ export default function CreationExperienceScreen() {
     );
   }
 
+  // task 6.2 · R4.4:进入失败/超时 —— 可读错误 + 「重试」入口 + 「查看详情」降级,绝不停留空白。
   if (failReason || !session) {
     return (
       <View style={[styles.container, styles.center]}>
         <Text style={styles.failIcon}>⚠️</Text>
         <Text style={styles.failTitle}>{t({ en: 'Could not enter', zh: '无法进入' })}</Text>
-        <Text style={styles.dim}>{failReason}</Text>
-        <TouchableOpacity style={styles.backToMapBtn} onPress={() => navigation.goBack()} testID="experience-back">
-          <Text style={styles.backToMapText}>{t({ en: 'Back', zh: '返回' })}</Text>
+        <Text style={styles.dim}>{failReason || t({ en: 'No experience session was returned.', zh: '未获取到体验会话。' })}</Text>
+        <View style={styles.failActions}>
+          <TouchableOpacity style={styles.retryBtn} onPress={onRetry} testID="experience-retry">
+            <Text style={styles.retryText}>↻ {t({ en: 'Retry', zh: '重试' })}</Text>
+          </TouchableOpacity>
+          {/* 降级:进不去也能回退到可预览详情视图(封面 + 槽位 + 下单),不黑屏(R4.5)。 */}
+          <TouchableOpacity
+            style={styles.failSecondaryBtn}
+            onPress={() => go(navExperienceToDetail(creationId, title, item))}
+            testID="experience-view-detail"
+          >
+            <Text style={styles.failSecondaryText}>{t({ en: 'View details', zh: '查看详情' })}</Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity onPress={() => navigation.goBack()} testID="experience-back" style={{ marginTop: 6 }}>
+          <Text style={styles.dim}>{t({ en: 'Back', zh: '返回' })}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -200,6 +291,14 @@ export default function CreationExperienceScreen() {
   const entities: EcsEntity[] = ecsWorld?.entities ?? [];
   const goods = entities.filter((e) => e.components?.price);
   const offerings = session.offerings ?? [];
+
+  // task 6.2 · R4.3/4.5:可用预览封面(真图优先,不可渲染 → CoverArt 生成式兜底,绝不黑屏)
+  // + 关键槽位(offerings/实体)+ 可交互下单入口;无可进入体验内容 → 降级为可预览详情视图。
+  const expType: CreationType = (type || item?.type || 'place') as CreationType;
+  const coverUri = item ? preferredPreviewUri(item) : '';
+  const expTitle = title || item?.title || ecsWorld?.meta?.title || t({ en: 'Experience', zh: '体验' });
+  // task 6.4 · R4.5:是否有可进入/可交互内容(ECS 实体 / offerings / 定价商品)。纯判定。
+  const hasEnterableContent = sessionHasEnterableContent(session);
 
   return (
     <View style={styles.container}>
@@ -218,10 +317,32 @@ export default function CreationExperienceScreen() {
         </View>
       ) : (
       <ScrollView contentContainerStyle={styles.content} testID="creation-experience-scroll">
-        <Text style={styles.title}>{title || ecsWorld?.meta?.title || t({ en: 'Experience', zh: '体验' })}</Text>
+        {/* 可用预览封面/首帧(R4.3):真图优先 → CoverArt 兜底,绝不黑屏。 */}
+        <ExperienceCover id={creationId} uri={coverUri} title={expTitle} type={expType} />
+
+        <Text style={styles.title}>{expTitle}</Text>
+
+        {/* 降级预览提示(R4.5):进入成功但无可交互体验内容时,以可预览详情视图承接,不黑屏。 */}
+        {!hasEnterableContent ? (
+          <View style={styles.degradeNotice} testID="experience-degrade-notice">
+            <Text style={styles.degradeText}>
+              {t({
+                en: 'This creation has no interactive experience yet — showing a previewable detail view.',
+                zh: '该创作暂无可进入的互动体验,已为你展示可预览的详情视图。',
+              })}
+            </Text>
+            <TouchableOpacity
+              style={styles.degradeBtn}
+              onPress={() => go(navExperienceToDetail(creationId, expTitle, item))}
+              testID="experience-degrade-detail"
+            >
+              <Text style={styles.degradeBtnText}>{t({ en: 'Open details', zh: '查看详情' })}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {/* shop:供给项(offerings)+ 结账。offerings 由发布时从 ECS+标注派生,是权威商品来源。 */}
-        {(type === 'shop' || offerings.length > 0 || goods.length > 0) ? (
+        {(expType === 'shop' || offerings.length > 0 || goods.length > 0) ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>🛒 {t({ en: 'Goods', zh: '商品' })}</Text>
             {offerings.length === 0 ? (
@@ -249,16 +370,18 @@ export default function CreationExperienceScreen() {
           </View>
         ) : null}
 
-        {/* ECS 实体概览(game/room 类型用真实体验,不展示实体清单) */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🧱 {t({ en: 'Entities', zh: '实体' })} ({entities.length})</Text>
-          {entities.slice(0, 30).map((e) => (
-            <View key={e.id} style={styles.entityRow}>
-              <Text style={styles.entityId}>{e.id}</Text>
-              <Text style={styles.entityComps} numberOfLines={1}>{Object.keys(e.components ?? {}).join(', ') || '—'}</Text>
-            </View>
-          ))}
-        </View>
+        {/* 关键槽位:ECS 实体概览(game/room 类型走真实体验,不展示实体清单;为空则不渲染空框) */}
+        {entities.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>🧱 {t({ en: 'Slots', zh: '关键槽位' })} ({entities.length})</Text>
+            {entities.slice(0, 30).map((e) => (
+              <View key={e.id} style={styles.entityRow}>
+                <Text style={styles.entityId}>{e.id}</Text>
+                <Text style={styles.entityComps} numberOfLines={1}>{Object.keys(e.components ?? {}).join(', ') || '—'}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
       </ScrollView>
       )}
 
@@ -295,6 +418,60 @@ export default function CreationExperienceScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+    </View>
+  );
+}
+
+/**
+ * ExperienceCover — 体验宿主顶部「可用预览封面/首帧」(task 6.2 · R4.3)。
+ *
+ * 真图优先(preferredPreviewUri);URL 不可渲染(非 https / `generated://` 句柄 / 空)
+ * 或 `<Image>` 加载失败时,回退到 {@link CoverArt} 生成式兜底封面(确定性渐变 + 表意
+ * 图标 + 标题),与 Feed/详情同口径 —— 绝不黑屏(R7.5 同底线)。
+ */
+function ExperienceCover({
+  id,
+  uri,
+  title,
+  type,
+}: {
+  id: string;
+  uri: string;
+  title: string;
+  type: CreationType;
+}) {
+  const [failed, setFailed] = useState(false);
+  const [loadingImg, setLoadingImg] = useState(true);
+  const state = coverDisplayState({ url: uri, loading: loadingImg, failed });
+  const attemptReal = state !== 'error';
+  return (
+    <View style={styles.expCoverWrap} testID="experience-cover">
+      {attemptReal ? (
+        <>
+          <Image
+            testID="experience-cover-image"
+            source={{ uri }}
+            style={styles.expCover}
+            resizeMode="cover"
+            onLoadStart={() => setLoadingImg(true)}
+            onLoad={() => setLoadingImg(false)}
+            onError={() => setFailed(true)}
+          />
+          {state === 'loading' ? (
+            <View style={[styles.expCover, styles.expCoverSkeleton]} pointerEvents="none">
+              <ActivityIndicator color={colors.accent} />
+            </View>
+          ) : null}
+        </>
+      ) : (
+        <CoverArt
+          id={id}
+          title={title}
+          emoji={pickCoverEmoji(title, TYPE_EMOJI[type] ?? '🚪')}
+          typeLabel={TYPE_LABEL[type] ?? ''}
+          style={styles.expCover}
+        />
+      )}
     </View>
   );
 }
@@ -923,6 +1100,25 @@ const styles = themedStyles(() => StyleSheet.create({
 
   content: { paddingHorizontal: 16, paddingBottom: 100 },
   title: { color: colors.textPrimary, fontSize: 22, fontWeight: '800', marginBottom: 16 },
+
+  // task 6.2 · 可用预览封面/首帧(16:9 圆角 banner;真图或 CoverArt 兜底)。
+  expCoverWrap: { width: '100%', aspectRatio: 16 / 9, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.bgSecondary, marginBottom: 14 },
+  expCover: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  expCoverSkeleton: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgSecondary },
+
+  // task 6.2 · 降级预览提示(无可进入互动内容时;不黑屏)。
+  degradeNotice: { backgroundColor: colors.bgCard, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, marginBottom: 16, gap: 10 },
+  degradeText: { color: colors.textSecondary, fontSize: 13, lineHeight: 19 },
+  degradeBtn: { alignSelf: 'flex-start', backgroundColor: colors.bgSecondary, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 9, borderWidth: 1, borderColor: colors.border },
+  degradeBtnText: { color: colors.textPrimary, fontSize: 13, fontWeight: '700' },
+
+  // task 6.2 · 进入失败/超时的重试 + 降级动作行。
+  failActions: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  retryBtn: { backgroundColor: colors.accent, borderRadius: 10, paddingHorizontal: 22, paddingVertical: 12 },
+  retryText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  failSecondaryBtn: { backgroundColor: colors.bgCard, borderRadius: 10, paddingHorizontal: 22, paddingVertical: 12, borderWidth: 1, borderColor: colors.border },
+  failSecondaryText: { color: colors.textPrimary, fontSize: 14, fontWeight: '700' },
+
   section: { marginBottom: 20 },
   sectionTitle: { color: colors.textPrimary, fontSize: 16, fontWeight: '700', marginBottom: 10 },
   note: { color: colors.textMuted, fontSize: 12, marginTop: 6 },

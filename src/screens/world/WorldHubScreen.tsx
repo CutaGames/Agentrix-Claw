@@ -113,6 +113,21 @@ export function WorldHubScreen() {
         )}
       </View>
 
+      {/*
+        world-growth-mobile-experience · task 9.1 · R7.2:完成一次购买或对话式创作后,
+        「我的订单/凭证」(MyOrdersVouchers,listMyOrders/listMyVouchers)必须可达。
+        World Hub 常驻此入口,保证下单/对话开店后闭环可发现可到达;刚建的创作则经下方
+        「我的创作」roster(listMyCreations,聚焦刷新)可达其 CreationDetail。
+      */}
+      <TouchableOpacity style={styles.ordersRow} onPress={() => navigation.navigate('MyOrdersVouchers')} testID="world-hub-orders">
+        <Text style={styles.ordersEmoji}>🧾</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.ordersTitle}>{t({ en: 'My Orders & Vouchers', zh: '我的订单 / 凭证' })}</Text>
+          <Text style={styles.ordersSub}>{t({ en: 'Purchases, fulfillment & redeemable vouchers', zh: '购买记录 · 履约状态 · 可核销凭证' })}</Text>
+        </View>
+        <Text style={styles.ordersArrow}>›</Text>
+      </TouchableOpacity>
+
       {/* 我的创作(老用户) */}
       {hasCreations ? (
         <>
@@ -176,10 +191,16 @@ function makeStyles(c: Palette) { return StyleSheet.create({
   heroBtn: { backgroundColor: c.primary, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 32 },
   heroBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  browseRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+  browseRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   browseCard: { flex: 1, backgroundColor: c.bgCard, borderRadius: 14, paddingVertical: 18, alignItems: 'center', borderWidth: 1, borderColor: c.border },
   browseEmoji: { fontSize: 26, marginBottom: 6 },
   browseLabel: { fontSize: 13, fontWeight: '600', color: c.textPrimary },
+
+  ordersRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.bgCard, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 16, marginBottom: 24, borderWidth: 1, borderColor: c.border },
+  ordersEmoji: { fontSize: 24 },
+  ordersTitle: { fontSize: 15, fontWeight: '700', color: c.textPrimary },
+  ordersSub: { fontSize: 12, color: c.textMuted, marginTop: 3 },
+  ordersArrow: { fontSize: 22, color: c.textMuted },
 
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   sectionTitle: { fontSize: 14, fontWeight: '700', color: c.textPrimary, marginBottom: 10, marginTop: 4 },
