@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
 /**
- * Receives Data Layer traffic from the phone on the shared /agentrix/** paths and
+ * Receives Data Layer traffic from the phone on the shared "/agentrix/..." paths and
  * routes it: auth-state → AuthBridge (token sync), approval-request → in-app flow.
  *
  * Reuses the exact same paths as the RN `WatchDataLayerService`, so no phone changes.
