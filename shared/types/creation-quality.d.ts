@@ -1,4 +1,4 @@
-export type CreationQualityDimension = 'structure' | 'commerce' | 'visual' | 'machine' | 'coherence';
+export type CreationQualityDimension = 'structure' | 'commerce' | 'visual' | 'machine' | 'coherence' | 'aesthetic' | 'compliance';
 export interface CreationQualityCriterionResult {
     dimension: CreationQualityDimension;
     pass: boolean;
@@ -23,5 +23,5 @@ export interface CreationQualityInput {
     previewIsPlaceholder?: boolean;
 }
 export interface CreationQualityCriterion {
-    evaluate(input: CreationQualityInput): CreationQualityResult;
+    evaluate(input: CreationQualityInput): CreationQualityResult | Promise<CreationQualityResult>;
 }

@@ -24,6 +24,7 @@ export interface CreateCreationRequest {
     };
     surface?: CreationSurface;
     prompt?: string;
+    data?: Record<string, unknown>;
 }
 export interface CreateCreationResponse {
     creation: Creation;
@@ -36,6 +37,8 @@ export interface GenerateCreationRequest {
     prompt: string;
     substrateTier?: SubstrateTier;
     surface?: CreationSurface;
+    data?: Record<string, unknown>;
+    hintType?: CreationType;
 }
 export interface GenerateCreationResponse {
     ecsVersionId?: string;

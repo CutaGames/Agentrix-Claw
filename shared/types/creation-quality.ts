@@ -20,13 +20,20 @@
  *  - visual:    预览物为真实产物（非占位兜底 URL）。
  *  - machine:   机器面（Agent 可调用):能力清单可派生且工具/schema 完整。
  *  - coherence: 标题/摘要与内容基本一致、非空。
+ *  - aesthetic: 美学/连贯性（LLM 判据):够不够好/惊不惊艳（world-growth-engine R2.2/2.3，
+ *               由 LLM_Criterion 产出 0..1 分 + 每维度可读理由;规则判据不产出该维度）。
+ *  - compliance: AXP 定价合规红线（world-growth-engine R7.1/7.2/7.3）:文案不得出现 AXP 与
+ *               法币/稳定币/代币的固定兑换比例或等价表述;AXP 恒表述为「站内软积分·不可提现·
+ *               非货币·非证券·非投资建议」。由确定性 {@link 合规判据} 产出该维度。
  */
 export type CreationQualityDimension =
   | 'structure'
   | 'commerce'
   | 'visual'
   | 'machine'
-  | 'coherence';
+  | 'coherence'
+  | 'aesthetic'
+  | 'compliance';
 
 /** 单条判据结果（一个维度一条）。 */
 export interface CreationQualityCriterionResult {
@@ -81,9 +88,15 @@ export interface CreationQualityInput {
 }
 
 /**
- * 可替换的质量判据钩子契约。默认实现为规则判据；后续可在模块层整体替换为
- * LLM 美学/连贯性判据而接入层不变（与 SCAN_QUALITY_CRITERION 同构）。
+ * 可替换的质量判据钩子契约。默认实现为规则判据（同步）；后续可在模块层整体替换为
+ * LLM 美学/连贯性判据或组合判据而接入层不变（与 SCAN_QUALITY_CRITERION 同构）。
+ *
+ * `evaluate` 返回类型放宽为「同步结果 | Promise」：规则判据保持同步（确定性、零成本），
+ * 而 LLM/组合判据须异步（调用外部模型 + 超时控制，world-growth-engine R2.2/2.5）。
+ * 接入层 {@link CreationQualityGateService} 提供 `evaluateAsync(...)` 统一 await 两者。
  */
 export interface CreationQualityCriterion {
-  evaluate(input: CreationQualityInput): CreationQualityResult;
+  evaluate(
+    input: CreationQualityInput,
+  ): CreationQualityResult | Promise<CreationQualityResult>;
 }

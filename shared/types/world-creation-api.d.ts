@@ -1,5 +1,6 @@
 import type { CreationTaskStatus, CreationTaskTarget, EcsDiff, EcsWorld, GenerationQuotaWarning, JsonPatchOp, PlotListingStatus, PlotSaleType, PlotStatus, SubstrateTier, WorldCreationError } from './world-creation';
 import type { MarketplaceCurrency } from './world-engine-api';
+import type { CreationType } from './creation';
 export interface MapPlotSummary {
     plotId: string;
     title: string;
@@ -141,6 +142,8 @@ export interface ContinuumEditResponse {
 export interface GenerateEcsWorldRequest {
     prompt: string;
     substrateTier?: SubstrateTier;
+    data?: Record<string, unknown>;
+    hintType?: CreationType;
 }
 export interface GenerateEcsWorldResponse {
     versionId: string;

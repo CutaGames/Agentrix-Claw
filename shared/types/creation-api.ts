@@ -120,6 +120,12 @@ export interface CreateCreationRequest {
    * 等价于 create + generate 合并的低门槛"单一动作"入口(需求 2.1/2.9)。
    */
   prompt?: string;
+  /**
+   * 可选结构化槽位数据(店名/商品项/价格/图片/简介/主题)——权威,优先于描述抽取。
+   * 与 `prompt` 一同透传给生成后端做 Slot_Fill_Generation(Conversational_Authoring
+   * 追问补齐后的数据,world-growth-engine R1.1/R9.3)。
+   */
+  data?: Record<string, unknown>;
 }
 
 /** POST /v1/creations — 响应。 */
@@ -152,6 +158,13 @@ export interface GenerateCreationRequest {
   substrateTier?: SubstrateTier;
   /** 发起端;Tier_C 自移动端发起时强制派发(需求 2.6)。 */
   surface?: CreationSurface;
+  /**
+   * 可选结构化槽位数据——权威,优先于描述抽取,透传给生成后端做 Slot_Fill_Generation
+   * (Conversational_Authoring 追问补齐后的数据,world-growth-engine R1.1/R9.3)。
+   */
+  data?: Record<string, unknown>;
+  /** 可选业态 hint(shop/place),缺省时生成后端按描述推断(R8.4)。 */
+  hintType?: CreationType;
 }
 
 /** POST /v1/creations/:id/generate — 响应。 */
