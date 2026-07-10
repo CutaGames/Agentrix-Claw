@@ -23,6 +23,7 @@ import { WORLDCUP_COVER_IMG } from '../constants/posterAssets';
 import { teamFlagUrl } from '../utils/teamFlags';
 import { buildMatchOddsList } from '../utils/matchOdds';
 import { buildShareIntent, predictionToShareIntent } from '../services/shareIntent';
+import { buildWorldCupPosterCopy } from '../services/lsmPosterCopy';
 import { recordGrowthEvent } from '../services/growthEvents';
 import {
   lsmApi,
@@ -78,10 +79,19 @@ export default function LeverageSportsMarketScreen() {
     (m: LsmMarketView) => {
       // 结构化 1X2 赔率（主/平/客），由专属赔率面板完整渲染，不再被截断。
       const oddsList = buildMatchOddsList(m, zh);
-      const score =
-        m.homeScore != null && m.awayScore != null ? `${m.homeScore} : ${m.awayScore}` : '';
-      const statusZh =
-        m.status === 'live' ? '滚球进行中' : m.status === 'pre' ? '即将开赛' : m.status === 'final' ? '完场' : '';
+      // 海报转化文案（World Cup 拉新）：新人限量前 1000 名 · 注册即领 100 AXP + 100 USDC
+      // 体验金 · 扫码/复制链接注册即玩。AXP/USDC 分开表述（合规红线，不呈现兑换比例）。
+      const copy = buildWorldCupPosterCopy({
+        zh,
+        homeTeam: m.homeTeam,
+        awayTeam: m.awayTeam,
+        league: m.league,
+        status: m.status,
+        homeScore: m.homeScore,
+        awayScore: m.awayScore,
+        sport: m.sport,
+      });
+      const score = copy.score;
       // 统一增长归因:预测分享 → 带 ?ref 的 /lsm/market 链接 + share 事件(sourceType=prediction)。
       const built = buildShareIntent(
         predictionToShareIntent({
@@ -98,19 +108,17 @@ export default function LeverageSportsMarketScreen() {
         navigation.navigate('ShareCard', {
           shareUrl: built.attributedUrl,
           title: `${m.homeTeam} vs ${m.awayTeam}`,
-          subtitle: m.league || (zh ? '世界杯滚球预测' : 'World Cup Live Predictions'),
+          subtitle: copy.subtitle,
           headerEmoji: '🏆',
           imageUrl: WORLDCUP_COVER_IMG,
-          categoryLabel: zh ? '世界杯' : 'World Cup',
+          categoryLabel: copy.categoryLabel,
           priceLabel: score || undefined,
           oddsList,
           priceCaption: zh ? '比分' : 'Score',
           statsCaption: zh ? '赔率' : 'Odds',
-          description: zh
-            ? `${statusZh}${score ? '  比分 ' + score : ''} · 在 Agentrix 用 AXP 杠杆预测，扫码即玩。`
-            : `${m.status.toUpperCase()}${score ? '  ' + score : ''} · Leverage-predict with AXP on Agentrix. Scan to play.`,
-          tags: ['WorldCup', 'Agentrix', m.sport || 'soccer'],
-          ctaLabel: zh ? '扫码下注' : 'Scan to predict',
+          description: copy.description,
+          tags: copy.tags,
+          ctaLabel: copy.ctaLabel,
           accentFrom: '#7c3aed',
           accentTo: '#1d4ed8',
           leftImageUrl: teamFlagUrl(m.homeTeam) || undefined,

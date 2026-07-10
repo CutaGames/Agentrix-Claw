@@ -31,7 +31,8 @@ import {
 } from 'react-native';
 
 import { colors } from '../../../theme/colors';
-import { invokeCreation } from '../../../services/creationApi';
+import { purchaseCreation } from '../../../services/creationApi';
+import { recordOrderOutcome } from '../../../services/growthEvents';
 import { useAuthStore } from '../../../stores/authStore';
 import {
   selectOrderableOfferings,
@@ -44,8 +45,6 @@ import {
   offeringUnitDisplayPrice,
   displayLineTotal,
   formatDisplayPrice,
-  buildOrderInvokeRequest,
-  interpretInvokeResponse,
   MIN_QUANTITY,
   type ShopOrderResult,
 } from '../../../services/shopQuickOrder';
@@ -76,13 +75,26 @@ export interface ShopQuickOrderProps {
   t: Translate;
   /** 成交后回调(供上层更新成交计数等;可空)。 */
   onOrdered?: (item: CreationDiscoveryItem, result: Extract<ShopOrderResult, { ok: true }>) => void;
+  /**
+   * world-growth-mobile-experience · task 7.1:详情/体验内点选某个 Orderable_Offering
+   * 时预选中它(缺省则回退到首个可下单项)。
+   */
+  initialOfferingId?: string | null;
+  /**
+   * world-growth-mobile-experience · task 7.1 · R5.2/5.3:下单成功后「查看我的订单/凭证」
+   * 入口。上层(详情/体验屏)据此导航到「我的订单/凭证」(listMyOrders / listMyVouchers)。
+   * 缺省时成功态不展示该入口(如 Feed 流内快捷下单)。
+   */
+  onViewOrders?: () => void;
 }
 
 type Phase = 'form' | 'submitting' | 'success' | 'error';
 
 /**
  * 流内快捷下单底部弹层。展示可下单 offering + 数量步进 + 展示价 + 下单按钮,
- * 下单走权威 `invoke(order)`,按结果渲染成功/失败态。
+ * 下单走服务端权威 `creationApi.purchaseCreation`(world-shop-fulfillment 权威结算),
+ * 成功后订单进「我的订单」(listMyOrders)、voucher 凭证进「我的凭证」(listMyVouchers),
+ * 按结果渲染成功/失败态。
  */
 export function ShopQuickOrder({
   item,
@@ -91,6 +103,8 @@ export function ShopQuickOrder({
   bottomInset,
   t,
   onOrdered,
+  initialOfferingId,
+  onViewOrders,
 }: ShopQuickOrderProps) {
   const accountId = useAuthStore((s) => s.user?.id);
 
@@ -104,15 +118,19 @@ export function ShopQuickOrder({
   const [phase, setPhase] = useState<Phase>('form');
   const [result, setResult] = useState<ShopOrderResult | null>(null);
 
-  // 每次打开/切换创作:重置为默认 offering + 数量 1 + 表单态。
+  // 每次打开/切换创作:重置为(预选中的 / 默认)offering + 数量 1 + 表单态。
   useEffect(() => {
     if (!visible) return;
-    const def = pickDefaultOffering(orderables);
+    // task 7.1:详情页点选某个可下单项时预选中它,否则回退首个可下单项。
+    const preselected = initialOfferingId
+      ? orderables.find((o) => o.id === initialOfferingId)
+      : undefined;
+    const def = preselected ?? pickDefaultOffering(orderables);
     setSelectedId(def?.id ?? null);
     setQuantity(MIN_QUANTITY);
     setPhase('form');
     setResult(null);
-  }, [visible, orderables]);
+  }, [visible, orderables, initialOfferingId]);
 
   const selectedOffering = useMemo<Offering | null>(
     () => orderables.find((o) => o.id === selectedId) ?? null,
@@ -153,27 +171,44 @@ export function ShopQuickOrder({
     if (qty < MIN_QUANTITY) return;
 
     setPhase('submitting');
+    // ── task 7.3 · R5.6:Order_Success 埋点 ──
+    // 发起服务端权威结算 = 一次 order_attempt(fire-and-forget);结算成功再发 order_success,
+    // 供 Order_Success_Rate = order_success / order_attempt 计算。不阻断下单主流程。
+    recordOrderOutcome('attempt', item.id, { offeringId: selectedOffering.id, qty });
     try {
-      const req = buildOrderInvokeRequest({
-        offeringId: selectedOffering.id,
-        quantity: qty,
-        onBehalfOfAccountId: accountId,
-      });
-      const res = await invokeCreation(item.id, req);
-      const interpreted = interpretInvokeResponse(res);
-      setResult(interpreted);
-      if (interpreted.ok) {
+      // task 7.1 · R5.1:服务端权威结算 —— 走 world-shop-fulfillment 的权威购买端点。
+      // 成功后订单进入「我的订单」(listMyOrders)、voucher 履约进入「我的凭证」(listMyVouchers)。
+      const res = await purchaseCreation(item.id, selectedOffering.id, qty);
+      if (res.ok) {
+        recordOrderOutcome('success', item.id, { offeringId: selectedOffering.id, qty, amount: res.amount });
+        const okResult: Extract<ShopOrderResult, { ok: true }> = {
+          ok: true,
+          // 金额以服务端权威返回为准(R5.1);展示价仅供参考。
+          authoritativeAmount: res.amount,
+          invocationId: '',
+        };
+        setResult(okResult);
         setPhase('success');
-        onOrdered?.(item, interpreted);
+        onOrdered?.(item, okResult);
       } else {
+        // 服务端拒绝(余额不足/不可下单等):余额由服务端保证不变(R5.4,详细文案见 task 7.2)。
+        setResult({
+          ok: false,
+          code: 'ECONOMY_REJECTED',
+          detail: t({ zh: '交易被拒,余额未变动。', en: 'Transaction rejected. Your balance is unchanged.' }),
+        });
         setPhase('error');
       }
-    } catch {
-      // 网络/未知错误:同样不预判成交,按失败处理(余额由服务端保证不变,需求 7.2)。
+    } catch (e: any) {
+      // task 7.2 · R5.4:服务端拒绝(余额不足/不可下单)或网络异常 —— 透出可读理由,
+      // 并明确成交未发生、余额未变动(不预判成交,余额由服务端权威保证不变)。
+      const reason = typeof e?.message === 'string' && e.message.trim()
+        ? e.message
+        : t({ zh: '网络异常,下单未完成。', en: 'Network error. Order not completed.' });
       setResult({
         ok: false,
         code: 'ECONOMY_REJECTED',
-        detail: t({ zh: '网络异常,下单未完成。', en: 'Network error. Order not completed.' }),
+        detail: `${reason}${t({ zh: ' 余额未变动。', en: ' Your balance is unchanged.' })}`,
       });
       setPhase('error');
     }
@@ -201,7 +236,7 @@ export function ShopQuickOrder({
           </Text>
 
           {phase === 'success' && result?.ok ? (
-            <SuccessView result={result} t={t} onClose={onClose} />
+            <SuccessView result={result} t={t} onClose={onClose} onViewOrders={onViewOrders} />
           ) : !hasOrderable ? (
             <EmptyView t={t} onClose={onClose} />
           ) : (
@@ -336,15 +371,17 @@ export function ShopQuickOrder({
   );
 }
 
-/** 下单成功态(展示服务端权威金额)。 */
+/** 下单成功态(展示服务端权威金额 + 可达「我的订单/凭证」入口 · R5.2/5.3)。 */
 function SuccessView({
   result,
   t,
   onClose,
+  onViewOrders,
 }: {
   result: Extract<ShopOrderResult, { ok: true }>;
   t: Translate;
   onClose: () => void;
+  onViewOrders?: () => void;
 }) {
   return (
     <View style={styles.resultBox} testID="shop-quick-order-success">
@@ -355,13 +392,31 @@ function SuccessView({
           {t({ zh: '已扣款', en: 'Charged' })} {result.authoritativeAmount} AXP
         </Text>
       ) : null}
+      {/* task 7.1 · R5.2/5.3:订单在「我的订单」可见、voucher 凭证在「我的凭证」可见。 */}
+      {onViewOrders ? (
+        <Pressable
+          testID="shop-quick-order-view-orders"
+          accessibilityRole="button"
+          style={styles.confirmBtn}
+          onPress={() => {
+            onClose();
+            onViewOrders();
+          }}
+        >
+          <Text style={styles.confirmBtnText}>
+            {t({ zh: '查看我的订单/凭证', en: 'View my orders & vouchers' })}
+          </Text>
+        </Pressable>
+      ) : null}
       <Pressable
         testID="shop-quick-order-done"
         accessibilityRole="button"
-        style={styles.confirmBtn}
+        style={[styles.confirmBtn, onViewOrders ? styles.secondaryBtn : null]}
         onPress={onClose}
       >
-        <Text style={styles.confirmBtnText}>{t({ zh: '完成', en: 'Done' })}</Text>
+        <Text style={[styles.confirmBtnText, onViewOrders ? styles.secondaryBtnText : null]}>
+          {t({ zh: '完成', en: 'Done' })}
+        </Text>
       </Pressable>
     </View>
   );
@@ -469,6 +524,8 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   confirmBtnDisabled: { backgroundColor: colors.border },
   confirmBtnText: { color: colors.textInverse, fontSize: 16, fontWeight: '800' },
+  secondaryBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border },
+  secondaryBtnText: { color: colors.textPrimary },
 
   resultBox: { alignItems: 'center', gap: 10, paddingVertical: 12 },
   successEmoji: { fontSize: 48 },

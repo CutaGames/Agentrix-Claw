@@ -23,7 +23,7 @@
  * 互动一律走 `creationApi`(likeCreation/commentCreation/shareCreation/followCreator/
  * reportCreation),失败回滚乐观状态;计数初值取 `item.metrics`。
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -50,7 +50,10 @@ import {
   isLiveType,
   isCreationLiveNow,
   preferredPreviewUri,
+  coverDisplayState,
 } from '../../../services/creationFeed';
+// 生成式兜底封面(永不黑屏,R7.5)+ 类型 emoji/角标口径,已抽为跨屏单一来源。
+import { CoverArt, pickCoverEmoji, TYPE_EMOJI, TYPE_LABEL } from './CoverArt';
 import { useAuthStore } from '../../../stores/authStore';
 import type {
   CreationDiscoveryItem,
@@ -60,15 +63,7 @@ import { themedStyles } from '../../../theme/useTheme';
 
 type Translate = (d: { zh: string; en: string }) => string;
 
-/** 创作类型 → 预览占位表意 emoji(无预览图时的轻量兜底)。 */
-const TYPE_EMOJI: Record<CreationType, string> = {
-  game: '🎮',
-  drama: '🎭',
-  shop: '🛒',
-  livestream: '🔴',
-  stage: '🎤',
-  place: '🚪',
-};
+// 注:TYPE_EMOJI / TYPE_LABEL / CoverArt / pickCoverEmoji 已抽到 ./CoverArt(跨屏单一来源)。
 
 /**
  * 创作类型 → 主行动文案(需求 5.3)。
@@ -82,80 +77,6 @@ const TYPE_ACTION: Record<CreationType, { zh: string; en: string }> = {
   stage: { zh: '🎤 进入现场', en: '🎤 Enter stage' },
   place: { zh: '🚪 进去逛逛', en: '🚪 Explore' },
 };
-
-/** 创作类型 → 角标中文短标签(封面右上)。 */
-const TYPE_LABEL: Record<CreationType, string> = {
-  game: '游戏',
-  drama: '互动剧',
-  shop: '店铺',
-  livestream: '直播',
-  stage: '舞台',
-  place: '场所',
-};
-
-/** 一组沉稳的封面渐变色(按 id 哈希确定性挑选,保证同一创作封面稳定)。 */
-const COVER_PALETTES: [string, string][] = [
-  ['#4b2a6b', '#7c3aed'],
-  ['#1e3a8a', '#2563eb'],
-  ['#0f5132', '#16a34a'],
-  ['#7a3b2e', '#ea580c'],
-  ['#4a148c', '#c2185b'],
-  ['#0e3a4a', '#0891b2'],
-  ['#3a1f3d', '#9d174d'],
-];
-
-function hashIndex(s: string, mod: number): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h % mod;
-}
-
-/** 按标题关键字挑一个更贴题的封面图标(避免所有游戏都是同一个 🎮)。 */
-function pickCoverEmoji(title: string, fallback: string): string {
-  const s = (title || '').toLowerCase();
-  const rules: [RegExp, string][] = [
-    [/2048/, '🔢'],
-    [/俄罗斯方块|tetris|方块/, '🧱'],
-    [/五子棋|gomoku|围棋|象棋|棋/, '⚫'],
-    [/消消乐|match|宝石|消除/, '💎'],
-    [/飞行射击|雷电|射击|shoot|弹幕|战机/, '🚀'],
-    [/pong|弹球|乒乓|打砖块|breakout/, '🏓'],
-    [/hextris|六边形|hex/, '🔷'],
-    [/塔防|tower\s*defense/, '🗼'],
-    [/贪吃蛇|snake/, '🐍'],
-    [/扑克|poker|德州|纸牌|card/, '🃏'],
-    [/赛车|race|racing|drift/, '🏎️'],
-    [/拼图|puzzle|益智/, '🧩'],
-    [/迷宫|maze/, '🧭'],
-    [/钢琴|音乐|music|节奏|rhythm/, '🎹'],
-    [/恋爱|心动|甜宠|romance|爱情/, '💗'],
-    [/悬疑|推理|侦探|mystery|案/, '🕵️'],
-    [/剧|drama|story|story/, '🎭'],
-  ];
-  for (const [re, emoji] of rules) if (re.test(s)) return emoji;
-  return fallback;
-}
-
-/**
- * CoverArt — 无预览图时的生成式封面(确定性渐变 + 大表意图标 + 标题 + 类型角标)。
- * 让所有缺图的种子/创作都有一个像样的"封面",分享海报与卡片均受益(无需后端/图床)。
- */
-function CoverArt({ id, title, emoji, typeLabel }: { id: string; title: string; emoji: string; typeLabel: string }) {
-  const [c1, c2] = COVER_PALETTES[hashIndex(id || title, COVER_PALETTES.length)];
-  return (
-    <View style={[styles.previewImage, styles.coverWrap, { backgroundColor: c1 }]}>
-      <View style={[styles.coverHalf, { backgroundColor: c1 }]} />
-      <View style={[styles.coverHalf, { backgroundColor: c2 }]} />
-      <View style={styles.coverOverlay} pointerEvents="none">
-        {typeLabel ? (
-          <View style={styles.coverTypeChip}><Text style={styles.coverTypeText}>{typeLabel}</Text></View>
-        ) : null}
-        <Text style={styles.coverEmoji}>{emoji}</Text>
-        <Text style={styles.coverTitle} numberOfLines={2}>{title}</Text>
-      </View>
-    </View>
-  );
-}
 
 /** 举报原因预设(需求 5.10 举报入口)。 */
 const REPORT_REASONS: { key: string; label: { zh: string; en: string } }[] = [
@@ -206,6 +127,14 @@ export interface CreationCardProps {
   onLivestreamEnter?: (item: CreationDiscoveryItem) => void;
   /** slot(task 8.3):留言按钮跳创作详情/留言页;未提供时使用内置轻量 composer。 */
   onOpenComments?: (item: CreationDiscoveryItem) => void;
+  /**
+   * slot(world-growth-mobile-experience · task 6.1 · R4.1):打开创作详情
+   * (`CreationDetail`,展示封面 + 标题 + 创作者 + offerings + 进入按钮)。
+   * - 封面/卡体轻点(distinct tap on card body)恒走此回调 → 详情优先(detail-first)。
+   * - shop / place 主行动亦走此回调(点进即看详情再进入/下单);未提供时回退旧语义
+   *   (shop→onShopOrder / place→onEnter),保证向后兼容。
+   */
+  onOpenDetail?: (item: CreationDiscoveryItem) => void;
 }
 
 /**
@@ -225,6 +154,7 @@ export const CreationCard = React.memo(function CreationCard({
   onShopOrder,
   onLivestreamEnter,
   onOpenComments,
+  onOpenDetail,
 }: CreationCardProps) {
   const currentAccountId = useAuthStore((s) => s.user?.id);
   const navigation = useNavigation<any>();
@@ -245,9 +175,28 @@ export const CreationCard = React.memo(function CreationCard({
   const [reportSubmitting, setReportSubmitting] = useState(false);
 
   const previewUri = preferredPreviewUri(item, dataSaver);
-  const hasPreview = previewUri.length > 0;
-  // task 3.7:离屏卡(renderPreview=false)回收重型预览图,只显示轻量占位,释放内存。
-  const showPreviewImage = hasPreview && renderPreview;
+
+  // ── 封面三态(world-growth-mobile-experience · task 5.2 · R7.5「绝不黑屏」) ──
+  // <Image> 的加载/失败态用 React state 承载,交给纯函数 coverDisplayState 判定三态
+  // (loading / error / success),口径与 5.1 helper 及后端质量门完全一致、不重复逻辑。
+  const [coverLoading, setCoverLoading] = useState(true);
+  const [coverFailed, setCoverFailed] = useState(false);
+  // 预览地址变化(卡片被 FlatList 回收复用到另一创作)时重置三态,
+  // 避免沿用上一张封面的加载/失败态导致错误占位或黑屏。
+  useEffect(() => {
+    setCoverLoading(true);
+    setCoverFailed(false);
+  }, [previewUri]);
+
+  const coverState = coverDisplayState({
+    url: previewUri,
+    loading: coverLoading,
+    failed: coverFailed,
+  });
+  // task 3.7:离屏卡(renderPreview=false)回收重型预览图,只显示轻量占位(CoverArt),释放内存。
+  // 仅当 URL 可渲染(coverState 非 error)且在近屏窗口内时,才实例化 <Image> 加载真图;
+  // 非 https / generated:// 句柄 / 加载失败 → 直接走可读兜底占位,绝不尝试加载(避免黑闪)。
+  const attemptRealImage = renderPreview && coverState !== 'error';
   const typeEmoji = TYPE_EMOJI[item.type] ?? '🌍';
   const creatorAccountId = item.creator?.accountId ?? '';
   const isOwnCreation = !!currentAccountId && currentAccountId === creatorAccountId;
@@ -255,12 +204,30 @@ export const CreationCard = React.memo(function CreationCard({
   // ── 直播/现场是否"正在进行"(需求 5.8;从 offerings 可用时段派生,见 creationFeed) ──
   const live = isLiveType(item) && isCreationLiveNow(item);
 
+  // ── 封面/卡体轻点 → 创作详情(detail-first · task 6.1 · R4.1) ──
+  // "distinct tap on the card body":轻点封面区域打开 CreationDetail(展示封面/标题/
+  // 创作者/offerings/进入按钮)。滑动仍由 FlatList 处理,轻点才触发,不影响竖滑。
+  // 未提供 onOpenDetail 时不做任何事(向后兼容旧调用方)。
+  const onCardBodyTap = useCallback(() => {
+    onOpenDetail?.(item);
+  }, [onOpenDetail, item]);
+
   // ── 主行动:按 CreationType 路由(需求 5.3) ──
   const onMainAction = useCallback(() => {
     switch (item.type) {
       case 'shop':
-        // 3.5 流内快捷下单优先;否则进入完整体验内下单(需求 5.7 的进入路径)。
-        (onShopOrder ?? onEnter)(item);
+        // detail-first(task 6.1 · R4.1):点进先看详情(封面/创作者/可下单 offerings/进入),
+        // 下单闭环在详情内完成(task 7)。未接 onOpenDetail 时回退旧语义:3.5 流内快捷下单 → 进入。
+        if (onOpenDetail) {
+          onOpenDetail(item);
+        } else {
+          (onShopOrder ?? onEnter)(item);
+        }
+        break;
+      case 'place':
+        // detail-first(task 6.1 · R4.1):"进去逛逛"先落详情页(其内含「进入/进去逛逛」按钮,
+        // 进入体验的逻辑在 task 6.2 接线)。未接 onOpenDetail 时回退旧语义:直接进入体验。
+        (onOpenDetail ?? onEnter)(item);
         break;
       case 'livestream':
       case 'stage':
@@ -272,9 +239,10 @@ export const CreationCard = React.memo(function CreationCard({
         }
         break;
       default:
+        // game / drama:主行动是"玩/看",直接进入体验(保留原语义)。
         onEnter(item);
     }
-  }, [item, live, onEnter, onShopOrder, onLivestreamEnter]);
+  }, [item, live, onEnter, onShopOrder, onLivestreamEnter, onOpenDetail]);
 
   // ── 点赞(乐观,幂等;需求 5.5 / 8.2) ──
   const onToggleLike = useCallback(async () => {
@@ -398,12 +366,55 @@ export const CreationCard = React.memo(function CreationCard({
 
   return (
     <View style={[styles.card, { height }]}>
-      {/* ── 预览物区(全屏沉浸,轻量;不实例化体验,需求 5.2) ── */}
-      {showPreviewImage ? (
-        <Image source={{ uri: previewUri }} style={styles.previewImage} resizeMode="cover" />
-      ) : (
-        <CoverArt id={item.id} title={item.title} emoji={pickCoverEmoji(item.title, typeEmoji)} typeLabel={TYPE_LABEL[item.type] ?? ''} />
-      )}
+      {/* ── 预览物区(全屏沉浸,轻量;不实例化体验,需求 5.2) ──
+          封面三态(R7.5 · task 5.2),绝不黑屏:
+            · success —— 渲染 preferredPreviewUri 真图(缩略图优先);
+            · loading —— 真图仍在下载,叠加骨架占位(暗底 + ActivityIndicator),而非黑屏;
+            · error   —— 非 https / generated:// 句柄 / 加载失败 → 可读兜底封面
+                         (模板配色渐变 + 类型 emoji + 标题),不尝试加载真图。 */}
+      {/* task 6.1 · R4.1:封面/卡体轻点 → 打开创作详情(detail-first)。
+          Pressable 铺满预览区(位于右侧互动条/底部信息/主行动按钮之下,不拦截它们的点击),
+          轻点触发 onOpenDetail;滑动仍由外层 FlatList 处理,不影响竖滑。
+          未提供 onOpenDetail 时禁用(向后兼容旧调用方)。 */}
+      <Pressable
+        testID={`creation-card-body-${item.id}`}
+        style={styles.previewImage}
+        onPress={onCardBodyTap}
+        disabled={!onOpenDetail}
+        accessibilityRole="button"
+        accessibilityLabel={t({ zh: '查看创作详情', en: 'View creation details' })}
+      >
+        {attemptRealImage ? (
+          <>
+            <Image
+              testID={`creation-card-cover-${item.id}`}
+              source={{ uri: previewUri }}
+              style={styles.previewImage}
+              resizeMode="cover"
+              onLoadStart={() => setCoverLoading(true)}
+              onLoad={() => setCoverLoading(false)}
+              onError={() => setCoverFailed(true)}
+            />
+            {coverState === 'loading' ? (
+              <View
+                testID={`creation-card-cover-skeleton-${item.id}`}
+                style={[styles.previewImage, styles.coverSkeleton]}
+                pointerEvents="none"
+              >
+                <ActivityIndicator color={colors.accent} />
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <CoverArt
+            id={item.id}
+            title={item.title}
+            emoji={pickCoverEmoji(item.title, typeEmoji)}
+            typeLabel={TYPE_LABEL[item.type] ?? ''}
+            style={styles.previewImage}
+          />
+        )}
+      </Pressable>
 
       {/* 底部压暗,提升文字可读性 */}
       <View style={styles.scrim} pointerEvents="none" />
@@ -604,15 +615,10 @@ function SideAction({
 const styles = themedStyles(() => StyleSheet.create({
   card: { width: '100%', backgroundColor: '#000', position: 'relative' },
   previewImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  // 封面 loading 态骨架:暗底(非纯黑) + ActivityIndicator,真图就绪(onLoad)后隐藏。
+  coverSkeleton: { backgroundColor: colors.bgSecondary, alignItems: 'center', justifyContent: 'center' },
   previewPlaceholder: { backgroundColor: colors.bgSecondary, alignItems: 'center', justifyContent: 'center' },
   previewPlaceholderEmoji: { fontSize: 80, opacity: 0.5 },
-  coverWrap: { overflow: 'hidden' },
-  coverHalf: { flex: 1 },
-  coverOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
-  coverTypeChip: { position: 'absolute', top: '18%', backgroundColor: 'rgba(0,0,0,0.35)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4 },
-  coverTypeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  coverEmoji: { fontSize: 96, marginBottom: 18, textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 10 },
-  coverTitle: { color: '#fff', fontSize: 24, fontWeight: '900', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8 },
   scrim: {
     position: 'absolute',
     left: 0,
