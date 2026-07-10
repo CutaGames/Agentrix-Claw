@@ -57,6 +57,12 @@ const CAP_LABELS: Record<string, { en: string; zh: string }> = {
   autoEarnAutonomous: { en: 'Full-auto earn', zh: '全自主赚钱' },
   a2aDiscoverEnabled: { en: 'Discover agents', zh: '发现 Agent' },
   a2aInvokeEnabled: { en: 'Invoke agents', zh: '调用 Agent' },
+  // 具身感知接缝（E1）：默认关、可授权、可收回的现场感知能力。
+  // 诚实口径（R6/P3）：未接真实世界模型时仅离线启发式，标"实验中"，不宣称已具备空间/物理感知。
+  perceptionEnabled: { en: 'Perception (experimental)', zh: '具身感知（实验中）' },
+  // 行动前推演（E2）：授权后 agent 有后果动作前先推演；旁路顾问、不放行，最终仍由围栏裁决。
+  // 诚实口径：默认关、可收回；未接真实物理 provider 时走离线启发式，标"实验中"。
+  actionSimulationEnabled: { en: 'Action preview (experimental)', zh: '行动前推演（实验中）' },
 };
 
 const ROUTING_TIER_LABELS: Record<RoutingTierKey, { en: string; zh: string }> = {
