@@ -24,6 +24,19 @@
  *   后端补充显式 live 标志后,可在此处优先采用显式字段(改一处即可)。
  */
 import type { CreationDiscoveryItem, Offering } from '../../shared/types/creation';
+import { isRenderableCover } from '../../shared/types/creation-cover';
+
+/**
+ * 封面可渲染性判定 —— 复用/对齐 world-growth-mobile-experience task 1.1 的**单一口径**
+ * （`shared/types/creation-cover`：仅以 `https://` 开头的非空字符串为 true）。
+ *
+ * 这里**不重复实现正则**，只做 re-export，让 `CreationCard`、封面三态判定
+ * （{@link coverDisplayState}）与验收指标 `Renderable_Cover_Rate` 都能从
+ * `services/creationFeed` 就近导入，同时保证与后端质量门口径完全一致、不漂移。
+ *
+ * spec: .kiro/specs/world-growth-mobile-experience/{requirements,design}.md（R2.1/2.2, R7.5）
+ */
+export { isRenderableCover };
 
 /** 可被"直接进入"的实时类型(需求 5.8)。 */
 export const LIVE_TYPES = ['livestream', 'stage'] as const;
@@ -296,3 +309,92 @@ export function isColdStartEmpty(opts: {
 // 进入分离(需求 5.2):
 //  9. 滑动过程中绝不进入体验;仅点击主行动(▶️玩/🛒买/🔴看/🎤现场/🚪逛)才 enter。
 // ============================================================
+
+// ============================================================
+// §D 封面三态判定(world-growth-mobile-experience · task 5.1)
+// spec: .kiro/specs/world-growth-mobile-experience/{requirements,design}.md
+//   - R7.5：Creation_Card 在封面「加载中 / 加载失败 / 加载成功」三态下均以可读占位
+//     或封面渲染,**绝不黑屏**。
+//   - design §4 Creation_Card 封面三态 / Property 5「卡片永不黑屏」。
+// 本纯函数把三态判定从组件抽出,供 CreationCard(task 5.2)与验收指标共用、便于单测。
+// ============================================================
+
+/** 封面显示的三种状态。驱动 CreationCard 的三态渲染(骨架 / 兜底占位 / 真图)。 */
+export type CoverDisplayState = 'loading' | 'error' | 'success';
+
+/**
+ * 判定封面应处于哪一显示状态(loading / error / success)。
+ *
+ * **优先级(precedence,从高到低)** —— 严格按此顺序判定,保证互斥且穷尽:
+ *  1. **error**：`failed === true`（`<Image>` onError 已触发）**或** `url` 不可渲染
+ *     （非 https / `generated://` 句柄 / 空 / 非字符串）。
+ *     —— 只要"注定渲染不出真图",立即进入可读兜底(渐变+emoji+标题),绝不黑屏;
+ *        即便同时 `loading===true`,不可渲染的 URL 也不该停在骨架空等,直接兜底。
+ *  2. **loading**：URL 可渲染、未失败,且 `loading === true`（真图仍在下载,显示骨架/模糊占位）。
+ *  3. **success**：URL 可渲染、未失败、未在加载(真图已就绪,渲染缩略图/原图)。
+ *
+ * 即:`error` 压倒一切;仅当 URL 可渲染且未失败时,才由 `loading` 决定骨架 vs 真图。
+ * 三态对任意输入都有定义(穷尽),因此 CreationCard 永远有可渲染分支 → 永不黑屏。
+ *
+ * @param opts.url     封面 URL(可能为空 / 占位句柄 / 非 https)。
+ * @param opts.loading 真图是否仍在加载(`<Image>` 尚未 onLoad)。默认 false。
+ * @param opts.failed  真图是否加载失败(`<Image>` onError)。默认 false。
+ * @returns 'loading' | 'error' | 'success'
+ */
+export function coverDisplayState(opts: {
+  url?: string | null;
+  loading?: boolean;
+  failed?: boolean;
+}): CoverDisplayState {
+  const renderable = isRenderableCover(opts.url);
+  // 优先级 1：失败 或 URL 不可渲染 → error(可读兜底占位,绝不黑屏)
+  if (opts.failed === true || !renderable) return 'error';
+  // 优先级 2：可渲染且未失败,但仍在加载 → loading(骨架/模糊占位)
+  if (opts.loading === true) return 'loading';
+  // 优先级 3：可渲染、未失败、未加载 → success(渲染真图)
+  return 'success';
+}
+
+// ============================================================
+// §E 首屏封面优先级(world-growth-mobile-experience · task 9.2)
+// spec: .kiro/specs/world-growth-mobile-experience/{requirements,design}.md
+//   - R7.3：用户进入 Creation_Feed 首屏,SHALL 展示已过 Quality_Gate 且封面为
+//     Real_Cover_Image 的创作。
+//   - R7.4：无可展示创作时渲染可读空态 + 引导,不空白卡死(空态判定见 isColdStartEmpty)。
+//
+// 设计取向(有意为之,记录抉择):
+//   服务端 discoverCreations({mode:'feed'}) 只返回**已过 Quality_Gate**(published/listed)
+//   的创作,故本层**不做硬过滤**——若因存量种子封面尚未回填(Cover_Backfill 未跑)
+//   就把「无 https 封面」的项从流里剔除,会在回填完成前把 Feed 直接掏空(违背可用性),
+//   且 CreationCard 已有「封面三态·永不黑屏」兜底(task 5.2:非 https → 渐变+emoji+标题)。
+//
+//   因此这里改用**稳定优先级排序(stable partition)**:把封面为 Real_Cover_Image
+//   (isRenderableCover(preview.url)===true)的创作**前置**到首屏,同时**保留全部**
+//   已过门创作可见。既满足 R7.3「首屏优先呈现真实封面」,又不在回填前掏空 Feed。
+//   排序稳定:两组各自保持原有相对顺序(不打乱后端 newest/hot 排序口径)。
+// ============================================================
+
+/**
+ * 首屏封面优先级:稳定地把「封面可渲染(Real_Cover_Image)」的创作前置,
+ * 其余(占位句柄/空/非 https 封面,待 Cover_Backfill)保留在后,**不丢弃任何一条**。
+ *
+ * 性质保证(供单测覆盖):
+ *  - **不丢项**:输出长度 === 输入长度(仅重排,不硬过滤,回填前不掏空 Feed)。
+ *  - **稳定**:两组(可渲染 / 不可渲染)各自保持输入的相对顺序。
+ *  - **前置**:任一可渲染项都排在任一不可渲染项之前。
+ *  - **幂等**:对已排好序的列表再次调用不改变顺序。
+ *
+ * @param items 已过 Quality_Gate 的发现投影项(顺序即后端排序口径)。
+ * @returns 重排后的新数组(可渲染封面在前),原数组不被修改。
+ */
+export function prioritizeRenderableCovers<T extends Pick<CreationDiscoveryItem, 'preview'>>(
+  items: readonly T[],
+): T[] {
+  const renderable: T[] = [];
+  const pending: T[] = [];
+  for (const it of items) {
+    if (isRenderableCover(it.preview?.url)) renderable.push(it);
+    else pending.push(it);
+  }
+  return [...renderable, ...pending];
+}

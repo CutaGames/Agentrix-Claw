@@ -10,6 +10,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ImageBackground } from 'react-native';
 import { colors } from '../../theme/colors';
 import type { LsmMarketView } from '../../services/lsm.api';
+import { worldCupHeroTagline } from '../../services/lsmPosterCopy';
 
 /** 头条联赛关键词（大小写不敏感）。命中者优先进入 Hero。 */
 const FEATURED_LEAGUE_KEYWORDS = ['world cup', '世界杯', 'fifa'];
@@ -123,6 +124,11 @@ export function WorldCupHero({ market, zh, onPick, onShare }: Props) {
           <Text style={styles.cta}>
             {market.tradable ? tr('Tap to trade →', '点按即可下单 →') : tr('Trading paused', '暂停下单')}
           </Text>
+
+          {/* 新人拉新标语（World Cup）：限量前 1000 名注册即领体验金，AXP/USDC 分开表述。 */}
+          <Text style={styles.promo} numberOfLines={2} testID="lsm-hero-promo">
+            {worldCupHeroTagline(zh)}
+          </Text>
         </View>
       </ImageBackground>
     </TouchableOpacity>
@@ -130,6 +136,17 @@ export function WorldCupHero({ market, zh, onPick, onShare }: Props) {
 }
 
 const styles = StyleSheet.create({
+  promo: {
+    marginTop: 8,
+    color: '#ffe08a',
+    fontSize: 12,
+    fontWeight: '800',
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    overflow: 'hidden',
+  },
   wrap: { borderRadius: 16, overflow: 'hidden', marginBottom: 14 },
   bg: { width: '100%', minHeight: 180, justifyContent: 'flex-end' },
   bgImage: { resizeMode: 'cover' },

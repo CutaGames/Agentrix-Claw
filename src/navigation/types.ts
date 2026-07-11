@@ -179,6 +179,8 @@ export type MeStackParamList = {
   AgentOpsDeliverables: { taskId?: string } | undefined;
   AgentOpsReliability: undefined;
   AgentOpsEconomicStatus: { agentId?: string } | undefined;
+  /** 元神 Soul Core L0 视图（六锚 + enforcedBy 诚实标记，flag 门控，默认关）。 */
+  SoulCoreView: { agentId?: string } | undefined;
 };
 
 export type DiscoverStackParamList = {

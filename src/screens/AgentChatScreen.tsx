@@ -13,10 +13,19 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors } from '../theme/colors';
-import { sendAgentMessage, getAgentHistory } from '../services/openclaw.service';
+import {
+  sendAgentMessage,
+  getAgentHistory,
+  type ParsedConversationalCreate,
+} from '../services/openclaw.service';
 import { useAuthStore } from '../stores/authStore';
 import { setPetMode } from '../services/petMode';
 import { themedStyles } from '../theme/useTheme';
+// world-growth-mobile-experience · task 8.2 (R6.1/6.2/6.3/6.6) —— 对话式创作结果卡片。
+// AgentChatScreen 从 chat 结果中解析出的 ConversationalCreateResult 直接挂到助手消息上，
+// 在聊天流内联渲染「已开店🎉 + 分享链接 / 追问 / 可读理由」。两条 chat 路径经同一
+// 解析（extractConversationalCreate）产出一致字段，故此处渲染完全一致。
+import { ConversationalCreateCard } from '../components/agent/ConversationalCreateCard';
 
 type RootStackParamList = {
   AgentChat: { agentId: string; agentName: string; instanceId?: string };
@@ -29,6 +38,11 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  /**
+   * task 8.2 —— 本条助手消息附带的会话式创作结果（create_shop/create_place）。
+   * 存在时在气泡内联渲染 ConversationalCreateCard（四态）。
+   */
+  conversationalCreate?: ParsedConversationalCreate;
 }
 
 export default function AgentChatScreen({ route }: Props) {
@@ -92,6 +106,9 @@ export default function AgentChatScreen({ route }: Props) {
           role: 'assistant',
           content: result.reply.content,
           timestamp: new Date(result.reply.timestamp),
+          // task 8.2 —— 若本轮触发了 create_shop/create_place，附带解析出的会话式创作
+          // 结果，随助手气泡内联渲染 ConversationalCreateCard（R6.1/6.6）。
+          conversationalCreate: result.conversationalCreate,
         };
         setMessages(prev => [...prev, assistantMessage]);
       } else {
@@ -130,9 +147,18 @@ export default function AgentChatScreen({ route }: Props) {
           </View>
         )}
         <View style={[styles.messageContent, isUser ? styles.userContent : styles.assistantContent]}>
-          <Text style={[styles.messageText, isUser && styles.userText]}>
-            {item.content}
-          </Text>
+          {item.content ? (
+            <Text style={[styles.messageText, isUser && styles.userText]}>
+              {item.content}
+            </Text>
+          ) : null}
+          {/* task 8.2 —— 会话式创作结果卡片（四态）内联在助手气泡里（R6.1/6.2/6.3/6.5） */}
+          {!isUser && item.conversationalCreate ? (
+            <ConversationalCreateCard
+              result={item.conversationalCreate.result}
+              kind={item.conversationalCreate.kind}
+            />
+          ) : null}
           <Text style={styles.timestamp}>
             {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>

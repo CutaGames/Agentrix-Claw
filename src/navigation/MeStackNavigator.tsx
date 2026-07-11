@@ -42,6 +42,7 @@ import { MonitorsScreen } from '../screens/agent-ops/MonitorsScreen';
 import { DeliverablesScreen } from '../screens/agent-ops/DeliverablesScreen';
 import { ReliabilityScreen } from '../screens/agent-ops/ReliabilityScreen';
 import { AgentEconomicStatusScreen } from '../screens/agent-ops/AgentEconomicStatusScreen';
+import { SoulCoreViewScreen } from '../screens/soul-core/SoulCoreViewScreen';
 import { useI18n } from '../stores/i18nStore';
 
 const Stack = createNativeStackNavigator<MeStackParamList>();
@@ -99,6 +100,7 @@ export function MeStackNavigator() {
       <Stack.Screen name="AgentOpsDeliverables" component={DeliverablesScreen} options={{ title: t({ en: 'Deliverables', zh: '交付物' }) }} />
       <Stack.Screen name="AgentOpsReliability" component={ReliabilityScreen} options={{ title: t({ en: 'Reliability', zh: '可靠性指标' }) }} />
       <Stack.Screen name="AgentOpsEconomicStatus" component={AgentEconomicStatusScreen} options={{ title: t({ en: 'Economic Status', zh: '经济身份状态' }) }} />
+      <Stack.Screen name="SoulCoreView" component={SoulCoreViewScreen} options={{ title: t({ en: 'Soul Core', zh: '元神' }) }} />
     </Stack.Navigator>
   );
 }
