@@ -193,6 +193,45 @@ export interface LsmLeaderboardRow {
   bets: number;
 }
 
+// ── 责任博彩（Responsible Gambling） ──
+export type LsmLimitType =
+  | 'deposit_daily'
+  | 'deposit_weekly'
+  | 'loss_daily'
+  | 'loss_weekly'
+  | 'bet_count_daily'
+  | 'bet_amount_daily';
+
+export interface LsmRgLimitView {
+  used: number;
+  limit: number | null;
+  resetAt: number;
+}
+
+export interface LsmRgStatus {
+  enabled: boolean;
+  asset: LsmAsset;
+  /** number(ms) | 'permanent' | null（未排除） */
+  selfExcludedUntil: number | 'permanent' | null;
+  /** number(ms) | null（无活跃冷静期） */
+  coolOffUntil: number | null;
+  limits: Record<string, LsmRgLimitView>;
+}
+
+/**
+ * 把责任博彩/KYC 后端错误码（或抛出的 Error）映射为中文文案；无关时返回 null。
+ */
+export function rgErrorText(codeOrErr: any): string | null {
+  const code: string =
+    typeof codeOrErr === 'string' ? codeOrErr : codeOrErr?.message || '';
+  if (code.includes('RG_SELF_EXCLUDED')) return '你已开启自我排除，期间无法下注或入金；到期或经支持解除后恢复。';
+  if (code.includes('RG_COOL_OFF')) return '你正处于冷静期，到期后会自动恢复。';
+  if (code.includes('RG_BET_LIMIT')) return '已达到你设置的投注限额，请稍后再试或调整限额。';
+  if (code.includes('RG_LOSS_LIMIT')) return '已达到你设置的损失限额，为保护你已暂停下注。';
+  if (code.includes('KYC_REQUIRED')) return '该操作需要先完成 KYC 验证。';
+  return null;
+}
+
 /** 简单 uuid（幂等键，防重复提交） */
 function idemKey(): string {
   return `m-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -362,6 +401,38 @@ export const lsmApi = {
   },
   async disclosure(): Promise<LsmDisclosure> {
     return apiFetch<LsmDisclosure>(`/lsm/vaults/disclosure`);
+  },
+
+  // ── 责任博彩（需登录） ──
+  /** 我的责任博彩状态（限额已用量/上限 + 自我排除/冷静态）。 */
+  async rgStatus(asset?: LsmAsset): Promise<LsmRgStatus> {
+    const qs = asset ? `?asset=${asset}` : '';
+    return apiFetch<LsmRgStatus>(`/lsm/rg${qs}`);
+  },
+  /** 设置自限额度（即时收紧、延迟放宽）；返回最新状态。 */
+  async rgSetLimit(input: {
+    asset?: LsmAsset;
+    limitType: LsmLimitType;
+    value: number;
+  }): Promise<LsmRgStatus> {
+    return apiFetch<LsmRgStatus>(`/lsm/rg/limit`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+  /** 自我排除（固定期或永久；永久仅人工/合规解除）。 */
+  async rgSelfExclude(input: { durationSecs?: number; permanent?: boolean }): Promise<{ ok: boolean }> {
+    return apiFetch(`/lsm/rg/self-exclude`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+  /** 冷静期（到期自动恢复）。 */
+  async rgCoolOff(durationSecs: number): Promise<{ ok: boolean }> {
+    return apiFetch(`/lsm/rg/cool-off`, {
+      method: 'POST',
+      body: JSON.stringify({ durationSecs }),
+    });
   },
   /** 链上偿付快照（公开）：合约储备 vs 内部负债 + isSolvent。失败静默降级。 */
   async onchainSolvency(chainId?: number): Promise<{

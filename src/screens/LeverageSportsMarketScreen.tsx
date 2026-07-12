@@ -38,6 +38,7 @@ import {
   formatAsset,
 } from '../services/lsm.api';
 import { OrderTicket } from '../components/lsm/OrderTicket';
+import { ResponsibleGamblingPanel } from '../components/lsm/ResponsibleGamblingPanel';
 import { WorldCupHero, pickFeaturedMarket } from '../components/lsm/WorldCupHero';
 import * as Clipboard from 'expo-clipboard';
 import { checkMPCWallet } from '../services/mpcWallet';
@@ -132,6 +133,7 @@ export default function LeverageSportsMarketScreen() {
   );
 
   const [tab, setTab] = useState<Tab>('markets');
+  const [rgOpen, setRgOpen] = useState(false);
   const [markets, setMarkets] = useState<LsmMarketView[]>([]);
   const [orders, setOrders] = useState<LsmOrder[]>([]);
   const [vaults, setVaults] = useState<LsmVaultView[]>([]);
@@ -374,7 +376,11 @@ export default function LeverageSportsMarketScreen() {
         <TouchableOpacity style={styles.walletBtn} onPress={() => setWalletOpen(true)} testID="lsm-wallet-entry">
           <Text style={styles.walletBtnText}>{tr('Wallet', '钱包/充提')}</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.walletBtn} onPress={() => setRgOpen(true)} testID="lsm-rg-entry">
+          <Text style={styles.walletBtnText}>{tr('Limits', '责任博彩')}</Text>
+        </TouchableOpacity>
       </View>
+      <ResponsibleGamblingPanel visible={rgOpen} onClose={() => setRgOpen(false)} />
 
       {loading && !refreshing ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
