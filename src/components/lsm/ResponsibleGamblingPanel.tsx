@@ -131,7 +131,7 @@ export function ResponsibleGamblingPanel({ visible, onClose, asset = 'AXP' }: Pr
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
           <View style={styles.header}>
-            <Text style={styles.title}>{tr('Responsible Gambling', '责任博彩')}</Text>
+            <Text style={styles.title}>{tr('Limits & Self-Control', '限额与自控')}</Text>
             <TouchableOpacity onPress={onClose}>
               <Text style={styles.close}>{tr('Close', '关闭')}</Text>
             </TouchableOpacity>
@@ -144,8 +144,8 @@ export function ResponsibleGamblingPanel({ visible, onClose, asset = 'AXP' }: Pr
               {status && !status.enabled && (
                 <Text style={styles.hint}>
                   {tr(
-                    'RG gate is in observe mode (testnet). You can preset limits; they apply once enabled.',
-                    '责任博彩当前为观察态（测试网）。可预设限额，正式启用后即时生效。',
+                    'Limit controls are in observe mode (testnet). You can preset limits; they apply once enabled.',
+                    '限额与自控当前为观察态（测试网）。可预设限额，正式启用后即时生效。',
                   )}
                 </Text>
               )}

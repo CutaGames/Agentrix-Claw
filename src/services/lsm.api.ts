@@ -228,6 +228,7 @@ export function rgErrorText(codeOrErr: any): string | null {
   if (code.includes('RG_COOL_OFF')) return '你正处于冷静期，到期后会自动恢复。';
   if (code.includes('RG_BET_LIMIT')) return '已达到你设置的投注限额，请稍后再试或调整限额。';
   if (code.includes('RG_LOSS_LIMIT')) return '已达到你设置的损失限额，为保护你已暂停下注。';
+  if (code.includes('RG_DEPOSIT_LIMIT')) return '已达到你设置的入金限额，请稍后再试或调整限额。';
   if (code.includes('KYC_REQUIRED')) return '该操作需要先完成 KYC 验证。';
   return null;
 }
