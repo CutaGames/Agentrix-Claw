@@ -25,6 +25,7 @@ import { AxpRewardShopScreen } from '../screens/me/AxpRewardShopScreen';
 import { PetEarningsScreen } from '../screens/me/PetEarningsScreen';
 import { DigestPosterScreen } from '../screens/me/DigestPosterScreen';
 import { OnchainAuthScreen } from '../screens/me/OnchainAuthScreen';
+import { SovereigntyControlPlaneScreen } from '../screens/me/SovereigntyControlPlaneScreen';
 import { ToyBindingScreen } from '../screens/me/ToyBindingScreen';
 // P-9 Q1 — re-home orphaned pet screens (T6.7). These exist as components
 // but were not mounted in any navigator after the legacy PetStack was
@@ -41,6 +42,7 @@ import { MonitorsScreen } from '../screens/agent-ops/MonitorsScreen';
 import { DeliverablesScreen } from '../screens/agent-ops/DeliverablesScreen';
 import { ReliabilityScreen } from '../screens/agent-ops/ReliabilityScreen';
 import { AgentEconomicStatusScreen } from '../screens/agent-ops/AgentEconomicStatusScreen';
+import { SoulCoreViewScreen } from '../screens/soul-core/SoulCoreViewScreen';
 import { useI18n } from '../stores/i18nStore';
 
 const Stack = createNativeStackNavigator<MeStackParamList>();
@@ -79,6 +81,7 @@ export function MeStackNavigator() {
       <Stack.Screen name="PetEarnings" component={PetEarningsScreen} options={{ title: t({ en: 'Earnings Center', zh: '收益中心' }) }} />
       <Stack.Screen name="DigestPoster" component={DigestPosterScreen} options={{ title: t({ en: 'Daily Digest', zh: '机会日报' }) }} />
       <Stack.Screen name="OnchainAuth" component={OnchainAuthScreen} options={{ title: t({ en: 'On-chain Authorization', zh: '链上授权' }) }} />
+      <Stack.Screen name="SovereigntyControlPlane" component={SovereigntyControlPlaneScreen} options={{ title: t({ en: 'Authorization Center', zh: '授权中枢' }) }} />
       <Stack.Screen name="AxpRewardShop" component={AxpRewardShopScreen} options={{ title: t({ en: 'Redeem Shop', zh: '兑换中心' }) }} />
       <Stack.Screen name="ToyBinding" component={ToyBindingScreen} options={{ title: t({ en: 'Devices', zh: '设备管理' }) }} />
 
@@ -97,6 +100,7 @@ export function MeStackNavigator() {
       <Stack.Screen name="AgentOpsDeliverables" component={DeliverablesScreen} options={{ title: t({ en: 'Deliverables', zh: '交付物' }) }} />
       <Stack.Screen name="AgentOpsReliability" component={ReliabilityScreen} options={{ title: t({ en: 'Reliability', zh: '可靠性指标' }) }} />
       <Stack.Screen name="AgentOpsEconomicStatus" component={AgentEconomicStatusScreen} options={{ title: t({ en: 'Economic Status', zh: '经济身份状态' }) }} />
+      <Stack.Screen name="SoulCoreView" component={SoulCoreViewScreen} options={{ title: t({ en: 'Soul Core', zh: '元神' }) }} />
     </Stack.Navigator>
   );
 }

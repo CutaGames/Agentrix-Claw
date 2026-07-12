@@ -157,6 +157,9 @@ export type MeStackParamList = {
   DigestPoster: undefined;
   /** 萌宠链上授权（Agent Protocol Stack 需求 6.1/6.2）：AP2 mandate 授权/撤销 + 链上动作记录。 */
   OnchainAuth: undefined;
+  /** Agent 主权 · 授权中枢（S1）：权限档/限额/能力开关/模型音色/审计（env 门控，默认关）。
+   *  agentAccountId 可省略 → 屏内经链上授权总览自动解析绑定的主宠 AgentAccount。 */
+  SovereigntyControlPlane: { agentAccountId?: string } | undefined;
   // Sprint 4: Toy Binding
   ToyBinding: undefined;
   // P-9 Q1: re-home the orphaned pet screens here (T6.7). PetDetailSheet's
@@ -176,6 +179,8 @@ export type MeStackParamList = {
   AgentOpsDeliverables: { taskId?: string } | undefined;
   AgentOpsReliability: undefined;
   AgentOpsEconomicStatus: { agentId?: string } | undefined;
+  /** 元神 Soul Core L0 视图（六锚 + enforcedBy 诚实标记，flag 门控，默认关）。 */
+  SoulCoreView: { agentId?: string } | undefined;
 };
 
 export type DiscoverStackParamList = {

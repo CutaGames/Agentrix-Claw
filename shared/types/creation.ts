@@ -93,6 +93,58 @@ export interface CreationPreview {
 export type OfferingKind = 'product' | 'service' | 'ticket' | 'subscription' | 'tip';
 
 /**
+ * 履约类型(FulfillmentType)—— offering 声明"买到后如何真实交付"(world-shop-fulfillment R1)。
+ *  - voucher: 数字凭证 / 兑换码(下单成功即从库存发放唯一 code)。
+ *  - agent:   触发创作者 agent 履约(经 agent-gateway 派发办事任务)。
+ *  - support: 支持创作者(不承诺实物/法币收益的合规回执,即时放款)。
+ *  - manual:  创作者手动交付(通知创作者 → pending → 标记完成)。
+ *
+ * 集市并入接缝(登记约定,非本 spec 实现):技能/皮肤 → voucher(数字授予);
+ * 任务 → agent;预测市场自有结算不接本引擎。详见
+ * `docs/world-shop-fulfillment-marketplace-mapping.zh-CN.md`。
+ */
+export type FulfillmentType = 'voucher' | 'agent' | 'support' | 'manual';
+
+/** voucher(数字凭证/兑换码)码来源:自动生成或使用预置码表。 */
+export type VoucherCodeMode = 'auto' | 'list';
+
+/**
+ * 履约声明(Fulfillment)—— 随 offering 一并保存的交付方式声明。
+ *
+ * 质量门在 `SHOP_FULFILLMENT_ENFORCED` 开启时,要求每个"可下单"(有价 + 含消费动词)的
+ * shop/place offering 具备一份**合法** fulfillment 声明,否则 commerce 维度不通过
+ * (world-shop-fulfillment R1.1/1.2)。合法性判定:
+ *  - voucher: `voucher.stock` 为非负整数;codeMode=list 时 `codes` 至少 1 条。
+ *  - agent:   `agent.verb` 为 'message'。
+ *  - support/manual: 仅声明 type 即可(support 文案不承诺实物/法币收益,合规红线)。
+ */
+export interface Fulfillment {
+  /** 履约类型。 */
+  type: FulfillmentType;
+  /** voucher 型配置:库存 + 码来源。 */
+  voucher?: {
+    /** 可发放库存(非负整数;codeMode=list 时应与 codes 数量一致或不超过)。 */
+    stock: number;
+    /** 码来源:auto 自动生成唯一码;list 使用预置码表。 */
+    codeMode: VoucherCodeMode;
+    /** 预置码表(codeMode=list 时必填,至少 1 条)。 */
+    codes?: string[];
+  };
+  /** agent 型配置:目标办事动词 + 简报。 */
+  agent?: {
+    /** 派发给创作者 agent 的动词(V1 收敛为 message)。 */
+    verb: 'message';
+    /** 履约简报(交给 agent 的办事说明,可空)。 */
+    brief?: string;
+  };
+  /** support 型配置:合规文案(不得承诺实物/法币收益)。 */
+  support?: {
+    /** 支持创作者的说明文案(可空)。 */
+    note?: string;
+  };
+}
+
+/**
  * Agent 标准化调用动词(需求 13.2)—— V1 统一调用面。
  *  - query:     查询信息/库存/价格/可用时段(无副作用)
  *  - order:     下单购买(走权威结算)
@@ -117,10 +169,19 @@ export interface Offering {
   /** 描述(可空)。 */
   description?: string;
   /**
-   * 展示价(AXP/USD,可空)。
+   * 展示价(AXP/USD/稳定币,可空)。
    * NON-AUTHORITATIVE:权威成交金额始终由 Economy_Bridge 服务端计算(需求 7.1)。
+   *
+   * world-shop-stablecoin-settlement R1.1：新增 `stablecoin` 结算币种声明——按链上稳定币
+   * (chainId, tokenSymbol) 定价，`amount` 为人类可读金额字符串（避免浮点精度丢失，结算时按
+   * 该稳定币 tokenDecimals 精确换算为链上最小整数单位）。发布/更新时校验 (chainId, tokenSymbol)
+   * 在 Stablecoin_Registry 中存在且 `enabled=true`，否则拒绝 `UNKNOWN_STABLECOIN`（R1.2）。
    */
-  price?: { axp?: number; usd?: number };
+  price?: {
+    axp?: number;
+    usd?: number;
+    stablecoin?: { chainId: number; tokenSymbol: string; amount: string };
+  };
   /** 该 offering 支持的标准动词集合。 */
   verbs: CreationVerb[];
   /** 可空:库存 / 时段 / 容量。 */
@@ -134,6 +195,12 @@ export interface Offering {
   };
   /** 来源溯源:多数 offering 自 ECS 实体的 price/ui 组件派生(可空)。 */
   derivedFromEntityId?: string;
+  /**
+   * 履约声明(可选)——"买到后如何真实交付"(world-shop-fulfillment R1.1)。
+   * 由创作器 UI 采集,随 offering 一并保存。可下单 offering 缺此声明时,
+   * 质量门在 `SHOP_FULFILLMENT_ENFORCED` 开启时会拦截 commerce 维度(R1.2/1.3)。
+   */
+  fulfillment?: Fulfillment;
 }
 
 // ============================================================

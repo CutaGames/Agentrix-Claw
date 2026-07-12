@@ -17,11 +17,16 @@ import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { useAuthStore } from '../../stores/authStore';
 import {
-  ensureMPCWallet,
+  checkMPCWallet,
+  createMPCWalletForSocialLogin,
   getRecoveryCode,
   getStoredShardA,
   markMPCBackupCompleted,
+  recoverWithSavedCode,
+  rotateWallet,
+  verifyAndConfirmBackup,
 } from '../../services/mpcWallet';
+import { TextInput } from 'react-native';
 import type { MeStackParamList } from '../../navigation/types';
 import { themedStyles } from '../../theme/useTheme';
 
@@ -38,6 +43,10 @@ export function WalletSetupScreen() {
   const [hasLocalShard, setHasLocalShard] = useState(false);
   const [copied, setCopied] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  // 钱包在其他设备/会话创建、本设备无分片 A 且无恢复码 → 需恢复（诚实态，非无限"加载中"）。
+  const [recoveryNeeded, setRecoveryNeeded] = useState(false);
+  const [recoveryInput, setRecoveryInput] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const loadBackupData = useCallback(async () => {
     const [rc, shardA] = await Promise.all([getRecoveryCode(), getStoredShardA()]);
@@ -57,8 +66,25 @@ export function WalletSetupScreen() {
 
     try {
       setStep('creating');
-      const walletAddress = await ensureMPCWallet(user.id);
-      setAddress(walletAddress);
+      setRecoveryNeeded(false);
+      // 先查是否已有钱包，区分「首次创建」与「已存在但本设备无分片」两条路径。
+      const check = await checkMPCWallet();
+      if (check.hasWallet && check.wallet) {
+        setAddress(check.wallet.walletAddress);
+        const [rc, shardA] = await Promise.all([getRecoveryCode(), getStoredShardA()]);
+        setRecoveryCode(rc);
+        setHasLocalShard(!!shardA);
+        // 已有钱包但本设备既无分片 A 也无恢复码 → 无法凭空"加载"出恢复码（2/3 随机分片，
+        // 服务端仅持分片 B、无法重建）。进入诚实的"需恢复"态，而非无限加载。
+        if (!shardA && !rc) {
+          setRecoveryNeeded(true);
+        }
+        setStep('backup');
+        return;
+      }
+      // 首次创建：createForSocial 会返回并本地存储分片 A + 恢复码 C。
+      const created = await createMPCWalletForSocialLogin(user.id);
+      setAddress(created.walletAddress);
       await loadBackupData();
       setStep('backup');
     } catch (e: any) {
@@ -98,15 +124,105 @@ export function WalletSetupScreen() {
     setStep('confirm');
   }, [recoveryCode, t]);
 
+  // 强制备份：完成时跑真实读回校验（verifyAndConfirmBackup），服务端 sha256(分片C) 比对通过才算数，
+  // 而非仅勾选框自证。校验失败 → 不放行，提示重新核对恢复码。
   const handleFinish = useCallback(async () => {
-    if (!confirmed) return;
-    await markMPCBackupCompleted();
+    if (!confirmed || busy) return;
+    setBusy(true);
+    try {
+      const res = await verifyAndConfirmBackup();
+      if (!res.confirmed) throw new Error('verification failed');
+      await markMPCBackupCompleted();
+      Alert.alert(
+        t({ en: 'Setup complete', zh: '设置完成' }),
+        t({ en: 'Backup verified. Your MPC wallet is ready.', zh: '备份已通过校验，你的 MPC 钱包已就绪。' }),
+        [{ text: t({ en: 'Done', zh: '完成' }), onPress: () => navigation.goBack() }],
+      );
+    } catch (e: any) {
+      Alert.alert(
+        t({ en: 'Backup verification failed', zh: '备份校验未通过' }),
+        t({
+          en: 'We could not verify your recovery code on this device. Please make sure it was saved correctly, then try again.',
+          zh: '无法在本设备校验你的恢复码。请确认已正确保存恢复码后重试。',
+        }),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [confirmed, busy, navigation, t]);
+
+  // 恢复码录入恢复（主）：地址不变。
+  const handleRecoverWithCode = useCallback(async () => {
+    const code = recoveryInput.trim();
+    if (!code || busy) {
+      if (!code) Alert.alert(t({ en: 'Enter recovery code', zh: '请输入恢复码' }));
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await recoverWithSavedCode(code);
+      setAddress(res.walletAddress);
+      const rc = await getRecoveryCode();
+      setRecoveryCode(rc);
+      setHasLocalShard(true);
+      setRecoveryNeeded(false);
+      setRecoveryInput('');
+      Alert.alert(
+        t({ en: 'Wallet recovered', zh: '钱包已恢复' }),
+        t({
+          en: 'Recovered successfully. Your recovery code was rotated — please back up the new one below.',
+          zh: '恢复成功。恢复码已轮换，请在下方重新备份新的恢复码。',
+        }),
+      );
+    } catch (e: any) {
+      Alert.alert(
+        t({ en: 'Recovery failed', zh: '恢复失败' }),
+        e?.message?.includes('INVALID_RECOVERY_CODE')
+          ? t({ en: 'This recovery code is invalid for your wallet.', zh: '该恢复码与你的钱包不匹配。' })
+          : e?.message || t({ en: 'Please try again later', zh: '请稍后重试' }),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [recoveryInput, busy, t]);
+
+  // 测试网换钱包（兜底）：破坏性，强确认。
+  const handleRotate = useCallback(() => {
     Alert.alert(
-      t({ en: 'Setup complete', zh: '设置完成' }),
-      t({ en: 'Your MPC wallet is ready and your backup has been confirmed.', zh: '你的 MPC 钱包已就绪，且备份已确认完成。' }),
-      [{ text: t({ en: 'Done', zh: '完成' }), onPress: () => navigation.goBack() }],
+      t({ en: 'Create a new wallet?', zh: '创建新钱包？' }),
+      t({
+        en: 'The OLD wallet address and any assets on it will be abandoned and cannot be recovered. Continue? (testnet)',
+        zh: '旧钱包地址及其上的资产将被弃用且无法找回。确定继续吗？（测试网）',
+      }),
+      [
+        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+        {
+          text: t({ en: 'Create new', zh: '创建新钱包' }),
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            try {
+              const res = await rotateWallet();
+              setAddress(res.walletAddress);
+              const rc = await getRecoveryCode();
+              setRecoveryCode(rc);
+              setHasLocalShard(true);
+              setRecoveryNeeded(false);
+            } catch (e: any) {
+              Alert.alert(
+                t({ en: 'Failed', zh: '失败' }),
+                e?.message?.includes('WALLET_ROTATION_DISABLED')
+                  ? t({ en: 'Wallet rotation is not enabled.', zh: '换钱包功能未开启。' })
+                  : e?.message || '',
+              );
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ],
     );
-  }, [confirmed, navigation, t]);
+  }, [t]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -182,32 +298,85 @@ export function WalletSetupScreen() {
               </View>
             )}
 
-            <View style={[styles.statusRow, hasLocalShard ? styles.statusOk : styles.statusWarn]}>
-              <Text style={styles.statusIcon}>{hasLocalShard ? '✅' : '⚠️'}</Text>
-              <Text style={styles.statusText}>
-                {hasLocalShard
-                  ? t({ en: 'Your device shard is stored locally.', zh: '设备分片已保存在本地。' })
-                  : t({ en: 'Local device shard is missing. Recovery may be required later.', zh: '本地设备分片缺失，后续可能需要恢复流程。' })}
-              </Text>
-            </View>
+            {recoveryNeeded ? (
+              // 诚实态：钱包在其他设备/会话创建，本设备无分片 A、无恢复码。
+              // 私钥为随机 2/3 分片、服务端仅持分片 B，无法凭空重建恢复码。
+              <>
+                <View style={[styles.statusRow, styles.statusWarn]}>
+                  <Text style={styles.statusIcon}>⚠️</Text>
+                  <Text style={styles.statusText}>
+                    {t({
+                      en: 'This wallet was created on another device or session. This device holds no shard, and the recovery code is not generated here.',
+                      zh: '该钱包在其他设备或会话创建。本设备没有分片，也不会在这里重新生成恢复码。',
+                    })}
+                  </Text>
+                </View>
+                <View style={styles.warningCard}>
+                  <Text style={styles.warningTitle}>{t({ en: 'How recovery works', zh: '如何恢复' })}</Text>
+                  <Text style={styles.warningText}>
+                    {t({
+                      en: 'The key is split 2-of-3 (device / Agentrix / your recovery code). With only the server shard, it cannot be rebuilt. To restore this exact wallet, use the recovery code you saved when it was first created.',
+                      zh: '私钥按 2/3 分片保存（设备 / Agentrix / 你的恢复码）。仅凭服务端分片无法重建。要恢复这个钱包地址，需要你在首次创建时保存的恢复码。',
+                    })}
+                  </Text>
+                </View>
+                <Text style={styles.sectionTitle}>{t({ en: 'Restore with recovery code', zh: '用恢复码恢复' })}</Text>
+                <TextInput
+                  style={styles.recoveryInput}
+                  value={recoveryInput}
+                  onChangeText={setRecoveryInput}
+                  placeholder={t({ en: 'Paste your recovery code (Shard C)', zh: '粘贴你的恢复码（分片 C）' })}
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity
+                  style={[styles.primaryBtn, busy && styles.primaryBtnDisabled]}
+                  onPress={handleRecoverWithCode}
+                  disabled={busy}
+                >
+                  <Text style={styles.primaryBtnText}>
+                    {busy ? t({ en: 'Restoring…', zh: '恢复中…' }) : t({ en: 'Restore wallet', zh: '恢复钱包' })}
+                  </Text>
+                </TouchableOpacity>
 
-            <Text style={styles.sectionTitle}>{t({ en: 'Recovery code (Shard C)', zh: '恢复码（分片 C）' })}</Text>
-            <View style={styles.codeBox}>
-              <Text style={styles.codeText} selectable>{recoveryCode || t({ en: 'Loading recovery code...', zh: '恢复码加载中…' })}</Text>
-            </View>
+                <TouchableOpacity style={styles.secondaryBtn} onPress={handleRotate} disabled={busy}>
+                  <Text style={styles.secondaryBtnText}>
+                    {t({ en: 'No code? Create a new wallet (testnet)', zh: '没有恢复码？换新钱包（测试网）' })}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <View style={[styles.statusRow, hasLocalShard ? styles.statusOk : styles.statusWarn]}>
+                  <Text style={styles.statusIcon}>{hasLocalShard ? '✅' : '⚠️'}</Text>
+                  <Text style={styles.statusText}>
+                    {hasLocalShard
+                      ? t({ en: 'Your device shard is stored locally.', zh: '设备分片已保存在本地。' })
+                      : t({ en: 'Local device shard is missing. Recovery may be required later.', zh: '本地设备分片缺失，后续可能需要恢复流程。' })}
+                  </Text>
+                </View>
 
-            <View style={styles.actionRow}>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={handleCopy}>
-                <Text style={styles.secondaryBtnText}>{copied ? t({ en: '✅ Copied', zh: '✅ 已复制' }) : t({ en: '📋 Copy', zh: '📋 复制' })}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={handleShare}>
-                <Text style={styles.secondaryBtnText}>{t({ en: '📤 Save / Share', zh: '📤 保存 / 分享' })}</Text>
-              </TouchableOpacity>
-            </View>
+                <Text style={styles.sectionTitle}>{t({ en: 'Recovery code (Shard C)', zh: '恢复码（分片 C）' })}</Text>
+                <View style={styles.codeBox}>
+                  <Text style={styles.codeText} selectable>{recoveryCode || t({ en: 'Loading recovery code...', zh: '恢复码加载中…' })}</Text>
+                </View>
 
-            <TouchableOpacity style={styles.primaryBtn} onPress={handleContinueToConfirm}>
-              <Text style={styles.primaryBtnText}>{t({ en: 'I saved it, continue', zh: '我已保存，继续' })}</Text>
-            </TouchableOpacity>
+                <View style={styles.actionRow}>
+                  <TouchableOpacity style={styles.secondaryBtn} onPress={handleCopy}>
+                    <Text style={styles.secondaryBtnText}>{copied ? t({ en: '✅ Copied', zh: '✅ 已复制' }) : t({ en: '📋 Copy', zh: '📋 复制' })}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.secondaryBtn} onPress={handleShare}>
+                    <Text style={styles.secondaryBtnText}>{t({ en: '📤 Save / Share', zh: '📤 保存 / 分享' })}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity style={styles.primaryBtn} onPress={handleContinueToConfirm}>
+                  <Text style={styles.primaryBtnText}>{t({ en: 'I saved it, continue', zh: '我已保存，继续' })}</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
 
@@ -246,11 +415,15 @@ export function WalletSetupScreen() {
             </View>
 
             <TouchableOpacity
-              style={[styles.primaryBtn, !confirmed && styles.primaryBtnDisabled]}
+              style={[styles.primaryBtn, (!confirmed || busy) && styles.primaryBtnDisabled]}
               onPress={handleFinish}
-              disabled={!confirmed}
+              disabled={!confirmed || busy}
             >
-              <Text style={styles.primaryBtnText}>{t({ en: 'Finish setup', zh: '完成设置' })}</Text>
+              <Text style={styles.primaryBtnText}>
+                {busy
+                  ? t({ en: 'Verifying backup…', zh: '校验备份中…' })
+                  : t({ en: 'Verify & finish', zh: '校验并完成' })}
+              </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -324,6 +497,18 @@ const styles = themedStyles(() => StyleSheet.create({
     borderColor: colors.border,
   },
   codeText: { color: colors.accent, fontFamily: 'monospace', fontSize: 12, lineHeight: 20 },
+  recoveryInput: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    color: colors.textPrimary,
+    fontFamily: 'monospace',
+    fontSize: 12,
+    minHeight: 70,
+    textAlignVertical: 'top',
+  },
   actionRow: { flexDirection: 'row', gap: 12 },
   confirmCard: {
     flexDirection: 'row',

@@ -28,6 +28,7 @@ import type {
 } from './world-creation';
 
 import type { MarketplaceCurrency } from './world-engine-api';
+import type { CreationType } from './creation';
 
 // ============================================================
 // §1 World_Map — navigation, discovery, presence (R1)
@@ -294,6 +295,19 @@ export interface GenerateEcsWorldRequest {
   prompt: string;
   /** Tier the generated world must stay within (defaults to Plot's declared tier). */
   substrateTier?: SubstrateTier;
+  /**
+   * Optional structured slot data (店名 / 商品项 / 价格 / 图片 / 简介 / 主题) —
+   * authoritative, preferred over free-text extraction (Slot_Fill_Generation,
+   * world-growth-engine R1.1). Threaded through to the bound
+   * `ECS_GENERATOR_PROVIDER` (Model_Generation_Provider) so Conversational_Authoring
+   * can pass the data it collected while追问补齐缺失槽位 (R9.2/R9.3).
+   */
+  data?: Record<string, unknown>;
+  /**
+   * Optional creation-type hint for template selection (shop/place). When
+   * omitted the generator infers the business type from the prompt (R8.4).
+   */
+  hintType?: CreationType;
 }
 
 /** POST /api/v1/world-creation/plots/:plotId/generate — Response (R3.6). */

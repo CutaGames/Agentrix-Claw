@@ -358,3 +358,65 @@ export async function ensureMPCWallet(socialProviderId: string): Promise<string>
     throw new Error(`Wallet creation failed: ${msg}`);
   }
 }
+
+/**
+ * 恢复码录入恢复（主路径）：用用户保存的恢复码（=encryptedShardC）重建，地址不变。
+ * 服务端解密恢复码 → combine(C,B) → 校验地址 → 重拆分 → 下发新分片 A/恢复码（已轮换）。
+ * 客户端只需把恢复码原样传给服务端，无需实现分片解密。
+ */
+export async function recoverWithSavedCode(
+  recoveryCode: string,
+): Promise<{ walletAddress: string }> {
+  let socialProviderId: string | null = null;
+  try {
+    socialProviderId = await SecureStore.getItemAsync(MPC_SOCIAL_PROVIDER_KEY);
+  } catch {
+    socialProviderId = null;
+  }
+  const start = await apiFetch<{ recoveryId: string }>('/mpc-wallet/recover/start', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  const res = await apiFetch<{ walletAddress: string; encryptedShardA: string; encryptedShardC: string }>(
+    '/mpc-wallet/recover/complete-with-code',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        recoveryId: start.recoveryId,
+        recoveryCode: (recoveryCode || '').trim(),
+        socialProviderId: socialProviderId || undefined,
+      }),
+    },
+  );
+  // 写入轮换后的新分片 A + 新恢复码；要求重新备份。
+  await storeShardA(res.encryptedShardA);
+  await storeRecoveryCode(res.encryptedShardC);
+  await resetBackupConfirmation();
+  return { walletAddress: res.walletAddress };
+}
+
+/**
+ * 测试网换钱包（兜底）：没保存恢复码时的最后手段。**停用旧钱包（旧地址弃用）+ 建新钱包**。
+ * 破坏性——调用前必须向用户强警告。需服务端 `MPC_WALLET_ROTATION_ENABLED=1`。
+ */
+export async function rotateWallet(): Promise<{ walletAddress: string; rotatedFrom?: string }> {
+  let socialProviderId: string | null = null;
+  try {
+    socialProviderId = await SecureStore.getItemAsync(MPC_SOCIAL_PROVIDER_KEY);
+  } catch {
+    socialProviderId = null;
+  }
+  const res = await apiFetch<{
+    walletAddress: string;
+    encryptedShardA: string;
+    encryptedShardC: string;
+    rotatedFrom?: string;
+  }>('/mpc-wallet/rotate', {
+    method: 'POST',
+    body: JSON.stringify({ socialProviderId: socialProviderId || undefined, confirm: true }),
+  });
+  await storeShardA(res.encryptedShardA);
+  await storeRecoveryCode(res.encryptedShardC);
+  await resetBackupConfirmation();
+  return { walletAddress: res.walletAddress, rotatedFrom: res.rotatedFrom };
+}

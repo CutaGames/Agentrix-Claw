@@ -108,6 +108,30 @@ export function ShareCardView({
     setTimeout(() => setCopied(false), 2000);
   }, [shareUrl]);
 
+  /**
+   * 分享**可点击的文本链接**（而非只发图片）。这是能真正把用户带到网站的关键：
+   * 微信/IM 里收到的是可点击/可复制的链接；海报图内的按钮和二维码在别人手机里
+   * 是点不了、常扫不出的死元素。用 RN `Share.share` 发纯文本 + URL，几乎所有渠道都可点开。
+   */
+  const shareLink = useCallback(async () => {
+    try {
+      onShare?.();
+      const lines = [
+        title,
+        description || subtitle,
+        `👉 立即注册开玩：${shareUrl}`,
+      ].filter(Boolean);
+      await Share.share({ message: lines.join('\n'), url: shareUrl });
+    } catch (err: any) {
+      if (err?.message !== 'User did not share') {
+        Alert.alert(
+          t({ en: 'Share failed', zh: '分享失败' }),
+          err?.message ?? t({ en: 'Unable to share', zh: '暂时无法分享' }),
+        );
+      }
+    }
+  }, [onShare, shareUrl, title, subtitle, description, t]);
+
   return (
     <View style={styles.wrapper}>
       {/* The card that will be captured as image */}
@@ -200,22 +224,20 @@ export function ShareCardView({
             </View>
           ) : null}
 
+          {/* 底部 CTA：二维码 + 一句行动号召 + 纯文本网址（可读，不放会被烘焙成死按钮的“复制”）。
+              真正的复制/分享由海报下方的真实按钮完成（分享出去的是可点击链接，见 shareLink）。 */}
           <View style={styles.qrSection}>
             <View style={styles.qrContainer}>
-              <QRCode
-                value={shareUrl}
-                size={132}
-                backgroundColor="#ffffff"
-                color="#111827"
-              />
+              <QRCode value={shareUrl} size={116} backgroundColor="#ffffff" color="#0F172A" />
             </View>
             <View style={styles.qrCopy}>
               <Text style={styles.qrTitle}>{resolvedCta}</Text>
-              <Text style={styles.qrSub}>{t({ en: 'If the QR is blocked, tap the link to copy and open in a browser.', zh: '若二维码被拦截，点下方链接复制后用浏览器打开。' })}</Text>
-              <TouchableOpacity style={styles.urlBadge} onPress={copyLink} activeOpacity={0.7}>
-                <Text style={styles.urlText} numberOfLines={1}>{shareUrl}</Text>
-                <Text style={styles.urlCopy}>{copied ? `✓ ${t({ en: 'Copied', zh: '已复制' })}` : `📋 ${t({ en: 'Copy', zh: '复制' })}`}</Text>
-              </TouchableOpacity>
+              <Text style={styles.qrSub}>
+                {t({ en: 'Scan the code, or open the link below in a browser.', zh: '扫码，或在浏览器打开下方网址即可注册开玩。' })}
+              </Text>
+              <View style={styles.urlPlain}>
+                <Text style={styles.urlPlainText} numberOfLines={1}>{shareUrl}</Text>
+              </View>
             </View>
           </View>
 
@@ -229,30 +251,42 @@ export function ShareCardView({
         </LinearGradient>
       </ViewShot>
 
-      {/* Action buttons below the card */}
-      <View style={styles.actions}>
+      {/* Action buttons below the card.
+          主操作＝分享**可点击链接**（能真正把好友带到网站，微信可点开）；
+          次操作＝分享海报图（视觉）与复制链接。 */}
+      <View style={styles.actionsCol}>
         <TouchableOpacity
           style={[styles.btn, styles.btnPrimary]}
-          onPress={captureAndShare}
-          disabled={capturing}
-          activeOpacity={0.8}
+          onPress={shareLink}
+          activeOpacity={0.85}
         >
-          {capturing ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.btnPrimaryText}>📤 {t({ en: 'Share Poster', zh: '分享海报' })}</Text>
-          )}
+          <Text style={styles.btnPrimaryText}>🔗 {t({ en: 'Share link to friends', zh: '分享链接给好友' })}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.btn, styles.btnSecondary]}
-          onPress={copyLink}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.btnSecondaryText}>
-            {copied ? `✓ ${t({ en: 'Copied', zh: '已复制' })}` : `🔗 ${t({ en: 'Copy Link', zh: '复制链接' })}`}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={[styles.btn, styles.btnSecondary]}
+            onPress={captureAndShare}
+            disabled={capturing}
+            activeOpacity={0.85}
+          >
+            {capturing ? (
+              <ActivityIndicator size="small" color="#00d4ff" />
+            ) : (
+              <Text style={styles.btnSecondaryText}>🖼 {t({ en: 'Share poster', zh: '分享海报图' })}</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.btn, styles.btnSecondary]}
+            onPress={copyLink}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.btnSecondaryText}>
+              {copied ? `✓ ${t({ en: 'Copied', zh: '已复制' })}` : `📋 ${t({ en: 'Copy link', zh: '复制链接' })}`}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -394,24 +428,21 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
-  qrCopy: { flex: 1, gap: 8 },
-  qrTitle: { color: '#0F172A', fontSize: 16, fontWeight: '900' },
+  qrCopy: { flex: 1, gap: 7 },
+  qrTitle: { color: '#0F172A', fontSize: 16, fontWeight: '900', lineHeight: 21 },
   qrSub: { color: '#475569', fontSize: 12, lineHeight: 18 },
-  urlBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    backgroundColor: '#E2E8F0',
+  urlPlain: {
+    marginTop: 2,
+    backgroundColor: '#EEF2F7',
     borderRadius: 10,
-    paddingVertical: 8,
+    paddingVertical: 7,
     paddingHorizontal: 10,
   },
-  urlText: { color: '#2563EB', fontSize: 11, fontFamily: 'monospace', flex: 1 },
-  urlCopy: { color: '#1d4ed8', fontSize: 11, fontWeight: '800' },
+  urlPlainText: { color: '#1d4ed8', fontSize: 11, fontWeight: '700' },
   cardUser: { color: 'rgba(226,232,240,0.86)', fontSize: 13, fontWeight: '700' },
   cardFooter: { color: 'rgba(226,232,240,0.64)', fontSize: 11, textAlign: 'center' },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 16, width: '100%', maxWidth: 340 },
+  actionsCol: { marginTop: 16, width: '100%', maxWidth: 356, gap: 10 },
+  actionsRow: { flexDirection: 'row', gap: 10 },
   btn: {
     flex: 1,
     paddingVertical: 14,
@@ -419,12 +450,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnPrimary: { backgroundColor: '#1a77e0' },
-  btnPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  btnPrimary: { backgroundColor: '#1a77e0', shadowColor: '#1a77e0', shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  btnPrimaryText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   btnSecondary: {
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(0,212,255,0.06)',
     borderWidth: 1,
     borderColor: '#2a3a52',
   },
-  btnSecondaryText: { color: '#00d4ff', fontWeight: '600', fontSize: 15 },
+  btnSecondaryText: { color: '#00d4ff', fontWeight: '700', fontSize: 14 },
 });

@@ -8,9 +8,9 @@
  */
 import React from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl,
+  View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, TouchableOpacity,
 } from 'react-native';
-import { useRoute, type RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { useColors, useThemedStyles, type Palette } from '../../theme/useTheme';
 import { useI18n } from '../../stores/i18nStore';
@@ -22,11 +22,13 @@ import {
 } from '../../services/agentOpsApi';
 import type { MeStackParamList } from '../../navigation/types';
 import { AgentEconomicIdentityCard } from '../../components/agent/AgentEconomicIdentityCard';
+import { SOUL_CORE_VIEW_ENABLED } from '../../services/soulCoreApi';
 
 type EcoRoute = RouteProp<MeStackParamList, 'AgentOpsEconomicStatus'>;
 
 export function AgentEconomicStatusScreen() {
   const route = useRoute<EcoRoute>();
+  const navigation = useNavigation<any>();
   const c = useColors();
   const styles = useThemedStyles(makeStyles);
   const { t } = useI18n();
@@ -72,6 +74,17 @@ export function AgentEconomicStatusScreen() {
         <Text style={styles.empty}>{t({ en: 'Failed to load economic status.', zh: '加载经济身份状态失败。' })}</Text>
       ) : (
         <>
+          {/* 元神视图入口（flag 门控，默认关；开时可进六锚元神视图） */}
+          {SOUL_CORE_VIEW_ENABLED ? (
+            <TouchableOpacity
+              testID="ao-open-soul-core"
+              onPress={() => navigation.navigate('SoulCoreView', { agentId: agentId as string })}
+              style={styles.soulCoreEntry}
+            >
+              <Text style={styles.soulCoreEntryText}>🔮 {t({ en: 'Open Soul Core view', zh: '打开元神视图' })} →</Text>
+            </TouchableOpacity>
+          ) : null}
+
           {/* 具象化：经济身份卡（钱包/备份/链上/信用/赚取/可交易 + 分享） */}
           <AgentEconomicIdentityCard agentId={agentId as string} />
           <View style={{ height: 8 }} />
@@ -269,5 +282,7 @@ function makeStyles(c: Palette) {
     capTitle: { fontSize: 15, fontWeight: '700', color: c.textPrimary },
     capRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
     capKey: { fontSize: 13, color: c.textSecondary, flex: 1 },
+    soulCoreEntry: { padding: 12, borderRadius: 12, backgroundColor: c.accent + '18', borderWidth: 1, borderColor: c.accent + '44', alignItems: 'center' },
+    soulCoreEntryText: { fontSize: 14, fontWeight: '800', color: c.accent },
   });
 }

@@ -5,6 +5,14 @@
  * 每个 Agent = OpenClawInstance + AgentAccount（1:1 绑定）。
  */
 import { apiFetch } from './api';
+// world-growth-mobile-experience · task 8.2 (R6.1/6.6) —— 会话式创作结果解析的**单一来源**。
+// unifiedAgent 与 openclaw.service 两条传输共用同一 `extractConversationalCreate`，
+// 使 AgentChatScreen 无论结果来自哪条 chat 路径都以一致字段与渲染呈现（AGENTS.md 硬规则 2）。
+export {
+  extractConversationalCreate,
+  toolNameToConversationalCreateKind,
+  type ParsedConversationalCreate,
+} from '../../shared/types/conversational-create';
 
 export interface UnifiedAgent {
   id: string;              // OpenClawInstance.id

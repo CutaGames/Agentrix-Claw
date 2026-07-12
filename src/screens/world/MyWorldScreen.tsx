@@ -29,6 +29,7 @@ import {
 } from '../../services/creationApi';
 import type { Creation } from '../../../shared/types/creation';
 import { themedStyles } from '../../theme/useTheme';
+import FulfillmentPanel from './components/FulfillmentPanel';
 
 export default function MyWorldScreen() {
   const { t } = useI18n();
@@ -154,6 +155,10 @@ export default function MyWorldScreen() {
           </View>
         ))
       )}
+
+      {/* 履约:买家「我的订单/凭证」+ 卖家「待履约/待核销」(world-shop-fulfillment task 5 · R5.2/5.3/5.4) */}
+      <Text style={styles.sectionTitle}>🧾 {t({ en: 'Orders & Fulfillment', zh: '订单与履约' })}</Text>
+      <FulfillmentPanel />
 
       {/* Agent 代付额度(需求 13.4) */}
       <Text style={styles.sectionTitle}>🤖 {t({ en: 'Agent Spending Budget', zh: 'Agent 代付额度' })}</Text>

@@ -65,6 +65,15 @@ import { LsmCards, type LsmCard } from '../../components/lsm/LsmCards';
 import { detectLsmIntent, filterMarketsByQuery } from '../../services/lsmChatIntent';
 import { lsmToolResultToCard } from '../../services/lsmToolCard';
 import { lsmApi } from '../../services/lsm.api';
+// world-growth-mobile-experience · task 8.2 (R6.1/6.2/6.3/6.6) —— 对话式创作结果卡片。
+// create_shop/create_place 的 tool_result（流式）或 toolCalls（非流式）经**跨端单一来源**
+// `extractConversationalCreate` 解析为 4-state ConversationalCreateResult，挂到助手气泡内联
+// 渲染 ConversationalCreateCard；两条 chat 路径 envelope 一致，故渲染完全一致（AGENTS.md 硬规则 2）。
+import { ConversationalCreateCard } from '../../components/agent/ConversationalCreateCard';
+import {
+  extractConversationalCreate,
+  type ParsedConversationalCreate,
+} from '../../../shared/types/conversational-create';
 
 // expo-av: graceful degrade if missing
 let Audio: any = null;
@@ -221,6 +230,11 @@ interface Message {
   aggCards?: AggregatedListing[];
   /** 对话内「赛事预测（LSM）」结果卡片（盘口/预览/下单/持仓/平仓）。 */
   lsmCards?: LsmCard[];
+  /**
+   * task 8.2 —— 对话内「会话式创作（create_shop/create_place）」结果卡片
+   * （已开店🎉 + 分享链接 / 追问缺失槽位 / 可读失败理由）。
+   */
+  conversationalCreate?: ParsedConversationalCreate;
 }
 
 function formatAttachmentSize(size?: number | null) {
@@ -1495,6 +1509,28 @@ export function AgentChatScreen() {
       return;
     }
 
+    // task 8.2（R6.1/6.6）：create_shop/create_place 工具结果 → 经单一来源解析为 4-state
+    // ConversationalCreateResult，挂到最近的助手气泡（与 lsm/agg 卡片同一渲染层）。两条
+    // chat 路径均以同一 tool_result envelope 透出，故渲染一致。
+    if (event.type === 'tool_result' && typeof (event as any).toolName === 'string') {
+      const parsed = extractConversationalCreate({
+        toolCalls: [{ name: (event as any).toolName, output: (event as any).result }],
+      });
+      if (parsed) {
+        setMessages((prev) => {
+          for (let i = prev.length - 1; i >= 0; i--) {
+            if (prev[i].role === 'assistant') {
+              const next = [...prev];
+              next[i] = { ...prev[i], conversationalCreate: parsed };
+              return next;
+            }
+          }
+          return prev;
+        });
+        return;
+      }
+    }
+
     if (event.type !== 'done') {
       return;
     }
@@ -2503,6 +2539,14 @@ export function AgentChatScreen() {
                 markAutoContinueNeeded(proxyResult.stopReason);
               }
             }
+            // task 8.2（R6.1/6.6）：非流式路径下 create_shop/create_place 结果经 toolCalls 解析，
+            // 挂到该助手气泡内联渲染 ConversationalCreateCard（与流式路径同一 4-state 契约/渲染）。
+            if (proxyResult?.conversationalCreate) {
+              const parsed = proxyResult.conversationalCreate;
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantMsgId ? { ...m, conversationalCreate: parsed } : m)),
+              );
+            }
           } catch (error: any) {
             proxyFailureMessage = error?.message || proxyFailureMessage || t({ en: 'OpenClaw agent is unavailable right now.', zh: 'OpenClaw 智能体当前不可用。' });
           }
@@ -2927,6 +2971,15 @@ export function AgentChatScreen() {
             {item.lsmCards.map((c, i) => (
               <LsmCards key={`${item.id}-lsm-${i}`} card={c} onFollowUp={(txt) => handleSendRef.current?.(txt)} />
             ))}
+          </View>
+        ) : null}
+        {/* task 8.2 —— 会话式创作结果卡片（四态）：已开店🎉/追问/失败（R6.1/6.2/6.3/6.5） */}
+        {item.conversationalCreate ? (
+          <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
+            <ConversationalCreateCard
+              result={item.conversationalCreate.result}
+              kind={item.conversationalCreate.kind}
+            />
           </View>
         ) : null}
       </View>

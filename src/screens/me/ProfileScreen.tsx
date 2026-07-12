@@ -35,6 +35,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useSoulBirthStore } from '../../stores/soulBirthStore';
 import { useI18n } from '../../stores/i18nStore';
 import { fetchAxpBalance } from '../../services/axp.api';
+import { SOUL_CORE_VIEW_ENABLED } from '../../services/soulCoreApi';
 import { fetchMySubscription, fetchMyQuota, SubscriptionTier } from '../../services/subscription.api';
 import { DesktopBanner } from '../../components/desktop/DesktopBanner';
 import type { MeStackParamList } from '../../navigation/types';
@@ -275,8 +276,27 @@ export function ProfileScreen() {
         </View>
       ) : null}
 
+      {/* ── Agent 主权：授权中枢一级入口（S1）── */}
+      <Section title={t({ en: 'Agent Sovereignty', zh: 'Agent 主权' })}>
+        <MenuItem
+          icon="🛡️"
+          label={t({ en: 'Authorization Center', zh: '授权中枢' })}
+          onPress={() => navigation.navigate('SovereigntyControlPlane')}
+          testID="me-authorization-center"
+        />
+        <MenuItem
+          icon="💰"
+          label={t({ en: 'Earnings Center', zh: '收益中心' })}
+          onPress={() => navigation.navigate('PetEarnings')}
+          testID="me-earnings-center"
+        />
+      </Section>
+
       {/* ── 4. My & Promote ─────────────────────────── */}
       <Section title={t({ en: 'My stuff', zh: '我的' })}>
+        {SOUL_CORE_VIEW_ENABLED ? (
+          <MenuItem icon="🔮" label={t({ en: 'Soul Core', zh: '元神' })} onPress={() => navigation.navigate('SoulCoreView', {})} testID="me-soul-core" />
+        ) : null}
         <MenuItem icon="📦" label={t({ en: 'Orders', zh: '订单' })} onPress={() => navigation.navigate('MyOrders')} testID="me-orders" />
         <MenuItem icon="⚡" label={t({ en: 'Installed Skills', zh: '已装技能' })} onPress={() => navigation.navigate('MySkills')} testID="me-skills" />
         <MenuItem icon="🛠" label={t({ en: 'Agent Ops', zh: 'Agent 自运营' })} onPress={() => navigation.navigate('AgentOpsHub')} testID="me-agent-ops" />

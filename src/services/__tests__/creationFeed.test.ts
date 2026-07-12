@@ -22,7 +22,11 @@ import {
   recycledIndices,
   FEED_PRELOAD_LOOKAHEAD,
   FEED_RENDER_WINDOW_RADIUS,
+  isRenderableCover,
+  coverDisplayState,
+  prioritizeRenderableCovers,
 } from '../creationFeed';
+import { isRenderableCover as sharedIsRenderableCover } from '../../../shared/types/creation-cover';
 import type { CreationDiscoveryItem, Offering } from '../../../shared/types/creation';
 
 const NOW = 1_000_000_000_000;
@@ -312,5 +316,135 @@ describe('recycledIndices (离屏回收)', () => {
 
   it('empty for empty list', () => {
     expect(recycledIndices(0, 0)).toEqual([]);
+  });
+});
+
+// ============================================================
+// world-growth-mobile-experience · task 5.1
+// creationFeed 的封面纯函数：isRenderableCover 复用 + coverDisplayState 三态判定
+// spec: .kiro/specs/world-growth-mobile-experience/{requirements,design}.md（R7.5）
+// ============================================================
+
+describe('creationFeed.isRenderableCover — 复用 task 1.1 单一口径（不重复实现）', () => {
+  it('是 shared/types/creation-cover 的同一函数引用（单一来源，口径不漂移）', () => {
+    expect(isRenderableCover).toBe(sharedIsRenderableCover);
+  });
+
+  it('https:// → true；generated:// / 空 / http:// → false（对齐 1.1 口径）', () => {
+    expect(isRenderableCover('https://cdn.agentrix.top/covers/abc.png')).toBe(true);
+    expect(isRenderableCover('generated://cover/tpl-coffee@1')).toBe(false);
+    expect(isRenderableCover('')).toBe(false);
+    expect(isRenderableCover('http://example.com/x.png')).toBe(false);
+    expect(isRenderableCover(undefined)).toBe(false);
+    expect(isRenderableCover(null)).toBe(false);
+  });
+});
+
+describe('creationFeed.coverDisplayState — 封面三态判定（永不黑屏 · R7.5）', () => {
+  const HTTPS = 'https://cdn.agentrix.top/covers/abc.png';
+
+  describe('优先级 1：error 压倒一切', () => {
+    it('failed=true 且 URL 可渲染 → error（加载失败即兜底，不停在 success/loading）', () => {
+      expect(coverDisplayState({ url: HTTPS, failed: true })).toBe('error');
+      expect(coverDisplayState({ url: HTTPS, failed: true, loading: true })).toBe('error');
+    });
+
+    it('URL 不可渲染 → error（即便 loading=true，也不空等骨架）', () => {
+      expect(coverDisplayState({ url: 'generated://cover/x@1' })).toBe('error');
+      expect(coverDisplayState({ url: 'generated://cover/x@1', loading: true })).toBe('error');
+      expect(coverDisplayState({ url: '' })).toBe('error');
+      expect(coverDisplayState({ url: 'http://example.com/x.png' })).toBe('error');
+      expect(coverDisplayState({ url: null })).toBe('error');
+      expect(coverDisplayState({ url: undefined })).toBe('error');
+      expect(coverDisplayState({})).toBe('error');
+    });
+  });
+
+  describe('优先级 2：loading（可渲染、未失败、仍在加载）', () => {
+    it('https URL + loading=true + 未失败 → loading（骨架/模糊占位）', () => {
+      expect(coverDisplayState({ url: HTTPS, loading: true })).toBe('loading');
+      expect(coverDisplayState({ url: HTTPS, loading: true, failed: false })).toBe('loading');
+    });
+  });
+
+  describe('优先级 3：success（可渲染、未失败、未加载）', () => {
+    it('https URL + 未加载 + 未失败 → success（渲染真图）', () => {
+      expect(coverDisplayState({ url: HTTPS })).toBe('success');
+      expect(coverDisplayState({ url: HTTPS, loading: false, failed: false })).toBe('success');
+    });
+  });
+
+  it('三态对任意输入都有定义（穷尽）→ CreationCard 永远有可渲染分支，绝不黑屏', () => {
+    const cases = [
+      { url: HTTPS },
+      { url: HTTPS, loading: true },
+      { url: HTTPS, failed: true },
+      { url: 'generated://cover/x@1' },
+      { url: '' },
+      { url: null },
+      { url: undefined },
+      {},
+    ];
+    for (const c of cases) {
+      expect(['loading', 'error', 'success']).toContain(coverDisplayState(c));
+    }
+  });
+});
+
+// ============================================================
+// world-growth-mobile-experience · task 9.2
+// prioritizeRenderableCovers — 首屏封面优先级(不硬过滤,稳定前置真实封面)
+// spec: .kiro/specs/world-growth-mobile-experience/{requirements,design}.md（R7.3/R7.4）
+// ============================================================
+
+describe('prioritizeRenderableCovers — 首屏真实封面前置(R7.3,不掏空 Feed)', () => {
+  const cov = (id: string, url: string): Pick<CreationDiscoveryItem, 'preview'> & { id: string } => ({
+    id,
+    preview: { kind: 'cover', url },
+  });
+  const HTTPS_A = 'https://cdn.agentrix.top/a.png';
+  const HTTPS_B = 'https://cdn.agentrix.top/b.png';
+  const HANDLE = 'generated://cover/tpl@1';
+
+  it('把可渲染封面(https)的项稳定前置,不可渲染的项保留在后', () => {
+    const input = [
+      cov('p1', HANDLE),
+      cov('r1', HTTPS_A),
+      cov('p2', ''),
+      cov('r2', HTTPS_B),
+    ];
+    expect(prioritizeRenderableCovers(input).map((i) => i.id)).toEqual(['r1', 'r2', 'p1', 'p2']);
+  });
+
+  it('不丢项:输出长度 === 输入长度(回填前不掏空 Feed)', () => {
+    const input = [cov('p1', HANDLE), cov('r1', HTTPS_A), cov('p2', 'http://x/y.png')];
+    expect(prioritizeRenderableCovers(input)).toHaveLength(input.length);
+  });
+
+  it('稳定:两组各自保持输入相对顺序', () => {
+    const input = [
+      cov('r1', HTTPS_A),
+      cov('p1', HANDLE),
+      cov('r2', HTTPS_B),
+      cov('p2', ''),
+    ];
+    expect(prioritizeRenderableCovers(input).map((i) => i.id)).toEqual(['r1', 'r2', 'p1', 'p2']);
+  });
+
+  it('幂等:对已排好序的列表再次调用不改变顺序', () => {
+    const once = prioritizeRenderableCovers([cov('p1', HANDLE), cov('r1', HTTPS_A)]);
+    const twice = prioritizeRenderableCovers(once);
+    expect(twice.map((i) => i.id)).toEqual(once.map((i) => i.id));
+  });
+
+  it('不修改原数组(纯函数)', () => {
+    const input = [cov('p1', HANDLE), cov('r1', HTTPS_A)];
+    const snapshot = input.map((i) => i.id);
+    prioritizeRenderableCovers(input);
+    expect(input.map((i) => i.id)).toEqual(snapshot);
+  });
+
+  it('空数组 → 空数组', () => {
+    expect(prioritizeRenderableCovers([])).toEqual([]);
   });
 });

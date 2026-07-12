@@ -39,9 +39,52 @@ import {
 } from '../../services/creationApi';
 import type { CreationType } from '../../../shared/types/creation';
 import type { McpToolDescriptor } from '../../../shared/types/creation';
+import type { Fulfillment, FulfillmentType } from '../../../shared/types/creation';
 import type { SubstrateTier } from '../../../shared/types/world-creation';
 import type { CreationMode } from '../../../shared/types/world-creation-api';
 import { themedStyles } from '../../theme/useTheme';
+
+/** 店铺商品编辑行（含「如何交付」声明,world-shop-fulfillment R1.4）。 */
+interface ProductRow {
+  name: string;
+  priceAxp: string;
+  description: string;
+  /** 交付方式:voucher（数字凭证）/ agent（Agent 履约）/ support（支持创作者）/ manual（手动交付）。 */
+  deliveryType: FulfillmentType;
+  /** voucher·auto 模式的可发放库存（deliveryType==='voucher' 且未填码表时用）。 */
+  voucherStock: string;
+  /** voucher·list 模式的预置兑换码（每行一条；填写则库存=码数量）。 */
+  voucherCodes: string;
+}
+
+/** 「如何交付」候选（创作器 UI 采集,R1.4）。 */
+const DELIVERY_TYPES: { value: FulfillmentType; emoji: string; label: { en: string; zh: string } }[] = [
+  { value: 'voucher', emoji: '🎟️', label: { en: 'Voucher', zh: '数字凭证' } },
+  { value: 'agent', emoji: '🤖', label: { en: 'Agent', zh: 'Agent 履约' } },
+  { value: 'support', emoji: '💗', label: { en: 'Support', zh: '支持创作者' } },
+  { value: 'manual', emoji: '✍️', label: { en: 'Manual', zh: '手动交付' } },
+];
+
+/**
+ * 由编辑行构造一份合法 fulfillment 声明（与后端 sanitizeFulfillment / 质量门口径一致）。
+ * voucher:填了码表 → list 模式（库存=码数）；否则 auto 模式（用 voucherStock）。
+ */
+function buildFulfillment(p: ProductRow): Fulfillment {
+  if (p.deliveryType === 'voucher') {
+    const codes = p.voucherCodes
+      .split(/\r?\n/)
+      .map((c) => c.trim())
+      .filter((c) => c.length > 0);
+    if (codes.length > 0) {
+      return { type: 'voucher', voucher: { stock: codes.length, codeMode: 'list', codes } };
+    }
+    const stock = Math.max(0, Math.floor(Number(p.voucherStock) || 0));
+    return { type: 'voucher', voucher: { stock, codeMode: 'auto' } };
+  }
+  if (p.deliveryType === 'agent') return { type: 'agent', agent: { verb: 'message' } };
+  if (p.deliveryType === 'support') return { type: 'support' };
+  return { type: 'manual' };
+}
 
 const TYPES: { value: CreationType; emoji: string; label: { en: string; zh: string } }[] = [
   // game 置顶为默认(当前最成熟、真实可玩的类型)。
@@ -93,9 +136,10 @@ export default function CreationCreatorScreen() {
   const [embedUrl, setEmbedUrl] = useState('');
   const [embedding, setEmbedding] = useState(false);
   const [artBusy, setArtBusy] = useState(false);
-  // 店铺商品编辑(type==='shop'):简单 {name, priceAxp, description} 行。
-  const [products, setProducts] = useState<Array<{ name: string; priceAxp: string; description: string }>>([
-    { name: '', priceAxp: '', description: '' },
+  // 店铺商品编辑(type==='shop'):{name, priceAxp, description} + 「如何交付」声明
+  // (world-shop-fulfillment R1.4):deliveryType + voucher 库存/码。
+  const [products, setProducts] = useState<ProductRow[]>([
+    { name: '', priceAxp: '', description: '', deliveryType: 'voucher', voucherStock: '', voucherCodes: '' },
   ]);
   const [savingProducts, setSavingProducts] = useState(false);
 
@@ -126,8 +170,14 @@ export default function CreationCreatorScreen() {
   const onSaveProducts = useCallback(async () => {
     if (!creationId) return;
     const items = products
-      .map((p) => ({ name: p.name.trim(), priceAxp: Math.max(0, Math.round(Number(p.priceAxp) || 0)), description: p.description.trim() || undefined }))
-      .filter((p) => p.name);
+      .filter((p) => p.name.trim())
+      .map((p) => ({
+        name: p.name.trim(),
+        priceAxp: Math.max(0, Math.round(Number(p.priceAxp) || 0)),
+        description: p.description.trim() || undefined,
+        // 「如何交付」声明随商品一并保存（R1.4）。
+        fulfillment: buildFulfillment(p),
+      }));
     if (items.length === 0) {
       Alert.alert(t({ en: 'Add a product', zh: '先加个商品' }), t({ en: 'Enter at least one product name.', zh: '至少填一个商品名称。' }));
       return;
@@ -378,24 +428,6 @@ export default function CreationCreatorScreen() {
           ))}
         </View>
 
-        {/* task 4.6：扫描实物创作入口（📷）。走多角度扫描 → 质量门 → 资产生成，
-            而非"单张原图直接当角色"（质量门在扫描/重建管线内强制，不达标不出成品）。 */}
-        <TouchableOpacity
-          style={styles.scanEntry}
-          onPress={() => navigation.navigate('WorldEngineScanner', { mode: 'quick' })}
-          testID="creator-scan-entry"
-        >
-          <Text style={styles.scanEntryText}>
-            📷 {t({ en: 'Or: scan a real object', zh: '或：扫描实物生成' })}
-          </Text>
-          <Text style={styles.scanEntryHint}>
-            {t({
-              en: 'Multi-angle capture → quality-gated 3D asset (not a single raw photo).',
-              zh: '多角度采集 → 经质量门生成 3D 资产（非单张原图直接成形）。',
-            })}
-          </Text>
-        </TouchableOpacity>
-
         {/* drama 引导:互动剧 = 分支叙事 + 选择 + AXP 解锁,prompt 给"题材/人设/冲突"。 */}
         {type === 'drama' ? (
           <View style={styles.gameGuide} testID="creator-drama-guide">
@@ -532,26 +564,83 @@ export default function CreationCreatorScreen() {
                   {t({ en: 'Add products with an AXP price. Buyers pay AXP (server-authoritative), credited to you.', zh: '添加带 AXP 价格的商品。买家用 AXP 购买(服务端权威结算),收入归你。' })}
                 </Text>
                 {products.map((p, idx) => (
-                  <View key={idx} style={styles.shopRow}>
-                    <TextInput
-                      style={[styles.input, { flex: 2, marginBottom: 0 }]}
-                      value={p.name}
-                      onChangeText={(v) => setProducts((prev) => prev.map((x, i) => (i === idx ? { ...x, name: v } : x)))}
-                      placeholder={t({ en: 'Product name', zh: '商品名' })}
-                      placeholderTextColor={colors.textMuted}
-                    />
-                    <TextInput
-                      style={[styles.input, { flex: 1, marginBottom: 0 }]}
-                      value={p.priceAxp}
-                      onChangeText={(v) => setProducts((prev) => prev.map((x, i) => (i === idx ? { ...x, priceAxp: v.replace(/[^0-9]/g, '') } : x)))}
-                      placeholder="AXP"
-                      placeholderTextColor={colors.textMuted}
-                      keyboardType="number-pad"
-                    />
+                  <View key={idx} style={styles.productBlock} testID={`creator-shop-product-${idx}`}>
+                    <View style={styles.shopRow}>
+                      <TextInput
+                        style={[styles.input, { flex: 2, marginBottom: 0 }]}
+                        value={p.name}
+                        onChangeText={(v) => setProducts((prev) => prev.map((x, i) => (i === idx ? { ...x, name: v } : x)))}
+                        placeholder={t({ en: 'Product name', zh: '商品名' })}
+                        placeholderTextColor={colors.textMuted}
+                      />
+                      <TextInput
+                        style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                        value={p.priceAxp}
+                        onChangeText={(v) => setProducts((prev) => prev.map((x, i) => (i === idx ? { ...x, priceAxp: v.replace(/[^0-9]/g, '') } : x)))}
+                        placeholder="AXP"
+                        placeholderTextColor={colors.textMuted}
+                        keyboardType="number-pad"
+                      />
+                    </View>
+
+                    {/* 「如何交付」选择(R1.4)。 */}
+                    <Text style={styles.deliveryLabel}>{t({ en: 'How to deliver', zh: '如何交付' })}</Text>
+                    <View style={styles.deliveryRow}>
+                      {DELIVERY_TYPES.map((d) => {
+                        const active = p.deliveryType === d.value;
+                        return (
+                          <TouchableOpacity
+                            key={d.value}
+                            testID={`creator-delivery-${idx}-${d.value}`}
+                            style={[styles.deliveryChip, active && styles.deliveryChipActive]}
+                            onPress={() => setProducts((prev) => prev.map((x, i) => (i === idx ? { ...x, deliveryType: d.value } : x)))}
+                          >
+                            <Text style={[styles.deliveryChipText, active && styles.deliveryChipTextActive]}>
+                              {d.emoji} {t(d.label)}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    {/* voucher 型:库存 / 预置码(R2.1)。填了码表则库存=码数量。 */}
+                    {p.deliveryType === 'voucher' ? (
+                      <View style={styles.voucherConfig}>
+                        <TextInput
+                          testID={`creator-voucher-stock-${idx}`}
+                          style={[styles.input, { marginBottom: 8 }]}
+                          value={p.voucherStock}
+                          onChangeText={(v) => setProducts((prev) => prev.map((x, i) => (i === idx ? { ...x, voucherStock: v.replace(/[^0-9]/g, '') } : x)))}
+                          placeholder={t({ en: 'Stock (auto-generated codes)', zh: '库存(自动生成兑换码)' })}
+                          placeholderTextColor={colors.textMuted}
+                          keyboardType="number-pad"
+                        />
+                        <TextInput
+                          testID={`creator-voucher-codes-${idx}`}
+                          style={[styles.input, { minHeight: 64, textAlignVertical: 'top', marginBottom: 0 }]}
+                          value={p.voucherCodes}
+                          onChangeText={(v) => setProducts((prev) => prev.map((x, i) => (i === idx ? { ...x, voucherCodes: v } : x)))}
+                          placeholder={t({ en: 'Or paste preset codes, one per line', zh: '或粘贴预置兑换码,每行一条' })}
+                          placeholderTextColor={colors.textMuted}
+                          multiline
+                        />
+                        <Text style={styles.deliveryHint}>
+                          {t({ en: 'With preset codes, stock equals the number of codes.', zh: '填写预置码时,库存以码数量为准。' })}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.deliveryHint}>
+                        {p.deliveryType === 'agent'
+                          ? t({ en: 'On purchase, your agent gets a fulfillment task; funds held in escrow until done.', zh: '下单后派发履约任务给你的 Agent;完成前货款托管。' })
+                          : p.deliveryType === 'support'
+                            ? t({ en: 'A support receipt (no goods / no monetary return promised).', zh: '生成"支持创作者"回执(不承诺实物或法币收益)。' })
+                            : t({ en: 'You deliver manually; mark done to release funds.', zh: '你手动交付;标记完成后放款。' })}
+                      </Text>
+                    )}
                   </View>
                 ))}
                 <View style={styles.shopBtns}>
-                  <TouchableOpacity onPress={() => setProducts((prev) => [...prev, { name: '', priceAxp: '', description: '' }])}>
+                  <TouchableOpacity onPress={() => setProducts((prev) => [...prev, { name: '', priceAxp: '', description: '', deliveryType: 'voucher', voucherStock: '', voucherCodes: '' }])}>
                     <Text style={styles.addProductText}>＋ {t({ en: 'Add', zh: '加一行' })}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -761,6 +850,15 @@ const styles = themedStyles(() => StyleSheet.create({
   gameGuide: { backgroundColor: colors.bgCard, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12, marginTop: 10 },
   gameGuideTitle: { color: colors.textPrimary, fontSize: 14, fontWeight: '700', marginBottom: 6 },
   shopRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  productBlock: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginTop: 10 },
+  deliveryLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '700', marginTop: 10, marginBottom: 6 },
+  deliveryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  deliveryChip: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  deliveryChipActive: { borderColor: colors.accent, backgroundColor: 'rgba(59,130,246,0.12)' },
+  deliveryChipText: { color: colors.textMuted, fontSize: 12, fontWeight: '700' },
+  deliveryChipTextActive: { color: colors.accent },
+  voucherConfig: { marginTop: 8 },
+  deliveryHint: { color: colors.textMuted, fontSize: 11, lineHeight: 16, marginTop: 6 },
   shopBtns: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
   addProductText: { color: colors.accent, fontSize: 14, fontWeight: '700' },
   gameGuideText: { color: colors.textSecondary, fontSize: 12, lineHeight: 19 },
@@ -794,11 +892,6 @@ const styles = themedStyles(() => StyleSheet.create({
   cardHint: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: 6 },
   manageBtn: { marginTop: 12, backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
   manageBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-
-  // task 4.6 扫描入口
-  scanEntry: { marginTop: 10, backgroundColor: colors.bgCard, borderRadius: 12, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed', padding: 12 },
-  scanEntryText: { color: colors.textPrimary, fontSize: 14, fontWeight: '700' },
-  scanEntryHint: { color: colors.textMuted, fontSize: 11, lineHeight: 16, marginTop: 4 },
 
   // task 4.5 自动派生面板
   derivedBox: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },

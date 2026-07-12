@@ -72,6 +72,12 @@ import type {
   BindCreationPoiResponse,
   CheckinCreationRequest,
   CheckinCreationResponse,
+  // §12 履约视图(world-shop-fulfillment task 5)
+  MyFulfillmentOrdersResponse,
+  MyFulfillmentVouchersResponse,
+  SellingFulfillmentOrdersResponse,
+  RedeemVoucherResponse,
+  FulfillmentOrderStatus,
 } from '../../shared/types/creation-api';
 
 import type {
@@ -647,10 +653,18 @@ export async function tipCreation(
   );
 }
 
-/** 设置店铺商品(owner):简单 {name, priceAxp, description} 列表。 */
+/**
+ * 设置店铺商品(owner):{name, priceAxp, description} + 可选「如何交付」声明
+ * （world-shop-fulfillment R1.4）。fulfillment 随 offering 一并保存，供质量门约束与履约引擎使用。
+ */
 export async function setCreationOfferings(
   id: string,
-  offerings: Array<{ name: string; priceAxp: number; description?: string }>,
+  offerings: Array<{
+    name: string;
+    priceAxp: number;
+    description?: string;
+    fulfillment?: import('../../shared/types/creation').Fulfillment;
+  }>,
 ): Promise<{ ok: boolean; count: number }> {
   return unified<{ ok: boolean; count: number }>(`/${encodeURIComponent(id)}/offerings`, {
     method: 'POST',
@@ -667,6 +681,38 @@ export async function purchaseCreation(
   return unified<{ ok: boolean; amount: number; offeringId: string; toAccountId: string }>(
     `/${encodeURIComponent(id)}/purchase`,
     { method: 'POST', body: JSON.stringify({ offeringId, qty }) },
+  );
+}
+
+// ============================================================
+// §12 履约视图:买家「我的订单/凭证」· 卖家「待履约/待核销」· 核销 voucher
+// world-shop-fulfillment task 5 · R5.2/5.3/5.4 —— 单一履约引擎的读侧视图。
+// ============================================================
+
+/** 买家「我的订单/凭证」：本人全部订单，含凭证 code、履约状态、托管状态（R5.2）。 */
+export async function listMyOrders(): Promise<MyFulfillmentOrdersResponse> {
+  return unified<MyFulfillmentOrdersResponse>(`/orders/mine`);
+}
+
+/** 买家「我的凭证」：本人全部凭证（凭证钱包，R5.2）。 */
+export async function listMyVouchers(): Promise<MyFulfillmentVouchersResponse> {
+  return unified<MyFulfillmentVouchersResponse>(`/vouchers/mine`);
+}
+
+/** 卖家「待履约/待核销」：本人为卖家的订单，可按状态过滤（R5.3）。 */
+export async function listSellingOrders(
+  status?: FulfillmentOrderStatus,
+): Promise<SellingFulfillmentOrdersResponse> {
+  return unified<SellingFulfillmentOrdersResponse>(
+    `/orders/selling${toQuery({ status })}`,
+  );
+}
+
+/** 卖家核销一张 voucher（仅卖家可核销，至多一次；R5.3 / Property 4）。 */
+export async function redeemVoucher(voucherId: string): Promise<RedeemVoucherResponse> {
+  return unified<RedeemVoucherResponse>(
+    `/vouchers/${encodeURIComponent(voucherId)}/redeem`,
+    { method: 'POST' },
   );
 }
 
