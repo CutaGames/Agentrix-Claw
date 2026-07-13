@@ -376,9 +376,6 @@ export default function LeverageSportsMarketScreen() {
         <TouchableOpacity style={styles.walletBtn} onPress={() => setWalletOpen(true)} testID="lsm-wallet-entry">
           <Text style={styles.walletBtnText}>{tr('Wallet', '钱包/充提')}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.walletBtn} onPress={() => setRgOpen(true)} testID="lsm-rg-entry">
-          <Text style={styles.walletBtnText}>{tr('Limits', '责任博彩')}</Text>
-        </TouchableOpacity>
       </View>
       <ResponsibleGamblingPanel visible={rgOpen} onClose={() => setRgOpen(false)} />
 
@@ -414,6 +411,11 @@ export default function LeverageSportsMarketScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           contentContainerStyle={styles.list}
           ListEmptyComponent={<Empty text={tr('No bets yet', '暂无持仓')} />}
+          ListFooterComponent={
+            <TouchableOpacity style={styles.rgLinkWrap} onPress={() => setRgOpen(true)} testID="lsm-rg-entry">
+              <Text style={styles.rgLink}>{tr('Limits & self-control', '限额与自控')}</Text>
+            </TouchableOpacity>
+          }
           renderItem={({ item }) => (
             <OrderCard
               order={item}
@@ -1470,6 +1472,9 @@ const styles = StyleSheet.create({
   balancePillVal: { fontSize: 14, fontWeight: '800', color: colors.text },
   walletBtn: { backgroundColor: colors.primary, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
   walletBtnText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  // 低调的「限额与自控」入口（放在持仓页底部，非显眼位置）
+  rgLinkWrap: { alignItems: 'center', paddingVertical: 18 },
+  rgLink: { color: colors.textSecondary, fontSize: 12, textDecorationLine: 'underline' },
   // WalletModal
   walletBalRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   walletBalCard: { flex: 1, backgroundColor: colors.background, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },

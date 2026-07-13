@@ -10,16 +10,17 @@
  * agent id 解析：route param → activeInstance.agentAccountId。
  */
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, TouchableOpacity, Share } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, TouchableOpacity, Share, Modal, Linking } from 'react-native';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { useColors, useThemedStyles, type Palette } from '../../theme/useTheme';
 import { useI18n } from '../../stores/i18nStore';
 import { useAuthStore } from '../../stores/authStore';
 import {
-  fetchSoulCoreView, fetchAgentDid, fetchReputationVcs,
-  SOUL_CORE_DID_ENABLED, SOUL_CORE_VC_ENABLED,
+  fetchSoulCoreView, fetchAgentDid, fetchReputationVcs, fetchReputationVerification, txExplorerUrl,
+  SOUL_CORE_DID_ENABLED, SOUL_CORE_VC_ENABLED, SOUL_CORE_VERIFY_ENABLED,
   type SoulCoreViewDTO, type AnchorState, type EnforcedBy, type AgentDidDto, type ReputationVcItem,
+  type ReputationVerificationDto,
 } from '../../services/soulCoreApi';
 import { AgentEconomicIdentityCard } from '../../components/agent/AgentEconomicIdentityCard';
 import type { MeStackParamList } from '../../navigation/types';
@@ -63,6 +64,13 @@ export function SoulCoreViewScreen() {
     enabled: !!agentId && SOUL_CORE_VC_ENABLED,
     retry: 0,
   });
+  // W3/W4：开放复验材料(复验抽屉数据源;404/失败 → 不显示复验入口)
+  const verifyQ = useQuery({
+    queryKey: ['soul-core-verify', agentId],
+    queryFn: () => fetchReputationVerification(agentId as string),
+    enabled: !!agentId && SOUL_CORE_VERIFY_ENABLED,
+    retry: 0,
+  });
 
   if (!agentId) {
     return (
@@ -93,14 +101,14 @@ export function SoulCoreViewScreen() {
       {q.isLoading || !v ? (
         <ActivityIndicator color={c.accent} style={{ marginTop: 24 }} />
       ) : (
-        <SoulCoreContent v={v} styles={styles} c={c} t={t} did={didQ.data ?? null} vcs={vcQ.data?.items ?? null} onEditLimit={() => navigation.navigate('SovereigntyControlPlane', { agentAccountId: agentId })} />
+        <SoulCoreContent v={v} styles={styles} c={c} t={t} did={didQ.data ?? null} vcs={vcQ.data?.items ?? null} verify={verifyQ.data ?? null} onEditLimit={() => navigation.navigate('SovereigntyControlPlane', { agentAccountId: agentId })} />
       )}
     </ScrollView>
   );
 }
 
 function SoulCoreContent({
-  v, styles, c, t, did, vcs, onEditLimit,
+  v, styles, c, t, did, vcs, verify, onEditLimit,
 }: {
   v: SoulCoreViewDTO;
   styles: ReturnType<typeof makeStyles>;
@@ -108,8 +116,10 @@ function SoulCoreContent({
   t: (d: { en: string; zh: string }) => string;
   did: AgentDidDto | null;
   vcs: ReputationVcItem[] | null;
+  verify: ReputationVerificationDto | null;
   onEditLimit: () => void;
 }) {
+  const [verifyOpen, setVerifyOpen] = React.useState(false);
   const share = async () => {
     const lines = [
       '这是我拥有的 agent 本体 · 元神 🔮',
@@ -162,7 +172,9 @@ function SoulCoreContent({
           ) : a.state === 'roadmap' ? (
             <Text style={styles.roadmapNote}>{a.roadmapNote || t({ en: 'Roadmap capability.', zh: '路线图能力，敬请期待。' })}</Text>
           ) : (
-            <AnchorSummary anchor={a} styles={styles} t={t} did={did} vcs={vcs} />
+            <AnchorSummary anchor={a} styles={styles} t={t} did={did} vcs={vcs}
+              canVerify={!!(verify && verify.items && verify.items.length > 0)}
+              onOpenVerify={() => setVerifyOpen(true)} />
           )}
         </View>
       ))}
@@ -173,7 +185,86 @@ function SoulCoreContent({
           <Text key={i} style={styles.disclosure}>· {d}</Text>
         ))}
       </View>
+
+      {/* 开放复验抽屉(与 web VerifyDrawer + tools/verify-reputation 对齐) */}
+      <VerifyModal visible={verifyOpen} onClose={() => setVerifyOpen(false)} data={verify} t={t} styles={styles} />
     </>
+  );
+}
+
+/**
+ * 复验抽屉(RN Modal):展示 DID / issuer 公钥历史 / 每条锚点引用(batchId/tx/merkleProof)
+ * + "如何独立复验"说明(指向 tools/verify-reputation,不依赖平台)。含空/未锚诚实标注。
+ */
+function VerifyModal({
+  visible, onClose, data, t, styles,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  data: ReputationVerificationDto | null;
+  t: (d: { en: string; zh: string }) => string;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const items = data?.items ?? [];
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <View style={styles.cardHead}>
+            <Text style={styles.cardTitle}>🔍 {t({ en: 'How to verify independently', zh: '如何独立复验' })}</Text>
+            <TouchableOpacity onPress={onClose} testID="verify-close"><Text style={styles.linkBtnText}>{t({ en: 'Close', zh: '关闭' })}</Text></TouchableOpacity>
+          </View>
+          <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ gap: 10, paddingVertical: 8 }}>
+            {data?.did ? (
+              <View>
+                <Text style={styles.rowLabel}>DID</Text>
+                <Text style={styles.mono} selectable>{data.did}</Text>
+              </View>
+            ) : null}
+            {data?.issuerKeyHistory?.length ? (
+              <View>
+                <Text style={styles.rowLabel}>{t({ en: 'Issuer public keys', zh: 'issuer 公钥历史' })}</Text>
+                {data.issuerKeyHistory.map((k, i) => (
+                  <Text key={i} style={styles.mono} selectable>{k.version}: {k.address}</Text>
+                ))}
+              </View>
+            ) : null}
+
+            {items.length === 0 ? (
+              <Text style={styles.rowLabel}>{t({ en: 'No verifiable credentials yet.', zh: '暂无可复验凭证。' })}</Text>
+            ) : items.slice(0, 8).map((m, i) => {
+              const url = txExplorerUrl(m.chainId, m.anchorTxHash);
+              return (
+                <View key={i} style={styles.verifyItem}>
+                  <Text style={styles.rowValue}>
+                    {(m.publicCredential?.kind === 'settlement' ? t({ en: 'Settlement', zh: '结算' }) : t({ en: 'Fulfillment', zh: '履约' }))}
+                    {'  '}
+                    <Text style={{ color: m.anchorStatus === 'anchored' ? '#16a34a' : '#d97706' }}>
+                      {m.anchorStatus === 'anchored' ? '✓ ' + t({ en: 'anchored', zh: '已锚定' }) : t({ en: 'not anchored', zh: '未锚定' })}
+                    </Text>
+                  </Text>
+                  {m.batchId ? <Text style={styles.miniMono} selectable>batch #{m.batchId}</Text> : null}
+                  {m.leaf ? <Text style={styles.miniMono} selectable>leaf {m.leaf.slice(0, 18)}…</Text> : null}
+                  {url ? (
+                    <TouchableOpacity onPress={() => Linking.openURL(url)}>
+                      <Text style={styles.linkBtnText}>{t({ en: 'View anchor tx on explorer →', zh: '在区块浏览器看锚点 tx →' })}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              );
+            })}
+
+            {items[0]?.howToVerify ? (
+              <View style={styles.howToBox}>
+                <Text style={styles.rowLabel}>{t({ en: 'Verify steps (no platform trust)', zh: '复验步骤(不依赖平台)' })}</Text>
+                <Text style={styles.disclosure}>{items[0].howToVerify}</Text>
+                <Text style={styles.disclosure}>tools/verify-reputation</Text>
+              </View>
+            ) : null}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -187,7 +278,7 @@ function EnforcedByTag({ enforcedBy, styles }: { enforcedBy: EnforcedBy; styles:
   return <Text style={[styles.enforcedTag, m.style]}>{m.icon} {m.label}</Text>;
 }
 
-function AnchorSummary({ anchor, styles, t, did, vcs }: { anchor: SoulCoreViewDTO['anchors'][number]; styles: ReturnType<typeof makeStyles>; t: (d: { en: string; zh: string }) => string; did?: AgentDidDto | null; vcs?: ReputationVcItem[] | null }) {
+function AnchorSummary({ anchor, styles, t, did, vcs, canVerify, onOpenVerify }: { anchor: SoulCoreViewDTO['anchors'][number]; styles: ReturnType<typeof makeStyles>; t: (d: { en: string; zh: string }) => string; did?: AgentDidDto | null; vcs?: ReputationVcItem[] | null; canVerify?: boolean; onOpenVerify?: () => void }) {
   const s = anchor.summary || {};
   switch (anchor.key) {
     case 'identity':
@@ -232,6 +323,11 @@ function AnchorSummary({ anchor, styles, t, did, vcs }: { anchor: SoulCoreViewDT
           ) : (
             <Text style={styles.roadmapChip}>🎖️ {t({ en: 'Hardware-backed reputation VC', zh: '硬件背书信誉凭证 VC' })} · {t({ en: 'roadmap', zh: '路线图' })}</Text>
           )}
+          {canVerify ? (
+            <TouchableOpacity onPress={onOpenVerify} style={styles.linkBtn} testID="open-verify-drawer">
+              <Text style={styles.linkBtnText}>🔍 {t({ en: 'How to verify independently →', zh: '如何独立复验 →' })}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       );
     case 'ownership':
@@ -290,6 +386,11 @@ function makeStyles(c: Palette) {
     linkBtn: { marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: c.accent + '22', borderWidth: 1, borderColor: c.accent + '55' },
     linkBtnText: { fontSize: 12, fontWeight: '800', color: c.accent },
     disclosure: { fontSize: 11, color: c.textMuted, lineHeight: 16 },
+    modalBackdrop: { flex: 1, backgroundColor: '#000000aa', justifyContent: 'flex-end' },
+    modalCard: { backgroundColor: c.bgCard, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, borderWidth: 1, borderColor: c.border, gap: 8 },
+    verifyItem: { padding: 10, borderRadius: 10, backgroundColor: c.bgPrimary, borderWidth: 1, borderColor: c.border, gap: 4 },
+    miniMono: { fontSize: 11, color: c.textSecondary, fontFamily: 'monospace' },
+    howToBox: { padding: 10, borderRadius: 10, backgroundColor: c.accent + '12', borderWidth: 1, borderColor: c.accent + '33', gap: 4 },
   });
 }
 

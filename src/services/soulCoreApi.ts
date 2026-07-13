@@ -16,6 +16,8 @@ export const SOUL_CORE_VIEW_ENABLED = true;
 /** M2 前端入口开关：身份锚 DID / 信誉锚 VC（放量开启；后端端点 flag 关时前端自动回退占位）。 */
 export const SOUL_CORE_DID_ENABLED = true;
 export const SOUL_CORE_VC_ENABLED = true;
+/** W3/W4 · 开放复验材料入口(与 web console 对齐；后端 flag 关 → 404 → 回退)。 */
+export const SOUL_CORE_VERIFY_ENABLED = true;
 
 export type EnforcedBy = 'software' | 'onchain-AA' | 'SE';
 export type AnchorState = 'enabled' | 'pending' | 'failed' | 'not_enabled' | 'roadmap';
@@ -83,4 +85,46 @@ export async function fetchReputationVcs(agentId: string): Promise<{ did: string
   return unwrap<{ did: string | null; items: ReputationVcItem[] }>(
     await apiFetch(`/agent-accounts/${agentId}/reputation-vcs`),
   );
+}
+
+// ── W3/W4：开放复验材料(与 tools/verify-reputation + web VerifyDrawer 对齐) ──
+
+export interface VerificationMaterial {
+  did: string;
+  issuer: string;
+  issuerKeyHistory: Array<{ version: string; address: string }>;
+  anchorStatus: 'anchored' | 'pending' | 'not_anchored';
+  batchId?: string;
+  anchorTxHash?: string;
+  merkleProof?: string[];
+  leaf?: string;
+  anchorContract?: string;
+  chainId: number;
+  publicCredential: Record<string, any>;
+  proofJws: string;
+  howToVerify: string;
+}
+export interface ReputationVerificationDto {
+  did: string | null;
+  issuerKeyHistory: Array<{ version: string; address: string }>;
+  items: VerificationMaterial[];
+}
+
+/**
+ * 拉取开放复验材料(公开 claim + 签名 + 锚点引用 + issuer 公钥历史)。
+ * flag `SOUL_CORE_VC_ENABLED` 关 → 404 抛错 → 调用方回退(不显示复验入口)。
+ * 第三方仅凭这些 + 公共 RPC 即可离线复验(见 tools/verify-reputation),不依赖平台。
+ */
+export async function fetchReputationVerification(agentId: string): Promise<ReputationVerificationDto> {
+  return unwrap<ReputationVerificationDto>(
+    await apiFetch(`/agent-accounts/${agentId}/reputation-verification`),
+  );
+}
+
+/** BNB 测试网区块浏览器 tx 链接(锚点 tx 可视化)。 */
+export function txExplorerUrl(chainId: number, txHash?: string): string | undefined {
+  if (!txHash) return undefined;
+  if (chainId === 97) return `https://testnet.bscscan.com/tx/${txHash}`;
+  if (chainId === 56) return `https://bscscan.com/tx/${txHash}`;
+  return undefined;
 }
