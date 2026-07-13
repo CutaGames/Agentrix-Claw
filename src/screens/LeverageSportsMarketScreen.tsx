@@ -171,8 +171,8 @@ export default function LeverageSportsMarketScreen() {
     setBalance(b);
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       if (tab === 'markets') {
         // 合并活跃（赛前+滚球）与最近已结束，使列表含「已结束 + 比分」分组（参考 KMarket 排列）
@@ -207,7 +207,7 @@ export default function LeverageSportsMarketScreen() {
     } catch (e) {
       // 静默；列表为空时展示空态
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
       setRefreshing(false);
     }
   }, [tab]);
@@ -219,6 +219,19 @@ export default function LeverageSportsMarketScreen() {
   useEffect(() => {
     loadBalance();
   }, [loadBalance]);
+
+  // 自适应静默轮询：markets 有滚球盘 / orders 有 OPEN 单 → 5s 贴近实时（对齐 KMarket odds 上限）；
+  // 否则 15s 省流；vaults 页无需快刷。轮询不闪 loading。
+  const hasLiveMarket = markets.some((m) => m.status === 'live');
+  const hasOpenOrder = orders.some((o) => o.status === 'open');
+  useEffect(() => {
+    let ms: number | null = null;
+    if (tab === 'markets') ms = hasLiveMarket ? 5000 : 15000;
+    else if (tab === 'orders') ms = hasOpenOrder ? 5000 : 15000;
+    if (ms == null) return;
+    const t = setInterval(() => load(true), ms);
+    return () => clearInterval(t);
+  }, [tab, hasLiveMarket, hasOpenOrder, load]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -622,6 +635,41 @@ function outcomeName(market: LsmMarketView | null, idx: number, zh: boolean): st
   return zh ? '平局' : 'Draw';
 }
 
+/**
+ * 距强平安全度条：health = (cashoutValue − maint)/(stake − maint)，clamp 0..1。
+ * ≈1 入场附近；→0 逼近强平。绿>50% / 琥珀>25% / 红。maint 优先用后端精确维护保证金，
+ * 缺省用 stake×5% 兜底。纯展示。
+ */
+function LiqSafetyBar({
+  stake,
+  cashoutValue,
+  maintenanceMargin,
+  zh,
+}: {
+  stake: number;
+  cashoutValue: number | null | undefined;
+  maintenanceMargin?: number | null;
+  zh: boolean;
+}) {
+  const maint = maintenanceMargin != null ? maintenanceMargin : Math.floor(stake * 0.05);
+  const span = Math.max(1, stake - maint);
+  const raw = cashoutValue == null ? 0 : (cashoutValue - maint) / span;
+  const health = Math.max(0, Math.min(1, raw));
+  const pct = Math.round(health * 100);
+  const tone = health > 0.5 ? '#16a34a' : health > 0.25 ? '#d97706' : '#dc2626';
+  return (
+    <View style={{ marginTop: 8 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
+        <Text style={{ fontSize: 11, color: colors.textSecondary }}>{zh ? '距强平安全度' : 'Liquidation buffer'}</Text>
+        <Text style={{ fontSize: 11, fontWeight: '700', color: tone }}>{cashoutValue == null ? '—' : `${pct}%`}</Text>
+      </View>
+      <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' }}>
+        <View style={{ height: '100%', width: `${pct}%`, borderRadius: 3, backgroundColor: tone }} />
+      </View>
+    </View>
+  );
+}
+
 function OrderCard({
   order,
   market,
@@ -691,6 +739,22 @@ function OrderCard({
               <Text style={styles.metaText}>{tr('Unavailable', '暂不可平仓')}</Text>
             )}
           </View>
+          {order.leverage >= 2 && order.liquidationOdds != null && (
+            <>
+              <View style={styles.orderMeta}>
+                <Text style={styles.metaText}>{tr('Liquidation odds', '强平赔率')}</Text>
+                <Text style={[styles.metaText, { color: '#d97706', fontWeight: '700' }]}>
+                  ≥ {order.liquidationOdds.toFixed(2)}
+                </Text>
+              </View>
+              <LiqSafetyBar
+                stake={order.stake}
+                cashoutValue={order.cashoutValue}
+                maintenanceMargin={order.maintenanceMargin}
+                zh={zh}
+              />
+            </>
+          )}
           <View style={styles.orderActionRow}>
             <Text style={styles.tapHint}>{tr('Tap for details ›', '点击查看详情 ›')}</Text>
             <TouchableOpacity

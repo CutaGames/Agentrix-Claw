@@ -214,12 +214,34 @@ export function OrderTicket({ visible, market, outcomeIdx, onClose, onPlaced }: 
               </View>
             </View>
 
-            {/* 赔率走势图（辅助下单决策；高亮当前所选 outcome） */}
+            {/* 赔率走势图（辅助下单决策；高亮当前所选 outcome）。有预览时叠加入场/强平参考线。 */}
             <OddsHistoryChart
               marketId={market.id}
               focusOutcomeIdx={outcomeIdx}
               zh={zh}
               labels={[market.homeTeam, market.awayTeam, zh ? '平局' : 'Draw']}
+              refLines={
+                preview
+                  ? [
+                      {
+                        odds: preview.tradableOdds,
+                        color: '#38bdf8',
+                        label: `${tr('Entry', '入场')} ${preview.tradableOdds.toFixed(2)}`,
+                        dashed: true,
+                      },
+                      ...(preview.liquidationOdds != null
+                        ? [
+                            {
+                              odds: preview.liquidationOdds,
+                              color: '#f43f5e',
+                              label: `${tr('Liq.', '强平')} ≥${preview.liquidationOdds.toFixed(2)}`,
+                              dashed: true,
+                            },
+                          ]
+                        : []),
+                    ]
+                  : []
+              }
             />
 
             {/* 保证金输入 */}

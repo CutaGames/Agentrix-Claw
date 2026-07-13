@@ -5,7 +5,7 @@
 // 不引新依赖。支持 全部/30M/10M/5M 时间范围切换。
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import Svg, { Polyline, Line as SvgLine } from 'react-native-svg';
+import Svg, { Polyline, Line as SvgLine, Text as SvgText } from 'react-native-svg';
 import { colors } from '../../theme/colors';
 import { lsmApi } from '../../services/lsm.api';
 
@@ -25,6 +25,14 @@ interface Series {
   points: Array<{ ts: number; odds: number }>;
 }
 
+/** 叠加在赔率折线上的水平参考线（入场赔率 / 强平线）。赔率会被纳入 y 轴域以保证可见。 */
+export interface OddsRefLine {
+  odds: number;
+  color: string;
+  label: string;
+  dashed?: boolean;
+}
+
 interface Props {
   marketId: string;
   /** 仅高亮某个 outcome（其余淡化）；不传则全部展示 */
@@ -32,11 +40,13 @@ interface Props {
   zh: boolean;
   labels: string[]; // [home, away, draw]
   height?: number;
+  /** 风险参考线（入场/强平），叠加为水平虚线并显示右侧标签。 */
+  refLines?: OddsRefLine[];
 }
 
 const CHART_W = 300;
 
-export function OddsHistoryChart({ marketId, focusOutcomeIdx, zh, labels, height = 120 }: Props) {
+export function OddsHistoryChart({ marketId, focusOutcomeIdx, zh, labels, height = 120, refLines = [] }: Props) {
   const [range, setRange] = useState<Range>('all');
   const [series, setSeries] = useState<Series[]>([]);
   const [loading, setLoading] = useState(false);
@@ -63,8 +73,11 @@ export function OddsHistoryChart({ marketId, focusOutcomeIdx, zh, labels, height
   );
   const allOdds = shown.flatMap((s) => s.points.map((p) => p.odds));
   const hasData = allOdds.length >= 2;
-  const minO = hasData ? Math.min(...allOdds) : 0;
-  const maxO = hasData ? Math.max(...allOdds) : 1;
+  // 参考线赔率纳入 y 轴域（extend domain），否则强平线常在可视区外不可见。
+  const refOdds = refLines.map((r) => r.odds).filter((v) => Number.isFinite(v) && v > 0);
+  const domainOdds = [...allOdds, ...refOdds];
+  const minO = domainOdds.length ? Math.min(...domainOdds) : 0;
+  const maxO = domainOdds.length ? Math.max(...domainOdds) : 1;
   const span = maxO - minO || 1;
 
   // 用所有展示序列的 ts 全集作为 x 轴范围
@@ -73,10 +86,10 @@ export function OddsHistoryChart({ marketId, focusOutcomeIdx, zh, labels, height
   const maxT = allTs.length ? Math.max(...allTs) : 1;
   const tSpan = maxT - minT || 1;
 
+  const oddsToY = (odds: number) => height - ((odds - minO) / span) * (height - 16) - 8;
   const toXY = (p: { ts: number; odds: number }) => {
     const x = ((p.ts - minT) / tSpan) * CHART_W;
-    const y = height - ((p.odds - minO) / span) * (height - 16) - 8;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
+    return `${x.toFixed(1)},${oddsToY(p.odds).toFixed(1)}`;
   };
 
   const fmtTime = (ts: number) =>
@@ -140,6 +153,27 @@ export function OddsHistoryChart({ marketId, focusOutcomeIdx, zh, labels, height
                       strokeWidth={dim ? 1 : 2}
                       strokeOpacity={dim ? 0.35 : 1}
                     />
+                  );
+                })}
+                {/* 风险参考线：入场（实/虚线，本方色）+ 强平（玫红虚线）。赔率已纳入 y 轴域故必可见。 */}
+                {refLines.map((r, i) => {
+                  const y = oddsToY(r.odds);
+                  return (
+                    <React.Fragment key={`ref-${i}`}>
+                      <SvgLine
+                        x1="0"
+                        y1={y}
+                        x2={CHART_W}
+                        y2={y}
+                        stroke={r.color}
+                        strokeWidth="1.2"
+                        strokeDasharray={r.dashed === false ? undefined : '5,4'}
+                        strokeOpacity="0.95"
+                      />
+                      <SvgText x={CHART_W - 2} y={Math.max(9, y - 3)} fill={r.color} fontSize="9" fontWeight="700" textAnchor="end">
+                        {r.label}
+                      </SvgText>
+                    </React.Fragment>
                   );
                 })}
               </Svg>

@@ -137,6 +137,8 @@ export interface LsmOrder {
   cashoutValue: number | null;
   /** 强平赔率阈值（小数制）：leverage≥2 时非空。 */
   liquidationOdds?: number | null;
+  /** 维护保证金（整数，最小单位，仅杠杆单非空）：兑现值跌破即强平，用于精确计算距强平安全度。 */
+  maintenanceMargin?: number | null;
   /** 开仓费（最小单位）。 */
   openFee?: number;
   /** 强平罚金（最小单位，仅 LIQUIDATED 非零）。 */
