@@ -7,6 +7,17 @@
  * 使用显式 re-export 让 canonical 版本覆盖，同时保留 `pet.ts` 其它类型。
  */
 export * from './agentrix-presence';
+export * from './authority';
+export * from './soul-core';
+export * from './soul-core-aggregate';
+export * from './task-proof';
+export * from './action-runtime';
+export * from './backend-core-telemetry';
+export * from './release-provenance';
+export * from './soul-shell';
+export * from './telemetry';
+export * from './risk-funding';
+export * from './soul-core-l1';
 
 // pet.ts: export everything EXCEPT the duplicates covered by pet-presence.ts
 export type {
@@ -27,3 +38,5 @@ export * from './world-engine-api';
 // Sprint Post-launch P-3 (2026-05-24) — IdeBridge two-way protocol.
 // See docs/agentrix-positioning-2026-05.zh-CN.md §7 P3.
 export * from './ide-bridge';
+export * from './agent-economy';
+export * from './agent-economy-fixtures';

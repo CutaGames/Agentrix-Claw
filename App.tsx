@@ -50,10 +50,19 @@ import { CompanionLayer } from './src/components/companion/CompanionLayer';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { resolveLegacyPath } from './src/navigation/legacyRouteTable';
+import {
+  isMobileV7RouteCandidate,
+  normalizeMobileV7Route,
+} from './src/navigation/v7/routeContract';
 import { navigationRef as sharedNavigationRef } from './src/navigation/navigationRef';
 import { getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
 import { attachLinkingListener } from './src/services/intents/intentBridge';
 import { installDefaultIntentHandlers } from './src/services/intents/defaultIntentHandlers';
+import { configureMobileV6FeatureFlagsFromEnvironment } from './src/services/mobileV6FeatureFlags';
+
+// Load EXPO_PUBLIC_MOBILE_* build-time flags before navigation resolves. Unset
+// or invalid values remain fail-closed; remote rollout may still override them.
+configureMobileV6FeatureFlagsFromEnvironment();
 
 // Register llama.rn bridge for on-device LLM inference
 initLlamaBridge();
@@ -85,6 +94,8 @@ const queryClient = new QueryClient({
 });
 
 const isMaestroE2E = process.env.EXPO_PUBLIC_MAESTRO_E2E === '1';
+const isAgentFirstBuild = process.env.EXPO_PUBLIC_MOBILE_AGENT_FIRST_IA === 'true'
+  || process.env.EXPO_PUBLIC_MOBILE_AGENT_FIRST_IA === '1';
 
 /**
  * Maestro E2E auto-login seed (native, device-side).
@@ -718,6 +729,13 @@ const linking = {
   // works on both dev and production builds.
   prefixes: [Linking.createURL('/'), 'agentrix://', 'clawlink://', 'https://clawlink.app', 'https://agentrix.top'],
   getStateFromPath: (path: string, options: any) => {
+    if (isAgentFirstBuild && isMobileV7RouteCandidate(path)) {
+      const result = normalizeMobileV7Route(path);
+      const strictPath = result.ok === true
+        ? result.path
+        : `/destination-error?reason=${encodeURIComponent(result.error.code)}`;
+      return defaultGetStateFromPath(strictPath, options);
+    }
     const normalized = resolveLegacyPath(path);
     return defaultGetStateFromPath(normalized, options);
   },
@@ -741,6 +759,40 @@ const linking = {
       },
       Main: {
         screens: {
+          ...(isAgentFirstBuild ? {
+            Agent: {
+              screens: {
+                AgentHome: 'agents',
+                GoalComposer: 'actions/new',
+                CandidateCompare: 'actions/compare',
+                AuthorityReview: 'actions/:actionId/authority',
+                ActionTracking: 'agents/:agentId/actions/:actionId',
+                Companion: 'agent/companion',
+                Prediction: 'prediction',
+                Lsm: 'lsm',
+                HardwareAssurance: 'agents/:agentId/assurance',
+                AgentSoulCore: 'agents/:agentId/soul-core',
+                DestinationError: 'destination-error',
+              },
+            },
+            Actions: {
+              screens: {
+                ActionsHome: 'actions',
+              },
+            },
+            Creation: {
+              screens: {
+                CreationHome: 'creation',
+                CreationFeed: 'creation/feed',
+                CreationCreator: 'creation/new',
+                CreationExperience: 'creation/experience/:creationId',
+                CreationDetail: 'creation/:creationId',
+                MyWorld: 'creation/mine',
+                UnifiedWorldMap: 'creation/map',
+                WorldCreationMarketplace: 'creation/market',
+              },
+            },
+          } : {}),
           // AI World Creation Platform (v6) — World tab deep links. The World
           // stack previously had NO linking entries, so its v6 surfaces
           // (map / land / market / creator / experience / task) were only
@@ -795,7 +847,7 @@ const linking = {
               ToyCustom: 'plaza/toy/custom',
             },
           },
-          Me: {
+          [isAgentFirstBuild ? 'My' : 'Me']: {
             screens: {
               Profile: 'me',
               Account: 'me/account',

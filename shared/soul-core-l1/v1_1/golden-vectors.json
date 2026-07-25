@@ -1,0 +1,75 @@
+{
+  "schemaVersion": "1.1",
+  "note": "Cross-impl conformance vectors. Applet, simulator (tools/soul-core-l1/simulator.mjs), backend and Authority MUST all reproduce these exactly. Digests are SHA-256 of the canonical pre-image (see shared/soul-core-l1/v1_1). Evidence level: simulator/protocol_only.",
+  "proposals": [
+    {
+      "name": "recovery-guardian-recover",
+      "proposal": {
+        "kitId": "kit_personal_recovery_duo",
+        "accountId": "acct_1",
+        "chainId": "1439",
+        "authorityId": "auth_1",
+        "proposalType": "recover",
+        "payloadHash": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+        "policyVersion": "v1",
+        "proposalNonce": "nonce-1",
+        "expiresAtOrEpoch": "2999-01-01T00:00:00Z",
+        "requiredRole": "recovery-guardian"
+      },
+      "expectedProposalDigest": "bc629cd7f5cae985dcffdb5615c014ac92571a022fe980d01bbd10170897eb09"
+    },
+    {
+      "name": "governance-member-governance",
+      "proposal": {
+        "kitId": "kit_team_governance",
+        "accountId": "acct_team",
+        "chainId": "1439",
+        "authorityId": "auth_gov",
+        "proposalType": "governance",
+        "payloadHash": "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+        "policyVersion": "v2",
+        "proposalNonce": "nonce-gov-7",
+        "expiresAtOrEpoch": "2999-06-01T00:00:00Z",
+        "requiredRole": "governance-member"
+      },
+      "expectedProposalDigest": "86c742ff887b2a4c3cf0d143a1180a6edba2b2dbe5c42b22afdb0d86bb7ad38c"
+    },
+    {
+      "name": "finance-approver-finance",
+      "proposal": {
+        "kitId": "kit_team_governance",
+        "accountId": "acct_team",
+        "chainId": "1",
+        "authorityId": "auth_fin",
+        "proposalType": "finance",
+        "payloadHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "policyVersion": "v2",
+        "proposalNonce": "nonce-fin-3",
+        "expiresAtOrEpoch": "2999-03-01T00:00:00Z",
+        "requiredRole": "finance-approver"
+      },
+      "expectedProposalDigest": "b2e47eb3cf30536750fb36f136b32dfc49f3be6a85afbe4be49d8f3f1e5568b5"
+    }
+  ],
+  "profileDecisions": [
+    { "profileId": "personal-primary", "apdu": "SIGN_TX", "requiredCapability": "CAP_TAP_SIGN", "expectedAllowed": true },
+    { "profileId": "recovery-guardian", "apdu": "SIGN_TX", "requiredCapability": "CAP_TAP_SIGN", "expectedAllowed": false },
+    { "profileId": "governance-member", "apdu": "SET_LIMITS", "requiredCapability": "CAP_POLICY_ADMIN", "expectedAllowed": false },
+    { "profileId": "operator-policy-admin", "apdu": "SET_LIMITS", "requiredCapability": "CAP_POLICY_ADMIN", "expectedAllowed": true },
+    { "profileId": "resident-executor", "apdu": "SIGN_TX", "requiredCapability": "CAP_RESIDENT_EXECUTION", "expectedAllowed": true }
+  ],
+  "proposalTypeDecisions": [
+    { "profileId": "finance-approver", "proposalType": "finance", "expectedAllowed": true },
+    { "profileId": "finance-approver", "proposalType": "governance", "expectedAllowed": false },
+    { "profileId": "recovery-guardian", "proposalType": "recover", "expectedAllowed": true },
+    { "profileId": "recovery-guardian", "proposalType": "session_issue", "expectedAllowed": false }
+  ],
+  "lifecycleTransitions": [
+    { "from": "manufactured", "to": "factory_personalized", "expectedOk": true },
+    { "from": "manufactured", "to": "user_activated", "expectedOk": false },
+    { "from": "user_activated", "to": "frozen", "expectedOk": true },
+    { "from": "frozen", "to": "recovery_pending", "expectedOk": true },
+    { "from": "recovery_pending", "to": "retired", "expectedOk": true },
+    { "from": "retired", "to": "user_activated", "expectedOk": false }
+  ]
+}

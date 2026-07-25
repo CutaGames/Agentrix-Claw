@@ -4,9 +4,11 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "skipLibCheck": true,
-    "strict": false
+    "strict": false,
+    "types": []
   },
   "include": [
-    "./*.ts"
+    "./*.ts",
+    "./client/**/*.ts"
   ]
 }

@@ -253,6 +253,12 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon --parallel --build-cache -PreactNativeArchitectures=arm64-v8a
         env:
+          # Phase 2 mobile Agent Economy release: ship the Agent-first IA and
+          # canonical 0 USD Goal -> discovery -> authorize workflow. babel-preset-expo
+          # inlines EXPO_PUBLIC_* at Metro transform time; this is the FIRST gradle
+          # build so the Metro cache is cold and these flags are baked into the bundle.
+          EXPO_PUBLIC_MOBILE_AGENT_FIRST_IA: '1'
+          EXPO_PUBLIC_MOBILE_AGENT_ECONOMY_V1: '1'
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true'
 
       - name: Set build tag and APK paths

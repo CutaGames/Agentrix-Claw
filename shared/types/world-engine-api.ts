@@ -125,8 +125,11 @@ export interface JobStreamEvent {
 // §1b Living World feed APIs (Phase A2)
 // ============================================================
 
-/** GET /api/v1/world-engine/world/feed — Response */
-export interface WorldFeedResponse {
+/**
+ * Legacy compact feed shape retained for direct imports from this module.
+ * The canonical `WorldFeedResponse` lives in `world-engine.ts`.
+ */
+export interface LegacyWorldFeedResponse {
   /** 时间线倒序的事件 */
   events: import('./world-engine').WorldEventItem[];
   /** 本次请求新推进(tick)生成的事件数, 用于客户端"你不在时发生了 N 件事"提示 */

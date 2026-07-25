@@ -31,6 +31,13 @@ import { MeStackNavigator } from './MeStackNavigator';
 import { useColors } from '../theme/useTheme';
 import { useNotificationStore } from '../stores/notificationStore';
 import { useI18n } from '../stores/i18nStore';
+import { AgentFirstTabNavigator } from './agent-first/AgentFirstTabNavigator';
+import {
+  configureMobileV6FeatureFlagsFromEnvironment,
+  isMobileV6FeatureEnabled,
+} from '../services/mobileV6FeatureFlags';
+
+configureMobileV6FeatureFlagsFromEnvironment();
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -57,7 +64,7 @@ function TabIcon({ emoji, focused, badge, testID }: { emoji: string; focused: bo
   );
 }
 
-export function MainTabNavigator() {
+function LegacyMainTabNavigator() {
   const { t } = useI18n();
   const c = useColors();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
@@ -122,4 +129,11 @@ export function MainTabNavigator() {
       />
     </Tab.Navigator>
   );
+}
+
+/** Feature-flagged IA switch. Flag-off is the complete legacy rollback path. */
+export function MainTabNavigator() {
+  return isMobileV6FeatureEnabled('mobile.agent_first_ia')
+    ? <AgentFirstTabNavigator />
+    : <LegacyMainTabNavigator />;
 }
