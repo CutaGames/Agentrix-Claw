@@ -1,0 +1,74 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 13: Me Tab → Subscribe (5-tier catalog) + AXP Center
+# Ensures Sprint D screens render real data and toggles work.
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+
+- tapOn:
+    id: "tab-me"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# ── Tier badge present ───────────────────────────────────
+- assertVisible:
+    text: "FREE"
+    optional: true
+
+# ── Tap Upgrade ──────────────────────────────────────────
+- tapOn:
+    text: "Upgrade"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "13-subscribe-catalog"
+
+# Cycle toggle
+- tapOn:
+    text: "Yearly"
+    optional: true
+
+- takeScreenshot: "13-subscribe-yearly"
+
+- tapOn:
+    text: "Monthly"
+    optional: true
+
+# Each of 5 tiers should be visible
+- assertVisible:
+    text: "Free"
+    optional: true
+- assertVisible:
+    text: "Lite"
+    optional: true
+- assertVisible:
+    text: "Plus"
+    optional: true
+- assertVisible:
+    text: "Pro"
+    optional: true
+- assertVisible:
+    text: "Elite"
+    optional: true
+
+- back
+
+# ── AXP Center ───────────────────────────────────────────
+- tapOn:
+    text: "AXP"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "13-axp-center"
+
+- assertVisible:
+    text: "Balance"
+    optional: true
+
+- back

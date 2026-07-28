@@ -1,0 +1,18 @@
+appId: app.agentrix.claw
+---
+# Test 03: First screen remains visible after a clean launch.
+
+- launchApp:
+    clearState: true
+    clearKeychain: true
+
+- waitForAnimationToEnd:
+    timeout: 30000
+
+- assertVisible:
+    text: "Agentrix Claw"
+
+- assertVisible:
+    text: "Connect Crypto Wallet"
+
+- takeScreenshot: "03-first-screen-visible"
