@@ -26,7 +26,7 @@
     "test:v4:web": "playwright test tests/e2e/frontend/web-v4-full.spec.ts -c tests/e2e/playwright.frontend.config.ts",
     "test:v4:desktop": "playwright test desktop/tests/e2e/v4-full-audit.spec.ts -c desktop/tests/playwright.config.ts",
     "test:v4:api": "playwright test tests/e2e/backend-api-smoke.spec.ts -c tests/e2e/playwright.config.ts",
-    "test:v4:mobile": "maestro test .maestro/20-v4-home-full.yaml .maestro/21-v4-summon-chat.yaml .maestro/22-v4-plaza-full.yaml .maestro/23-v4-me-axp-subscribe.yaml .maestro/24-v4-pet-creator-wardrobe.yaml .maestro/25-v4-global-inbox-deeplink.yaml .maestro/26-v4-coraising-greeting.yaml",
+    "test:v4:mobile": "maestro test .maestro/20-v4-home-full.yaml .maestro/21-v4-summon-chat.yaml .maestro/22-v4-plaza-full.yaml .maestro/23-v4-me-axp-subscribe.yaml .maestro/25-v4-global-inbox-deeplink.yaml .maestro/31-mobile-agent-economy-safe-v1.yaml",
     "test:hardware": "node tests/hardware/toy-ble-e2e.mjs && node tests/hardware/glass-hud-e2e.mjs && node tests/hardware/watch-e2e.mjs",
     "test:hardware:watch": "node tests/hardware/watch-e2e.mjs",
     "test:hardware:toy": "node tests/hardware/toy-ble-e2e.mjs",

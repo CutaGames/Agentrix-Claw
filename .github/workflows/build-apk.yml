@@ -20,8 +20,6 @@ jobs:
     timeout-minutes: 75
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
-      release-apk: ${{ steps.paths.outputs.release }}
-      artifact-ready: ${{ steps.artifact-status.outputs.ready }}
 
     steps:
       - name: Checkout
@@ -287,70 +285,8 @@ jobs:
           echo "release=artifacts/ClawLink-build-${{ github.run_number }}.apk" >> $GITHUB_OUTPUT
           du -h artifacts/ClawLink-build-${{ github.run_number }}.apk
 
-      # ── Deploy + Release BEFORE artifact upload ──────────────────
-      # Artifact upload may hit GitHub storage quota and crash the job,
-      # so we do the critical deploy/release steps first.
-
-      - name: Check deploy secret
-        id: deploy-check
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        run: |
-          if [ -n "$DEPLOY_SSH_KEY" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "[ci] DEPLOY_SSH_KEY is empty; skipping server deploy"
-          fi
-
-      - name: Upload APK to download server
-        if: ${{ steps.deploy-check.outputs.enabled == 'true' }}
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-        run: |
-          set -euo pipefail
-          APK="artifacts/ClawLink-build-${{ github.run_number }}.apk"
-          if [ ! -f "$APK" ]; then
-            echo "APK not found: $APK"
-            ls artifacts/ || true
-            exit 1
-          fi
-          echo "$DEPLOY_SSH_KEY" > /tmp/deploy.pem
-          chmod 600 /tmp/deploy.pem
-          DEST="/home/ubuntu/Agentrix/frontend/public/downloads"
-          OPTS="-o StrictHostKeyChecking=no -i /tmp/deploy.pem"
-          ssh $OPTS ubuntu@47.130.176.148 \
-            "cp ${DEST}/clawlink-agent.apk ${DEST}/clawlink-agent.apk.bak-\$(date +%Y%m%d-%H%M%S) 2>/dev/null || true"
-          scp $OPTS "$APK" "ubuntu@47.130.176.148:${DEST}/clawlink-agent.apk"
-          scp $OPTS "$APK" "ubuntu@47.130.176.148:${DEST}/ClawLink-latest.apk"
-          echo "✅ Deployed ClawLink build-${{ github.run_number }} to server"
-
-      - name: Create GitHub Release
-        continue-on-error: true
-        uses: softprops/action-gh-release@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: "✅ ClawLink Build #${{ github.run_number }}"
-          body: |
-            ## ClawLink APK — Build #${{ github.run_number }}
-
-            | | |
-            |---|---|
-            | Commit | `${{ github.sha }}` |
-            | Branch | `${{ github.ref_name }}` |
-            | Author | ${{ github.actor }} |
-
-            ### 📥 Install on Android
-            1. Download **ClawLink-build-${{ github.run_number }}.apk** below
-            2. On your Android device: **Settings → Security → Install unknown apps** → enable for your browser
-            3. Open the APK and tap Install
-
-            Do not install the `ui-test` APK artifact from Actions; it is x86_64-only for the emulator.
-          files: artifacts/ClawLink-build-${{ github.run_number }}.apk
-          fail_on_unmatched_files: false
-          draft: false
-          prerelease: false
+      # The public APK is staged now, but publication is intentionally deferred
+      # until the blocking Safe V1 device gate succeeds.
 
       - name: Patch android/app/build.gradle — x86_64 UI test ABI
         run: |
@@ -475,9 +411,9 @@ jobs:
           cp "$APK" artifacts/ClawLink-ui-test-${{ github.run_number }}.apk
           du -h artifacts/ClawLink-ui-test-${{ github.run_number }}.apk
 
-      # ── Artifact upload (optional — release download + UI test job) ────────
-      # Storage quota may be exceeded; this step must not block deploy/release.
-      # GitHub recalculates quota every 6-12h, so aggressive cleanup is needed.
+      # ── Blocking artifact handoff ─────────────────────────────────
+      # Both artifacts are required by downstream jobs. If storage upload fails,
+      # neither the device gate nor publication may proceed.
       - name: Delete old artifacts (free quota)
         continue-on-error: true
         uses: actions/github-script@v7
@@ -498,7 +434,6 @@ jobs:
               page++;
             }
             console.log(`Found ${allArtifacts.length} artifacts total`);
-            // Delete ALL old artifacts (apks + maestro-results)
             for (const artifact of allArtifacts) {
               try {
                 await github.rest.actions.deleteArtifact({
@@ -513,48 +448,238 @@ jobs:
             }
 
       - name: Upload public release APK artifact
-        id: upload-release-apk
-        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: public-release-apk-build-${{ github.run_number }}
           path: artifacts/ClawLink-build-${{ github.run_number }}.apk
+          if-no-files-found: error
           retention-days: 7
 
       - name: Upload UI test APK artifact
-        id: upload-ui-apk
-        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: ui-test-apk-build-${{ github.run_number }}
           path: artifacts/ClawLink-ui-test-${{ github.run_number }}.apk
+          if-no-files-found: error
           retention-days: 1
 
-      - name: Record artifact status
-        id: artifact-status
-        if: always()
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 2 — Blocking Safe V1 launch + 0 USD boundary device gate
+  # ═══════════════════════════════════════════════════════════════════
+  safe-v1-gate:
+    name: 🛡️ Safe V1 Device Gate
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout (for the Safe V1 flow)
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Download UI test APK
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-test-apk-build-${{ github.run_number }}
+          path: artifacts/
+
+      - name: Install Maestro CLI
         run: |
-          if [ "${{ steps.upload-ui-apk.outcome }}" = "success" ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "[ci] Artifact upload failed or was skipped; UI test job will be skipped"
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> $GITHUB_PATH
+
+      - name: Enable KVM hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -r /dev/kvm && test -w /dev/kvm
+
+      - name: Safe V1 AVD cache
+        uses: actions/cache@v4
+        id: safe-v1-avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: safe-v1-avd-api35-x86_64-v1-${{ runner.os }}
+
+      - name: Create Safe V1 AVD (if not cached)
+        if: steps.safe-v1-avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          force-avd-creation: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096
+          emulator-boot-timeout: 900
+          disable-animations: true
+          script: echo "Safe V1 AVD created and cached"
+
+      - name: Prepare blocking Safe V1 gate
+        run: |
+          cat << 'EOF' > run_safe_v1_gate.sh
+          #!/usr/bin/env bash
+          set -euo pipefail
+          PACKAGE="app.agentrix.claw"
+          APK="artifacts/ClawLink-ui-test-${{ github.run_number }}.apk"
+          OUTPUT="safe-v1-gate-output"
+          mkdir -p "$OUTPUT"
+
+          test -f "$APK"
+          adb wait-for-device
+          adb shell settings put global window_animation_scale 0 || true
+          adb shell settings put global transition_animation_scale 0 || true
+          adb shell settings put global animator_duration_scale 0 || true
+          adb install -r "$APK"
+
+          echo "=== Blocking launch crash smoke ==="
+          adb shell am force-stop "$PACKAGE" || true
+          adb logcat -c
+          adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1
+          sleep 12
+          adb exec-out screencap -p > "$OUTPUT/launch-smoke.png" 2>/dev/null || true
+          adb logcat -b crash -d > "$OUTPUT/launch-crash.log" 2>&1 || true
+          adb logcat -d > "$OUTPUT/launch-runtime.log" 2>&1 || true
+
+          if ! adb shell pidof "$PACKAGE" | grep -q '[0-9]'; then
+            echo "App process is not alive after launch smoke"
+            exit 1
+          fi
+          PACKAGE_RE="${PACKAGE//./\\.}"
+          APP_CRASH_PATTERN="Process: ${PACKAGE_RE}|FATAL EXCEPTION.*${PACKAGE_RE}|${PACKAGE_RE}.*FATAL EXCEPTION|Process.*${PACKAGE_RE}.*died|${PACKAGE_RE}.*signal (6|11)"
+          if grep -qE "$APP_CRASH_PATTERN" "$OUTPUT/launch-crash.log" "$OUTPUT/launch-runtime.log" 2>/dev/null; then
+            echo "App crashed during launch smoke"
+            exit 1
           fi
 
+          echo "=== Blocking Safe V1 Maestro flow ==="
+          set +e
+          MAESTRO_DRIVER_STARTUP_TIMEOUT=120000 MAESTRO_CLI_NO_ANALYTICS=1 \
+            maestro test .maestro/31-mobile-agent-economy-safe-v1.yaml \
+              --output "$OUTPUT/maestro-report.xml" --format junit \
+              2>&1 | tee "$OUTPUT/maestro.log"
+          MAESTRO_STATUS=${PIPESTATUS[0]}
+          set -e
+          adb exec-out screencap -p > "$OUTPUT/safe-v1-final.png" 2>/dev/null || true
+          adb logcat -d > "$OUTPUT/safe-v1-logcat.log" 2>&1 || true
+          if [ "$MAESTRO_STATUS" -ne 0 ]; then
+            echo "Safe V1 Maestro flow failed with status $MAESTRO_STATUS"
+            exit "$MAESTRO_STATUS"
+          fi
+          EOF
+          chmod +x run_safe_v1_gate.sh
+
+      - name: Run blocking Safe V1 gate on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096
+          emulator-boot-timeout: 900
+          disable-animations: true
+          script: ./run_safe_v1_gate.sh
+
+      - name: Upload Safe V1 gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: safe-v1-gate-results-build-${{ github.run_number }}
+          path: safe-v1-gate-output/
+          if-no-files-found: warn
+          retention-days: 14
+
   # ═══════════════════════════════════════════════════════════════════
-  # JOB 2 — Spin up Android emulator, install APK, run Maestro UI tests
+  # JOB 3 — Publish only after build artifacts and Safe V1 gate succeed
   # ═══════════════════════════════════════════════════════════════════
-  ui-test:
-    name: 🤖 UI Automation (Maestro)
-    runs-on: ubuntu-latest     # Linux runner (10x cheaper than macOS)
+  publish:
+    name: 🚀 Publish gated APK
+    runs-on: ubuntu-latest
+    needs: [build, safe-v1-gate]
+    timeout-minutes: 15
+
+    steps:
+      - name: Download public release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: public-release-apk-build-${{ github.run_number }}
+          path: artifacts/
+
+      - name: Require deploy secret
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "DEPLOY_SSH_KEY is required for gated publication"
+            exit 1
+          fi
+
+      - name: Upload APK to download server
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          APK="artifacts/ClawLink-build-${{ github.run_number }}.apk"
+          test -f "$APK"
+          echo "$DEPLOY_SSH_KEY" > /tmp/deploy.pem
+          chmod 600 /tmp/deploy.pem
+          trap 'rm -f /tmp/deploy.pem' EXIT
+          DEST="/home/ubuntu/Agentrix/frontend/public/downloads"
+          OPTS="-o StrictHostKeyChecking=no -i /tmp/deploy.pem"
+          ssh $OPTS ubuntu@47.130.176.148 \
+            "cp ${DEST}/clawlink-agent.apk ${DEST}/clawlink-agent.apk.bak-\$(date +%Y%m%d-%H%M%S) 2>/dev/null || true"
+          scp $OPTS "$APK" "ubuntu@47.130.176.148:${DEST}/clawlink-agent.apk"
+          scp $OPTS "$APK" "ubuntu@47.130.176.148:${DEST}/ClawLink-latest.apk"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ needs.build.outputs.tag }}
+          name: "✅ ClawLink Build #${{ github.run_number }}"
+          body: |
+            ## ClawLink APK — Build #${{ github.run_number }}
+
+            | | |
+            |---|---|
+            | Commit | `${{ github.sha }}` |
+            | Branch | `${{ github.ref_name }}` |
+            | Author | ${{ github.actor }} |
+
+            The APK passed the blocking launch smoke and
+            `.maestro/31-mobile-agent-economy-safe-v1.yaml` device gate before publication.
+
+            ### 📥 Install on Android
+            1. Download **ClawLink-build-${{ github.run_number }}.apk** below
+            2. Enable installation from unknown apps for your browser
+            3. Open the APK and tap Install
+
+            Do not install the `ui-test` APK artifact from Actions; it is x86_64-only for the emulator.
+          files: artifacts/ClawLink-build-${{ github.run_number }}.apk
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false
+
+  # ═══════════════════════════════════════════════════════════════════
+  # JOB 4 — Historical full Maestro matrix (non-blocking observation)
+  # ═══════════════════════════════════════════════════════════════════
+  historical-ui-test:
+    name: 🧭 Historical UI Automation (Maestro)
+    runs-on: ubuntu-latest
     needs: build
-    if: ${{ always() && needs.build.outputs.artifact-ready == 'true' }}
-    # Non-blocking: the APK is built, signed, deployed and released by the
-    # `build` job BEFORE this job runs. Maestro E2E on the CI emulator is
-    # flaky (KVM/cold-start/network) and must NOT mark the whole run red —
-    # otherwise operators think "build failed, no APK" when the APK is in fact
-    # published. Per-shard Maestro results stay visible; genuine regressions
-    # are reviewed from the shard logs/artifacts, not the run's red status.
+    if: ${{ needs.build.result == 'success' }}
+    # Non-blocking by design: publication is controlled exclusively by the
+    # dedicated Safe V1 gate. This broader matrix remains diagnostic coverage
+    # for historical flows and never converts a failed gate into success.
     continue-on-error: true
     timeout-minutes: 60
     # Shard the 35-flow suite across parallel jobs. A single serial run can't
