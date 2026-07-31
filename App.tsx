@@ -117,16 +117,37 @@ function seedMaestroE2ESession(): void {
   if (__maestroSeeded) return;
   __maestroSeeded = true;
   try {
+    const userId = 'e2e-user-1';
+    const agentId = 'e2e-agent-1';
+    const soulCoreId = 'e2e-soul-core-1';
+    const directoryQueryKey = ['mobile-v7', 'soul-core-directory', userId] as const;
     const instance = {
       id: 'e2e-instance-1',
       name: 'QA Agent',
       instanceUrl: 'https://agentrix.top/e2e',
       status: 'active' as const,
       deployType: 'cloud' as const,
+      agentAccountId: agentId,
     };
+
+    // The fake E2E token cannot query the production-owned Soul Core directory.
+    // Seed one read-only canonical projection so the UI test exercises the real
+    // Agent-context resolver and navigation instead of weakening authorization
+    // or treating a runtime instance as ownership. Production APKs never enter
+    // this compile-time-gated branch.
+    queryClient.setQueryDefaults(directoryQueryKey, { staleTime: Infinity, retry: false });
+    queryClient.setQueryData(directoryQueryKey, {
+      kind: 'ready' as const,
+      data: [{ schemaVersion: 1 as const, soulCoreId, agentAccountId: agentId }],
+      capturedAt: '2026-07-30T00:00:00.000Z',
+    });
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    const { useMobileAgentSelectionStore } = require('./src/stores/mobileAgentSelectionStore') as typeof import('./src/stores/mobileAgentSelectionStore');
+    useMobileAgentSelectionStore.getState().selectAgent(agentId);
+
     useAuthStore.setState({
       user: {
-        id: 'e2e-user-1',
+        id: userId,
         agentrixId: 'maestro-e2e',
         nickname: 'Maestro E2E',
         roles: ['tester'],
@@ -153,7 +174,7 @@ function seedMaestroE2ESession(): void {
     // bindUser('e2e-user-1') sees the SAME user → no-op → keeps terminated)
     // so the overlay returns null and the real tabs render.
     useSoulBirthStore.setState({
-      boundUserId: 'e2e-user-1',
+      boundUserId: userId,
       terminated: true,
       replaying: false,
       suspended: false,
