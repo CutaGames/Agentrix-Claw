@@ -21,11 +21,22 @@ appId: app.agentrix.claw
     id: "safe-v1-zero-usd-boundary"
 - assertVisible:
     id: "goal-budget"
-- assertVisible:
-    id: "goal-continue"
 - tapOn:
     id: "goal-input"
 - inputText: "Summarize the release notes"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "safe-v1-zero-usd-boundary"
+    direction: DOWN
+    timeout: 20000
 - assertVisible:
     id: "safe-v1-zero-usd-boundary"
+- scrollUntilVisible:
+    element:
+      id: "goal-continue"
+    direction: DOWN
+    timeout: 20000
+- assertVisible:
+    id: "goal-continue"
 - takeScreenshot: "31-mobile-agent-economy-safe-v1"
