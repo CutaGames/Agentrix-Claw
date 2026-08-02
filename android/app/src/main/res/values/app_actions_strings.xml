@@ -1,0 +1,14 @@
+<resources>
+    <!-- V3 core 6 (P0 shipped 2026-05-04) -->
+    <string name="aa_ask_aira_label">Ask Aira</string>
+    <string name="aa_draft_label">Draft with Aira</string>
+    <string name="aa_approve_label">Approve in Agentrix</string>
+    <string name="aa_wallet_label">Wallet status</string>
+    <string name="aa_invoke_agent_label">Run agent</string>
+    <string name="aa_pet_mood_label">Aira\'s mood</string>
+
+    <!-- V4 additions (mobile-prd-v4 §8 — shipped 2026-05-18) -->
+    <string name="aa_create_pet_label">Create pet with Agentrix</string>
+    <string name="aa_switch_skin_label">Switch pet skin</string>
+    <string name="aa_market_search_label">Search Agentrix marketplace</string>
+</resources>

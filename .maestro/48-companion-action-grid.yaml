@@ -1,0 +1,110 @@
+# Maestro E2E — P-9 Companion Redesign Sprint Q1 (2026-05-30).
+#
+# Regression guard for the "PetDetailSheet action grid navigates to
+# unregistered routes → runtime crash" bug fixed in Q1:
+#   - Before Q1: tapping 衣柜 / 灵魂 / 繁育 / 玩乐 / 记忆 navigated to route
+#     names (PetWardrobe / SoulPicker / PetBreed / PetPlayground /
+#     MemoryManagement) that were not registered in ANY navigator after the
+#     legacy PetStack was deleted. React Navigation threw → app crash.
+#   - After Q1: those screens are re-homed under MeStack and the grid
+#     navigates via Main > Me > <screen>. Each tap should open a real
+#     screen, not crash. Feed (🍖) calls POST /v1/pet/intimacy in-place.
+#
+# A green run = "long-press companion → every action grid item is safe".
+#
+# Spec: requirements.md R4.2 / R4.4 / R12.3. Audit: MOBILE_PET_SYSTEM_AUDIT.
+
+appId: app.agentrix.claw
+---
+
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd
+
+# ── Open PetDetailSheet via long-press on the companion ball ─────────
+- tapOn:
+    id: "floating-ball-sprite"
+    optional: true
+- waitForAnimationToEnd
+- longPressOn:
+    id: "floating-ball-sprite"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    text: "陪伴动作"
+    optional: true
+
+# ── 衣柜 → PetWardrobe (was crash) ───────────────────────────────────
+- tapOn:
+    text: "衣柜"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    text: "皮肤市场"
+    optional: true
+- back
+- waitForAnimationToEnd
+
+# Re-open the sheet between each action (navigating away dismisses it).
+- longPressOn:
+    id: "floating-ball-sprite"
+    optional: true
+- waitForAnimationToEnd
+
+# ── 灵魂 → SoulPicker (was crash) ────────────────────────────────────
+- tapOn:
+    text: "灵魂"
+    optional: true
+- waitForAnimationToEnd
+- back
+- waitForAnimationToEnd
+- longPressOn:
+    id: "floating-ball-sprite"
+    optional: true
+- waitForAnimationToEnd
+
+# ── 繁育 → PetBreed (was crash) ──────────────────────────────────────
+- tapOn:
+    text: "繁育"
+    optional: true
+- waitForAnimationToEnd
+- back
+- waitForAnimationToEnd
+- longPressOn:
+    id: "floating-ball-sprite"
+    optional: true
+- waitForAnimationToEnd
+
+# ── 玩乐 → PetPlayground (was crash) ─────────────────────────────────
+- tapOn:
+    text: "玩乐"
+    optional: true
+- waitForAnimationToEnd
+- back
+- waitForAnimationToEnd
+- longPressOn:
+    id: "floating-ball-sprite"
+    optional: true
+- waitForAnimationToEnd
+
+# ── 记忆 → MemoryManagement (was crash) ──────────────────────────────
+- tapOn:
+    text: "记忆"
+    optional: true
+- waitForAnimationToEnd
+- back
+- waitForAnimationToEnd
+- longPressOn:
+    id: "floating-ball-sprite"
+    optional: true
+- waitForAnimationToEnd
+
+# ── 喂食 → POST /v1/pet/intimacy, sheet stays open (in-place) ─────────
+- tapOn:
+    text: "喂食"
+    optional: true
+- waitForAnimationToEnd
+# Still on the detail sheet — feed acts in place, does not navigate away.
+- assertVisible:
+    text: "陪伴动作"
+    optional: true

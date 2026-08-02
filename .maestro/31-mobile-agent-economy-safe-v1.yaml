@@ -1,0 +1,42 @@
+appId: app.agentrix.claw
+# Blocking Safe V1 device gate. The seeded E2E build is authenticated, but this
+# flow deliberately stops before live discovery so CI never invents a candidate,
+# quote, payment, or successful execution.
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    id: "tab-agent"
+- extendedWaitUntil:
+    visible:
+      id: "agent-home-screen"
+    timeout: 30000
+- tapOn:
+    id: "agent-primary-goal"
+- extendedWaitUntil:
+    visible:
+      id: "goal-composer-screen"
+    timeout: 20000
+- assertVisible:
+    id: "safe-v1-payment-boundary"
+- assertVisible:
+    id: "goal-budget"
+- tapOn:
+    id: "goal-input"
+- inputText: "Summarize the release notes"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "safe-v1-payment-boundary"
+    direction: DOWN
+    timeout: 20000
+- assertVisible:
+    id: "safe-v1-payment-boundary"
+- scrollUntilVisible:
+    element:
+      id: "goal-continue"
+    direction: DOWN
+    timeout: 20000
+- assertVisible:
+    id: "goal-continue"
+- takeScreenshot: "31-mobile-agent-economy-safe-v1"

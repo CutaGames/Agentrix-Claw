@@ -1,0 +1,89 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 23: V4 Me Tab — AXP + Subscribe + Devices
+# Covers: M18-M23 (Profile + Subscribe + AXP + 兑换 + 设备)
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+
+- tapOn:
+    id: "tab-me"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot: "23-me-profile"
+
+# ── M18: Profile visible ────────────────────────────────
+- assertVisible:
+    text: "E2E"
+    optional: true
+
+# ── M19: Subscribe ──────────────────────────────────────
+- tapOn:
+    text: "订阅"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "23-me-subscribe"
+
+# 5 tiers should be visible
+- assertVisible:
+    text: "Free"
+    optional: true
+
+- assertVisible:
+    text: "Pro"
+    optional: true
+
+- back
+
+# ── M20: AXP Center ─────────────────────────────────────
+- tapOn:
+    text: "AXP"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "23-me-axp-center"
+
+# Balance should show
+- assertVisible:
+    text: "余额"
+    optional: true
+
+# ── M21: AXP 兑换商店 ───────────────────────────────────
+- tapOn:
+    text: "兑换"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "23-me-axp-redeem"
+
+- back
+
+- back
+
+# ── M22: 设备管理 ────────────────────────────────────────
+- tapOn:
+    text: "设备"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "23-me-devices"
+
+# ── M23: Toy 配对入口 ───────────────────────────────────
+- assertVisible:
+    text: "配对"
+    optional: true
+
+- takeScreenshot: "23-me-toy-pair"
+
+- back
