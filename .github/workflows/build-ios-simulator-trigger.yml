@@ -1,0 +1,16 @@
+name: Build iOS Simulator
+
+on:
+  push:
+    # 2026-05-10 fix: see build-apk-trigger.yml — `build*` doesn't cover
+    # `build/xxx` shape because `*` stops at `/`.
+    branches: [main, master, 'build*', 'build/**', 'v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-ios-simulator:
+    uses: ./.github/workflows/build-ios-simulator.yml
+    secrets: inherit
