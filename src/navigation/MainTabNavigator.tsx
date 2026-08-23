@@ -20,7 +20,8 @@
  *     (T6.6) instead of a dedicated Pet tab.
  */
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { MainTabParamList } from './types';
 import { WorldStackNavigator } from './WorldStackNavigator';
@@ -31,6 +32,13 @@ import { MeStackNavigator } from './MeStackNavigator';
 import { useColors } from '../theme/useTheme';
 import { useNotificationStore } from '../stores/notificationStore';
 import { useI18n } from '../stores/i18nStore';
+import { AgentFirstTabNavigator } from './agent-first/AgentFirstTabNavigator';
+import {
+  configureMobileV6FeatureFlagsFromEnvironment,
+  isMobileV6FeatureEnabled,
+} from '../services/mobileV6FeatureFlags';
+
+configureMobileV6FeatureFlagsFromEnvironment();
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -57,11 +65,16 @@ function TabIcon({ emoji, focused, badge, testID }: { emoji: string; focused: bo
   );
 }
 
-export function MainTabNavigator() {
+function LegacyMainTabNavigator() {
   const { t } = useI18n();
   const c = useColors();
+  const insets = useSafeAreaInsets();
+  const { width, fontScale } = useWindowDimensions();
   const unreadCount = useNotificationStore((s) => s.unreadCount);
   const approvalCount = useNotificationStore((s) => s.approvalCount);
+  const compact = width < 360 || fontScale > 1.2;
+  const bottomInset = Math.max(insets.bottom, compact ? 6 : 8);
+  const contentHeight = compact ? 50 : 54;
 
   return (
     <Tab.Navigator
@@ -69,17 +82,30 @@ export function MainTabNavigator() {
       initialRouteName="World"
       screenOptions={{
         headerShown: false,
+        tabBarHideOnKeyboard: true,
+        tabBarAllowFontScaling: false,
         tabBarStyle: {
           backgroundColor: c.bgCard,
           borderTopColor: c.border,
           borderTopWidth: 1,
-          height: 64,
-          paddingBottom: 10,
-          paddingTop: 4,
+          height: contentHeight + bottomInset,
+          paddingBottom: bottomInset,
+          paddingTop: compact ? 2 : 4,
         },
+        tabBarItemStyle: {
+          flex: 1,
+          minWidth: 0,
+          paddingHorizontal: 0,
+        },
+        tabBarIconStyle: { marginTop: compact ? -1 : 0 },
         tabBarActiveTintColor: c.accent,
         tabBarInactiveTintColor: c.textMuted,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+        tabBarLabelStyle: {
+          fontSize: compact ? 10 : 11,
+          fontWeight: '600',
+          marginTop: compact ? 0 : 2,
+          marginHorizontal: 0,
+        },
       }}
     >
       <Tab.Screen
@@ -122,4 +148,11 @@ export function MainTabNavigator() {
       />
     </Tab.Navigator>
   );
+}
+
+/** Feature-flagged IA switch. Flag-off is the complete legacy rollback path. */
+export function MainTabNavigator() {
+  return isMobileV6FeatureEnabled('mobile.agent_first_ia')
+    ? <AgentFirstTabNavigator />
+    : <LegacyMainTabNavigator />;
 }

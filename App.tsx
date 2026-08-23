@@ -11,6 +11,7 @@ import { useSoulBirthStore } from './src/stores/soulBirthStore';
 import { setApiConfig, loadTokenFromStorage, apiFetch } from './src/services/api';
 import { fetchCurrentUser } from './src/services/auth';
 import { getMyInstances } from './src/services/openclaw.service';
+import { resolveAgentDisplayName } from './src/utils/agentDisplayName';
 import { colors } from './src/theme/colors';
 import { useThemeMode } from './src/theme/useTheme';
 import { useSettingsStore } from './src/stores/settingsStore';
@@ -50,10 +51,15 @@ import { CompanionLayer } from './src/components/companion/CompanionLayer';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { resolveLegacyPath } from './src/navigation/legacyRouteTable';
+import {
+  isMobileV7RouteCandidate,
+  normalizeMobileV7Route,
+} from './src/navigation/v7/routeContract';
 import { navigationRef as sharedNavigationRef } from './src/navigation/navigationRef';
 import { getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
 import { attachLinkingListener } from './src/services/intents/intentBridge';
 import { installDefaultIntentHandlers } from './src/services/intents/defaultIntentHandlers';
+import { resolveDeveloperApprovalPushDestination } from './src/services/developerWorkspaceApprovals';
 
 // Register llama.rn bridge for on-device LLM inference
 initLlamaBridge();
@@ -85,6 +91,40 @@ const queryClient = new QueryClient({
 });
 
 const isMaestroE2E = process.env.EXPO_PUBLIC_MAESTRO_E2E === '1';
+const isAgentFirstBuild = process.env.EXPO_PUBLIC_MOBILE_AGENT_FIRST_IA === '1';
+let pendingDeveloperApprovalRef: string | null = null;
+const handledNotificationResponseIds = new Set<string>();
+
+function openDeveloperApproval(approvalRef: string): boolean {
+  const auth = useAuthStore.getState();
+  if (!isAgentFirstBuild) return false;
+  if (
+    !auth.isInitialized
+    || !auth.isAuthenticated
+    || !navigationRef.isReady()
+  ) {
+    pendingDeveloperApprovalRef = approvalRef;
+    return false;
+  }
+  (navigationRef as any).navigate('Main', {
+    screen: 'Work',
+    params: {
+      screen: 'WorkApprovals',
+      params: {
+        approvalRef,
+        source: 'push',
+      },
+    },
+  });
+  pendingDeveloperApprovalRef = null;
+  return true;
+}
+
+function drainPendingDeveloperApproval(): void {
+  if (pendingDeveloperApprovalRef) {
+    openDeveloperApproval(pendingDeveloperApprovalRef);
+  }
+}
 
 /**
  * Maestro E2E auto-login seed (native, device-side).
@@ -112,6 +152,8 @@ function seedMaestroE2ESession(): void {
       instanceUrl: 'https://agentrix.top/e2e',
       status: 'active' as const,
       deployType: 'cloud' as const,
+      agentAccountId: 'e2e-agent-account-1',
+      metadata: { agentAccountId: 'e2e-agent-account-1' },
     };
     useAuthStore.setState({
       user: {
@@ -397,14 +439,17 @@ function AppNavigator() {
             try {
               const instances = await getMyInstances();
               if (instances && instances.length > 0) {
-                const storeInstances = instances.map((inst: any) => ({
+                const storeInstances = instances.map((inst: any, index: number) => ({
+                  ...inst,
                   id: inst.id,
-                  name: inst.name || 'My Agent',
+                  name: resolveAgentDisplayName(inst, `Agent ${index + 1}`),
                   instanceUrl: inst.instanceUrl || '',
                   status: (inst.status || 'active') as 'active' | 'disconnected' | 'error',
                   deployType: (inst.deployType || 'cloud') as 'cloud' | 'local' | 'server' | 'existing',
                   version: inst.version,
                   lastSyncAt: inst.lastSyncAt,
+                  metadata: inst.metadata,
+                  agentAccountId: inst.agentAccountId ?? inst.metadata?.agentAccountId,
                 }));
                 const currentState = useAuthStore.getState();
                 currentState.updateUser({ openClawInstances: storeInstances });
@@ -587,6 +632,19 @@ function AppNavigator() {
     notifSubRef.current = Notifications.addNotificationReceivedListener((notification) => {
       const { addNotification } = useNotificationStore.getState();
       const data = (notification.request.content.data as Record<string, any>) ?? {};
+      const developerApproval = resolveDeveloperApprovalPushDestination(data);
+      if (developerApproval.ok) {
+        addNotification({
+          type: 'approval',
+          title: 'Developer approval',
+          body: 'Open to review the latest request.',
+          data: { approvalRef: developerApproval.params.approvalRef },
+        });
+        return;
+      }
+      if (Object.prototype.hasOwnProperty.call(data, 'approvalRef')) {
+        return;
+      }
       addNotification({
         type: (notification.request.content.data?.type ?? 'system') as any,
         title: notification.request.content.title ?? 'Notification',
@@ -617,6 +675,34 @@ function AppNavigator() {
       notifSubRef.current = null;
     };
   }, [skipStartupIntegrations, notificationsEnabled]);
+
+  useEffect(() => {
+    if (skipStartupIntegrations) return;
+    const handleResponse = (response: Notifications.NotificationResponse) => {
+      const identifier = response.notification.request.identifier;
+      const responseId = `${identifier}:${response.actionIdentifier}`;
+      if (handledNotificationResponseIds.has(responseId)) return;
+      const data = response.notification.request.content.data as unknown;
+      const destination = resolveDeveloperApprovalPushDestination(data);
+      if (!destination.ok) return;
+      if (openDeveloperApproval(destination.params.approvalRef)) {
+        handledNotificationResponseIds.add(responseId);
+      }
+    };
+    const subscription = Notifications.addNotificationResponseReceivedListener(handleResponse);
+    void Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (response) handleResponse(response);
+      })
+      .catch(() => {});
+    return () => subscription.remove();
+  }, [skipStartupIntegrations]);
+
+  useEffect(() => {
+    if (isInitialized && isAuthenticated) {
+      drainPendingDeveloperApproval();
+    }
+  }, [isAuthenticated, isInitialized]);
 
   useEffect(() => {
     if (skipStartupIntegrations || !isInitialized || !isAuthenticated || !token || !notificationsEnabled) {
@@ -691,15 +777,11 @@ function CompanionLayerGate() {
   // AppNavigator for a stripped-down PetSoulE2EApp / VoiceUiE2EApp that
   // doesn't expose Main / World / Plaza routes.
   if (isPetSoulE2EOnce || isVoiceUiE2EOnce) return null;
-  // Maestro UI-test build: the CompanionLayer mounts the always-on animated
-  // floating ball + PetSprite (and pulls in heavy graphics deps). On the
-  // resource-starved x86_64 CI emulator (software GPU, 2 vCPU) that extra
-  // always-running render work is enough to push the whole system into ANR
-  // territory during boot, so the authenticated tab shell never settles and
-  // Maestro can't find `tab-world`. Skip it under E2E so the shell renders
-  // fast and tab navigation is testable. (Companion-specific flows run on a
-  // real device / separate pass; the ball isn't needed for tab nav.)
-  if (isMaestroE2E) return null;
+  // Keep the Companion mounted in the normal Maestro baseline so the same
+  // authenticated APK can verify the user-visible floating entry. Extremely
+  // constrained CI emulators may opt out explicitly; hiding it merely because
+  // Maestro auto-login is enabled created a permanent false-green blind spot.
+  if (isMaestroE2E && process.env.EXPO_PUBLIC_MAESTRO_DISABLE_COMPANION === '1') return null;
   if (!isAuthenticated) return null;
   return <CompanionLayer navigationRef={navigationRef} />;
 }
@@ -718,6 +800,13 @@ const linking = {
   // works on both dev and production builds.
   prefixes: [Linking.createURL('/'), 'agentrix://', 'clawlink://', 'https://clawlink.app', 'https://agentrix.top'],
   getStateFromPath: (path: string, options: any) => {
+    if (isAgentFirstBuild && isMobileV7RouteCandidate(path)) {
+      const result = normalizeMobileV7Route(path);
+      const strictPath = result.ok === true
+        ? result.path
+        : `/destination-error?reason=${encodeURIComponent(result.error.code)}`;
+      return defaultGetStateFromPath(strictPath, options);
+    }
     const normalized = resolveLegacyPath(path);
     return defaultGetStateFromPath(normalized, options);
   },
@@ -741,6 +830,64 @@ const linking = {
       },
       Main: {
         screens: {
+          ...(isAgentFirstBuild ? {
+            Agent: {
+              screens: {
+                AgentHome: 'agents',
+                GoalComposer: 'actions/new',
+                CandidateCompare: 'actions/compare',
+                AuthorityReview: 'actions/:actionId/authority',
+                ActionTracking: 'agents/:agentId/actions/:actionId',
+                Companion: 'agent/companion',
+                HardwareAssurance: 'agents/:agentId/assurance',
+                AgentSoulCore: 'agents/:agentId/soul-core',
+                DestinationError: 'destination-error',
+              },
+            },
+            Work: {
+              screens: {
+                WorkHome: 'work',
+                ActionsHome: 'work/actions',
+                WorkMachines: 'work/machines/:machineRef?',
+                WorkSessions: 'work/sessions/:sessionRef?',
+                WorkApprovals: 'work/approvals/:approvalRef?',
+                WorkReceipts: 'work/receipts/:actionRef?',
+                WorkHandoffs: 'work/handoffs/:handoffRef?',
+              },
+            },
+            Economy: {
+              screens: {
+                EconomyHome: 'economy',
+                CreationHome: 'economy/seller',
+                CreationFeed: 'economy/seller/feed',
+                CreationCreator: 'economy/seller/new',
+                CreationExperience: 'economy/seller/experience/:creationId',
+                CreationDetail: 'economy/seller/:creationId',
+                MyWorld: 'economy/seller/mine',
+                UnifiedWorldMap: 'economy/seller/map',
+                WorldCreationMarketplace: 'economy/seller/market',
+              },
+            },
+            Actions: {
+              screens: {
+                ActionsHome: 'actions',
+              },
+            },
+            Creation: {
+              screens: {
+                CreationHome: 'creation',
+                CreationFeed: 'creation/feed',
+                CreationCreator: 'creation/new',
+                CreationExperience: 'creation/experience/:creationId',
+                CreationDetail: 'creation/:creationId',
+                MyWorld: 'creation/mine',
+                UnifiedWorldMap: 'creation/map',
+                WorldCreationMarketplace: 'creation/market',
+              },
+            },
+            Prediction: 'prediction',
+            Lsm: 'lsm',
+          } : {}),
           // AI World Creation Platform (v6) — World tab deep links. The World
           // stack previously had NO linking entries, so its v6 surfaces
           // (map / land / market / creator / experience / task) were only
@@ -795,7 +942,7 @@ const linking = {
               ToyCustom: 'plaza/toy/custom',
             },
           },
-          Me: {
+          [isAgentFirstBuild ? 'My' : 'Me']: {
             screens: {
               Profile: 'me',
               Account: 'me/account',
@@ -848,7 +995,11 @@ export default function App() {
         <AppErrorBoundary>
           <QueryClientProvider client={queryClient}>
             <BottomSheetModalProvider>
-              <NavigationContainer ref={navigationRef as any} linking={linking as any}>
+              <NavigationContainer
+                ref={navigationRef as any}
+                linking={linking as any}
+                onReady={drainPendingDeveloperApproval}
+              >
                 <StatusBar style={themeMode === 'light' ? 'dark' : 'light'} />
                 <AppNavigator />
                 {/* Global AXP toast — surfaces +N AXP when earns happen anywhere. */}
