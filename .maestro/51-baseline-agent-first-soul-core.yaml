@@ -1,0 +1,125 @@
+appId: app.agentrix.claw
+# Current Agent-first baseline: four tabs, non-empty Agent name, and the
+# complete Soul Core L0 six-anchor read/return path.
+#
+# 2026-09-16 (MTR-R09.8, decision d-32 — M0.0.7 per spec default): the Pet
+# family, including the global Companion layer (floating ball / proactive
+# banner), is withdrawn from the Agent-first default IA. This baseline now
+# asserts the ball is ABSENT. The Companion interaction path moved to
+# 52-agent-first-pet-l2-flag-on.yaml, which needs a build with
+# EXPO_PUBLIC_MOBILE_PET_L2_SURFACE=1 (M1.6.3 flag-on / flag-off double run).
+tags:
+  - agent-first
+  - ci-gate
+---
+- launchApp:
+    clearState: true
+
+- extendedWaitUntil:
+    visible:
+      id: "tab-agent"
+    timeout: 25000
+
+# Four bottom destinations must be independently laid out and reachable.
+- assertVisible:
+    id: "tab-agent"
+- assertVisible:
+    id: "tab-work"
+- assertVisible:
+    id: "tab-economy"
+- assertVisible:
+    id: "tab-my"
+- assertVisible:
+    id: "agent-home-screen"
+
+# Seeded instance exercises the same fallback/normalization path as real data.
+- assertVisible:
+    id: "agent-selected-name"
+- assertVisible:
+    text: "QA Agent"
+
+# MTR-R09.8: no Companion overlay in the Agent-first default IA. Give the
+# authenticated shell a moment to settle first so a slow mount cannot pass
+# this assertion by accident.
+- waitForAnimationToEnd:
+    timeout: 4000
+- assertNotVisible:
+    id: "floating-ball-sprite"
+- takeScreenshot: "51-agent-home-no-companion"
+
+- tapOn:
+    id: "tab-work"
+- extendedWaitUntil:
+    visible:
+      id: "work-home-screen"
+    timeout: 10000
+- assertNotVisible:
+    id: "floating-ball-sprite"
+
+- tapOn:
+    id: "tab-economy"
+- extendedWaitUntil:
+    visible:
+      id: "economy-home-screen"
+    timeout: 10000
+- assertNotVisible:
+    id: "floating-ball-sprite"
+
+- tapOn:
+    id: "tab-my"
+- extendedWaitUntil:
+    visible:
+      id: "me-profile-screen"
+    timeout: 10000
+- assertNotVisible:
+    id: "floating-ball-sprite"
+# MTR-R09.3: the Pet-family entries under My are gone with the flag off.
+- assertNotVisible:
+    id: "me-earnings-center"
+- assertNotVisible:
+    id: "me-axp-glance"
+
+# Soul Core L0: enter from Me, verify all six anchors, and return deterministically.
+- scrollUntilVisible:
+    element:
+      id: "me-soul-core"
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: "me-soul-core"
+- extendedWaitUntil:
+    visible:
+      id: "soul-core-l0-hero"
+    timeout: 10000
+- assertVisible:
+    id: "soul-core-back"
+- assertVisible:
+    id: "soul-core-anchor-identity"
+- scrollUntilVisible:
+    element:
+      id: "soul-core-anchor-vault"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "soul-core-anchor-authority"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "soul-core-anchor-reputation"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "soul-core-anchor-soulKey"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "soul-core-anchor-ownership"
+    direction: DOWN
+- takeScreenshot: "51-soul-core-l0-six-anchors"
+- tapOn:
+    id: "soul-core-back"
+- extendedWaitUntil:
+    visible:
+      id: "me-profile-screen"
+    timeout: 10000
+- takeScreenshot: "51-baseline-returned-to-me"

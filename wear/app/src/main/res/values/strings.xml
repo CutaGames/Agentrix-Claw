@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Agentrix</string>
+    <string name="tile_label">Agentrix 一瞥</string>
+    <string name="complication_label">Agentrix 在场</string>
+
+    <!-- Glance -->
+    <string name="glance_online">在线</string>
+    <string name="glance_offline">离线</string>
+    <string name="glance_earnings_axp">AXP</string>
+    <string name="glance_earnings_stable">稳定币</string>
+    <string name="glance_unread">未读</string>
+    <string name="glance_pending">待审批</string>
+
+    <!-- Auth fallback -->
+    <string name="auth_needed_title">需要登录</string>
+    <string name="auth_needed_body">请在手机上打开 Agentrix 登录，手表将自动同步。</string>
+
+    <!-- Approval -->
+    <string name="approve">批准</string>
+    <string name="reject">拒绝</string>
+    <string name="approval_title">待审批动作</string>
+    <string name="approval_none">暂无待审批</string>
+    <string name="approval_failed_closed">网络失败，已按未批准处理</string>
+
+    <!-- Quick ask -->
+    <string name="quick_ask">抬腕一句话</string>
+    <string name="quick_ask_hint">说出你的需求</string>
+    <string name="quick_ask_more">深入对话请在手机上继续</string>
+
+    <!-- Health / care -->
+    <string name="health_unavailable">健康数据不可用</string>
+    <string name="health_permission">需授予身体传感权限</string>
+    <string name="health_disabled">感知未开启</string>
+</resources>

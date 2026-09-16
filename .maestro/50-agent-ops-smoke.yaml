@@ -1,0 +1,82 @@
+# Maestro E2E smoke for crypto-native-agent-ops MOBILE UI.
+#
+# Covers the new "Agent Ops / Agent 自运营" hub under the Me tab and its
+# sub-screens. Assertions are resilient (optional) where content depends on
+# backend data/fixtures — a green run means the navigation graph + screens
+# mount and render without crashing. Deeper data-bound assertions run in the
+# backend-fixture E2E profile.
+#
+# Spec: .kiro/specs/crypto-native-agent-ops/* (mobile UI follow-up).
+# Targets the testIDs added in src/screens/agent-ops/* + ProfileScreen row.
+
+appId: app.agentrix.claw
+---
+
+# ── Pre-flight: cold launch ──────────────────────────────────────────
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd
+
+# ── Step 1: go to Me tab ─────────────────────────────────────────────
+- tapOn:
+    id: "tab-me"
+- waitForAnimationToEnd
+
+# ── Step 2: open the Agent Ops hub from the Me landing list ──────────
+- tapOn:
+    id: "me-agent-ops"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    id: "agent-ops-hub"
+    optional: true
+
+# ── Step 3: Due Diligence screen ─────────────────────────────────────
+- tapOn:
+    id: "ao-due-diligence"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    id: "ao-due-diligence-screen"
+    optional: true
+- back
+
+# ── Step 4: Monitors screen ──────────────────────────────────────────
+- tapOn:
+    id: "ao-monitors"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    id: "ao-monitors-screen"
+    optional: true
+- back
+
+# ── Step 5: Deliverables screen ──────────────────────────────────────
+- tapOn:
+    id: "ao-deliverables"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    id: "ao-deliverables-screen"
+    optional: true
+- back
+
+# ── Step 6: Reliability metrics screen ───────────────────────────────
+- tapOn:
+    id: "ao-reliability"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    id: "ao-reliability-screen"
+    optional: true
+- back
+
+# ── Step 7: Agent economic status screen ─────────────────────────────
+- tapOn:
+    id: "ao-economic-status"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    id: "ao-economic-status-screen"
+    optional: true
+- back

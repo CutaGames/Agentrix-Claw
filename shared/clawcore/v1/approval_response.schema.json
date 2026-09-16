@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentrix.top/schemas/clawcore/v1/approval_response.json",
+  "title": "ClawCore ApprovalResponse Frame",
+  "description": "Device → server reply to an ApprovalRequest. Phase 5 HW-10.1.",
+  "type": "object",
+  "required": ["type", "request_id", "decision", "device_attestation", "nonce"],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "const": "approval_response" },
+    "request_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "decision": { "type": "string", "enum": ["approve", "deny"] },
+    "cosign_token": { "type": "string", "maxLength": 1024, "description": "L3 only: 'fid:...' or 'pk:...'" },
+    "device_attestation": { "type": "string", "minLength": 32, "description": "HMAC-SHA256(DST, request_id|decision|nonce)" },
+    "nonce": { "type": "integer", "minimum": 0 }
+  }
+}

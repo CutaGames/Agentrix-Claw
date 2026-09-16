@@ -1,0 +1,104 @@
+{
+  "title": "Agentrix Legacy and Risk Telemetry Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "reportId", "environment", "window", "generatedAt", "surfaces", "financialExposure", "retention", "caveats"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "reportId": { "type": "string", "minLength": 1 },
+    "environment": { "enum": ["production", "staging", "unknown"] },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startsAt", "endsAt", "days", "status"],
+      "properties": {
+        "startsAt": { "type": ["string", "null"], "format": "date-time" },
+        "endsAt": { "type": ["string", "null"], "format": "date-time" },
+        "days": { "type": ["integer", "null"], "minimum": 1 },
+        "status": { "enum": ["measured", "unknown"] },
+        "unknownReason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "surfaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["surfaceId", "domain", "kind", "sourceRef", "staticReferences", "runtimeCalls", "authenticatedCalls", "businessWrites", "activeUsers"],
+        "properties": {
+          "surfaceId": { "type": "string", "minLength": 1 },
+          "domain": { "$ref": "#/definitions/domain" },
+          "kind": { "enum": ["route", "api", "websocket", "cron", "queue", "worker"] },
+          "sourceRef": { "type": "string", "minLength": 1 },
+          "staticReferences": { "type": "integer", "minimum": 0 },
+          "runtimeCalls": { "$ref": "#/definitions/telemetryValue" },
+          "authenticatedCalls": { "$ref": "#/definitions/telemetryValue" },
+          "businessWrites": { "$ref": "#/definitions/telemetryValue" },
+          "activeUsers": { "$ref": "#/definitions/telemetryValue" }
+        }
+      }
+    },
+    "financialExposure": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["domain", "currency", "unsettledBalance", "openOrders", "openStakes", "pendingRefunds", "openDisputes"],
+        "properties": {
+          "domain": { "enum": ["battle", "pvp", "dungeon", "prediction", "lsm"] },
+          "currency": { "type": "string", "minLength": 1 },
+          "unsettledBalance": { "$ref": "#/definitions/telemetryValue" },
+          "openOrders": { "$ref": "#/definitions/telemetryValue" },
+          "openStakes": { "$ref": "#/definitions/telemetryValue" },
+          "pendingRefunds": { "$ref": "#/definitions/telemetryValue" },
+          "openDisputes": { "$ref": "#/definitions/telemetryValue" }
+        }
+      }
+    },
+    "retention": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["domain", "dataOwner", "retentionPolicy", "compatibilityOwner", "retirementDecision"],
+        "properties": {
+          "domain": { "$ref": "#/definitions/domain" },
+          "dataOwner": { "type": "string", "minLength": 1 },
+          "retentionPolicy": { "type": "string", "minLength": 1 },
+          "compatibilityOwner": { "type": "string", "minLength": 1 },
+          "retirementDecision": { "enum": ["blocked", "observe", "retain-adapter", "eligible-for-review"] }
+        }
+      }
+    },
+    "caveats": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "definitions": {
+    "domain": { "enum": ["rn-watch", "battle", "pvp", "dungeon", "legacy-route", "prediction", "lsm"] },
+    "telemetryValue": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value", "unknownReason"],
+          "properties": {
+            "status": { "const": "unknown" },
+            "value": { "type": "null" },
+            "unknownReason": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value", "source", "observedAt"],
+          "properties": {
+            "status": { "const": "measured" },
+            "value": {},
+            "source": { "type": "string", "minLength": 1 },
+            "observedAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      ]
+    }
+  }
+}

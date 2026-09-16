@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentrix.top/schemas/clawcore/v1/approval_request.json",
+  "title": "ClawCore ApprovalRequest Frame",
+  "description": "Server → device approval request requiring user confirmation. Phase 5 HW-10.1.",
+  "type": "object",
+  "required": ["type", "seq", "request_id", "risk_level", "summary", "deadline_ts"],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "const": "approval_request" },
+    "seq": { "type": "integer", "minimum": 0 },
+    "request_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "risk_level": { "type": "string", "enum": ["L1", "L2", "L3"] },
+    "summary": { "type": "string", "maxLength": 200 },
+    "amount_cents": { "type": "integer", "minimum": 0 },
+    "deadline_ts": { "type": "integer", "minimum": 0 }
+  }
+}

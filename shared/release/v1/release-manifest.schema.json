@@ -1,0 +1,100 @@
+{
+  "title": "Agentrix Cross-Platform Release Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "releaseId", "generatedAt", "sourceSha", "sourceState", "evidenceScope", "components", "sharedContracts", "migrations", "gates", "validation"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "releaseId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "sourceSha": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+    "sourceState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["worktree", "sourceShaCoversGeneratedContent", "changedPathCount"],
+      "properties": {
+        "worktree": { "enum": ["clean", "dirty", "unknown"] },
+        "sourceShaCoversGeneratedContent": { "type": "boolean" },
+        "changedPathCount": { "type": ["integer", "null"], "minimum": 0 },
+        "unknownReason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "evidenceScope": { "const": "source-release-candidate" },
+    "components": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "sourceSha", "artifact", "flagSnapshot", "minimumCompatibleVersion", "deploymentEvidence"],
+        "properties": {
+          "name": { "enum": ["backend", "web", "mobile", "desktop", "wear"] },
+          "sourceSha": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+          "artifact": { "$ref": "#/definitions/evidence" },
+          "flagSnapshot": { "$ref": "#/definitions/evidence" },
+          "minimumCompatibleVersion": { "$ref": "#/definitions/evidence" },
+          "deploymentEvidence": { "$ref": "#/definitions/evidence" }
+        }
+      }
+    },
+    "sharedContracts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["soulCore", "authority", "taskProof", "soulShell"],
+      "properties": {
+        "soulCore": { "type": "integer", "minimum": 1 },
+        "authority": { "type": "integer", "minimum": 1 },
+        "taskProof": { "type": "integer", "minimum": 1 },
+        "soulShell": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "migrations": { "$ref": "#/definitions/evidence" },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chatPathParity", "sharedContractCheck", "migrationDryRun"],
+      "properties": {
+        "chatPathParity": { "$ref": "#/definitions/evidence" },
+        "sharedContractCheck": { "$ref": "#/definitions/evidence" },
+        "migrationDryRun": { "$ref": "#/definitions/evidence" }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valid", "errors", "warnings"],
+      "properties": {
+        "valid": { "type": "boolean" },
+        "errors": { "type": "array", "items": { "type": "string" } },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "definitions": {
+    "evidence": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value", "source"],
+          "properties": {
+            "status": { "const": "supplied" },
+            "value": {},
+            "source": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value", "unknownReason"],
+          "properties": {
+            "status": { "const": "unknown" },
+            "value": { "type": "null" },
+            "unknownReason": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    }
+  }
+}

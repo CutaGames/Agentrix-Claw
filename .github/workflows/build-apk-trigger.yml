@@ -1,0 +1,25 @@
+name: Build → Test → Release APK
+
+on:
+  push:
+    # 2026-05-10 fix: `build*` glob does NOT match `build/xxx` (slash is
+    # a path separator in minimatch). Expanded to cover both hyphen and
+    # slash prefix variants.
+    branches: [main, master, 'build*', 'build/**', 'v*']
+  workflow_dispatch:
+    inputs:
+      deploy_download:
+        description: 'After Maestro passes, upload the signed APK to the production download server. Default off for validation runs.'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  checks: write
+
+jobs:
+  build-apk:
+    uses: ./.github/workflows/build-apk.yml
+    with:
+      deploy_download: ${{ inputs.deploy_download || false }}
+    secrets: inherit

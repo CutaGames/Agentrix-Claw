@@ -1,0 +1,26 @@
+## AI World Creation Platform (v6) — Creation Task status (R8)
+## Covers CreationTaskStatusScreen: the queue/dispatch/status/retry surface a
+## Tier_C dispatch routes to. The dispatch path needs a live Tier_C plot
+## (empty E2E backend has none), so we deep-link the status screen directly via
+## `agentrix://world/task/:taskId`. The screen shell (scroll root + title)
+## renders deterministically regardless of whether the task id resolves; the
+## status badge / retry button are data-dependent and not asserted here.
+appId: app.agentrix.claw
+name: World Creation — Creation Task status
+---
+- launchApp
+- assertVisible:
+    id: "tab-world"
+
+# Deep-link straight into the creation-task status host.
+- openLink: agentrix://world/task/e2e-task-1
+
+# The status host mounts (scroll root is always rendered, task found or not).
+- extendedWaitUntil:
+    visible:
+      id: "creation-task-scroll"
+    timeout: 15000
+- assertVisible:
+    id: "creation-task-scroll"
+
+- takeScreenshot: "75-creation-task"

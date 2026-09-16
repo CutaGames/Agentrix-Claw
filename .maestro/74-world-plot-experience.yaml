@@ -1,0 +1,31 @@
+## AI World Creation Platform (v6) — Plot inner-experience host (R1.4 / R1.7)
+## Covers PlotExperienceScreen: entering a Plot races a 10s timeout and, on
+## failure, deterministically falls back to a "back to map" affordance (R1.7).
+## With a synthetic plot id the enter call is rejected by the backend, so this
+## flow asserts the enter→fail→fallback path (the host mounts and never hangs).
+## The B-tier supermarket checkout (economy.requestCharge) is server-authoritative
+## and covered by backend tests; here we verify the host surface + R1.7 guard.
+appId: app.agentrix.claw
+name: World Creation — Plot Experience host
+---
+- launchApp
+- assertVisible:
+    id: "tab-world"
+
+# Deep-link into the inner-experience host for a (synthetic) plot.
+- openLink: agentrix://world/plot/e2e-plot-1
+
+# enterPlot() on an unknown id fails within the 10s race → fallback renders
+# the "back to map" control (R1.7: never hang, always return to a usable state).
+- extendedWaitUntil:
+    visible:
+      id: "plot-back-to-map"
+    timeout: 15000
+- assertVisible:
+    id: "plot-back-to-map"
+
+- takeScreenshot: "74-plot-experience-fallback"
+
+# The fallback is actionable — tapping returns to the previous surface.
+- tapOn:
+    id: "plot-back-to-map"

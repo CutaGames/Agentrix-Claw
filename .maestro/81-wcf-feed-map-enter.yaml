@@ -1,0 +1,53 @@
+# Maestro E2E — World Creation & Feed: 世界 Hub → 创作流(上下刷)→ 统一地图 (task 13.1)
+#
+# spec: 需求 10.1(单核心循环 Hub)、5.1/5.2(创作流预览/进入分离)、4.1/4.7(统一地图 + 切换)。
+#       对照 ui-design §1/§3/§4。
+#
+# 强断言策略(CI 实证,e798152):
+#   - **用 deep-link 确定性进屏**,不用 `tapOn tab-world` —— launchApp(clearState:false)会
+#     复用前序 flow 留在 World 栈深处的状态,点 tab 不重置到 WorldRoot(81 旧版即因此挂)。
+#   - 容器/入口都在 ScrollView/TouchableOpacity/FlatList(Fabric 下可解析;不依赖 Pressable)。
+#   - extendedWaitUntil 轮询替代即时 assertVisible,吸收挂载/后端 settle 时序。
+appId: app.agentrix.claw
+name: WCF — Hub / Feed / Map
+---
+- launchApp
+- assertVisible:
+    id: "tab-world"
+
+# ── 世界 Hub 渲染(deep-link)────────────────────────────────
+- openLink: agentrix://world
+- extendedWaitUntil:
+    visible:
+      id: "world-hub-scroll"
+    timeout: 25000
+- assertVisible:
+    id: "world-hub-feed"
+- assertVisible:
+    id: "world-hub-map"
+
+# ── 经 Hub 入口进创作流(验证 hub 导航接线)+ 上下滑(预览态)──
+- tapOn:
+    id: "world-hub-feed"
+- extendedWaitUntil:
+    visible:
+      id: "creation-feed-list"
+    timeout: 20000
+- swipe:
+    direction: UP
+    duration: 400
+- swipe:
+    direction: DOWN
+    duration: 400
+
+# ── 统一地图(deep-link 确定性进):在此创作 FAB + 切回创作流入口 ──
+- openLink: agentrix://world/explore
+- waitForAnimationToEnd:
+    timeout: 6000
+- extendedWaitUntil:
+    visible:
+      id: "map-create"
+    timeout: 25000
+- assertVisible:
+    id: "map-switch-feed"
+- takeScreenshot: "81-hub-feed-map"
