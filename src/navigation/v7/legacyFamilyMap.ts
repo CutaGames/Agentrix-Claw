@@ -10,14 +10,20 @@
  * 1. A family whose V7 route contract has an exact counterpart maps onto it
  *    (`summon` → `/agents`, `me/*` → `/my?section=…`, World creation ids →
  *    `/creation/:id`).
- * 2. World and Plaza are *hidden routes* under Agent-first (M0.0.7, decided
- *    2026-09-16 per spec default — decision d-32): the navigator still mounts
- *    them with no tab button, so their legacy paths pass through unchanged
- *    and existing share links / QR codes / pushes keep resolving.
- * 3. The Pet family (`me/pet/*`, `me/axp*`) sits behind the L2 product flag
- *    `mobile.pet_l2_surface` (MTR-R09.3 / R09.8). Flag on → pass through;
- *    flag off → `destination-error(surface_flag_off)`. The caller supplies the
- *    flag value; this module stays a pure function.
+ * 2. World and Plaza are *hidden routes* behind the L2 product flag
+ *    `mobile.world_plaza_l2_surface` (M0.0.7, decision d-35, 2026-09-16): the
+ *    navigator still mounts them with no tab button (R09.7), but the flag is
+ *    off by default, so their legacy paths land on
+ *    `destination-error(surface_flag_off)` — the card's copy is the user
+ *    migration note. Flag on → pass through unchanged (share links / QR codes
+ *    / pushes resolve again). Aeon / Market / Social links reach here through
+ *    `legacyRouteTable` rewrites into `world/*` / `plaza/*`.
+ * 3. The Pet family (`me/pet/*`, `me/axp*`) is NOT withdrawn (d-35: it is the
+ *    canonical Agent's Shell). It still follows `mobile.pet_l2_surface`, which
+ *    now defaults on and only remains as the kill switch (MTR-R09.8). Flag on
+ *    → pass through; flag off → `destination-error(surface_flag_off)`.
+ *    The caller supplies both flag values; this module stays a pure function
+ *    and fails closed when a value is missing.
  * 4. Anything else that looks like a family member but matches no rule is an
  *    honest `unknown_route` error, never a guessed landing.
  */
@@ -44,6 +50,12 @@ export interface LegacyFamilyOptions {
    * that forgets to pass it fails closed (Pet hidden), never open.
    */
   readonly petSurfaceEnabled?: boolean;
+  /**
+   * `isWorldPlazaSurfaceEnabled()` at the call site (decision d-35). Defaults
+   * to `false` — the product default — so a caller that forgets to pass it
+   * fails closed (World / Plaza deep links land on destination-error).
+   */
+  readonly worldPlazaSurfaceEnabled?: boolean;
 }
 
 const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$/;
@@ -95,6 +107,11 @@ function resolveMe(segments: string[]): LegacyFamilyResolution {
   if (segments.length === 1) return { ok: true, family: 'me', path: '/my' };
   if (segments[1] === 'notifications') return { ok: true, family: 'me', path: '/inbox' };
   if (segments[1] === 'scan') return { ok: true, family: 'me', path: '/scan' };
+  // Team (`agent/team-space` → `me/team/*`) is one of the surfaces d-35
+  // withdraws from the default IA (M0.0.7). The Me stack registers no Team
+  // route, so there is nothing for a flag to re-open here: the migration card
+  // is the only honest landing, and a better one than `unknown_route`.
+  if (segments[1] === 'team') return { ok: false, family: 'me', reason: 'surface_flag_off' };
   const section = ME_SECTIONS[segments[1]];
   if (section) return { ok: true, family: 'me', path: `/my?section=${section}` };
   return { ok: false, family: 'me', reason: 'unknown_route' };
@@ -116,9 +133,14 @@ function segmentsAreSafe(segments: string[]): boolean {
   return segments.every((segment) => SAFE_SEGMENT.test(segment));
 }
 
-function resolveWorld(segments: string[], clean: string): LegacyFamilyResolution {
+function resolveWorld(
+  segments: string[],
+  clean: string,
+  options: LegacyFamilyOptions,
+): LegacyFamilyResolution {
   // World paths that carry a creation id have an exact V7 counterpart:
-  // `/creation/:creationId` is in the V7 contract already.
+  // `/creation/:creationId` is in the V7 contract already (Creation is an
+  // Economy sub-route, MTR-R09.4) — never gated by the World flag.
   if (segments.length === 3 && (segments[1] === 'creation' || segments[1] === 'experience')) {
     const creationId = segments[2];
     if (!SAFE_SEGMENT.test(creationId)) {
@@ -126,14 +148,26 @@ function resolveWorld(segments: string[], clean: string): LegacyFamilyResolution
     }
     return { ok: true, family: 'world', path: `/creation/${encodeURIComponent(creationId)}` };
   }
-  // Everything else is a hidden route (decision d-32): the World stack stays
-  // mounted without a tab button, so the legacy path resolves as-is.
+  // Everything else is a hidden route behind `mobile.world_plaza_l2_surface`
+  // (decision d-35): flag off → the destination-error card (migration note);
+  // flag on → the World stack is still mounted without a tab button, so the
+  // legacy path resolves as-is.
+  if (options.worldPlazaSurfaceEnabled !== true) {
+    return { ok: false, family: 'world', reason: 'surface_flag_off' };
+  }
   if (!segmentsAreSafe(segments)) return { ok: false, family: 'world', reason: 'unknown_route' };
   return { ok: true, family: 'world', path: passThrough(clean) };
 }
 
-function resolvePlaza(segments: string[], clean: string): LegacyFamilyResolution {
-  // Hidden route (decision d-32), same as World.
+function resolvePlaza(
+  segments: string[],
+  clean: string,
+  options: LegacyFamilyOptions,
+): LegacyFamilyResolution {
+  // Hidden route behind the same L2 flag as World (decision d-35).
+  if (options.worldPlazaSurfaceEnabled !== true) {
+    return { ok: false, family: 'plaza', reason: 'surface_flag_off' };
+  }
   if (!segmentsAreSafe(segments)) return { ok: false, family: 'plaza', reason: 'unknown_route' };
   return { ok: true, family: 'plaza', path: passThrough(clean) };
 }
@@ -143,7 +177,8 @@ function resolvePet(
   clean: string,
   options: LegacyFamilyOptions,
 ): LegacyFamilyResolution {
-  // MTR-R09.3 / R09.8: the Pet family is an L2 product flag under Agent-first.
+  // MTR-R09.3 / R09.8: the Pet family follows `mobile.pet_l2_surface`
+  // (default on since d-35 — the flag is the kill switch, not a withdrawal).
   if (options.petSurfaceEnabled !== true) {
     return { ok: false, family: 'pet', reason: 'surface_flag_off' };
   }
@@ -174,9 +209,9 @@ export function resolveLegacyFamilyForV7(
     case 'summon':
       return resolveSummon(segments);
     case 'world':
-      return resolveWorld(segments, clean);
+      return resolveWorld(segments, clean, options);
     case 'plaza':
-      return resolvePlaza(segments, clean);
+      return resolvePlaza(segments, clean, options);
     default:
       return null;
   }

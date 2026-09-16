@@ -11,30 +11,32 @@
  *       `companionEvents.emit('active-pet-changed', ...)` so the ball,
  *       PetDetailSheet, ConversationBubble etc. all stay in lock-step.
  *
- * Spec: requirements.md R5.1 / R5.3 / R5.5.
+ * V7 (MTR-R09.8 / M1.4.6, decision d-35 "M0.0.8 = Shell", 2026-09-16):
+ *   Under the Agent-first IA the floating ball / Companion layer is the
+ *   current canonical Agent's Shell, so its identity is
+ *   `SoulCoreRef.agentAccountId` — not the runtime instance id. The mapping
+ *   is the pure function in `companionShellBinding.ts`; this module only
+ *   feeds it from the stores. The legacy IA keeps the pre-V7 behaviour.
+ *
+ * Spec: requirements.md R5.1 / R5.3 / R5.5; V7 MTR-R09.8, MTR-R17.6.
  */
 import { useEffect, useMemo, useRef } from 'react';
 import { useAuthStore } from '../stores/authStore';
+import { useMobileAgentSelectionStore } from '../stores/mobileAgentSelectionStore';
 import { companionEvents } from './companionEvents.service';
-import { clanShortCode, type PetClanShortCode } from '../../shared/types/pet';
+import { isAgentFirstIaEnabled } from './mobileV6FeatureFlags';
+import {
+  resolveCompanionShellBinding,
+  type CompanionShellBinding,
+} from './companionShellBinding';
 
-export interface ActivePet {
-  id: string;
-  name: string;
-  /** Single-letter clan / sprite code (A..F). Derived via the shared
-   *  `clanShortCode()` bridge so the canonical `A_office..F_family` slugs and
-   *  the renderer's short codes never drift. Mobile default = 'A' (kitsune). */
-  clan?: PetClanShortCode;
-  /** True when no instance is bound yet (user logged in but hasn't onboarded). */
-  isPlaceholder: boolean;
-}
-
-const PLACEHOLDER: ActivePet = {
-  id: '__placeholder__',
-  name: 'Aira',
-  clan: 'A',
-  isPlaceholder: true,
-};
+/**
+ * The Shell the Companion layer renders. `id` / `name` / `clan` /
+ * `isPlaceholder` are the fields the redesign-era consumers read; the V7
+ * fields (`agentAccountId`, `instanceId`, `shellKey`, `source`) say who the
+ * Shell represents and who drives it.
+ */
+export type ActivePet = CompanionShellBinding;
 
 /**
  * React hook returning the current active pet plus auto-emitting
@@ -43,55 +45,59 @@ const PLACEHOLDER: ActivePet = {
  */
 export function useActivePet(): ActivePet {
   const activeInstance = useAuthStore((s) => s.activeInstance);
-  const lastEmittedIdRef = useRef<string | null>(null);
+  const instances = useAuthStore((s) => s.user?.openClawInstances);
+  const selectedAgentId = useMobileAgentSelectionStore((s) => s.selectedAgentId);
+  // Read per render, never at module scope (MTR-R06.4 import-order trap).
+  const agentFirst = isAgentFirstIaEnabled();
+  const lastEmittedKeyRef = useRef<string | null>(null);
 
-  const pet = useMemo<ActivePet>(() => {
-    if (!activeInstance) return PLACEHOLDER;
-    return {
-      id: activeInstance.id,
-      name: activeInstance.name || 'Aira',
-      clan: clanShortCode((activeInstance as any).clan ?? (activeInstance as any).soul_template_id),
-      isPlaceholder: false,
-    };
-  }, [activeInstance]);
+  const pet = useMemo<ActivePet>(
+    () => resolveCompanionShellBinding({ agentFirst, selectedAgentId, instances, activeInstance }),
+    [agentFirst, selectedAgentId, instances, activeInstance],
+  );
 
   // Emit 'active-pet-changed' on transition. Run as effect so the emit
-  // happens after render, not during.
+  // happens after render, not during. Keyed on `shellKey`: the instance id
+  // in the legacy IA, the canonical agentAccountId under Agent-first.
   useEffect(() => {
-    if (lastEmittedIdRef.current === pet.id) return;
-    const previousId = lastEmittedIdRef.current;
-    lastEmittedIdRef.current = pet.id;
-    if (previousId !== null) {
+    if (lastEmittedKeyRef.current === pet.shellKey) return;
+    const previousKey = lastEmittedKeyRef.current;
+    lastEmittedKeyRef.current = pet.shellKey;
+    if (previousKey !== null) {
       // Skip the very first mount (no real "transition" happened).
       companionEvents.emit({
         type: 'active-pet-changed',
-        from: previousId,
-        to: pet.id,
+        from: previousKey,
+        to: pet.shellKey,
       });
     }
-  }, [pet.id]);
+  }, [pet.shellKey]);
 
   return pet;
 }
 
 /**
  * Imperative read for non-React call sites (e.g. inside event handlers,
- * native module bridges). Reads directly from authStore.
+ * native module bridges). Reads directly from the stores.
  */
 export function getActivePet(): ActivePet {
-  const inst = useAuthStore.getState().activeInstance;
-  if (!inst) return PLACEHOLDER;
-  return {
-    id: inst.id,
-    name: inst.name || 'Aira',
-    clan: clanShortCode((inst as any).clan ?? (inst as any).soul_template_id),
-    isPlaceholder: false,
-  };
+  const auth = useAuthStore.getState();
+  return resolveCompanionShellBinding({
+    agentFirst: isAgentFirstIaEnabled(),
+    selectedAgentId: useMobileAgentSelectionStore.getState().selectedAgentId,
+    instances: auth.user?.openClawInstances,
+    activeInstance: auth.activeInstance,
+  });
 }
 
 /**
- * Switch active pet. Wraps authStore.setActiveInstance() and explicitly
- * emits `active-pet-changed` (for callers outside React render trees).
+ * Switch the runtime instance behind the Shell. Wraps
+ * authStore.setActiveInstance() and explicitly emits `active-pet-changed`
+ * (for callers outside React render trees).
+ *
+ * Under Agent-first this changes who *drives* the Shell; the Shell's
+ * identity still follows the canonical Agent (MTR-R17.6), so the hook above
+ * only re-emits when that identity actually changes.
  *
  * Spec: R5.3.
  */

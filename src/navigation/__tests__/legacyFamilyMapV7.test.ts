@@ -15,13 +15,24 @@ function resolveUnderV7(path: string, options: LegacyFamilyOptions = {}): string
 }
 
 /**
- * Hidden routes (decision d-32): World / Plaza stay mounted in
- * `AgentFirstTabNavigator` without a tab button, and the Pet family lives in
- * the `My` stack. A pass-through result is only "not a white screen" if that
+ * Hidden routes (decision d-35): World / Plaza stay mounted in
+ * `AgentFirstTabNavigator` without a tab button behind
+ * `mobile.world_plaza_l2_surface` (default off), and the Pet family lives in
+ * the `My` stack behind `mobile.pet_l2_surface` (default on — the Shell kill
+ * switch). A pass-through result is only "not a white screen" if that
  * navigator really mounts the family it names.
  */
 const HIDDEN_ROUTE = /^\/(world|plaza)(\/|\?|$)|^\/me\/(pet|axp)(\/|\?|$)/;
+const SURFACE_OFF = '/destination-error?reason=surface_flag_off';
 const PET_ON: LegacyFamilyOptions = { petSurfaceEnabled: true };
+const WORLD_PLAZA_ON: LegacyFamilyOptions = { worldPlazaSurfaceEnabled: true };
+const ALL_ON: LegacyFamilyOptions = { petSurfaceEnabled: true, worldPlazaSurfaceEnabled: true };
+const OPTION_MATRIX = [
+  ['both off', {}],
+  ['pet on', PET_ON],
+  ['world/plaza on', WORLD_PLAZA_ON],
+  ['both on', ALL_ON],
+] as const;
 
 describe('MTR-R08.1 — every legacy family resolves to V7, a hidden route, or destination-error', () => {
   it.each([
@@ -54,20 +65,63 @@ describe('MTR-R08.1 — every legacy family resolves to V7, a hidden route, or d
     expect(resolveLegacyFamilyPath(input)).toBe(expected);
   });
 
-  it.each([
-    'world',
-    'world/map',
-    'world/plots',
-    'world/market',
-    'world/plot/p_1',
-    'plaza',
-    'plaza/skills',
-    'plaza/tasks/t_1',
-    'plaza/skills/s_1?ref=share',
-  ])('passes %s through as a hidden route (M0.0.7 decided per spec default, d-32)', (input) => {
-    const resolved = resolveLegacyFamilyPath(input);
-    expect(resolved).toBe(`/${input}`);
-    expect(resolved).toMatch(HIDDEN_ROUTE);
+  describe('MTR-R09.2 / R09.7 — World / Plaza are hidden routes behind mobile.world_plaza_l2_surface (d-35)', () => {
+    const worldPlazaPaths = [
+      'world',
+      'world/map',
+      'world/plots',
+      'world/market',
+      'world/plot/p_1',
+      'plaza',
+      'plaza/skills',
+      'plaza/tasks/t_1',
+      'plaza/skills/s_1?ref=share',
+    ];
+
+    it.each(worldPlazaPaths)('lands %s on destination-error(surface_flag_off) when the flag is off (the product default)', (input) => {
+      expect(resolveLegacyFamilyPath(input, { worldPlazaSurfaceEnabled: false })).toBe(SURFACE_OFF);
+    });
+
+    it.each(worldPlazaPaths)('fails closed for %s when the caller passes no flag at all', (input) => {
+      expect(resolveLegacyFamilyPath(input)).toBe(SURFACE_OFF);
+      // The Pet flag is not the World / Plaza flag.
+      expect(resolveLegacyFamilyPath(input, PET_ON)).toBe(SURFACE_OFF);
+    });
+
+    it.each(worldPlazaPaths)('passes %s through as a hidden route when the flag is on (rollback = flag, not code)', (input) => {
+      const resolved = resolveLegacyFamilyPath(input, WORLD_PLAZA_ON);
+      expect(resolved).toBe(`/${input}`);
+      expect(resolved).toMatch(HIDDEN_ROUTE);
+    });
+
+    it.each([
+      // Aeon / Market / Social / Team reach the family map through legacyRouteTable rewrites.
+      ['market/skill/s_1', 'plaza'],
+      ['market/task', 'plaza'],
+      ['social/feed', 'plaza'],
+      ['discover/feed', 'plaza'],
+      ['agent/console', 'world'],
+      ['home', 'world'],
+    ])('folds the pre-4-tab %s link into the %s family and gates it the same way', (input, family) => {
+      const rewritten = resolveLegacyPath(input);
+      expect(legacyFamilyOf(rewritten)).toBe(family);
+      expect(resolveUnderV7(input)).toBe(SURFACE_OFF);
+      expect(resolveUnderV7(input, WORLD_PLAZA_ON)).toMatch(HIDDEN_ROUTE);
+    });
+
+    it.each(['agent/team-space', 'agent/team-invite', 'me/team/space'])(
+      'lands the withdrawn Team surface (%s) on the migration card too — no Me-stack route exists for a flag to re-open',
+      (input) => {
+        for (const [, options] of OPTION_MATRIX) {
+          expect(resolveUnderV7(input, options)).toBe(SURFACE_OFF);
+        }
+      },
+    );
+
+    it('never gates the Creation counterpart (Economy sub-route, MTR-R09.4) behind the World flag', () => {
+      expect(resolveLegacyFamilyPath('world/creation/c_1')).toBe('/creation/c_1');
+      expect(resolveLegacyFamilyPath('world/experience/c_1', { worldPlazaSurfaceEnabled: false })).toBe('/creation/c_1');
+    });
   });
 
   it('keeps World / Plaza / Me mounted as hidden tabs so the pass-through lands somewhere', () => {
@@ -81,20 +135,20 @@ describe('MTR-R08.1 — every legacy family resolves to V7, a hidden route, or d
     }
   });
 
-  describe('MTR-R09.3 / R09.8 — the Pet family follows mobile.pet_l2_surface', () => {
+  describe('MTR-R09.3 / R09.8 — the Pet family follows mobile.pet_l2_surface (the Shell kill switch, d-35)', () => {
     const petPaths = ['me/pet/wardrobe', 'me/pet/soul', 'me/pet/breed', 'me/axp', 'me/axp/shop'];
 
-    it.each(petPaths)('hides %s behind destination-error(surface_flag_off) when the flag is off', (input) => {
-      expect(resolveLegacyFamilyPath(input, { petSurfaceEnabled: false }))
-        .toBe('/destination-error?reason=surface_flag_off');
+    it.each(petPaths)('hides %s behind destination-error(surface_flag_off) when the kill switch is thrown', (input) => {
+      expect(resolveLegacyFamilyPath(input, { petSurfaceEnabled: false })).toBe(SURFACE_OFF);
     });
 
-    it.each(petPaths)('fails closed for %s when the caller passes no flag at all', (input) => {
-      expect(resolveLegacyFamilyPath(input))
-        .toBe('/destination-error?reason=surface_flag_off');
+    it.each(petPaths)('fails closed for %s when the caller passes no flag at all (the module has no default of its own)', (input) => {
+      expect(resolveLegacyFamilyPath(input)).toBe(SURFACE_OFF);
+      // The World / Plaza flag is not the Pet flag.
+      expect(resolveLegacyFamilyPath(input, WORLD_PLAZA_ON)).toBe(SURFACE_OFF);
     });
 
-    it.each(petPaths)('passes %s through as a hidden route when the flag is on', (input) => {
+    it.each(petPaths)('passes %s through as a hidden route when the flag is on (the product default under d-35)', (input) => {
       const resolved = resolveLegacyFamilyPath(input, PET_ON);
       expect(resolved).toBe(`/${input}`);
       expect(resolved).toMatch(HIDDEN_ROUTE);
@@ -102,8 +156,9 @@ describe('MTR-R08.1 — every legacy family resolves to V7, a hidden route, or d
 
     it('never produces the retired pending_ia_decision reason any more', () => {
       for (const input of ['world', 'plaza', ...petPaths]) {
-        expect(resolveLegacyFamilyPath(input)).not.toContain('pending_ia_decision');
-        expect(resolveLegacyFamilyPath(input, PET_ON)).not.toContain('pending_ia_decision');
+        for (const [, options] of OPTION_MATRIX) {
+          expect(resolveLegacyFamilyPath(input, options)).not.toContain('pending_ia_decision');
+        }
       }
     });
   });
@@ -117,8 +172,8 @@ describe('MTR-R08.1 — every legacy family resolves to V7, a hidden route, or d
     'world/..%2f..%2fetc',
     'plaza/skills/<script>',
     'me/pet/../../destination-error',
-  ])('refuses to pass %s through when a segment is not a safe opaque token', (input) => {
-    expect(resolveLegacyFamilyPath(input, PET_ON))
+  ])('refuses to pass %s through when a segment is not a safe opaque token, even with every flag on', (input) => {
+    expect(resolveLegacyFamilyPath(input, ALL_ON))
       .toBe('/destination-error?reason=unknown_route');
   });
 });
@@ -135,10 +190,7 @@ describe('MTR-R08.2 — no white screen, no loop, no wrong agent', () => {
     'home/pet/memory', 'wallet',
   ];
 
-  it.each([
-    ['flag off', {}],
-    ['flag on', PET_ON],
-  ] as const)('always produces a V7-parseable path or a mounted hidden route (%s)', (_label, options) => {
+  it.each(OPTION_MATRIX)('always produces a V7-parseable path or a mounted hidden route (%s)', (_label, options) => {
     for (const input of families) {
       const resolved = resolveUnderV7(input, options);
       // `null` means "not a family" — the caller falls back to the legacy
@@ -153,7 +205,7 @@ describe('MTR-R08.2 — no white screen, no loop, no wrong agent', () => {
     // Landing on `/agents/<someone>` from a family link would be the
     // "wrong Agent" failure MTR-R08.2 forbids.
     for (const input of families) {
-      for (const options of [{}, PET_ON]) {
+      for (const [, options] of OPTION_MATRIX) {
         const resolved = resolveUnderV7(input, options);
         if (resolved === null) continue;
         expect(resolved).not.toMatch(/^\/agents\/[^/]+/);
@@ -163,7 +215,7 @@ describe('MTR-R08.2 — no white screen, no loop, no wrong agent', () => {
 
   it('is idempotent — resolving twice cannot loop', () => {
     for (const input of families) {
-      for (const options of [{}, PET_ON]) {
+      for (const [, options] of OPTION_MATRIX) {
         const once = resolveUnderV7(input, options);
         if (once === null) continue;
         const twice = resolveLegacyFamilyPath(once, options);

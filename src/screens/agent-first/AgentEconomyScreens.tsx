@@ -17,6 +17,7 @@ import type {
   ActionTaskV1,
 } from '../../../shared/types/action-runtime';
 import type { MobileReadState } from '../../services/mobileReadState';
+import { describeDestinationError } from '../../navigation/destinationError';
 import {
   actionDimensions,
   evaluateMobileActionReceiptAvailability,
@@ -441,12 +442,15 @@ export function LsmUnavailableScreen() {
 export function DestinationErrorScreen({ route }: any) {
   const { t } = useI18n();
   const styles = useThemedStyles(makeStyles);
+  const reason = route.params?.reason;
+  // d-35: for withdrawn surfaces the lead copy is the user migration note.
+  const lead = describeDestinationError(reason);
   return (
     <View style={[styles.screen, styles.centerContent]} testID="destination-error-screen">
       <Text style={styles.featureEmoji}>!</Text>
       <Text style={styles.pageTitle}>{t({ en: 'Link not opened', zh: '链接未打开' })}</Text>
-      <Text style={styles.pageLead}>{t({ en: 'This destination failed strict validation. No action, execution or payment was started.', zh: '该目标未通过严格校验；没有启动行动、执行或付款。' })}</Text>
-      <Text style={styles.helper}>{route.params?.reason ?? 'invalid_route'}</Text>
+      <Text style={styles.pageLead}>{t(lead)}</Text>
+      <Text style={styles.helper}>{reason ?? 'invalid_route'}</Text>
     </View>
   );
 }

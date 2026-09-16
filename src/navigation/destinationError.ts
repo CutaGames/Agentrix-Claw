@@ -12,6 +12,12 @@ export const MOBILE_NAVIGATION_FAILURE_REASONS = [
   'route_not_mounted',
   /** Target belonged to a surface that has been withdrawn from the default IA. */
   'legacy_route_retired',
+  /**
+   * Target is a hidden route behind an L2 product flag that is off
+   * (World / Plaza / Aeon / Market / Social / Team, or the Pet family under
+   * its kill switch) — MTR-R09.2 / R09.3, decision d-35.
+   */
+  'surface_flag_off',
   /** Nothing in the route table matches. */
   'unknown_route',
   /** `navigate()` threw — usually a param-list mismatch. */
@@ -44,6 +50,45 @@ export function destinationErrorTarget(
 
 export function destinationErrorPath(reason: MobileNavigationFailureReason): string {
   return `/destination-error?reason=${encodeURIComponent(reason)}`;
+}
+
+export interface DestinationErrorCopy {
+  readonly en: string;
+  readonly zh: string;
+}
+
+const GENERIC_DESTINATION_ERROR_COPY: DestinationErrorCopy = Object.freeze({
+  en: 'This destination failed strict validation. No action, execution or payment was started.',
+  zh: '该目标未通过严格校验；没有启动行动、执行或付款。',
+});
+
+/**
+ * Per-reason lead copy for the DestinationError card. For the withdrawn
+ * surfaces (decision d-35, M0.0.7) this text IS the user migration note —
+ * there is no separate announcement — so it must say where the journey now
+ * lives rather than just "invalid". Unknown / malformed reasons get the
+ * generic honest line.
+ */
+export function describeDestinationError(reason: unknown): DestinationErrorCopy {
+  switch (reason) {
+    case 'surface_flag_off':
+      return {
+        en: 'This part of the app (World, Plaza, Aeon, Market, Social, Team) has been folded into the Agent-first layout. Skills and tasks now live under Economy, conversations and creation under Agent, your account under My. Nothing was deleted and no action was started.',
+        zh: '这部分内容（世界 / 广场 / Aeon / 集市 / 社交 / 团队）已收进 Agent 优先的新布局：技能与任务在「经济」，对话与创作在「Agent」，账号与设置在「我的」。数据未删除，也没有启动任何行动。',
+      };
+    case 'legacy_route_retired':
+      return {
+        en: 'This entry point has been retired. Sign-in and onboarding now start from the Agent tab; nothing was started on your behalf.',
+        zh: '该入口已下线；登录与引导现在从「Agent」页开始，没有替你启动任何操作。',
+      };
+    case 'route_not_mounted':
+      return {
+        en: 'This screen is not available in the current app layout. No action, execution or payment was started.',
+        zh: '该页面在当前布局中不可用；没有启动行动、执行或付款。',
+      };
+    default:
+      return GENERIC_DESTINATION_ERROR_COPY;
+  }
 }
 
 export interface NavigationLike {

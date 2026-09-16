@@ -1,0 +1,84 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# 52 · Agent-first + Pet L2 kill switch thrown (MTR-R09.8 / M1.6.3 flag-off run)
+#
+# Build prerequisite: EXPO_PUBLIC_MOBILE_AGENT_FIRST_IA=1 AND
+# EXPO_PUBLIC_MOBILE_PET_L2_SURFACE=0. NOT part of the default CI gate
+# (build-apk.yml builds with the flag at its default, ON — decision d-35,
+# M0.0.8 = "Shell"); run it when validating the kill switch itself or a remote
+# `mobile.pet_l2_surface=false` cohort.
+#
+# Covers: with the switch thrown the whole Pet family goes together (R09.8:
+#         never "routes hidden, overlay still up") — no floating ball on any
+#         of the four tabs, My shows neither the AXP glance nor the Earnings
+#         Center, and the Pet deep link lands on destination-error.
+# History: 2026-09-16 first written as the d-32 "flag-on rollback" flow; the
+#         same day d-35 inverted the default, so this is now the flag-OFF run
+#         (the assertions moved here from the interim 51).
+# Status: not yet run (REAL pending a flag-off build).
+# ─────────────────────────────────────────────────────────────
+tags:
+  - agent-first
+  - pet-l2-off
+---
+- launchApp:
+    clearState: true
+
+- extendedWaitUntil:
+    visible:
+      id: "tab-agent"
+    timeout: 25000
+- assertVisible:
+    id: "agent-home-screen"
+
+# No Companion overlay once the switch is thrown. Give the authenticated
+# shell a moment to settle first so a slow mount cannot pass this by accident.
+- waitForAnimationToEnd:
+    timeout: 4000
+- assertNotVisible:
+    id: "floating-ball-sprite"
+- takeScreenshot: "52-agent-home-no-companion"
+
+- tapOn:
+    id: "tab-work"
+- extendedWaitUntil:
+    visible:
+      id: "work-home-screen"
+    timeout: 10000
+- assertNotVisible:
+    id: "floating-ball-sprite"
+
+- tapOn:
+    id: "tab-economy"
+- extendedWaitUntil:
+    visible:
+      id: "economy-home-screen"
+    timeout: 10000
+- assertNotVisible:
+    id: "floating-ball-sprite"
+
+- tapOn:
+    id: "tab-my"
+- extendedWaitUntil:
+    visible:
+      id: "me-profile-screen"
+    timeout: 10000
+- assertNotVisible:
+    id: "floating-ball-sprite"
+# MTR-R09.3: the Pet-family entries under My go with the switch.
+- assertNotVisible:
+    id: "me-earnings-center"
+- assertNotVisible:
+    id: "me-axp-glance"
+
+# And the Pet deep link lands on destination-error(surface_flag_off).
+- openLink: agentrix://me/pet/wardrobe
+- waitForAnimationToEnd:
+    timeout: 6000
+- extendedWaitUntil:
+    visible:
+      id: "destination-error-screen"
+    timeout: 15000
+- assertVisible:
+    text: "surface_flag_off"
+- takeScreenshot: "52-pet-l2-off-deeplink-migration-card"

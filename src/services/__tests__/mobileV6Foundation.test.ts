@@ -26,14 +26,15 @@ import { MobileV6QueryFacade } from '../mobileV6Client';
 describe('Mobile V6 feature gates', () => {
   afterEach(() => resetMobileV6FeatureFlags());
 
-  it('defaults every V6 capability off', () => {
+  it('defaults every V6 capability off — except the Pet Shell kill switch, which is a LIVE_BASELINE surface (d-35)', () => {
     expect(DEFAULT_MOBILE_V6_FEATURE_FLAGS).toEqual({
       'mobile.agent_first_ia': false,
       'mobile.agent_economy_v1': false,
       'mobile.trust_loop': false,
       'mobile.soul_card_nfc': false,
       'mobile.twin_surface': false,
-      'mobile.pet_l2_surface': false,
+      'mobile.pet_l2_surface': true,
+      'mobile.world_plaza_l2_surface': false,
     });
     expect(Object.isFrozen(DEFAULT_MOBILE_V6_FEATURE_FLAGS)).toBe(true);
   });
@@ -73,18 +74,22 @@ describe('Mobile V6 feature gates', () => {
       'mobile.trust_loop': false,
       'mobile.soul_card_nfc': true,
       'mobile.twin_surface': false,
-      'mobile.pet_l2_surface': false,
+      // Default on; its prerequisite (agent_first_ia) is on here.
+      'mobile.pet_l2_surface': true,
+      'mobile.world_plaza_l2_surface': false,
     });
   });
 
   it('ignores malformed values and fails provider evaluation closed', () => {
+    // "Resolve nothing" rather than the raw default table: the dependency
+    // pass turns the default-on pet_l2_surface off while agent_first_ia is off.
     expect(resolveMobileV6FeatureFlags({
       remote: {
         'mobile.agent_first_ia': 'true',
         'mobile.trust_loop': 1,
         unknown: true,
       },
-    })).toEqual(DEFAULT_MOBILE_V6_FEATURE_FLAGS);
+    })).toEqual(resolveMobileV6FeatureFlags());
 
     expect(evaluateMobileV6FeatureFlagProvider(() => {
       throw new Error('remote unavailable');

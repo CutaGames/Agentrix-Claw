@@ -5,14 +5,17 @@ appId: app.agentrix.claw
 # 前提：EXPO_PUBLIC_MOBILE_AGENT_FIRST_IA=1 的 E2E 构建（flag-on 跑）。
 # flag-off 构建请跑 10-4tab-smoke（legacy IA），两者构成 M1.6.3 的双跑。
 #
-# 覆盖：冷启动落 Agent tab → Work / Economy / My 各自可达 →
-#       V7 深链进对 IA → legacy 家族深链按 2026-09-16 决定（d-32）落位：
-#       World / Plaza = hidden route（仍可达）、Pet 家族 = L2 flag off →
-#       destination-error(surface_flag_off)、退役根路径 → destination-error
+# 覆盖：冷启动进 Agent tab → 浮球 Shell 在场（d-35：M0.0.8 = Shell）→
+#       Work / Economy / My 各自可达 → V7 深链进对 IA → legacy 家族深链按
+#       2026-09-16 决定 d-35 落位：World / Plaza（含 Aeon / Market / Social /
+#       Team 改写进来的路径）= hidden route + L2 flag 默认 off →
+#       destination-error(surface_flag_off)（文案即用户迁移说明）；Pet 家族不撤出
+#       → `agentrix://me/pet/wardrobe` 直达衣柜；退役根路径 → destination-error
 #       （MTR-R08.2：不白屏、不循环、不落错 Agent）。
 # 不覆盖：push 入口（Maestro 构建默认跳过 push listener，见 M0.0.6 /
-#       EXPO_PUBLIC_MAESTRO_KEEP_PUSH）；证据走 pushDestination 单测 + M0.4.7 真机。
-# 状态：2026-09-15 写出；2026-09-16 按 d-32 更新；进入 build-apk.yml 的 CI 名单（REAL 待跑）。
+#       EXPO_PUBLIC_MAESTRO_KEEP_PUSH）；证据靠 pushDestination 单测 + M0.4.7 真机。
+# 状态：2026-09-15 写出；2026-09-16 按 d-32 更新并进 CI 名单（REAL：Claw build #521
+#       Passed）；同日按 d-35 改为 Shell 口径 + World/Plaza flag-off 落位（REAL 待跑）。
 # ─────────────────────────────────────────────────────────────
 tags:
   - agent-first
@@ -36,7 +39,13 @@ tags:
     id: "agent-home-screen"
 - assertVisible:
     id: "agent-selected-name"
-- takeScreenshot: "90-v7-agent-home"
+
+# d-35 / MTR-R09.8：浮球是当前 canonical Agent 的 Shell，agent-first 默认 IA 下可见。
+- extendedWaitUntil:
+    visible:
+      id: "floating-ball-sprite"
+    timeout: 10000
+- takeScreenshot: "90-v7-agent-home-with-shell"
 
 # Work
 - tapOn:
@@ -74,23 +83,10 @@ tags:
       id: "agent-home-screen"
     timeout: 15000
 
-# Plaza 是 hidden route（d-32）：深链仍可达，落 Marketplace 而不是白屏。
-# PlazaRoot = `screens/market/MarketplaceScreen`（五段：predictions / skills / tasks /
-# pets / resources）；旧 `plaza-seg-feed` 随 Feed 段在 marketplace-tab-refactor 下线后
-# 已不存在（CI run 35069945715 在此断言失败，2026-09-16 改用现有 testID）。
+# Plaza = hidden route + L2 flag `mobile.world_plaza_l2_surface` 默认 off（d-35 / M0.0.7）：
+# 深链落 destination-error(surface_flag_off)，卡片文案即用户迁移说明。
+# （d-32 过渡期这里曾断言 marketplace-screen 可见，#521 已 Passed；flag on 时仍可达。）
 - openLink: agentrix://plaza
-- waitForAnimationToEnd:
-    timeout: 6000
-- extendedWaitUntil:
-    visible:
-      id: "marketplace-screen"
-    timeout: 15000
-- assertVisible:
-    id: "marketplace-seg-predictions"
-- takeScreenshot: "90-v7-legacy-plaza-hidden-route"
-
-# Pet 家族在 L2 flag off 时落 destination-error(surface_flag_off)。
-- openLink: agentrix://me/pet/wardrobe
 - waitForAnimationToEnd:
     timeout: 6000
 - extendedWaitUntil:
@@ -99,7 +95,30 @@ tags:
     timeout: 15000
 - assertVisible:
     text: "surface_flag_off"
-- takeScreenshot: "90-v7-legacy-pet-destination-error"
+- takeScreenshot: "90-v7-legacy-plaza-migration-card"
+
+# Market 家族经 legacyRouteTable 改写进 Plaza，同样落迁移卡。
+- openLink: agentrix://market/skill/qa-skill
+- waitForAnimationToEnd:
+    timeout: 6000
+- extendedWaitUntil:
+    visible:
+      id: "destination-error-screen"
+    timeout: 15000
+- assertVisible:
+    text: "surface_flag_off"
+
+# Pet 家族不撤出（d-35）：`mobile.pet_l2_surface` 默认 on，深链直达 My 栈的衣柜。
+- openLink: agentrix://me/pet/wardrobe
+- waitForAnimationToEnd:
+    timeout: 6000
+- extendedWaitUntil:
+    visible:
+      id: "pet-wardrobe-screen"
+    timeout: 15000
+- assertNotVisible:
+    id: "destination-error-screen"
+- takeScreenshot: "90-v7-legacy-pet-wardrobe-reachable"
 
 # 退役根路径（InvitationGate）落 destination-error(legacy_route_retired)。
 - openLink: agentrix://invitation-gate

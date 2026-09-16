@@ -1,5 +1,6 @@
 import {
   MOBILE_NAVIGATION_FAILURE_REASONS,
+  describeDestinationError,
   destinationErrorPath,
   destinationErrorTarget,
   handleUnhandledNavigationAction,
@@ -7,6 +8,32 @@ import {
   navigateToDestinationError,
   safeNavigate,
 } from '../destinationError';
+
+describe('MTR-R09.2 / d-35 — the destination-error card copy is the user migration note', () => {
+  it('tells a World / Plaza / Aeon / Market / Social / Team deep link where the journey now lives', () => {
+    const copy = describeDestinationError('surface_flag_off');
+    for (const text of [copy.en, copy.zh]) {
+      expect(text.length).toBeGreaterThan(40);
+      // Names the folded surfaces and the three Agent-first destinations that replace them.
+      expect(text).toMatch(/World|世界/);
+      expect(text).toMatch(/Plaza|广场/);
+      expect(text).toMatch(/Economy|经济/);
+      expect(text).toMatch(/Agent/);
+      expect(text).toMatch(/My|我的/);
+      // And says nothing destructive happened (MTR-R08.2: no action started).
+      expect(text).toMatch(/Nothing was deleted|no action was started|未删除|没有启动/);
+    }
+  });
+
+  it('has dedicated copy for retired entries and unmounted routes, generic copy for the rest', () => {
+    expect(describeDestinationError('legacy_route_retired')).not.toEqual(describeDestinationError('unknown_route'));
+    expect(describeDestinationError('route_not_mounted')).not.toEqual(describeDestinationError('unknown_route'));
+    const generic = describeDestinationError('unknown_route');
+    expect(describeDestinationError('navigation_threw')).toEqual(generic);
+    expect(describeDestinationError(undefined)).toEqual(generic);
+    expect(describeDestinationError('<script>')).toEqual(generic);
+  });
+});
 
 function fakeNavigation(overrides: Partial<{ navigate: jest.Mock; isReady: () => boolean }> = {}) {
   return {
@@ -20,6 +47,7 @@ describe('MTR-R03.2 — navigation failures funnel into destination-error with a
     expect([...MOBILE_NAVIGATION_FAILURE_REASONS]).toEqual([
       'route_not_mounted',
       'legacy_route_retired',
+      'surface_flag_off',
       'unknown_route',
       'navigation_threw',
       'navigator_not_ready',

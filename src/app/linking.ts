@@ -23,7 +23,11 @@ import {
   normalizeMobileV7Route,
 } from '../navigation/v7/routeContract';
 import { resolveLegacyFamilyPath } from '../navigation/v7/legacyFamilyMap';
-import { isAgentFirstIaEnabled, isPetSurfaceEnabled } from '../services/mobileV6FeatureFlags';
+import {
+  isAgentFirstIaEnabled,
+  isPetSurfaceEnabled,
+  isWorldPlazaSurfaceEnabled,
+} from '../services/mobileV6FeatureFlags';
 
 export { isAgentFirstIaEnabled };
 
@@ -53,10 +57,13 @@ export function resolveIncomingPath(path: string): string {
     // Second hop (M1.3.1): under the V7 IA the four current tabs are
     // themselves legacy. Run the legacy table first so pre-4-tab links reach
     // their World/Summon/Plaza/Me form, then map that onto V7. World / Plaza
-    // pass through as hidden routes; the Pet family follows the L2 flag
-    // (MTR-R09, decision d-32), read here per call — never at module scope.
+    // are hidden routes behind `mobile.world_plaza_l2_surface` (default off →
+    // destination-error); the Pet family follows `mobile.pet_l2_surface`
+    // (default on, kill switch). MTR-R09, decision d-35 — both flags are read
+    // here per call, never at module scope.
     const familyPath = resolveLegacyFamilyPath(resolveLegacyPath(path), {
       petSurfaceEnabled: isPetSurfaceEnabled(),
+      worldPlazaSurfaceEnabled: isWorldPlazaSurfaceEnabled(),
     });
     if (familyPath !== null) return familyPath;
   }
