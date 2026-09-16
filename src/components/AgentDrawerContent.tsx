@@ -6,11 +6,13 @@ import {
   ScrollView,
   StyleSheet,
   Platform,
+  Linking,
 } from 'react-native';
 import { DrawerContentComponentProps } from '@react-navigation/drawer';
 import { useAuthStore } from '../stores/authStore';
 import { colors } from '../theme/colors';
 import { useI18n } from '../stores/i18nStore';
+import { getWorkflowEditorWebUrl } from '../services/webHandoff';
 import { themedStyles } from '../theme/useTheme';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -169,16 +171,24 @@ export function AgentDrawerContent({ navigation }: DrawerContentComponentProps) 
         <Text style={styles.sectionTitle}>
           {t({ en: 'Management', zh: '管理' })}
         </Text>
-        {[
+        {([
           { icon: '🧠', label: t({ en: 'Memory Hub', zh: '记忆中心' }), screen: 'MemoryManagement' },
-          { icon: '⚙️', label: t({ en: 'Workflows', zh: '工作流' }), screen: 'WorkflowList' },
+          // M1.4.4 / MTR-R09.5: the Workflow editor lives on Web; this is a handoff, not a route.
+          { icon: '⚙️', label: t({ en: 'Workflows (Web)', zh: '工作流（Web）' }), href: getWorkflowEditorWebUrl() },
           { icon: '🛠️', label: t({ en: 'Skills', zh: '技能管理' }), screen: 'SkillInstall', params: { skillId: '', skillName: '' } },
           { icon: '📋', label: t({ en: 'Activity Logs', zh: '运行日志' }), screen: 'AgentLogs' },
-        ].map((item) => (
+        ] as Array<{ icon: string; label: string; screen?: string; href?: string; params?: any }>).map((item) => (
           <TouchableOpacity
-            key={item.screen}
+            key={item.screen ?? item.href}
             style={styles.menuItem}
-            onPress={() => navigateAndClose(item.screen, item.params)}
+            onPress={() => {
+              if (item.href) {
+                navigation.closeDrawer();
+                void Linking.openURL(item.href).catch(() => {});
+                return;
+              }
+              navigateAndClose(item.screen as string, item.params);
+            }}
             activeOpacity={0.7}
           >
             <Text style={styles.menuIcon}>{item.icon}</Text>

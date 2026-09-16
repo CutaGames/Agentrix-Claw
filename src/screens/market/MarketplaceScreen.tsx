@@ -89,7 +89,9 @@ export function MarketplaceScreen() {
   const showAxpBalance = isAuthenticated && axpData && axpData.balance > 0;
 
   return (
-    <View style={styles.container}>
+    // testID: Maestro 90 (agent-first hidden-route smoke) asserts the Plaza deep
+    // link lands here instead of a blank screen (MTR-R08.2, decision d-32).
+    <View style={styles.container} testID="marketplace-screen">
       {/* Unified Search Modal (migrated from PlazaScreen) */}
       <PlazaSearchModal visible={searchVisible} onClose={() => setSearchVisible(false)} />
 

@@ -1,6 +1,7 @@
 import React from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useI18n } from "../../../stores/i18nStore";
+import { getWorkflowEditorWebUrl } from "../../../services/webHandoff";
 import { type Palette, useThemedStyles } from "../../../theme/useTheme";
 import { WorkReadStateCard } from "./WorkReadStateCard";
 
@@ -55,6 +56,32 @@ export function WorkHomeScreen() {
           })}
         </Text>
       </View>
+
+      {/* M1.4.4 / MTR-R09.5 (matrix #38): the full Workflow editor is offline on
+          Mobile; this card is the "open in Web" handoff, nothing more. */}
+      <View style={styles.card} testID="work-workflow-web-handoff">
+        <Text style={styles.cardTitle}>
+          {t({ en: "Workflow editor", zh: "工作流编辑器" })}
+        </Text>
+        <Text style={styles.cardBody}>
+          {t({
+            en: "Workflows are edited on Web. Mobile keeps only this handoff; runs and schedules stay on the Backend.",
+            zh: "工作流在 Web 上编辑；Mobile 只保留这个接力入口，运行与排期仍在 Backend。",
+          })}
+        </Text>
+        <Pressable
+          accessibilityRole="link"
+          onPress={() => {
+            void Linking.openURL(getWorkflowEditorWebUrl()).catch(() => {});
+          }}
+          style={styles.linkButton}
+          testID="work-workflow-open-web"
+        >
+          <Text style={styles.linkButtonText}>
+            {t({ en: "Open in Web ↗", zh: "在 Web 打开 ↗" })}
+          </Text>
+        </Pressable>
+      </View>
     </ScrollView>
   );
 }
@@ -81,5 +108,15 @@ function makeStyles(c: Palette) {
     },
     cardTitle: { color: c.textPrimary, fontSize: 16, fontWeight: "700" },
     cardBody: { color: c.textSecondary, fontSize: 13, lineHeight: 20 },
+    linkButton: {
+      alignSelf: "flex-start",
+      marginTop: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: c.accent,
+    },
+    linkButtonText: { color: c.accent, fontSize: 13, fontWeight: "700" },
   });
 }

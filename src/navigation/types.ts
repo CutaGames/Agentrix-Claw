@@ -39,8 +39,7 @@ export type AgentStackParamList = {
   MemoryManagement: undefined;
   AgentMemory: undefined;
   AcpSessions: undefined;
-  WorkflowList: undefined;
-  WorkflowDetail: { workflowId?: string };
+  // WorkflowList / WorkflowDetail retired (M1.4.4 / MTR-R09.5): the editor is a Web handoff.
   AgentAccount: undefined;
   AgentBalance: { agentAccountId: string; agentName: string };
   AgentPermissions: { agentAccountId?: string } | undefined;

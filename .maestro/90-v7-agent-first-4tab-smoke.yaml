@@ -75,13 +75,18 @@ tags:
     timeout: 15000
 
 # Plaza 是 hidden route（d-32）：深链仍可达，落 Marketplace 而不是白屏。
+# PlazaRoot = `screens/market/MarketplaceScreen`（五段：predictions / skills / tasks /
+# pets / resources）；旧 `plaza-seg-feed` 随 Feed 段在 marketplace-tab-refactor 下线后
+# 已不存在（CI run 35069945715 在此断言失败，2026-09-16 改用现有 testID）。
 - openLink: agentrix://plaza
 - waitForAnimationToEnd:
     timeout: 6000
 - extendedWaitUntil:
     visible:
-      id: "plaza-seg-feed"
+      id: "marketplace-screen"
     timeout: 15000
+- assertVisible:
+    id: "marketplace-seg-predictions"
 - takeScreenshot: "90-v7-legacy-plaza-hidden-route"
 
 # Pet 家族在 L2 flag off 时落 destination-error(surface_flag_off)。

@@ -17,7 +17,6 @@
     "desktop",
     "frontend",
     "tests",
-    "marketplace_server.tsx",
     "**/*.spec.ts",
     "**/*.spec.tsx",
     "**/*.test.ts",

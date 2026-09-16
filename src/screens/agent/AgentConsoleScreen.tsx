@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  Alert, RefreshControl,
+  Alert, RefreshControl, Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -13,6 +13,7 @@ import { fetchQuotaStatus, PLAN_LABEL, PLAN_COLOR } from '../../services/token-q
 import { apiFetch } from '../../services/api';
 import type { AgentStackParamList } from '../../navigation/types';
 import { navigateToDestinationError } from '../../navigation/destinationError';
+import { getWorkflowEditorWebUrl } from '../../services/webHandoff';
 import { TokenEnergyBar } from '../../components/TokenEnergyBar';
 import { useSettingsStore, SUPPORTED_MODELS } from '../../stores/settingsStore';
 import { SelectEngineModal } from '../../components/SelectEngineModal';
@@ -396,7 +397,8 @@ export function AgentConsoleScreen() {
               { icon: '🧠', label: t({ en: 'Memory Hub', zh: '记忆中心' }), route: 'MemoryManagement' as const },
               { icon: '🗃️', label: t({ en: 'Memory Slots', zh: '记忆槽' }), route: 'AgentMemory' as const },
               { icon: '🔁', label: t({ en: 'ACP Sessions', zh: 'ACP 会话' }), route: 'AcpSessions' as const },
-              { icon: '⚙️', label: t({ en: 'Workflows', zh: '工作流' }), route: 'WorkflowList' as const },
+              // M1.4.4 / MTR-R09.5: the Workflow editor lives on Web; this is a handoff, not a route.
+              { icon: '⚙️', label: t({ en: 'Workflows (Web)', zh: '工作流（Web）' }), href: getWorkflowEditorWebUrl() },
               { icon: '🛠️', label: t({ en: 'Agent Tools', zh: '系统工具' }), route: 'AgentTools' as const },
               { icon: '�', label: t({ en: 'Dreaming', zh: '梦境引擎' }), route: 'DreamingDashboard' as const },
               { icon: '🧩', label: t({ en: 'Plugin Hub', zh: '插件中心' }), route: 'PluginHub' as const },
@@ -406,14 +408,20 @@ export function AgentConsoleScreen() {
               { icon: '🤖', label: t({ en: 'Agent Accounts', zh: '智能体账户' }), route: 'AgentAccount' as const },
             ] as const).map((item) => (
               <TouchableOpacity
-                key={item.route}
+                key={'route' in item ? item.route : item.href}
                 style={styles.quickAction}
-                onPress={() => navigation.navigate(
-                  item.route as any,
-                  'params' in item
-                    ? item.params
-                    : undefined,
-                )}
+                onPress={() => {
+                  if ('href' in item) {
+                    void Linking.openURL(item.href).catch(() => {});
+                    return;
+                  }
+                  navigation.navigate(
+                    item.route as any,
+                    'params' in item
+                      ? item.params
+                      : undefined,
+                  );
+                }}
                 activeOpacity={0.7}
               >
                 <Text style={styles.quickActionIcon}>{item.icon}</Text>
