@@ -50,7 +50,17 @@ tags:
     visible:
       id: "pet-detail-sheet"
     timeout: 8000
-- back
+# Dismiss through the sheet's own backdrop (pressBehavior="close"): the sheet is
+# a @gorhom BottomSheetModal, which does not consume the Android hardware back
+# key, so `back` here fell through to the navigation root and sent the app to
+# the background (Claw build #522: "Element not found: tab-work"). The sheet
+# snaps to 85 %, so the top of the screen is backdrop.
+- tapOn:
+    point: "50%,7%"
+- extendedWaitUntil:
+    notVisible:
+      id: "pet-detail-sheet"
+    timeout: 8000
 - waitForAnimationToEnd
 
 - tapOn:

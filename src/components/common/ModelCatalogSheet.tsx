@@ -32,6 +32,7 @@ export interface ModelCatalogEntry {
   badge?: string;
   tier?: 'local' | 'free' | 'pro' | 'enterprise';
   description?: string;
+  selectionId?: string;
 }
 
 export interface ModelCatalogSheetProps {
@@ -168,11 +169,12 @@ export function ModelCatalogSheet({
                     {t(TIER_LABEL[tier])} · {items.length}
                   </Text>
                   {items.map((m) => {
-                    const isActive = m.id === activeModelId;
+                    const rowKey = m.selectionId || m.id;
+                    const isActive = activeModelId === rowKey || activeModelId === m.id || (!!m.selectionId && activeModelId === m.selectionId);
                     return (
                       <TouchableOpacity
-                        key={m.id}
-                        testID={`model-catalog-row-${m.id}`}
+                        key={rowKey}
+                        testID={`model-catalog-row-${rowKey}`}
                         style={[styles.row, isActive && styles.rowActive]}
                         onPress={() => onSelect(m)}
                         activeOpacity={0.7}

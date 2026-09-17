@@ -13,6 +13,13 @@ import type {
 } from './task-proof';
 import type { ActionAttributionV1 } from './agent-attribution';
 import type { TrustActionProvenanceV1 } from './trust-loop-contracts';
+import type { DeveloperEncryptedDataRefV1 } from './developer-remote-workspace';
+import {
+  TRUST_LOOP_CANONICALIZATION,
+  type DigestRef,
+  type PartyRef,
+  type RecordRef,
+} from './trust-loop-primitives';
 
 export const ACTION_RUNTIME_SCHEMA_VERSION = 1 as const;
 
@@ -174,7 +181,13 @@ export interface TaskProofRecordV1 {
 // ---------- Action Runtime HTTP contract (P1-03 production wiring) ----------
 
 /** First production-safe vertical slice: a read-only Control Plane inspection. */
-export const ACTION_TYPES_V1 = ['chat.tool_execution.v1'] as const;
+export const ACTION_TYPE_CHAT_TOOL_EXECUTION_V1 = 'chat.tool_execution.v1' as const;
+/** Additive developer-remote instruction profile (DRW). Not a chat-tool execution. */
+export const ACTION_TYPE_DEVELOPER_REMOTE_INSTRUCTION_V1 = 'developer.remote_instruction.v1' as const;
+export const ACTION_TYPES_V1 = [
+  ACTION_TYPE_CHAT_TOOL_EXECUTION_V1,
+  ACTION_TYPE_DEVELOPER_REMOTE_INSTRUCTION_V1,
+] as const;
 export type ActionTypeV1 = (typeof ACTION_TYPES_V1)[number];
 
 /**
@@ -182,13 +195,80 @@ export type ActionTypeV1 = (typeof ACTION_TYPES_V1)[number];
  * snapshot; `economy.discover` returns a non-financial economy-readiness
  * summary. Neither writes orders/ledger nor requires settlement.
  */
-export const ACTION_TOOL_NAMES_V1 = ['authority.inspect', 'economy.discover'] as const;
+export const ACTION_TOOL_DEVELOPER_REMOTE_EXECUTE_V1 = 'developer.remote_execute' as const;
+export const ACTION_TOOL_NAMES_V1 = [
+  'authority.inspect',
+  'economy.discover',
+  ACTION_TOOL_DEVELOPER_REMOTE_EXECUTE_V1,
+] as const;
 export type ActionToolNameV1 = (typeof ACTION_TOOL_NAMES_V1)[number];
 
-/** Per-tool authorization scope. Both are read-only. */
+/** Chat generic create/execute allowlist. Developer remote execute is excluded. */
+export const ACTION_CHAT_READ_ONLY_TOOLS_V1 = ['authority.inspect', 'economy.discover'] as const;
+export type ActionChatReadOnlyToolV1 = (typeof ACTION_CHAT_READ_ONLY_TOOLS_V1)[number];
+
+export function isChatReadOnlyActionToolV1(toolName: string): toolName is ActionChatReadOnlyToolV1 {
+  return (ACTION_CHAT_READ_ONLY_TOOLS_V1 as readonly string[]).includes(toolName);
+}
+
+export const ACTION_RUNTIME_DIGEST_CANONICALIZATION = TRUST_LOOP_CANONICALIZATION;
+
+const SHARED_JCS_DIGEST_HEX = /^[0-9a-f]{64}$/;
+
+/** Shared JCS digest only. Local sha256/canonicalize helpers are not accepted. */
+export function isSharedJcsDigestRef(value: unknown): value is DigestRef {
+  if (!value || typeof value !== 'object') return false;
+  const digest = value as DigestRef;
+  return (
+    digest.algorithm === 'sha-256' &&
+    digest.canonicalization === TRUST_LOOP_CANONICALIZATION &&
+    typeof digest.value === 'string' &&
+    SHARED_JCS_DIGEST_HEX.test(digest.value)
+  );
+}
+
+export function sharedJcsDigestRefsEqual(left: unknown, right: unknown): boolean {
+  return (
+    isSharedJcsDigestRef(left) &&
+    isSharedJcsDigestRef(right) &&
+    left.algorithm === right.algorithm &&
+    left.canonicalization === right.canonicalization &&
+    left.value === right.value
+  );
+}
+
+export function isDeveloperRemoteInstructionPayloadRef(
+  value: unknown,
+): value is DeveloperEncryptedDataRefV1 & { dataKind: 'instruction' } {
+  if (!value || typeof value !== 'object') return false;
+  const ref = value as DeveloperEncryptedDataRefV1;
+  return (
+    ref.kind === 'encrypted_data_ref' &&
+    ref.dataKind === 'instruction' &&
+    typeof ref.dataRef === 'string' &&
+    ref.dataRef.length > 0 &&
+    isSharedJcsDigestRef(ref.digest) &&
+    Number.isInteger(ref.sizeBytes) &&
+    Number(ref.sizeBytes) > 0 &&
+    (ref.dataClass === 'owner_private' || ref.dataClass === 'restricted') &&
+    ref.encryption === 'runtime_managed' &&
+    ref.ownerScope === 'authenticated_owner' &&
+    !!ref.runtimeRef &&
+    ref.runtimeRef.type === 'runtime' &&
+    typeof ref.runtimeRef.id === 'string' &&
+    ref.runtimeRef.id.length > 0 &&
+    Number.isInteger(ref.runtimeRef.version) &&
+    Number(ref.runtimeRef.version) >= 1 &&
+    typeof ref.expiresAt === 'string' &&
+    Number.isFinite(Date.parse(ref.expiresAt))
+  );
+}
+
+/** Per-tool authorization scope. Chat tools stay read-only; remote execute is external. */
 export const ACTION_TOOL_SCOPES_V1 = {
   'authority.inspect': 'authority:read',
   'economy.discover': 'economy:read',
+  [ACTION_TOOL_DEVELOPER_REMOTE_EXECUTE_V1]: 'developer:remote_execute',
 } as const;
 export type ActionAuthScopeV1 = (typeof ACTION_TOOL_SCOPES_V1)[ActionToolNameV1];
 
@@ -234,8 +314,141 @@ export interface EconomyDiscoveryOutcomeV1 {
   autonomousPaymentEnabled: boolean;
 }
 
-/** Discriminated union of read-only tool outcomes (keyed by `kind`). */
-export type ActionToolOutcomeV1 = AuthorityInspectionOutcomeV1 | EconomyDiscoveryOutcomeV1;
+/** Sanitized remote-terminal summary (DRW). Never carries prompt/path/log bodies. */
+export interface DeveloperRemoteTerminalOutcomeV1 {
+  kind: 'developer_remote_terminal';
+  status: 'completed' | 'failed' | 'cancelled' | 'unknown_outcome';
+  instructionRef: string;
+  sessionRef: string;
+}
+
+/** Discriminated union of tool outcomes (keyed by `kind`). */
+export type ActionToolOutcomeV1 =
+  | AuthorityInspectionOutcomeV1
+  | EconomyDiscoveryOutcomeV1
+  | DeveloperRemoteTerminalOutcomeV1;
+
+/**
+ * Write-path assertion class. Receipt/Proof may treat this as runtime-observed
+ * evidence (`kind: "log"`), never as a third-party attestation.
+ */
+export const DEVELOPER_REMOTE_TERMINAL_WRITE_ASSERTION_CLASS_V1 = 'runtime_observed' as const;
+
+/**
+ * Read-only legacy assertion class kept for shared/workspace type compat.
+ * Strict write validators reject it. UI/Receipt must label it unverified and
+ * must never display it as verified.
+ */
+export const DEVELOPER_REMOTE_TERMINAL_LEGACY_ASSERTION_CLASS_V1 = 'third_party_attested' as const;
+
+export type DeveloperRemoteTerminalAssertionClassV1 =
+  | typeof DEVELOPER_REMOTE_TERMINAL_WRITE_ASSERTION_CLASS_V1
+  | typeof DEVELOPER_REMOTE_TERMINAL_LEGACY_ASSERTION_CLASS_V1;
+
+export function isDeveloperRemoteTerminalWriteAssertionClass(
+  value: unknown,
+): value is typeof DEVELOPER_REMOTE_TERMINAL_WRITE_ASSERTION_CLASS_V1 {
+  return value === DEVELOPER_REMOTE_TERMINAL_WRITE_ASSERTION_CLASS_V1;
+}
+
+/** Receipt/UI trust label. Legacy attested evidence is never "verified". */
+export function developerRemoteTerminalEvidenceTrustLabel(
+  assertionClass: DeveloperRemoteTerminalAssertionClassV1,
+): 'runtime_observed' | 'unverified_legacy' {
+  return isDeveloperRemoteTerminalWriteAssertionClass(assertionClass)
+    ? 'runtime_observed'
+    : 'unverified_legacy';
+}
+
+/** Typed adapter terminal evidence. Digest-only claims are not evidence. */
+export interface DeveloperRemoteTerminalEvidenceRefV1 {
+  type: 'developer_adapter_terminal_evidence';
+  id: string;
+  version: number;
+  digest: DigestRef;
+  assertionClass: DeveloperRemoteTerminalAssertionClassV1;
+  provenance: {
+    runtimeRef: RecordRef & { type: 'runtime'; version: number };
+    deviceRef: string;
+    observedAt: string;
+    issuer?: string;
+  };
+  startedAt: string;
+  completedAt: string;
+}
+
+export function isRuntimeObservedTerminalEvidenceRef(
+  value: unknown,
+): value is DeveloperRemoteTerminalEvidenceRefV1 {
+  if (!value || typeof value !== 'object') return false;
+  const ref = value as DeveloperRemoteTerminalEvidenceRefV1;
+  return (
+    ref.type === 'developer_adapter_terminal_evidence' &&
+    typeof ref.id === 'string' &&
+    ref.id.length > 0 &&
+    Number.isInteger(ref.version) &&
+    Number(ref.version) >= 1 &&
+    isSharedJcsDigestRef(ref.digest) &&
+    ref.assertionClass === DEVELOPER_REMOTE_TERMINAL_WRITE_ASSERTION_CLASS_V1 &&
+    typeof ref.startedAt === 'string' &&
+    Number.isFinite(Date.parse(ref.startedAt)) &&
+    typeof ref.completedAt === 'string' &&
+    Number.isFinite(Date.parse(ref.completedAt)) &&
+    typeof ref.provenance?.deviceRef === 'string' &&
+    ref.provenance.deviceRef.length > 0 &&
+    typeof ref.provenance.observedAt === 'string' &&
+    Number.isFinite(Date.parse(ref.provenance.observedAt)) &&
+    ref.provenance.runtimeRef?.type === 'runtime' &&
+    typeof ref.provenance.runtimeRef.id === 'string' &&
+    ref.provenance.runtimeRef.id.length > 0 &&
+    Number.isInteger(ref.provenance.runtimeRef.version) &&
+    Number(ref.provenance.runtimeRef.version) >= 1
+  );
+}
+
+/** Binding stored on a developer-remote Action. Verified refs and digests only. */
+export interface DeveloperRemoteInstructionBindingV1 {
+  sessionRef: string;
+  instructionRef: string;
+  agentId: string;
+  tenantRef: string | null;
+  requestDigest: DigestRef;
+  payloadRef: DeveloperEncryptedDataRefV1 & { dataKind: 'instruction' };
+  bindingVersion: number;
+  runtimeRef: RecordRef & { type: 'runtime'; version: number };
+  shellSessionRef: {
+    type: 'shell_session_binding';
+    id: string;
+    version: number;
+  };
+  deviceRef: string;
+  adapterManifestRef: string;
+  providerRef: PartyRef & { kind: 'provider' };
+  onceGrantRef?: string;
+  authorityDecisionRef?: RecordRef & {
+    type: 'authority_decision';
+    version: number;
+    digest: DigestRef;
+  };
+  lastTerminalAt?: string;
+  runtimeObservation?: {
+    status: 'failed' | 'cancelled' | 'unknown_outcome';
+    evidenceRef: DeveloperRemoteTerminalEvidenceRefV1;
+    recordedAt: string;
+  };
+  authorityBinding?: {
+    toolArgumentsDigest: DigestRef;
+    workspaceScopeDigest: DigestRef;
+    risk: string;
+    scope: string;
+    expiresAt: string;
+    bindingVersion: number;
+    localConfirmationRef?: string;
+    decisionDigest: DigestRef;
+    grantRef: string;
+    grantStatus: 'active' | 'revoked' | 'expired';
+  };
+}
 
 export interface ActionOutcomeV1 {
   outcomeId: string;
@@ -256,6 +469,8 @@ export interface ActionTaskV1 {
   attribution?: ActionAttributionV1;
   outcome?: ActionOutcomeV1;
   parentTaskId?: string;
+  /** Additive developer-remote binding (DRW). Chat-tool tasks omit it. */
+  remoteBinding?: DeveloperRemoteInstructionBindingV1;
   createdAt: string;
 }
 
@@ -268,6 +483,8 @@ export interface CreateActionRequestV1 {
   schemaVersion: typeof ACTION_RUNTIME_SCHEMA_VERSION;
   actionType: ActionTypeV1;
   toolName: ActionToolNameV1;
+  /** Additive (DRW); rejected by the chat-tool create path. */
+  remoteInstruction?: DeveloperRemoteInstructionBindingV1;
 }
 
 export interface DecideActionRequestV1 {

@@ -30,6 +30,7 @@ export interface ModelOption {
   badge?: string; // e.g. 'Default', 'Fast', 'Pro'
   availability: 'available' | 'coming_soon' | 'requires_key';
   costTier: string;
+  selectionId?: string;
 }
 
 /** Hardcoded fallback models — used only when backend is unreachable */

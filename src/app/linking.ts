@@ -23,6 +23,7 @@ import {
   normalizeMobileV7Route,
 } from '../navigation/v7/routeContract';
 import { resolveLegacyFamilyPath } from '../navigation/v7/legacyFamilyMap';
+import { WORK_ROUTE_PATHS, isWorkRoutePath, normalizeWorkRoutePath } from '../navigation/v7/workRoute';
 import {
   isAgentFirstIaEnabled,
   isPetSurfaceEnabled,
@@ -54,6 +55,10 @@ export function resolveIncomingPath(path: string): string {
         ? result.path
         : `/destination-error?reason=${encodeURIComponent(result.error.code)}`;
     }
+    // Work tab (M2 slice A3, d-50): `work[/machines|sessions|approvals|receipts|handoffs]`
+    // with opaque-ref query params. Validated here so the screens never see
+    // an unchecked ref; failures land on destination-error like V7 routes.
+    if (isWorkRoutePath(path)) return normalizeWorkRoutePath(path);
     // Second hop (M1.3.1): under the V7 IA the four current tabs are
     // themselves legacy. Run the legacy table first so pre-4-tab links reach
     // their World/Summon/Plaza/Me form, then map that onto V7. World / Plaza
@@ -111,6 +116,19 @@ export function createMobileLinking() {
               Actions: {
                 screens: {
                   ActionsHome: 'actions',
+                },
+              },
+              // M2 slice A3 (d-50): Work tab deep links. Paths are validated
+              // by `normalizeWorkRoutePath` in `resolveIncomingPath` before
+              // they get here; query params become route params.
+              Work: {
+                screens: {
+                  WorkHome: WORK_ROUTE_PATHS.WorkHome,
+                  WorkMachines: WORK_ROUTE_PATHS.WorkMachines,
+                  WorkSessions: WORK_ROUTE_PATHS.WorkSessions,
+                  WorkApprovals: WORK_ROUTE_PATHS.WorkApprovals,
+                  WorkReceipts: WORK_ROUTE_PATHS.WorkReceipts,
+                  WorkHandoffs: WORK_ROUTE_PATHS.WorkHandoffs,
                 },
               },
               Creation: {

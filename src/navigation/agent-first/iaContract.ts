@@ -37,6 +37,14 @@ export const WORK_STACK_ACTION_ROUTES = [
   "AuthorityReview",
   "ActionTracking",
 ] as const;
+/** M2 slice A3 (decision d-50): the DRW remote-workspace faces under the Work tab. */
+export const WORK_STACK_REMOTE_WORKSPACE_ROUTES = [
+  "WorkMachines",
+  "WorkSessions",
+  "WorkApprovals",
+  "WorkReceipts",
+  "WorkHandoffs",
+] as const;
 export const ECONOMY_STACK_SELLER_ROUTES = [
   "CreationHome",
   "CreationFeed",
@@ -44,8 +52,13 @@ export const ECONOMY_STACK_SELLER_ROUTES = [
   "CreationExperience",
   "CreationDetail",
 ] as const;
+/**
+ * Live capabilities still outside this release. `developer_remote_workspace`
+ * left the list on 2026-09-16 (decision d-50, M2 into this wave): the Work tab
+ * now talks to the developer workspace API behind
+ * EXPO_PUBLIC_DEVELOPER_WORKSPACE_V1_ENABLED.
+ */
 export const AGENT_FIRST_DEFERRED_LIVE_CAPABILITIES = [
-  "developer_remote_workspace",
   "agent_economy_live",
 ] as const;
 

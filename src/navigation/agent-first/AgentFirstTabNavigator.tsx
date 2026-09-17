@@ -26,6 +26,13 @@ import { AgentHomeScreen } from '../../screens/agent-first/work/AgentHomeScreen'
 import { AgentSoulCoreScreen } from '../../screens/agent-first/work/AgentSoulCoreScreen';
 import { EconomyHomeScreen } from '../../screens/agent-first/work/EconomyHomeScreen';
 import { WorkHomeScreen } from '../../screens/agent-first/work/WorkHomeScreen';
+import {
+  WorkApprovalsScreen,
+  WorkHandoffsScreen,
+  WorkMachinesScreen,
+  WorkReceiptsScreen,
+  WorkSessionsScreen,
+} from '../../screens/agent-first/work/WorkDetailScreens';
 import { SummonStackNavigator } from '../SummonStackNavigator';
 import { WorldStackNavigator } from '../WorldStackNavigator';
 import { PlazaStackNavigator } from '../PlazaStackNavigator';
@@ -83,6 +90,12 @@ function WorkNavigator() {
   return (
     <WorkStack.Navigator id={undefined} initialRouteName="WorkHome" screenOptions={stackOptions(c)}>
       <WorkStack.Screen name="WorkHome" component={WorkHomeScreen} options={{ headerShown: false }} />
+      {/* M2 slice A3 (d-50): DRW remote-workspace faces, components verbatim from f9076d9d5. */}
+      <WorkStack.Screen name="WorkMachines" component={WorkMachinesScreen} options={{ title: t({ en: 'Machines', zh: '机器' }) }} />
+      <WorkStack.Screen name="WorkSessions" component={WorkSessionsScreen} options={{ title: t({ en: 'Sessions', zh: '会话' }) }} />
+      <WorkStack.Screen name="WorkApprovals" component={WorkApprovalsScreen} options={{ title: t({ en: 'Approvals', zh: '审批' }) }} />
+      <WorkStack.Screen name="WorkReceipts" component={WorkReceiptsScreen} options={{ title: t({ en: 'Receipts', zh: '回执' }) }} />
+      <WorkStack.Screen name="WorkHandoffs" component={WorkHandoffsScreen} options={{ title: t({ en: 'Handoff', zh: '交接' }) }} />
       <WorkStack.Screen name="ActionsHome" component={ActionsHomeScreen} options={{ headerShown: false }} />
       <WorkStack.Screen name="AuthorityReview" component={AuthorityReviewScreen} options={{ title: t({ en: 'Authority', zh: '授权' }) }} />
       <WorkStack.Screen name="ActionTracking" component={ActionTrackingScreen} options={{ title: t({ en: 'Tracking', zh: '跟踪' }) }} />

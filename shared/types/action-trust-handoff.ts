@@ -73,6 +73,19 @@ export const ACTION_TOOL_CAPABILITY_MATRIX_V1: Record<ActionToolNameV1, ActionCa
     classificationSource: 'static_allowlist-v1',
     requiredControls: READ_ONLY_CONTROLS,
   },
+  // DRW: executed only by ActionRuntimeDeveloperRemoteService; the chat path rejects it.
+  'developer.remote_execute': {
+    classification: 'external_side_effect',
+    scope: ACTION_TOOL_SCOPES_V1['developer.remote_execute'],
+    zeroCost: true,
+    classificationSource: 'static_allowlist-v1',
+    requiredControls: {
+      journal: true,
+      revocationFence: true,
+      downstreamIdempotency: true,
+      unknownOutcomeReconciliation: true,
+    },
+  },
 };
 
 export interface ActionExecutionControlsV1 {

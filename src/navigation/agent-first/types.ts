@@ -19,8 +19,31 @@ export type AgentFirstActionsStackParamList = {
   ActionTracking: { agentId: string; actionId: string; view?: 'tracking' | 'receipt' };
 };
 
+/**
+ * Work tab (M2 slice A3, decision d-50). `agentId` / `*Ref` are opaque refs
+ * already validated by `normalizeWorkRoutePath` (deep link) or
+ * `parseDeveloperWorkspaceOpenRoute` (in-app); `fixture: '1'` selects the
+ * local contract-fixture presentation (Maestro 91-v7, never live success).
+ */
 export type AgentFirstWorkStackParamList = {
-  WorkHome: undefined;
+  WorkHome: { agentId?: string; fixture?: string } | undefined;
+  WorkMachines: { agentId: string; machineRef?: string; fixture?: string };
+  WorkSessions: {
+    agentId: string;
+    sessionRef?: string;
+    machineRef?: string;
+    instructionRef?: string;
+    actionRef?: string;
+    fixture?: string;
+  };
+  WorkApprovals: {
+    agentId?: string;
+    approvalRef?: string;
+    source?: 'push' | 'internal';
+    fixture?: string;
+  } | undefined;
+  WorkReceipts: { agentId: string; actionRef?: string; fixture?: string };
+  WorkHandoffs: { agentId: string; handoffRef?: string; fixture?: string };
   ActionsHome: { agentId?: string } | undefined;
   AuthorityReview: { agentId: string; actionId: string };
   ActionTracking: { agentId: string; actionId: string; view?: 'tracking' | 'receipt' };

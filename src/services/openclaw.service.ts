@@ -257,6 +257,7 @@ export interface AvailableModel {
   badge?: string;
   availability: 'available' | 'coming_soon' | 'requires_key';
   costTier: 'free_trial' | 'starter' | 'pro';
+  selectionId?: string;
 }
 
 /** Fetch available models from backend */
@@ -265,21 +266,25 @@ export async function getAvailableModels(): Promise<AvailableModel[]> {
 }
 
 /** Get the currently active model for an instance */
-export async function getInstanceModel(instanceId: string): Promise<{ modelId: string; model: AvailableModel | null }> {
+export async function getInstanceModel(instanceId: string): Promise<{ modelId: string; selectionId?: string; model: AvailableModel | null }> {
   return apiFetch(`/openclaw/instances/${instanceId}/model`);
 }
 
 /** Switch model for an instance (both cloud and local) */
-export async function switchInstanceModel(instanceId: string, modelId: string): Promise<{
+export async function switchInstanceModel(instanceId: string, modelId: string, selectionId?: string): Promise<{
   success: boolean;
   modelId: string;
+  selectionId?: string;
   model: AvailableModel;
   pushed: boolean;
   message: string;
 }> {
   return apiFetch(`/openclaw/instances/${instanceId}/model`, {
     method: 'PATCH',
-    body: JSON.stringify({ modelId }),
+    body: JSON.stringify({
+      modelId,
+      ...(selectionId ? { selectionId } : {}),
+    }),
   });
 }
 

@@ -38,6 +38,10 @@ jobs:
       EXPO_PUBLIC_MAESTRO_E2E: ${{ startsWith(github.ref_name, 'build/mobile-baseline-') && '1' || '0' }}
       EXPO_PUBLIC_MOBILE_AGENT_FIRST_IA: '1'
       EXPO_PUBLIC_MOBILE_AGENT_ECONOMY_V1: ${{ startsWith(github.ref_name, 'build/mobile-baseline-') && '1' || '0' }}
+      # M2 (decision d-50, 2026-09-16): the Work tab is the DRW remote workspace.
+      # With the backend DEVELOPER_* flags off the API answers 503 and the tab
+      # shows the read-state card; it never guesses data.
+      EXPO_PUBLIC_DEVELOPER_WORKSPACE_V1_ENABLED: '1'
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       release-apk: ${{ steps.paths.outputs.release }}

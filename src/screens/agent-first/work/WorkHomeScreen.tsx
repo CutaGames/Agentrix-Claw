@@ -1,25 +1,101 @@
 import React from "react";
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useDeveloperWorkspaceLive } from "../../../hooks/useDeveloperWorkspaceLive";
+import { isDeveloperWorkspaceFlagEnabled } from "../../../services/developerWorkspaceClient";
+import { parseDeveloperWorkspaceOpenRoute } from "../../../services/developerWorkspaceOpenRoute";
+import { buildDeveloperWorkHomeModel } from "../../../services/developerWorkspaceWorkModel";
+import {
+  summarizeWorkspaceReadState,
+  toWorkReadStateInput,
+  workspaceIsOpen,
+} from "../../../services/workRemoteWorkspaceReadState";
 import { useI18n } from "../../../stores/i18nStore";
 import { getWorkflowEditorWebUrl } from "../../../services/webHandoff";
 import { type Palette, useThemedStyles } from "../../../theme/useTheme";
+import { useMobileAgentDirectory } from "../useMobileAgentDirectory";
+import { FixtureBanner } from "./WorkReadOnlyViews";
 import { WorkReadStateCard } from "./WorkReadStateCard";
 
 /**
- * The remote workspace read-state for this release. Fixed here — not fetched —
- * because the canonical service is excluded from the release scope (design §5
- * `unavailable`), and MTR-R07.3 requires the capability and reason to be shown
- * verbatim rather than an empty card.
+ * Work home — M1.2.1 read-state cards (theme, testIDs) laid over the DRW
+ * remote-workspace model (M2 slice A2, decision d-50).
+ *
+ * Data comes from `useDeveloperWorkspaceLive` → `buildDeveloperWorkHomeModel`
+ * exactly as the DRW candidate wired it; presentation stays the M1.2.1
+ * `WorkReadStateCard`, so the flag-off / unpublished / unauthorised / loading
+ * cases are one of the eight read states — never a blank screen — and the
+ * per-section cards only appear when at least one section carries data.
  */
-const REMOTE_WORKSPACE_STATE = {
-  state: "unavailable",
-  capability: "remote_workspace",
-  reason: "release_scope_excluded",
-} as const;
 
-export function WorkHomeScreen() {
+function explicitFixtureParam(value: unknown): boolean {
+  return value === true || value === "1";
+}
+
+function machineLabel(machine: unknown): string {
+  if (!machine || typeof machine !== "object") return "machine";
+  const record = machine as {
+    displayLabel?: string;
+    machineRef?: string;
+    connection?: { status?: string };
+  };
+  return `${record.displayLabel ?? record.machineRef ?? "machine"} · ${record.connection?.status ?? "unknown"}`;
+}
+
+function sessionLabel(session: unknown): string {
+  if (!session || typeof session !== "object") return "session";
+  const record = session as { sessionRef?: string; state?: string };
+  return `${record.sessionRef ?? "session"} · ${record.state ?? "unknown"}`;
+}
+
+export function WorkHomeScreen({ navigation, route }: any) {
   const { t } = useI18n();
   const styles = useThemedStyles(makeStyles);
+
+  const routeAgentId =
+    typeof route?.params?.agentId === "string" ? route.params.agentId : undefined;
+  const directory = useMobileAgentDirectory(routeAgentId);
+  const liveAgentId =
+    directory.model.context.kind === "ready"
+      ? directory.model.context.context.agentId
+      : routeAgentId;
+  const fixture = explicitFixtureParam(route?.params?.fixture);
+  const live = useDeveloperWorkspaceLive({ agentId: liveAgentId, fixture });
+  const model = buildDeveloperWorkHomeModel({
+    routeAgentId,
+    directoryContext: directory.model.context,
+    flagEnabled: isDeveloperWorkspaceFlagEnabled(
+      process.env as Record<string, string | undefined>,
+    ),
+    mode: fixture ? "fixture" : "api",
+    snapshot: live.snapshot ?? undefined,
+    liveStatus: live.loading ? "loading" : live.snapshot ? "ready" : "idle",
+    openRoute: routeAgentId ? { agentId: routeAgentId } : undefined,
+  });
+  const snapshot = model.snapshot;
+  const summary = summarizeWorkspaceReadState(snapshot);
+  const open = workspaceIsOpen(summary);
+
+  const machines = snapshot.machines.kind === "ready" ? snapshot.machines.data : [];
+  const sessions = snapshot.sessions.kind === "ready" ? snapshot.sessions.data : [];
+  const approvals = snapshot.approvals.kind === "ready" ? snapshot.approvals.data : [];
+  const pendingApprovals = approvals.filter(
+    (approval) =>
+      !!approval &&
+      typeof approval === "object" &&
+      (approval as { status?: string }).status === "pending",
+  );
+  // `=== true`, not truthiness: the app tsconfig has `strict: false`, so only an
+  // explicit discriminant check narrows these unions.
+  const agentId = model.openRoute.ok === true ? model.openRoute.route.agentId : routeAgentId;
+
+  // In-app opens go through the same opaque-ref validator as deep links; a
+  // ref that fails it is simply not navigable (no guessed destination).
+  const openFace = (screen: string, extra: Record<string, string> = {}) => {
+    if (!agentId) return;
+    const opened = parseDeveloperWorkspaceOpenRoute({ agentId, ...extra });
+    if (opened.ok !== true) return;
+    navigation?.navigate?.(screen, { ...opened.route, ...(fixture ? { fixture: "1" } : {}) });
+  };
 
   return (
     <ScrollView
@@ -31,18 +107,169 @@ export function WorkHomeScreen() {
       <Text style={styles.title}>{t({ en: "Work", zh: "工作" })}</Text>
       <Text style={styles.intro}>
         {t({
-          en: "Use Mobile to review work status and keep your Agent close. Local execution and adapter settings stay on Desktop.",
-          zh: "在 Mobile 查看工作状态并保持 Agent 在线；本地执行与适配器设置留在 Desktop。",
+          en: "Notifications, approvals and quick resume stay on Mobile. Local execution and adapter settings stay on Desktop.",
+          zh: "通知、审批与快速续接在 Mobile；本地执行与适配器设置留在 Desktop。",
         })}
       </Text>
 
-      {/* M1.2.1 / M1.2.2: read-state → display semantics come from the pure
-          reducer; this card only lays them out. */}
+      <FixtureBanner snapshot={snapshot} />
+
+      {/* M1.2.1 / M1.2.2 + M2 A2: one read state for the whole remote
+          workspace. Flag off → `unavailable · developer.workspace_v1 ·
+          feature_disabled`; loading → `unknown · loading`; live → ready /
+          partial / offline_stale with the section counts below. */}
       <WorkReadStateCard
         title={t({ en: "Remote workspace", zh: "远程工作区" })}
-        state={REMOTE_WORKSPACE_STATE}
+        state={summary}
         testID="work-release-boundary"
         stateTestID="work-feature-unavailable"
+      >
+        <Text style={styles.cardBody} testID="work-remote-summary">
+          {t({
+            en: `${machines.length} machines · ${sessions.length} sessions · ${pendingApprovals.length} pending approvals`,
+            zh: `${machines.length} 台机器 · ${sessions.length} 个会话 · ${pendingApprovals.length} 条待审批`,
+          })}
+        </Text>
+      </WorkReadStateCard>
+
+      {open ? (
+        <>
+          <WorkReadStateCard
+            title={t({
+              en: `Needs approval (${pendingApprovals.length})`,
+              zh: `待我审批（${pendingApprovals.length}）`,
+            })}
+            state={toWorkReadStateInput(snapshot.approvals)}
+            testID="work-approvals"
+          >
+            {pendingApprovals.length === 0 ? (
+              <Text style={styles.cardBody}>
+                {t({ en: "Nothing needs your decision right now.", zh: "当前没有需要你决策的事项。" })}
+              </Text>
+            ) : (
+              pendingApprovals.map((approval, index) => {
+                const record = approval as { approvalRef?: string; status?: string; risk?: string };
+                return (
+                  <Pressable
+                    key={record.approvalRef ?? index}
+                    style={styles.row}
+                    testID={`work-approval-${record.approvalRef ?? index}`}
+                    onPress={() =>
+                      record.approvalRef && openFace("WorkApprovals", { approvalRef: record.approvalRef })
+                    }
+                  >
+                    <Text style={styles.rowLabel}>
+                      {`${record.approvalRef ?? "approval"} · ${record.status ?? "pending"}${record.risk ? ` · ${record.risk}` : ""}`}
+                    </Text>
+                    <Text style={styles.rowAction}>
+                      {t({ en: "Open details and fresh-check →", zh: "查看详情并刷新校验 →" })}
+                    </Text>
+                  </Pressable>
+                );
+              })
+            )}
+          </WorkReadStateCard>
+
+          <WorkReadStateCard
+            title={t({ en: "Active sessions", zh: "活跃会话" })}
+            state={toWorkReadStateInput(snapshot.sessions)}
+            testID="work-sessions"
+          >
+            {sessions.length === 0 ? (
+              <Text style={styles.cardBody}>
+                {t({ en: "No resumable sessions on the selected machine.", zh: "所选机器暂无可续接会话。" })}
+              </Text>
+            ) : (
+              sessions.map((session, index) => {
+                const record = session as { sessionRef?: string; state?: string };
+                return (
+                  <Pressable
+                    key={record.sessionRef ?? index}
+                    style={styles.row}
+                    testID={`work-session-${record.sessionRef ?? index}`}
+                    onPress={() =>
+                      record.sessionRef && openFace("WorkSessions", { sessionRef: record.sessionRef })
+                    }
+                  >
+                    <Text style={styles.rowLabel}>{sessionLabel(session)}</Text>
+                    {record.state === "ready" ? (
+                      <Text style={styles.rowAction}>{t({ en: "Quick continue →", zh: "快速续接 →" })}</Text>
+                    ) : null}
+                  </Pressable>
+                );
+              })
+            )}
+          </WorkReadStateCard>
+
+          <WorkReadStateCard
+            title={t({ en: "Machines", zh: "机器" })}
+            state={toWorkReadStateInput(snapshot.machines)}
+            testID="work-machines"
+          >
+            {machines.length === 0 ? (
+              <Text style={styles.cardBody}>
+                {t({
+                  en: "Pair and verify a Desktop Runtime before continuing work.",
+                  zh: "请先配对并验证 Desktop Runtime，再继续工作。",
+                })}
+              </Text>
+            ) : (
+              machines.map((machine, index) => {
+                const record = machine as { machineRef?: string };
+                return (
+                  <Pressable
+                    key={record.machineRef ?? index}
+                    style={styles.row}
+                    testID={`work-machine-${record.machineRef ?? index}`}
+                    onPress={() =>
+                      record.machineRef && openFace("WorkMachines", { machineRef: record.machineRef })
+                    }
+                  >
+                    <Text style={styles.rowLabel}>{machineLabel(machine)}</Text>
+                  </Pressable>
+                );
+              })
+            )}
+          </WorkReadStateCard>
+
+          <WorkReadStateCard
+            title={t({ en: "Recent result / Receipt", zh: "最近结果 / 回执" })}
+            state={toWorkReadStateInput(snapshot.receipts)}
+            testID="work-receipt"
+          >
+            {snapshot.receipts.kind === "ready" ? (
+              <>
+                <Text style={styles.rowLabel}>
+                  {t({ en: "completed", zh: "已完成" })}: {snapshot.receipts.data.completed ? "true" : "false"}
+                </Text>
+                {snapshot.receipts.data.layers.map((layer) => (
+                  <Text key={layer.layer} style={styles.cardBody}>
+                    {layer.layer}: {layer.state}:{layer.reason}
+                  </Text>
+                ))}
+                {agentId ? (
+                  <Pressable
+                    style={styles.row}
+                    testID="work-open-receipts"
+                    onPress={() => openFace("WorkReceipts")}
+                  >
+                    <Text style={styles.rowAction}>{t({ en: "All receipts →", zh: "全部回执 →" })}</Text>
+                  </Pressable>
+                ) : null}
+              </>
+            ) : null}
+          </WorkReadStateCard>
+        </>
+      ) : null}
+
+      {/* M2.3 (schedule projection) is not in this wave: the backend has no
+          `today / next` projection, so this stays an honest `unavailable`
+          with the "open on Web" next action (MTR-R07.3). */}
+      <WorkReadStateCard
+        title={t({ en: "Today / Next", zh: "今日 / 下一项" })}
+        state={toWorkReadStateInput(model.today)}
+        testID="work-today"
+        stateTestID="work-today-state"
       />
 
       <View style={styles.card} testID="work-desktop-boundary">
@@ -51,10 +278,19 @@ export function WorkHomeScreen() {
         </Text>
         <Text style={styles.cardBody}>
           {t({
-            en: "Commands, files, IDE and CLI side effects require the signed Desktop app and explicit local confirmation.",
-            zh: "命令、文件、IDE 与 CLI 副作用必须通过已签名 Desktop 应用及明确的本机确认。",
+            en: "Commands, files, IDE and CLI side effects require the signed Desktop app and explicit local confirmation. A handoff opens from its one-time opaque ref and is accepted only on a verified online machine.",
+            zh: "命令、文件、IDE 与 CLI 副作用必须通过已签名 Desktop 应用及明确的本机确认；交接通过一次性 opaque ref 打开，且只能在已验证的在线机器上接受。",
           })}
         </Text>
+        {open && agentId ? (
+          <Pressable
+            style={styles.row}
+            testID="work-open-handoffs"
+            onPress={() => openFace("WorkHandoffs")}
+          >
+            <Text style={styles.rowAction}>{t({ en: "Secure handoff →", zh: "安全交接 →" })}</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {/* M1.4.4 / MTR-R09.5 (matrix #38): the full Workflow editor is offline on
@@ -82,6 +318,18 @@ export function WorkHomeScreen() {
           </Text>
         </Pressable>
       </View>
+
+      {agentId ? (
+        <Pressable
+          style={styles.linkButton}
+          testID="work-open-actions"
+          onPress={() => navigation?.navigate?.("ActionsHome", { agentId })}
+        >
+          <Text style={styles.linkButtonText}>
+            {t({ en: "Actions (Work sub-route) →", zh: "行动（Work 子路由）→" })}
+          </Text>
+        </Pressable>
+      ) : null}
     </ScrollView>
   );
 }
@@ -108,6 +356,9 @@ function makeStyles(c: Palette) {
     },
     cardTitle: { color: c.textPrimary, fontSize: 16, fontWeight: "700" },
     cardBody: { color: c.textSecondary, fontSize: 13, lineHeight: 20 },
+    row: { paddingVertical: 6, gap: 2 },
+    rowLabel: { color: c.textPrimary, fontSize: 13, lineHeight: 19 },
+    rowAction: { color: c.accent, fontSize: 13, fontWeight: "600" },
     linkButton: {
       alignSelf: "flex-start",
       marginTop: 4,

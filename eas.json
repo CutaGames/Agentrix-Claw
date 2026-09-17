@@ -26,6 +26,9 @@
     "production": {
       "channel": "production",
       "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_DEVELOPER_WORKSPACE_V1_ENABLED": "1"
+      },
       "android": {
         "buildType": "app-bundle"
       },

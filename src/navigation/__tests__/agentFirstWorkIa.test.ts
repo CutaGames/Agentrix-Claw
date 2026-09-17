@@ -11,6 +11,7 @@ import {
   AGENT_STACK_ROUTES,
   ECONOMY_STACK_SELLER_ROUTES,
   WORK_STACK_ACTION_ROUTES,
+  WORK_STACK_REMOTE_WORKSPACE_ROUTES,
   agentSoulCoreStaysOnAgent,
   isRegulatedSecondarySurface,
   resolveAgentSoulCoreDestination,
@@ -39,14 +40,23 @@ describe("Agent-first Work/Economy IA", () => {
     );
   });
 
-  it("keeps unfinished live capabilities outside this release", () => {
-    expect(AGENT_FIRST_DEFERRED_LIVE_CAPABILITIES).toEqual([
-      "developer_remote_workspace",
-      "agent_economy_live",
+  // 2026-09-16 decision d-50 deliberately flipped this block: M2 (the DRW
+  // remote workspace) is in this wave, so `developer_remote_workspace` left the
+  // deferred list and the Work tab MUST be wired to the live hook. Economy
+  // stays untouched.
+  it("keeps only the agent economy outside this release (d-50 brought the remote workspace in)", () => {
+    expect(AGENT_FIRST_DEFERRED_LIVE_CAPABILITIES).toEqual(["agent_economy_live"]);
+    expect(AGENT_FIRST_DEFERRED_LIVE_CAPABILITIES).not.toContain("developer_remote_workspace");
+    expect(WORK_STACK_REMOTE_WORKSPACE_ROUTES).toEqual([
+      "WorkMachines",
+      "WorkSessions",
+      "WorkApprovals",
+      "WorkReceipts",
+      "WorkHandoffs",
     ]);
   });
 
-  it("wires the four-tab shell without deferred live workspace imports", () => {
+  it("wires the four-tab shell with the remote workspace under Work only (d-50)", () => {
     const navigator = readFileSync(
       resolve(__dirname, "../agent-first/AgentFirstTabNavigator.tsx"),
       "utf8",
@@ -59,14 +69,47 @@ describe("Agent-first Work/Economy IA", () => {
       resolve(__dirname, "../../screens/agent-first/work/EconomyHomeScreen.tsx"),
       "utf8",
     );
+    const linking = readFileSync(resolve(__dirname, "../../app/linking.ts"), "utf8");
 
     expect(navigator).toContain('tabBarButtonTestID: \'tab-work\'');
     expect(navigator).toContain('tabBarButtonTestID: \'tab-economy\'');
     expect(workHome).toContain('testID="work-home-screen"');
     expect(economyHome).toContain('testID="economy-home-screen"');
-    expect(`${navigator}\n${workHome}\n${economyHome}`).not.toMatch(
+
+    // WorkHome is wired through the live hook and keeps the M1.2.1 card + testIDs.
+    expect(workHome).toContain("useDeveloperWorkspaceLive(");
+    expect(workHome).toContain("buildDeveloperWorkHomeModel(");
+    expect(workHome).toContain("<WorkReadStateCard");
+    for (const testId of [
+      "work-release-boundary",
+      "work-feature-unavailable",
+      "work-desktop-boundary",
+      "work-workflow-web-handoff",
+    ]) {
+      expect(workHome).toContain(`"${testId}"`);
+    }
+
+    // The five DRW faces are Work-stack routes, components taken verbatim from f9076d9d5.
+    for (const route of WORK_STACK_REMOTE_WORKSPACE_ROUTES) {
+      expect(navigator).toMatch(new RegExp(`<WorkStack\\.Screen name="${route}" component=\\{${route}Screen\\}`));
+      expect(linking).toContain(`${route}: WORK_ROUTE_PATHS.${route}`);
+    }
+    expect(navigator).toContain("from '../../screens/agent-first/work/WorkDetailScreens'");
+
+    // Economy still does not import the developer workspace.
+    expect(economyHome).not.toMatch(
       /developerWorkspace|developer-remote-workspace|useDeveloperWorkspace/,
     );
+  });
+
+  it("injects the developer workspace flag in the production Agent-first profile (d-50, A5)", () => {
+    const workflow = readFileSync(
+      resolve(__dirname, "../../../.github/workflows/build-apk.yml"),
+      "utf8",
+    );
+    const eas = JSON.parse(readFileSync(resolve(__dirname, "../../../eas.json"), "utf8"));
+    expect(workflow).toContain("EXPO_PUBLIC_DEVELOPER_WORKSPACE_V1_ENABLED: '1'");
+    expect(eas.build.production.env.EXPO_PUBLIC_DEVELOPER_WORKSPACE_V1_ENABLED).toBe("1");
   });
 
   it("builds and tests the production Agent-first profile", () => {

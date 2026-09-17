@@ -1159,7 +1159,7 @@ export function AgentChatScreen() {
     );
     (async () => {
       try {
-        const models = await apiFetch<Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean }>>('/ai-providers/available-models');
+        const models = await apiFetch<Array<{ id: string; label: string; provider: string; providerId: string; costTier: string; positioning?: string; isDefault?: boolean; selectionId?: string }>>('/ai-providers/available-models');
         if (Array.isArray(models) && models.length > 0) {
           const cloudModels: ModelOption[] = models.map((m) => ({
             id: m.id,
@@ -1168,6 +1168,7 @@ export function AgentChatScreen() {
             icon: m.isDefault ? '🤖' : '💎',
             availability: 'available' as const,
             costTier: m.costTier,
+            selectionId: m.selectionId,
           }));
           // Always prepend local model if downloaded and ready
           if (localAiStatus === 'ready') {
@@ -3740,6 +3741,7 @@ export function AgentChatScreen() {
           provider: m.provider,
           icon: m.icon,
           badge: m.badge,
+          selectionId: m.selectionId,
           tier: m.costTier === 'free' || m.costTier === 'free_trial'
             ? (isLocalOnlyModelId(m.id) ? 'local' : 'free')
             : (m.costTier === 'enterprise' ? 'enterprise' : 'pro'),
@@ -3754,12 +3756,13 @@ export function AgentChatScreen() {
               capabilities: {
                 ...(activeInstance?.capabilities || {}),
                 activeModel: m.id,
+                ...(m.selectionId ? { activeSelectionId: m.selectionId } : {}),
                 modelPinned: true,
               },
               resolvedModel: m.id,
               resolvedModelLabel: m.label,
             });
-            try { await switchInstanceModel(instanceId, m.id); } catch {}
+            try { await switchInstanceModel(instanceId, m.id, m.selectionId); } catch {}
           }
         }}
       />
