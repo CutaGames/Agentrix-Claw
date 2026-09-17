@@ -1,0 +1,154 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# 91 · V7 Work 远程工作台 · 快速审批 Inbox（MTR-R10 / M2.2，决策 d-50，切片 B4）
+#
+# 前提：EXPO_PUBLIC_MOBILE_AGENT_FIRST_IA=1 + EXPO_PUBLIC_DEVELOPER_WORKSPACE_V1_ENABLED=1
+#       的 E2E 构建（build-apk.yml 两个都注入）。flag=0 构建请跑 92（断言读态卡），
+#       两者构成 M2.1.1 的 flag on / off 双跑；92 不在 CI 名单（同 52 的做法）。
+#
+# 覆盖：fixture 模式（`fixture=1` + developerWorkspaceFixtures + 内存 fixture transport）
+#       Work → 待我审批 → 一条审批 → 决策 → **authoritative read-back** 文案：
+#       页面只渲染回读拿到的记录，回读之前不出现任何「已批准 / 已拒绝」；
+#       决策后 CTA 消失（终态不可二次写入，M2.2.4）；同一运行时里再打开这条审批 →
+#       fresh read 拿到终态记录 → 只读卡（fixture transport 按 agent 共享）。
+#       第二段冷启动后用与 push 落点完全相同的路由参数
+#       （WorkApprovals { approvalRef, source: 'push' }）直达，断言「来自推送 →
+#       已重新鉴权并刷新读取」的口径与 pending 卡片。
+# 不覆盖：真 push 投递（Maestro 构建默认跳过 push listener，M0.0.6）——由
+#       pushNavigationDispatcher 单测 + M0.4.7 真机；live 后端（A7 / G3a 真机）。
+# 说明：fixture 走「拒绝」而不是「允许」——fixture 面上永远不出现 approved
+#       （developerWorkspaceClient.snapshotForbidsSuccessPaymentOrApproved 的口径不破）。
+# 状态：2026-09-17 写出（fable-5-1-47）；REAL 待 Claw 构建。
+# ─────────────────────────────────────────────────────────────
+tags:
+  - agent-first
+  - ci-gate
+---
+- launchApp:
+    clearState: true
+
+- extendedWaitUntil:
+    visible:
+      id: "tab-agent"
+    timeout: 25000
+
+# ── 第一段：Work → 待我审批 → 审批 → 决策 → 回读 ────────────────────────────
+# Work home，fixture 模式，scope 到 E2E 种子 agent（fixture wire 按 agentId 改写）。
+- openLink: agentrix://work?agentId=e2e-agent-account-1&fixture=1
+- waitForAnimationToEnd:
+    timeout: 6000
+- extendedWaitUntil:
+    visible:
+      id: "work-home-screen"
+    timeout: 15000
+- assertVisible:
+    id: "developer-workspace-fixture-banner"
+- extendedWaitUntil:
+    visible:
+      id: "work-approvals"
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "work-approval-approval-1"
+    timeout: 15000
+- takeScreenshot: "91-v7-work-home-fixture-pending-approval"
+
+# 打开这一条审批 → fresh read → pending 卡片；两个 CTA 只在 pending 时可用。
+- tapOn:
+    id: "work-approval-approval-1"
+- extendedWaitUntil:
+    visible:
+      id: "work-approvals-screen"
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "work-approval-phase-pending"
+    timeout: 15000
+- assertVisible:
+    id: "work-approval-card"
+- assertVisible:
+    id: "developer-approve-cta"
+- assertVisible:
+    id: "developer-reject-cta"
+- assertNotVisible:
+    id: "work-approval-readback"
+- takeScreenshot: "91-v7-approval-pending-fresh-read"
+
+# 决策（拒绝）→ POST → read-back GET → 只渲染回读记录。
+- tapOn:
+    id: "developer-reject-cta"
+- extendedWaitUntil:
+    visible:
+      id: "work-approval-readback"
+    timeout: 15000
+- assertVisible:
+    id: "work-approval-readback-rejected"
+- assertVisible:
+    id: "work-approval-phase-decided"
+- assertVisible:
+    text: "read-back: rejected"
+# 终态：CTA 不再在场，pending 卡片不再在场（M2.2.4 决策单调性）。
+- assertNotVisible:
+    id: "developer-approve-cta"
+- assertNotVisible:
+    id: "developer-reject-cta"
+- assertNotVisible:
+    id: "work-approval-card"
+- takeScreenshot: "91-v7-approval-authoritative-readback"
+
+# 同一运行时再打开这条审批（Work home 的入口行仍指向 approval-1）：fresh read
+# 拿到的是终态记录 → 只读，不出现 CTA（M2.2.4）。
+- tapOn:
+    id: "tab-work"
+- extendedWaitUntil:
+    visible:
+      id: "work-home-screen"
+    timeout: 10000
+- openLink: agentrix://work/approvals?agentId=e2e-agent-account-1&approvalRef=approval-1&fixture=1
+- waitForAnimationToEnd:
+    timeout: 6000
+- extendedWaitUntil:
+    visible:
+      id: "work-approvals-screen"
+    timeout: 15000
+- assertNotVisible:
+    id: "developer-approve-cta"
+- assertNotVisible:
+    id: "developer-reject-cta"
+- assertVisible:
+    text: "read-back: rejected"
+- takeScreenshot: "91-v7-approval-reopened-terminal-read-only"
+
+# ── 第二段：冷启动 → push 落点同款路由 → pending 卡片 ─────────────────────────
+# 与 pushNavigationDispatcher 产出的目标完全相同的参数（source=push）。冷启动后
+# fixture 后端复位，所以 fresh read 拿到 pending 记录。
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: "tab-agent"
+    timeout: 25000
+- openLink: agentrix://work/approvals?agentId=e2e-agent-account-1&approvalRef=approval-1&source=push&fixture=1
+- waitForAnimationToEnd:
+    timeout: 6000
+- extendedWaitUntil:
+    visible:
+      id: "work-approvals-screen"
+    timeout: 15000
+- assertVisible:
+    id: "work-approval-source-push"
+- extendedWaitUntil:
+    visible:
+      id: "work-approval-phase-pending"
+    timeout: 15000
+- assertVisible:
+    id: "developer-approve-cta"
+- takeScreenshot: "91-v7-approval-opened-from-push-params"
+
+# 回到 Agent tab，确认没有被错误页卡住。
+- tapOn:
+    id: "tab-agent"
+- extendedWaitUntil:
+    visible:
+      id: "agent-home-screen"
+    timeout: 10000

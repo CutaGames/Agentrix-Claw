@@ -42,6 +42,10 @@ import { trackEvent, setUser as setAnalyticsUser } from '../services/analytics.s
 import { OtaModelDownloadService } from '../services/otaModelDownload.service';
 import { WatchDataLayerService } from '../services/wearables/watchDataLayerBridge.service';
 import { navigateToDestinationError, type NavigationLike } from '../navigation/destinationError';
+import {
+  createPushNavigationDispatcher,
+  type PushNavigationDispatcher,
+} from '../services/pushNavigationDispatcher';
 import { attachLinkingListener } from '../services/intents/intentBridge';
 import { installDefaultIntentHandlers } from '../services/intents/defaultIntentHandlers';
 import { isPetSurfaceEnabled } from '../services/mobileV6FeatureFlags';
@@ -578,6 +582,41 @@ export function usePushRuntime({
   navigationRef,
 }: PushRuntimeInput): void {
   const notifSubRef = useRef<Notifications.Subscription | null>(null);
+  // M2 slice B1 — one dispatcher for both the cold-start response and the
+  // live listener, so both paths land on the same screen with the same params.
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  isAuthenticatedRef.current = isAuthenticated;
+  const pushDispatcherRef = useRef<PushNavigationDispatcher | null>(null);
+  if (pushDispatcherRef.current === null) {
+    pushDispatcherRef.current = createPushNavigationDispatcher({
+      getNavigation: () => navigationRef.current as NavigationLike | null,
+      isAuthenticated: () => isAuthenticatedRef.current,
+      onUnroutable: () => {
+        navigateToDestinationError(navigationRef.current as NavigationLike | null, 'unknown_route');
+      },
+      onRecorded: (destination) => {
+        // Surfaces without a Work-tab target yet (handoff / receipt / agenda /
+        // twin / economy) are recorded rather than silently dropped.
+        console.info('[push] destination', destination.type, destination.surface);
+      },
+    });
+  }
+  // Bounded retry for a deferred target — the container only exposes
+  // readiness through `isReady()`, there is no event to subscribe to here.
+  const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scheduleFlush = () => {
+    const dispatcher = pushDispatcherRef.current!;
+    if (flushTimerRef.current !== null) return;
+    if (dispatcher.flush() || !dispatcher.pending()) return;
+    let attempts = 0;
+    flushTimerRef.current = setInterval(() => {
+      attempts += 1;
+      if (dispatcher.flush() || !dispatcher.pending() || attempts >= 60) {
+        if (flushTimerRef.current !== null) clearInterval(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+    }, 500);
+  };
 
   useEffect(() => {
     if (!pushEnabled) {
@@ -614,15 +653,13 @@ export function usePushRuntime({
     if (!pushEnabled) {
       return;
     }
+    const dispatcher = pushDispatcherRef.current!;
     const handleResponse = (response: Notifications.NotificationResponse) => {
       const destination = resolveNotificationResponseDestination(response);
-      if (!destination.ok) {
-        navigateToDestinationError(navigationRef as unknown as NavigationLike, 'unknown_route');
-        return;
-      }
-      // Surface → route mapping lands with the IA switch (M1.4); until then the
-      // resolution is recorded rather than silently dropped.
-      console.info('[push] destination', destination.type, destination.surface);
+      // M2 slice B1: `work_inbox_approval` → Work › WorkApprovals
+      // { approvalRef, source: 'push' }. Deferred (not dropped) while the
+      // navigator or the session is not ready; flushed below.
+      if (dispatcher.dispatch(destination) === 'deferred') scheduleFlush();
     };
     const subscription = Notifications.addNotificationResponseReceivedListener(handleResponse);
     void Notifications.getLastNotificationResponseAsync()
@@ -631,7 +668,26 @@ export function usePushRuntime({
       })
       .catch(() => {});
     return () => subscription.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pushEnabled]);
+
+  // Cold start: the tapped notification is known before `NavigationContainer`
+  // is ready and before the session is restored. Flush the deferred target
+  // once both are true (`scheduleFlush` is declared with the dispatcher above).
+  useEffect(() => {
+    if (!pushEnabled || !isInitialized || !isAuthenticated) {
+      return;
+    }
+    if (pushDispatcherRef.current!.pending()) scheduleFlush();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pushEnabled, isInitialized, isAuthenticated]);
+  useEffect(
+    () => () => {
+      if (flushTimerRef.current !== null) clearInterval(flushTimerRef.current);
+      flushTimerRef.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!pushEnabled) {

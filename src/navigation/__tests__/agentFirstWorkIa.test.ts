@@ -112,6 +112,33 @@ describe("Agent-first Work/Economy IA", () => {
     expect(eas.build.production.env.EXPO_PUBLIC_DEVELOPER_WORKSPACE_V1_ENABLED).toBe("1");
   });
 
+  it("gates the APK on the Work approval inbox flow in fixture mode (d-50, M2.2 / B4)", () => {
+    const workflow = readFileSync(
+      resolve(__dirname, "../../../.github/workflows/build-apk.yml"),
+      "utf8",
+    );
+    const flow = readFileSync(
+      resolve(__dirname, "../../../.maestro/91-v7-work-remote-workspace.yaml"),
+      "utf8",
+    );
+    const flagOff = readFileSync(
+      resolve(__dirname, "../../../.maestro/92-v7-work-remote-workspace-flag-off.yaml"),
+      "utf8",
+    );
+    expect(workflow).toContain('name "91-v7-work-remote-workspace.yaml"');
+    // 92 needs a flag=0 build and must stay out of the flag=1 CI list.
+    expect(workflow).not.toContain('name "92-v7-work-remote-workspace-flag-off.yaml"');
+    // The flow walks Work → approval → decision → read-back on fixture routes only.
+    expect(flow).toContain("fixture=1");
+    expect(flow).toContain('id: "developer-reject-cta"');
+    expect(flow).toContain('id: "work-approval-readback"');
+    expect(flow).toContain("source=push");
+    // Fixture never shows an approved decision.
+    expect(flow).not.toContain('id: "work-approval-readback-approved"');
+    expect(flagOff).toContain('id: "work-feature-unavailable"');
+    expect(flagOff).toContain("feature_disabled");
+  });
+
   it("builds and tests the production Agent-first profile", () => {
     const workflow = readFileSync(
       resolve(__dirname, "../../../.github/workflows/build-apk.yml"),

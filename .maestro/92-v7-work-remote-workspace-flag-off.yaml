@@ -1,0 +1,55 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# 92 · V7 Work 远程工作台 · flag 关 = 读态卡（MTR-R12.1 / M2.1.1，切片 B4 的 flag-off 半边）
+#
+# 前提：EXPO_PUBLIC_DEVELOPER_WORKSPACE_V1_ENABLED=0（或未注入）的 agent-first E2E 构建。
+#       CI 的 build-apk.yml 固定注入 =1，所以这条**不在 CI 名单**（同 52 的做法）；
+#       与 91 构成 M2.1.1 的 flag on / off 双跑。
+# 覆盖：flag 关时 Work home 不是白屏，而是 M1.2.1 的读态卡
+#       `unavailable · developer.workspace_v1 · feature_disabled`；fixture 参数也不能
+#       绕过 flag；审批面直达同样落读态，没有任何 CTA。
+# 状态：2026-09-17 写出（fable-5-1-47）。
+# ─────────────────────────────────────────────────────────────
+tags:
+  - agent-first
+  - flag-off
+---
+- launchApp:
+    clearState: true
+
+- extendedWaitUntil:
+    visible:
+      id: "tab-agent"
+    timeout: 25000
+
+- openLink: agentrix://work?agentId=e2e-agent-account-1&fixture=1
+- waitForAnimationToEnd:
+    timeout: 6000
+- extendedWaitUntil:
+    visible:
+      id: "work-home-screen"
+    timeout: 15000
+- assertVisible:
+    id: "work-release-boundary"
+- assertVisible:
+    id: "work-feature-unavailable"
+- assertVisible:
+    text: "feature_disabled"
+- assertNotVisible:
+    id: "work-approval-approval-1"
+- takeScreenshot: "92-v7-work-home-flag-off-read-state"
+
+- openLink: agentrix://work/approvals?agentId=e2e-agent-account-1&approvalRef=approval-1&source=push&fixture=1
+- waitForAnimationToEnd:
+    timeout: 6000
+- extendedWaitUntil:
+    visible:
+      id: "work-approvals-screen"
+    timeout: 15000
+- assertNotVisible:
+    id: "developer-approve-cta"
+- assertNotVisible:
+    id: "developer-reject-cta"
+- assertNotVisible:
+    id: "work-approval-readback"
+- takeScreenshot: "92-v7-work-approvals-flag-off"

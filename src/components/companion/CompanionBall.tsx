@@ -61,10 +61,17 @@ interface CompanionBallProps {
 /**
  * Tabs where the ball IS visible for both the legacy and Agent-first IA.
  * Conversation surfaces remain hidden via top-tab/deep-route checks.
+ *
+ * Agent-first default IA (V7): the four tabs are Agent / Work / Economy / My;
+ * `Actions` / `Creation` are the pre-V7 names, kept mounted as hidden tabs.
+ * Decision d-35 (M0.0.8 = Shell, MTR-R09.8): the ball is the canonical
+ * Agent's Shell and stays present on all four default tabs — CI gate 51
+ * asserts it on each one (Claw build #523 failed on Work because the two new
+ * tab names were missing here).
  */
 const VISIBLE_TAB_ROOTS = new Set([
   'World', 'Plaza', 'Me',
-  'Agent', 'Actions', 'Creation', 'My',
+  'Agent', 'Work', 'Economy', 'Actions', 'Creation', 'My',
 ]);
 
 function resolveDeepRoute(state: any): string {

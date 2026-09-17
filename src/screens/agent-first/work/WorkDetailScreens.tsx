@@ -1,11 +1,24 @@
 import React from "react";
-import { Text, TextInput, TouchableOpacity } from "react-native";
+import { AppState, Text, TextInput, TouchableOpacity } from "react-native";
 import { useDeveloperWorkspaceLive } from "../../../hooks/useDeveloperWorkspaceLive";
 import {
-  decideDeveloperApproval,
-  loadFreshDeveloperApproval,
-} from "../../../services/developerWorkspaceApprovals";
+  canDecideDeveloperApproval,
+  decideDeveloperApprovalWithReadBack,
+  describeDeveloperApprovalInbox,
+  developerApprovalInboxAuthBlocked,
+  developerApprovalInboxBusy,
+  openDeveloperApprovalInbox,
+  reauthenticateDeveloperWorkspace,
+  type DeveloperApprovalInboxDecision,
+  type DeveloperApprovalInboxState,
+} from "../../../services/developerWorkspaceApprovalInbox";
 import { isDeveloperWorkspaceFlagEnabled } from "../../../services/developerWorkspaceClient";
+import {
+  DEVELOPER_WORKSPACE_FIXTURE_NOW,
+  getSharedDeveloperWorkspaceFixtureTransport,
+} from "../../../services/developerWorkspaceFixtureTransport";
+import { liveFailureToReadState } from "../../../services/developerWorkspaceLiveClient";
+import { useAuthStore } from "../../../stores/authStore";
 import {
   evaluateDeveloperLiveMutationCta,
   reconcileDeveloperInstruction,
@@ -390,86 +403,173 @@ export function WorkSessionsScreen({ navigation, route }: any) {
   );
 }
 
+/**
+ * Quick approval inbox — M2.2 (MTR-R10), decision d-50.
+ *
+ * Open (push or in-app) → re-authenticate with the token as it is *now* →
+ * fresh read → the user decides on exactly that digest → decision →
+ * authoritative read-back. The screen renders only what the read-back
+ * returned: no optimistic "approved", no timeout-as-success, one decision per
+ * approval (in-flight guard + terminal read-only). `fixture=1` runs the same
+ * chain against the in-memory fixture transport (Maestro 91).
+ */
 export function WorkApprovalsScreen({ route }: any) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const { live, model } = useWorkDetailModel(route, {
     approvalRef: route?.params?.approvalRef,
   });
-  const transport = live.transport;
-  const [fresh, setFresh] = React.useState<DeveloperApprovalRequestV1 | null>(
-    null,
-  );
-  const [status, setStatus] = React.useState("");
-  const approvalRef =
+  const fixture = explicitFixtureParam(route?.params?.fixture);
+  const source: "push" | "internal" =
+    route?.params?.source === "push" ? "push" : "internal";
+  const routeApprovalRef =
     typeof route?.params?.approvalRef === "string"
       ? route.params.approvalRef
       : undefined;
-  const agentId = live.scopeAgentId;
+  // In-app open without a ref: the first pending approval of the snapshot.
+  const snapshotPendingRef =
+    !routeApprovalRef && model.snapshot.approvals.kind === "ready"
+      ? (
+          model.snapshot.approvals.data.find(
+            (item) =>
+              !!item &&
+              typeof item === "object" &&
+              (item as DeveloperApprovalRequestV1).contractType ===
+                "developer_approval_request" &&
+              (item as DeveloperApprovalRequestV1).status === "pending",
+          ) as DeveloperApprovalRequestV1 | undefined
+        )?.approvalRef
+      : undefined;
+  const approvalRef = routeApprovalRef ?? snapshotPendingRef;
+  const scopeAgentId = live.scopeAgentId;
+  // Flag off = the M1.2.1 read-state card, in fixture mode too: `fixture=1`
+  // never bypasses the release flag (Maestro 92).
+  const flagEnabled = live.flagEnabled;
+
+  const fixtureTransport = React.useMemo(
+    () =>
+      fixture
+        ? getSharedDeveloperWorkspaceFixtureTransport(scopeAgentId)
+        : null,
+    [fixture, scopeAgentId],
+  );
+  const transport = fixtureTransport ? fixtureTransport.request : live.transport;
+  const readAgentId = fixture ? undefined : scopeAgentId;
+  const inboxSource = fixture ? ("fixture" as const) : ("api" as const);
+  const nowIso = () =>
+    fixture ? DEVELOPER_WORKSPACE_FIXTURE_NOW : new Date().toISOString();
+
+  const [inbox, setInbox] = React.useState<DeveloperApprovalInboxState>({
+    phase: "idle",
+  });
+  const inFlight = React.useRef(false);
+  const lastPending = React.useRef<DeveloperApprovalRequestV1 | undefined>(
+    undefined,
+  );
+  const inboxRef = React.useRef(inbox);
+  inboxRef.current = inbox;
+
+  const open = React.useCallback(async () => {
+    if (!approvalRef || !flagEnabled) return;
+    // No scope yet (directory still resolving, or the agent is not in the
+    // owner directory) → no read; the model's read state says why.
+    if (!fixture && !scopeAgentId) return;
+    if (inFlight.current) return;
+    // A decision that reached the read-back is final for *this* approval;
+    // returning from the background must not restart the chain on top of it.
+    // (A different approvalRef on the same screen instance does re-read.)
+    const current = inboxRef.current;
+    const settledFor =
+      current.phase === "decided" ||
+      current.phase === "awaiting_desktop" ||
+      current.phase === "terminal_read_only"
+        ? current.approval.approvalRef
+        : undefined;
+    if (settledFor === approvalRef) return;
+    inFlight.current = true;
+    try {
+      if (!fixture) {
+        // MTR-R10.1 step one — the token as the store holds it *now*, never the
+        // one captured when the push arrived; expired → stop before any read.
+        setInbox({ phase: "reauthenticating" });
+        const reauth = await reauthenticateDeveloperWorkspace({
+          token: useAuthStore.getState().token,
+          now: nowIso(),
+        });
+        if (reauth.ok === false) {
+          setInbox(developerApprovalInboxAuthBlocked(reauth.reason));
+          return;
+        }
+      }
+      setInbox({ phase: "reading", approvalRef });
+      const next = await openDeveloperApprovalInbox({
+        transport,
+        approvalRef,
+        agentId: readAgentId,
+        now: nowIso(),
+        source: inboxSource,
+        previous: lastPending.current,
+      });
+      if (next.phase === "pending") lastPending.current = next.approval;
+      setInbox(next);
+    } finally {
+      inFlight.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [approvalRef, fixture, flagEnabled, inboxSource, readAgentId, scopeAgentId, transport]);
 
   React.useEffect(() => {
-    if (!approvalRef || explicitFixtureParam(route?.params?.fixture)) return;
-    // No scope yet (directory still resolving, or the agent is not in the
-    // owner directory) → no fresh read; the model's read state says why.
-    if (!agentId) return;
-    let active = true;
-    void loadFreshDeveloperApproval({
-      transport,
-      approvalRef,
-      agentId,
-    }).then((result) => {
-      if (!active) return;
-      if (result.ok === false) {
-        setStatus(result.state.reason);
-        return;
-      }
-      if ("status" in result.data && result.data.status === "pending")
-        setFresh(result.data);
-      else setStatus("not_pending");
-    });
-    return () => {
-      active = false;
-    };
-  }, [agentId, approvalRef, route?.params?.fixture, transport]);
+    void open();
+  }, [open]);
 
-  const decide = async (decision: "approved" | "rejected") => {
-    if (!fresh) return;
-    const result = await decideDeveloperApproval({
-      transport,
-      approval: fresh,
-      decision,
-      online: true,
-      now: new Date().toISOString(),
-      idempotency: live.idempotency,
+  // MTR-R10.3 "background → return": the request is re-read (and a changed
+  // digest is surfaced) instead of trusting what was on screen before.
+  React.useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void open();
     });
-    if (result.ok === false) {
-      setStatus(result.state.reason);
-      return;
+    return () => subscription.remove();
+  }, [open]);
+
+  const decide = async (decision: DeveloperApprovalInboxDecision) => {
+    const current = inboxRef.current;
+    // Duplicate tap / terminal state: exactly one decision leaves the device.
+    if (!canDecideDeveloperApproval(current) || inFlight.current) return;
+    inFlight.current = true;
+    const approval = current.approval;
+    setInbox({ phase: "deciding", approval, decision });
+    try {
+      const next = await decideDeveloperApprovalWithReadBack({
+        transport,
+        approval,
+        decision,
+        now: nowIso(),
+        online: true,
+        idempotency: live.idempotency,
+        agentId: readAgentId,
+        source: inboxSource,
+        onReadingBack: () =>
+          setInbox({ phase: "reading_back", approval, decision }),
+      });
+      setInbox(next);
+    } finally {
+      inFlight.current = false;
     }
-    setStatus(
-      result.awaitingDesktopConfirmation
-        ? "waiting_desktop_confirmation"
-        : result.approval && "decision" in result.approval
-          ? result.approval.decision
-          : "recorded",
-    );
   };
 
-  const card =
-    fresh ??
-    (!approvalRef && model.snapshot.approvals.kind === "ready"
-      ? (model.snapshot.approvals.data.find(
-          (item) =>
-            !!item &&
-            typeof item === "object" &&
-            (item as DeveloperApprovalRequestV1).contractType ===
-              "developer_approval_request" &&
-            (item as DeveloperApprovalRequestV1).status === "pending",
-        ) as DeveloperApprovalRequestV1 | undefined)
-      : undefined);
-  const decisionRecorded =
-    status === "approved" ||
-    status === "rejected" ||
-    status === "waiting_desktop_confirmation";
+  const busy = developerApprovalInboxBusy(inbox);
+  const pendingCard =
+    inbox.phase === "pending" ||
+    inbox.phase === "deciding" ||
+    inbox.phase === "reading_back" ||
+    inbox.phase === "awaiting_desktop" ||
+    inbox.phase === "blocked"
+      ? inbox.approval
+      : undefined;
+  const terminal =
+    inbox.phase === "decided" || inbox.phase === "terminal_read_only"
+      ? inbox.approval
+      : undefined;
+  const canDecide = canDecideDeveloperApproval(inbox);
 
   return (
     <WorkScreenFrame
@@ -477,22 +577,58 @@ export function WorkApprovalsScreen({ route }: any) {
       testID="work-approvals-screen"
     >
       <FixtureBanner snapshot={model.snapshot} />
-      {model.approvals.kind !== "ready" && !fresh ? (
+      {source === "push" ? (
+        <Text testID="work-approval-source-push">
+          {t({
+            en: "Opened from a notification. The payload was only a pointer: this screen re-authenticated and fresh-read the request.",
+            zh: "来自推送。推送只是指针：本页已重新鉴权并从服务端刷新读取该请求。",
+          })}
+        </Text>
+      ) : null}
+      {!flagEnabled ? (
+        <WorkStateNotice
+          state={model.approvals}
+          testID="work-approval-flag-off"
+        />
+      ) : null}
+      {flagEnabled && !approvalRef && model.approvals.kind !== "ready" ? (
         <WorkStateNotice state={model.approvals} />
       ) : null}
-      {card ? (
-        <WorkCard title={card.approvalRef}>
-          <OpaqueRefText label="status" value={card.status} />
-          <OpaqueRefText label="risk" value={card.risk} />
+      {flagEnabled && !approvalRef && model.approvals.kind === "ready" ? (
+        <WorkStateNotice
+          state={{ kind: "unauthorized", reason: "developer_not_found" }}
+          testID="work-approval-none-pending"
+        />
+      ) : null}
+      {approvalRef && !fixture && !scopeAgentId ? (
+        <WorkStateNotice state={model.approvals} />
+      ) : null}
+
+      {flagEnabled ? (
+        <>
+          <OpaqueRefText label="phase" value={inbox.phase} />
+          <Text testID={`work-approval-phase-${inbox.phase}`}>
+            {describeDeveloperApprovalInbox(inbox, language === "zh")}
+          </Text>
+        </>
+      ) : null}
+
+      {pendingCard ? (
+        <WorkCard title={pendingCard.approvalRef} testID="work-approval-card">
+          <OpaqueRefText label="status" value={pendingCard.status} />
+          <OpaqueRefText label="risk" value={pendingCard.risk} />
           <OpaqueRefText
             label="scope"
-            value={card.requestedGrantScopes.join(",")}
+            value={pendingCard.requestedGrantScopes.join(",")}
           />
-          <OpaqueRefText label="expiry" value={card.expiresAt} />
-          <OpaqueRefText label="digest" value={card.requestDigest.value} />
-          <OpaqueRefText label="cost" value={card.estimatedCost.status} />
-          <Text>{card.userVisibleSummary}</Text>
-          {card.risk === "L3" || card.requiresLocalConfirmation ? (
+          <OpaqueRefText label="expiry" value={pendingCard.expiresAt} />
+          <OpaqueRefText
+            label="digest"
+            value={pendingCard.requestDigest.value}
+          />
+          <OpaqueRefText label="cost" value={pendingCard.estimatedCost.status} />
+          <Text>{pendingCard.userVisibleSummary}</Text>
+          {pendingCard.risk === "L3" || pendingCard.requiresLocalConfirmation ? (
             <Text testID="work-approval-l3-wait">
               {t({
                 en: "L3 waits for Desktop local confirmation. Mobile never continues locally.",
@@ -500,30 +636,84 @@ export function WorkApprovalsScreen({ route }: any) {
               })}
             </Text>
           ) : null}
-          <TouchableOpacity
-            disabled={decisionRecorded}
-            testID="developer-approve-cta"
-            onPress={() => void decide("approved")}
-          >
-            <Text>{t({ en: "Allow once", zh: "允许一次" })}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            disabled={decisionRecorded}
-            testID="developer-reject-cta"
-            onPress={() => void decide("rejected")}
-          >
-            <Text>{t({ en: "Reject", zh: "拒绝" })}</Text>
-          </TouchableOpacity>
+          {inbox.phase === "reading_back" ? (
+            <Text testID="work-approval-reading-back">
+              {t({
+                en: "Waiting for the backend read-back — nothing is shown as decided before it.",
+                zh: "等待服务端回读——回读之前不会显示任何「已批准 / 已拒绝」。",
+              })}
+            </Text>
+          ) : null}
+          {inbox.phase === "blocked" || inbox.phase === "awaiting_desktop" ? null : (
+            <>
+              <TouchableOpacity
+                disabled={!canDecide || busy}
+                testID="developer-approve-cta"
+                onPress={() => void decide("approved")}
+              >
+                <Text>{t({ en: "Allow once", zh: "允许一次" })}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={!canDecide || busy}
+                testID="developer-reject-cta"
+                onPress={() => void decide("rejected")}
+              >
+                <Text>{t({ en: "Reject", zh: "拒绝" })}</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </WorkCard>
-      ) : (
-        <WorkStateNotice
-          state={{
-            kind: "unauthorized",
-            reason: status || "developer_not_found",
-          }}
-        />
-      )}
-      {status ? <OpaqueRefText label="decision" value={status} /> : null}
+      ) : null}
+
+      {terminal ? (
+        <WorkCard
+          title={terminal.approvalRef}
+          testID={
+            inbox.phase === "decided"
+              ? "work-approval-readback"
+              : "work-approval-terminal"
+          }
+        >
+          <OpaqueRefText label="read-back" value={terminal.decision} />
+          <OpaqueRefText label="resultingStatus" value={terminal.resultingStatus} />
+          <OpaqueRefText label="decisionRef" value={terminal.decisionRef} />
+          <OpaqueRefText label="decidedAt" value={terminal.decidedAt} />
+          <OpaqueRefText label="digest" value={terminal.requestDigest.value} />
+          <OpaqueRefText
+            label="source"
+            value={"source" in inbox ? inbox.source : undefined}
+          />
+          <Text testID={`work-approval-readback-${terminal.decision}`}>
+            {t({
+              en: `Backend read-back: ${terminal.decision}. Terminal — no further decision is possible.`,
+              zh: `服务端回读：${terminal.decision}。已终态，不可再次决策。`,
+            })}
+          </Text>
+        </WorkCard>
+      ) : null}
+
+      {inbox.phase === "blocked" ? (
+        <>
+          <WorkStateNotice
+            state={liveFailureToReadState(inbox.failure)}
+            testID={`work-approval-blocked-${inbox.reason}`}
+          />
+          {inbox.canReread ? (
+            <TouchableOpacity
+              disabled={busy}
+              testID="work-approval-reread"
+              onPress={() => void open()}
+            >
+              <Text>
+                {inbox.reason === "authentication_required" ||
+                inbox.reason === "session_expired"
+                  ? t({ en: "Signed in again? Re-read", zh: "已重新登录？重新读取" })
+                  : t({ en: "Re-read from the backend", zh: "从服务端重新读取" })}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </>
+      ) : null}
     </WorkScreenFrame>
   );
 }

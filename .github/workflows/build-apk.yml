@@ -734,10 +734,13 @@ jobs:
           # Legacy World/Summon/Plaza flows (tagged `legacy-ia` in .maestro/)
           # target the retired tab contract and cannot be mixed into an
           # Agent-first APK run. The release gate is the four-tab + Soul Core
-          # baseline (51) plus the V7 IA / deep-link smoke (90, M1.6.1).
-          # 52 (Pet L2 kill switch) needs EXPO_PUBLIC_MOBILE_PET_L2_SURFACE=0
-          # and is not built here (decision d-35: the switch defaults ON).
-          mapfile -t ALL_FLOWS < <(find .maestro -maxdepth 1 -type f \( -name "51-baseline-agent-first-soul-core.yaml" -o -name "90-v7-agent-first-4tab-smoke.yaml" \) | sort 2>/dev/null || true)
+          # baseline (51) plus the V7 IA / deep-link smoke (90, M1.6.1) plus
+          # the Work remote-workspace approval inbox in fixture mode (91,
+          # M2.2 / decision d-50: fresh read → decision → authoritative
+          # read-back, flag on). 52 (Pet L2 kill switch) needs
+          # EXPO_PUBLIC_MOBILE_PET_L2_SURFACE=0 and 92 (Work flag off) needs
+          # EXPO_PUBLIC_DEVELOPER_WORKSPACE_V1_ENABLED=0; neither is built here.
+          mapfile -t ALL_FLOWS < <(find .maestro -maxdepth 1 -type f \( -name "51-baseline-agent-first-soul-core.yaml" -o -name "90-v7-agent-first-4tab-smoke.yaml" -o -name "91-v7-work-remote-workspace.yaml" \) | sort 2>/dev/null || true)
           SHARD_INDEX=${{ matrix.shard }}
           SHARD_TOTAL=1
           FLOWS=()
