@@ -25,12 +25,24 @@ export const AGENT_STACK_ROUTES = [
   "Companion",
   "HardwareAssurance",
   "AgentSoulCore",
+  "AgentPassport",
   "DestinationError",
 ] as const;
 export const AGENT_STACK_REGULATED_EXCLUDED = ["Prediction", "Lsm"] as const;
 export const AGENT_HOME_DEFAULT_SURFACES = [
   "Companion",
   "HardwareAssurance",
+] as const;
+/**
+ * Agent home "passport & bring home" row (matrix rows 17 / 41; V7 M5.1.1).
+ * `AgentPassport` is the only native screen; the other two are Web handoffs
+ * because the canonical writer for import and for the twin lives on Web.
+ * `TwinWeb` renders only behind `mobile.twin_surface` (default off).
+ */
+export const AGENT_HOME_IDENTITY_ENTRIES = [
+  "AgentPassport",
+  "BringHomeWeb",
+  "TwinWeb",
 ] as const;
 export const WORK_STACK_ACTION_ROUTES = [
   "ActionsHome",

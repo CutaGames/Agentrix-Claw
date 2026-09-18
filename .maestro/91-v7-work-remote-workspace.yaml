@@ -19,6 +19,11 @@ appId: app.agentrix.claw
 # 说明：fixture 走「拒绝」而不是「允许」——fixture 面上永远不出现 approved
 #       （developerWorkspaceClient.snapshotForbidsSuccessPaymentOrApproved 的口径不破）。
 # 状态：2026-09-17 写出（fable-5-1-47）；REAL 待 Claw 构建。
+#       2026-09-18 Claw #525（第六轮）：fixture 横幅 / 待审批行 / pending 卡片全部到位，
+#       挂在 `developer-approve-cta is visible`——两个 CTA 在 pending 卡片底部，
+#       Pixel 2（731dp）上 FixtureBanner + 推送说明 + 摘要 + digest 行把它们推到
+#       首屏之外；Maestro 的 assertVisible 不滚动。修法：断言 CTA 前先
+#       scrollUntilVisible（已在视口内时是 no-op），断言语义一字不改。
 # ─────────────────────────────────────────────────────────────
 tags:
   - agent-first
@@ -66,6 +71,12 @@ tags:
     timeout: 15000
 - assertVisible:
     id: "work-approval-card"
+# 两个 CTA 挂在 pending 卡片底部，小屏上可能在首屏之外：先滚到可见再断言。
+- scrollUntilVisible:
+    element:
+      id: "developer-reject-cta"
+    direction: DOWN
+    timeout: 10000
 - assertVisible:
     id: "developer-approve-cta"
 - assertVisible:
@@ -141,6 +152,12 @@ tags:
     visible:
       id: "work-approval-phase-pending"
     timeout: 15000
+# 推送说明多占一段，CTA 更靠下：同样先滚到可见。
+- scrollUntilVisible:
+    element:
+      id: "developer-approve-cta"
+    direction: DOWN
+    timeout: 10000
 - assertVisible:
     id: "developer-approve-cta"
 - takeScreenshot: "91-v7-approval-opened-from-push-params"

@@ -110,6 +110,7 @@ export function createMobileLinking() {
                   Lsm: 'lsm',
                   HardwareAssurance: 'agents/:agentId/assurance',
                   AgentSoulCore: 'agents/:agentId/soul-core',
+                  AgentPassport: 'agents/:agentId/passport',
                   DestinationError: 'destination-error',
                 },
               },

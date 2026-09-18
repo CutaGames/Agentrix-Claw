@@ -10,6 +10,8 @@ export type AgentFirstAgentStackParamList = {
   Companion: { screen?: 'SummonRoot' | 'VoiceChat' } | undefined;
   HardwareAssurance: { agentId: string };
   AgentSoulCore: { agentId: string };
+  /** Agent Passport, read-only (matrix row 41; integration note §2). `agentId` = agentAccountId. */
+  AgentPassport: { agentId: string };
   DestinationError: { reason: string };
 };
 

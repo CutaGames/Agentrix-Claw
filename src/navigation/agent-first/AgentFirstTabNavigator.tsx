@@ -23,6 +23,7 @@ import {
 } from '../../screens/agent-first/AgentEconomyScreens';
 import { CreationHomeScreen } from '../../screens/agent-first/CreationHomeScreen';
 import { AgentHomeScreen } from '../../screens/agent-first/work/AgentHomeScreen';
+import { AgentPassportScreen } from '../../screens/agent-first/work/AgentPassportScreen';
 import { AgentSoulCoreScreen } from '../../screens/agent-first/work/AgentSoulCoreScreen';
 import { EconomyHomeScreen } from '../../screens/agent-first/work/EconomyHomeScreen';
 import { WorkHomeScreen } from '../../screens/agent-first/work/WorkHomeScreen';
@@ -79,6 +80,8 @@ function AgentNavigator() {
       <AgentStack.Screen name="Companion" component={SummonStackNavigator} options={{ title: t({ en: 'Companion', zh: '伙伴' }), headerShown: false }} />
       <AgentStack.Screen name="HardwareAssurance" component={HardwareAssuranceScreen} options={{ title: t({ en: 'Soul Core', zh: 'Soul Core' }) }} />
       <AgentStack.Screen name="AgentSoulCore" component={AgentSoulCoreScreen} options={{ title: 'Soul Core' }} />
+      {/* Agent Passport v4: read-only card + share; editing hands off to Web (integration note §2). */}
+      <AgentStack.Screen name="AgentPassport" component={AgentPassportScreen} options={{ title: t({ en: 'Passport', zh: '名片' }) }} />
       <AgentStack.Screen name="DestinationError" component={DestinationErrorScreen} options={{ title: t({ en: 'Invalid link', zh: '链接无效' }) }} />
     </AgentStack.Navigator>
   );

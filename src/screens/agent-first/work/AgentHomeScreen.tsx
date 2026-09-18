@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  Linking,
   Modal,
   ScrollView,
   StyleSheet,
@@ -7,9 +8,16 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { AGENT_HOME_DEFAULT_SURFACES } from "../../../navigation/agent-first/iaContract";
+import {
+  AGENT_HOME_DEFAULT_SURFACES,
+  AGENT_HOME_IDENTITY_ENTRIES,
+} from "../../../navigation/agent-first/iaContract";
 import type { MobileAgentOption } from "../../../services/mobileAgentEconomyModel";
-import { isMobileV6FeatureEnabled } from "../../../services/mobileV6FeatureFlags";
+import {
+  isMobileV6FeatureEnabled,
+  isTwinSurfaceEnabled,
+} from "../../../services/mobileV6FeatureFlags";
+import { getBringHomeWebUrl, getTwinWebUrl } from "../../../services/webHandoff";
 import { useI18n } from "../../../stores/i18nStore";
 import { useThemedStyles, type Palette } from "../../../theme/useTheme";
 import { useMobileAgentDirectory } from "../useMobileAgentDirectory";
@@ -31,6 +39,35 @@ const SURFACE_COPY = {
     subtitle: { en: "Identity & optional hardware", zh: "身份与可选硬件" },
   },
 } as const;
+
+/**
+ * Passport & bring-home row (matrix rows 17 / 41, V7 M5.1.1). User words only
+ * (d-82: 带回家 · 管得住); the Web product name "My AI Twin / 我的 AI 分身" is
+ * the one the Web landing prints, no spec vocabulary.
+ */
+const IDENTITY_ENTRY_COPY = {
+  AgentPassport: {
+    emoji: "🪪",
+    title: { en: "Passport", zh: "名片" },
+    subtitle: { en: "Read-only card · share", zh: "只读名片 · 可分享" },
+    testID: "agent-open-passport",
+  },
+  BringHomeWeb: {
+    emoji: "🏠",
+    title: { en: "Bring it home", zh: "带回家" },
+    subtitle: { en: "Bring your AI in · opens on Web", zh: "把你的 AI 带进来 · 在 Web 打开" },
+    testID: "agent-bring-home-web",
+  },
+  TwinWeb: {
+    emoji: "🪞",
+    title: { en: "My AI Twin", zh: "我的 AI 分身" },
+    subtitle: { en: "Represents you · opens on Web", zh: "代表你本人 · 在 Web 打开" },
+    testID: "agent-twin-web",
+  },
+} as const satisfies Record<
+  (typeof AGENT_HOME_IDENTITY_ENTRIES)[number],
+  { emoji: string; title: { en: string; zh: string }; subtitle: { en: string; zh: string }; testID: string }
+>;
 
 function AgentSelector({
   visible,
@@ -139,6 +176,25 @@ export function AgentHomeScreen({ navigation }: any) {
     if (selected) {
       navigation.navigate("HardwareAssurance", { agentId: selected.agentId });
     }
+  };
+
+  // Read per render, never at module level: the flag table is configured
+  // after import (see `isPetSurfaceEnabled` gotcha in mobileV7FlagTopology).
+  const twinSurfaceEnabled = isTwinSurfaceEnabled();
+
+  const openIdentityEntry = (
+    entry: (typeof AGENT_HOME_IDENTITY_ENTRIES)[number],
+  ) => {
+    if (entry === "BringHomeWeb") {
+      void Linking.openURL(getBringHomeWebUrl());
+      return;
+    }
+    if (!selected) return;
+    if (entry === "AgentPassport") {
+      navigation.navigate("AgentPassport", { agentId: selected.agentId });
+      return;
+    }
+    void Linking.openURL(getTwinWebUrl(selected.agentId));
   };
 
   return (
@@ -311,6 +367,37 @@ export function AgentHomeScreen({ navigation }: any) {
           </Text>
         </View>
       </View>
+
+      <Text style={styles.sectionTitle}>
+        {t({ en: "Passport & bring home", zh: "名片与带回家" })}
+      </Text>
+      <View style={styles.grid} testID="agent-home-identity-entries">
+        {AGENT_HOME_IDENTITY_ENTRIES.map((entry) => {
+          if (entry === "TwinWeb" && !twinSurfaceEnabled) return null;
+          const copy = IDENTITY_ENTRY_COPY[entry];
+          const needsAgent = entry !== "BringHomeWeb";
+          const disabled = needsAgent && !selected;
+          return (
+            <TouchableOpacity
+              key={entry}
+              style={[styles.featureCard, disabled && styles.disabled]}
+              onPress={() => openIdentityEntry(entry)}
+              disabled={disabled}
+              testID={copy.testID}
+            >
+              <Text style={styles.featureEmoji}>{copy.emoji}</Text>
+              <Text style={styles.cardTitle}>{t(copy.title)}</Text>
+              <Text style={styles.muted}>{t(copy.subtitle)}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <Text style={styles.helper}>
+        {t({
+          en: "The passport is read-only here and edited on Web. Bringing an AI in and the twin are Web responsibilities; the phone only opens them.",
+          zh: "名片在手机上只读，在 Web 修改；带入与分身由 Web 负责，手机只负责打开。",
+        })}
+      </Text>
 
       {directory.model.agents.length === 0 ? (
         <View style={styles.notice} testID="agent-create-unavailable">

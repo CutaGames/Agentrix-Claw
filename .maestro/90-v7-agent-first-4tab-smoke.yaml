@@ -15,7 +15,8 @@ appId: app.agentrix.claw
 # 不覆盖：push 入口（Maestro 构建默认跳过 push listener，见 M0.0.6 /
 #       EXPO_PUBLIC_MAESTRO_KEEP_PUSH）；证据靠 pushDestination 单测 + M0.4.7 真机。
 # 状态：2026-09-15 写出；2026-09-16 按 d-32 更新并进 CI 名单（REAL：Claw build #521
-#       Passed）；同日按 d-35 改为 Shell 口径 + World/Plaza flag-off 落位（REAL 待跑）。
+#       Passed）；同日按 d-35 改为 Shell 口径 + World/Plaza flag-off 落位（REAL：#524 / #525
+#       Passed）；2026-09-18 加「名片与带回家」入口 + 名片只读屏可达（REAL 待第七轮）。
 # ─────────────────────────────────────────────────────────────
 tags:
   - agent-first
@@ -46,6 +47,34 @@ tags:
       id: "floating-ball-sprite"
     timeout: 10000
 - takeScreenshot: "90-v7-agent-home-with-shell"
+
+# 名片与带回家（矩阵行 17 / 41；Agent Passport v4 三端集成 §2；M5.1.1 只挂入口）：
+# 名片是唯一的原生只读屏（同一份投影、同一个 AGX 编号）；带回家 / 分身是 Web handoff。
+# 入口在 Agent home 下半段，先滚到可见。E2E 种子会话对 live 读投影会 401 → 读态提示 +
+# 全部「尚未确认」的章，但 AGX 编号来自账号 id 哈希，始终在场。
+- scrollUntilVisible:
+    element:
+      id: "agent-open-passport"
+    direction: DOWN
+    timeout: 10000
+- assertVisible:
+    id: "agent-bring-home-web"
+- tapOn:
+    id: "agent-open-passport"
+- extendedWaitUntil:
+    visible:
+      id: "agent-passport-screen"
+    timeout: 10000
+- assertVisible:
+    id: "agent-passport-number"
+- takeScreenshot: "90-v7-agent-passport-read-only"
+# 回 Agent home（再点已选中的 tab = popToTop；不用 back，见 51 的 gotcha）。
+- tapOn:
+    id: "tab-agent"
+- extendedWaitUntil:
+    visible:
+      id: "agent-home-screen"
+    timeout: 10000
 
 # Work
 - tapOn:
