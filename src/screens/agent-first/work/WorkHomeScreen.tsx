@@ -1,7 +1,7 @@
 import React from "react";
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useDeveloperWorkspaceLive } from "../../../hooks/useDeveloperWorkspaceLive";
-import { isDeveloperWorkspaceFlagEnabled } from "../../../services/developerWorkspaceClient";
+import { isDeveloperWorkspaceBuildFlagEnabled } from "../../../services/developerWorkspaceBuildEnv";
 import { parseDeveloperWorkspaceOpenRoute } from "../../../services/developerWorkspaceOpenRoute";
 import { buildDeveloperWorkHomeModel } from "../../../services/developerWorkspaceWorkModel";
 import {
@@ -63,9 +63,7 @@ export function WorkHomeScreen({ navigation, route }: any) {
   const model = buildDeveloperWorkHomeModel({
     routeAgentId,
     directoryContext: directory.model.context,
-    flagEnabled: isDeveloperWorkspaceFlagEnabled(
-      process.env as Record<string, string | undefined>,
-    ),
+    flagEnabled: isDeveloperWorkspaceBuildFlagEnabled(),
     mode: fixture ? "fixture" : "api",
     snapshot: live.snapshot ?? undefined,
     liveStatus: live.loading ? "loading" : live.snapshot ? "ready" : "idle",

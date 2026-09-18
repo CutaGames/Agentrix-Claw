@@ -1,7 +1,7 @@
 import React from "react";
 import { createDeveloperWorkspaceAuthTransport } from "../services/developerWorkspaceAuth";
+import { isDeveloperWorkspaceBuildFlagEnabled } from "../services/developerWorkspaceBuildEnv";
 import {
-  isDeveloperWorkspaceFlagEnabled,
   loadDeveloperWorkspaceSnapshot,
   type DeveloperWorkspaceSnapshot,
 } from "../services/developerWorkspaceClient";
@@ -27,9 +27,10 @@ export function useDeveloperWorkspaceLive(input: {
   const token = useAuthStore((state) => state.token);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isGuest = useAuthStore((state) => state.isGuest);
-  const flagEnabled = isDeveloperWorkspaceFlagEnabled(
-    process.env as Record<string, string | undefined>,
-  );
+  // Literal `process.env.EXPO_PUBLIC_*` read (inlined by babel-preset-expo);
+  // passing `process.env` as an object is never inlined and reads `undefined`
+  // in the APK (Claw #524 / Maestro 91).
+  const flagEnabled = isDeveloperWorkspaceBuildFlagEnabled();
   const online = input.online !== false;
   const fixture = input.fixture === true;
   const authenticated = isAuthenticated && !isGuest;

@@ -12,7 +12,7 @@ import {
   type DeveloperApprovalInboxDecision,
   type DeveloperApprovalInboxState,
 } from "../../../services/developerWorkspaceApprovalInbox";
-import { isDeveloperWorkspaceFlagEnabled } from "../../../services/developerWorkspaceClient";
+import { isDeveloperWorkspaceBuildFlagEnabled } from "../../../services/developerWorkspaceBuildEnv";
 import {
   DEVELOPER_WORKSPACE_FIXTURE_NOW,
   getSharedDeveloperWorkspaceFixtureTransport,
@@ -85,9 +85,7 @@ function useWorkDetailModel(route: any, extra: Record<string, unknown> = {}) {
     model: buildDeveloperWorkHomeModel({
       routeAgentId: agentId,
       directoryContext: directory.model.context,
-      flagEnabled: isDeveloperWorkspaceFlagEnabled(
-        process.env as Record<string, string | undefined>,
-      ),
+      flagEnabled: isDeveloperWorkspaceBuildFlagEnabled(),
       mode: fixture ? "fixture" : "api",
       snapshot: live.snapshot ?? undefined,
       liveStatus: live.loading ? "loading" : live.snapshot ? "ready" : "idle",
