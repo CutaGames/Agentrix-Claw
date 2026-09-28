@@ -1,0 +1,41 @@
+/**
+ * Release version guard (I-014 / E36, REQ-mobile-014, REQ-release-025).
+ *
+ * The preview build is 1.3.0 / versionCode 3; the 上线 2 release uses 4.
+ * versionCode only goes up: shipped builds are 1.1.0 / 1 (download page) and
+ * 1.2.0 / 2 (factory APK), and Android refuses to install a lower code over a
+ * higher one. The five places a version lives must agree, as in the 1.2.0
+ * release (f75f9ed3): CI runs `expo prebuild` without `--clean`, so the
+ * checked-in build.gradle has to match app.json too. `runtimeVersion` moves
+ * with the version so an OTA published for an older binary never lands on
+ * this one (expo-updates is on).
+ */
+import { describe, it, expect } from '@jest/globals';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const ROOT = path.resolve(__dirname, '..', '..', '..');
+const expo = JSON.parse(fs.readFileSync(path.join(ROOT, 'app.json'), 'utf8')).expo;
+const gradle = fs.readFileSync(path.join(ROOT, 'android', 'app', 'build.gradle'), 'utf8');
+
+const SHIPPED_VERSION_CODES = [1, 2];
+
+describe('release version', () => {
+  it('app.json, runtimeVersion, iOS build number and build.gradle agree', () => {
+    const code = expo.android.versionCode;
+    expect(Number.isInteger(code)).toBe(true);
+    expect(expo.runtimeVersion).toBe(expo.version);
+    expect(expo.ios.buildNumber).toBe(String(code));
+    expect(gradle).toMatch(new RegExp(`\\bversionCode ${code}\\b`));
+    expect(gradle).toMatch(new RegExp(`\\bversionName "${expo.version.replace(/\./g, '\\.')}"`));
+    expect(gradle.match(/\bversionCode \d+/g)).toHaveLength(1);
+  });
+
+  it('versionCode is above every shipped build and the version is plain semver', () => {
+    expect(expo.android.versionCode).toBeGreaterThan(Math.max(...SHIPPED_VERSION_CODES));
+    expect(expo.android.versionCode).toBeGreaterThanOrEqual(3);
+    expect(expo.version).toMatch(/^\d+\.\d+\.\d+$/);
+    const [major, minor] = expo.version.split('.').map(Number);
+    expect(major * 100 + minor).toBeGreaterThanOrEqual(103);
+  });
+});

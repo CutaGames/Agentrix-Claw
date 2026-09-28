@@ -1,0 +1,20 @@
+appId: app.agentrix.claw
+---
+# Test 02: Auth screen exposes the stable sign-in controls.
+
+- launchApp:
+    clearState: true
+    clearKeychain: true
+
+- waitForAnimationToEnd:
+    timeout: 30000
+
+- assertVisible:
+    text: "Agentrix Claw"
+
+- assertVisible:
+    text: "Connect Crypto Wallet"
+
+- assertVisible:
+    text: "Google"
+- takeScreenshot: "02-auth-branding"

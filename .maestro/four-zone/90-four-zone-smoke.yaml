@@ -1,0 +1,124 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Four-zone IA smoke (M1, D3): 伙伴 / 事项 / 分身 / 我的.
+# Only for builds with EXPO_PUBLIC_MOBILE_FOUR_ZONE_IA=1. Kept out of the
+# top-level folder on purpose: CI scans `.maestro/*.yaml` only, and the
+# shipped (flag-off) build has no four-zone tabs. Run it explicitly:
+#   maestro test .maestro/four-zone/90-four-zone-smoke.yaml
+# Selectors are checked against src/ by
+# src/navigation/__tests__/maestroSelectors.test.ts.
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+# ── Four tabs, default is 伙伴 ─────────────────────────────
+- extendedWaitUntil:
+    visible:
+      id: "tab-companion"
+    timeout: 20000
+- assertVisible:
+    id: "tab-matters"
+- assertVisible:
+    id: "tab-twin"
+- assertVisible:
+    id: "tab-my"
+- takeScreenshot: "90-companion"
+# The global pet layer is off in the four-zone IA (5.5).
+- assertNotVisible:
+    id: "floating-ball-sprite"
+# ── 事项 ─────────────────────────────────────────────────
+- tapOn:
+    id: "tab-matters"
+- extendedWaitUntil:
+    visible:
+      id: "matters-home-screen"
+    timeout: 10000
+# 待我处理 is one list (M3-a); an empty account shows the empty line.
+- assertVisible:
+    id: "matters-pending-list"
+- takeScreenshot: "90-matters"
+# ── 分身: onboarding (no twin, 1.9) or the card (twin exists, M4-c) ──
+- tapOn:
+    id: "tab-twin"
+- extendedWaitUntil:
+    visible:
+      id: "twin-home-screen"
+    timeout: 10000
+# Present in both states; the share button is never tapped in a smoke run.
+- assertVisible:
+    id: "twin-open-status"
+- takeScreenshot: "90-twin"
+# ── 我的: catalog-driven home ─────────────────────────────
+- tapOn:
+    id: "tab-my"
+- extendedWaitUntil:
+    visible:
+      id: "my-home-screen"
+    timeout: 10000
+- assertVisible:
+    id: "my-tab-import"
+- assertVisible:
+    id: "my-tab-devices"
+- assertVisible:
+    id: "my-tab-wallet"
+- takeScreenshot: "90-my"
+# 设备 (M1-k): computers + hardware, read-only.
+- tapOn:
+    id: "my-tab-devices"
+- extendedWaitUntil:
+    visible:
+      id: "my-devices-screen"
+    timeout: 10000
+- takeScreenshot: "90-my-devices"
+- back
+# ── 外观 ─────────────────────────────────────────────────
+- openLink: agentrix://my/appearance
+- extendedWaitUntil:
+    visible:
+      id: "appearance-screen"
+    timeout: 10000
+- tapOn:
+    id: "appearance-mode-light"
+- tapOn:
+    id: "appearance-accent-sky-blue"
+- takeScreenshot: "90-appearance-light-sky"
+- tapOn:
+    id: "appearance-mode-system"
+- tapOn:
+    id: "appearance-accent-obsidian-cyan"
+# ── Deep links: unbuilt tab shows the honest notice ─────────
+- openLink: agentrix://twin/income
+- extendedWaitUntil:
+    visible:
+      id: "zone-unavailable-screen"
+    timeout: 10000
+- takeScreenshot: "90-zone-unavailable"
+- back
+# 带入与备份 is not on the phone yet but Web has it (M1-j): the notice offers the
+# web link. Not tapped here (it would leave the app).
+- openLink: agentrix://my/import
+- extendedWaitUntil:
+    visible:
+      id: "zone-unavailable-open-web"
+    timeout: 10000
+- back
+# 分身 → 公开状态 (M4-b). Read-only here: never tap the stop button in a smoke run.
+- openLink: agentrix://twin/status
+- extendedWaitUntil:
+    visible:
+      id: "twin-status-screen"
+    timeout: 10000
+- takeScreenshot: "90-twin-status"
+- back
+# Old links (M1-i): a retired feature opens the "link no longer works" notice.
+- openLink: agentrix://discover/predict
+- extendedWaitUntil:
+    visible:
+      id: "zone-link-notice-screen"
+    timeout: 10000
+- takeScreenshot: "90-link-retired"
+- back
+- openLink: agentrix://matters/pending?ref=smoke-1
+- extendedWaitUntil:
+    visible:
+      id: "matters-home-screen"
+    timeout: 10000

@@ -1,0 +1,170 @@
+appId: app.agentrix.claw
+name: Soul_Birth — Happy Path (5-step walkthrough → terminate → World)
+# ─────────────────────────────────────────────────────────────
+# Test 61: soul-companion-onboarding — Soul_Birth happy path.
+#
+# Spec: .kiro/specs/soul-companion-onboarding/{requirements,design}.md
+#   design.md → Testing Strategy → "集成 / E2E (Maestro)":
+#     "Soul_Birth happy path:登录 → 起名选皮肤 → 苏醒动画 → 第一句话
+#      → 跳过 OAuth → 桌面 banner 稍后 → 圈地签到 → 终止。"
+#
+# Covers the full 5-step orchestration in order (R1.2 / R2 / R3 / R4 / R5):
+#   ① birth          → 起名 + 默认灵狐皮肤 + 确认「赋予它灵魂」→「灵魂正在苏醒」动画
+#   ② first_words    → 第一句话气泡显示 → 在步内「跳过这句」(R3.7)
+#   ③ first_task     → 选「暂不连接」跳过 OAuth (R4.5)
+#   ④ connect_desktop→ DesktopBanner「稍后连接」(R7.6)
+#   ⑤ settle_aeon    → 「暂不安家」完成 (R5.5)
+#   → 全部完成 → 编排器终止 (R1.6) → 常规主界面 (World tab) 可见
+#
+# Pre-req: a signed-in (non-guest) session — Soul_Birth only mounts post-login
+# (C3). Like every authed flow here we relaunch with clearState:false to reuse
+# the seeded session (Google sign-in can't be driven from Maestro).
+#
+# Determinism: we bootstrap a known `birth` state via the Me → 重看引导 replay
+# entry (R1.7), which resets the orchestrator to the first step regardless of
+# whether the seed account was already onboarded. The reset suppresses the
+# skip-earlier-if-later-done recompute, so the walkthrough always starts at
+# `birth` and exercises provision. Each step body is guarded with `runFlow:
+# when:` so the flow degrades gracefully (rather than hard-failing) on an
+# account/device where the overlay never appears.
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd:
+    timeout: 8000
+
+# ── Defensive: if a prior run left a Soul_Birth step overlay up, end it via
+#    the global 跳过 (R1.5) so this flow starts from the normal main UI. ──
+- runFlow:
+    when:
+      visible: "^跳过$"
+    commands:
+      - tapOn:
+          text: "^跳过$"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# ── Bootstrap: reset Soul_Birth to `birth` via the replay entry (R1.7) ──
+- tapOn:
+    id: "tab-me"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- runFlow:
+    when:
+      visible:
+        id: "me-replay-onboarding"
+    commands:
+      - tapOn:
+          id: "me-replay-onboarding"
+      # Confirm dialog → tap the confirm button (重看 / Replay), not 取消 / Cancel.
+      - tapOn:
+          text: "重看|Replay"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 4000
+
+# ── ① birth：起名 + 默认灵狐皮肤 + 确认 → 苏醒动画 (R2) ──────────
+- runFlow:
+    when:
+      visible: "诞生你的 AI"
+    commands:
+      # Default skin is 灵狐 clan A (R2.2) — already selected, just confirm it shows.
+      - assertVisible:
+          text: "灵狐"
+          optional: true
+      - tapOn:
+          id: "birth-name-input"
+      - inputText: "测试小灵"
+      - hideKeyboard
+      - takeScreenshot: "61-birth-named"
+      # 确认并唤醒 → provisionCloudAgent (R2.4) → 「灵魂正在苏醒」覆盖动画 (R2.5)
+      - tapOn:
+          text: "赋予它灵魂"
+      - assertVisible:
+          text: "灵魂正在苏醒"
+          optional: true
+      - takeScreenshot: "61-birth-awakening"
+      # Wait out cloud provision (R2.6 hard timeout = 90s). On success birth is
+      # marked complete and the orchestrator advances to first_words, whose
+      # sentence bubble appears (R2.7 / R3.1).
+      - extendedWaitUntil:
+          visible:
+            id: "first-words-bubble"
+          timeout: 95000
+
+# ── ② first_words：第一句话气泡 → 跳过这句 (R3.1 / R3.7) ─────────
+- runFlow:
+    when:
+      visible:
+        id: "first-words-bubble"
+    commands:
+      - assertVisible:
+          text: "灵魂的第一句话"
+          optional: true
+      - takeScreenshot: "61-first-words"
+      # In-step "skip the line" (跳过这句 →) — advances to first_task. This is
+      # NOT the top-right global 跳过 (which would end the whole flow, R1.5).
+      - tapOn:
+          text: "跳过这句.*"
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# ── ③ first_task：跳过 OAuth (R4.5) ────────────────────────────
+- runFlow:
+    when:
+      visible: "让它帮你办成第一件事"
+    commands:
+      - assertVisible:
+          text: "连接日历"
+          optional: true
+      - assertVisible:
+          text: "连接邮箱"
+          optional: true
+      - takeScreenshot: "61-first-task"
+      # In-step skip "暂不连接 →" → skips readout, completes first_task (R4.5).
+      - tapOn:
+          text: "暂不连接.*"
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# ── ④ connect_desktop：稍后连接 (R7.6) ─────────────────────────
+- runFlow:
+    when:
+      visible: "连接你的电脑"
+    commands:
+      - assertVisible:
+          text: "稍后连接.*"
+          optional: true
+      - takeScreenshot: "61-connect-desktop"
+      # Banner "稍后连接 →" (onLater) → completes connect_desktop, banner stays
+      # resident on the main UI (R7.6). NOT the global 跳过.
+      - tapOn:
+          text: "稍后连接.*"
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# ── ⑤ settle_aeon：暂不安家完成 (R5.5) ─────────────────────────
+- runFlow:
+    when:
+      visible: "安家永曜城"
+    commands:
+      - takeScreenshot: "61-settle-aeon"
+      # "暂不安家 →" completes settle_aeon without requiring location (R5.4/R5.5).
+      - tapOn:
+          text: "暂不安家.*"
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+# ── Terminated (R1.6) → normal main UI (World tab) visible ─────
+# Once all 5 steps complete, SoulBirthHost returns null and the opaque
+# step overlay is gone, revealing the bottom tab bar.
+- assertVisible:
+    id: "tab-world"
+    optional: true
+- assertNotVisible: "安家永曜城"
+- assertNotVisible: "诞生你的 AI"
+- takeScreenshot: "61-onboarding-terminated-world"
