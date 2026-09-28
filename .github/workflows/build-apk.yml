@@ -154,11 +154,13 @@ jobs:
                       keyPassword MYAPP_UPLOAD_KEY_PASSWORD
                   }
               }'''
-          content = re.sub(r'(signingConfigs\s*\{)', r'\\1' + signing_block, content, count=1)
+          # r'\1' (one backslash): r'\\1' wrote a literal "\1" into build.gradle and
+          # broke every build once ANDROID_KEYSTORE_BASE64 existed.
+          content = re.sub(r'(signingConfigs\s*\{)', r'\1' + signing_block, content, count=1)
           # Also wire up releaseConfig
           content = re.sub(
               r'(buildTypes\s*\{[^}]*release\s*\{)',
-              r'\\1\n            signingConfig signingConfigs.release',
+              r'\1\n            signingConfig signingConfigs.release',
               content, count=1
           )
           with open(filepath, 'w') as f:
