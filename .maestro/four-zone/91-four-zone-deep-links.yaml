@@ -1,0 +1,95 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Four-zone IA deep links (M1-c zone links, M1-i old links, M1-j unbuilt
+# tabs). Split out of 90 after CI build 528: its first `openLink` never
+# showed 外观 and the run left no screenshot or log, so it could not tell
+# "the link was ignored" from "the app reset". Each link below fails on its
+# own step; the first one also says where the app ended up.
+# Only for builds with EXPO_PUBLIC_MOBILE_FOUR_ZONE_IA=1. Run it explicitly:
+#   maestro test .maestro/four-zone/91-four-zone-deep-links.yaml
+# The Maestro E2E build logs `[maestro-e2e] link received`,
+# `[maestro-e2e] link resolved to …` and `[maestro-e2e] route …` to logcat
+# (route names only).
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "tab-companion"
+    timeout: 20000
+# Start on 我的, so "the link did nothing" is recognisable.
+- tapOn:
+    id: "tab-my"
+- extendedWaitUntil:
+    visible:
+      id: "my-home-screen"
+    timeout: 10000
+# ── A zone link to a built screen ────────────────────────────
+- openLink: agentrix://my/appearance
+- extendedWaitUntil:
+    visible:
+      id: "appearance-screen"
+    timeout: 10000
+    optional: true
+# 外观 did not open: fail on the line that names where the app is instead.
+- runFlow:
+    when:
+      notVisible:
+        id: "appearance-screen"
+    commands:
+      # Still on 我的: the link was ignored (never reached the navigator, or no route).
+      - assertNotVisible:
+          id: "my-home-screen"
+      # Back on 伙伴: the app restarted, or the error boundary reset it.
+      - assertNotVisible:
+          id: "agent-chat-screen"
+      # The link resolved to one of the notices instead of 外观.
+      - assertNotVisible:
+          id: "zone-link-notice-screen"
+      - assertNotVisible:
+          id: "zone-unavailable-screen"
+      # No tab bar: the app is not in front (crash, system dialog).
+      - assertVisible:
+          id: "tab-my"
+- assertVisible:
+    id: "appearance-screen"
+- takeScreenshot: "91-link-appearance"
+- back
+# ── An unbuilt tab shows the honest notice (M1-j) ────────────
+- openLink: agentrix://twin/income
+- extendedWaitUntil:
+    visible:
+      id: "zone-unavailable-screen"
+    timeout: 10000
+- takeScreenshot: "91-zone-unavailable"
+- back
+# 带入与备份 is not on the phone yet but Web has it: the notice offers the
+# web link. Not tapped here (it would leave the app).
+- openLink: agentrix://my/import
+- extendedWaitUntil:
+    visible:
+      id: "zone-unavailable-open-web"
+    timeout: 10000
+- back
+# ── 分身 → 公开状态 (M4-b). Read-only: never tap the stop button in a smoke run.
+- openLink: agentrix://twin/status
+- extendedWaitUntil:
+    visible:
+      id: "twin-status-screen"
+    timeout: 10000
+- takeScreenshot: "91-twin-status"
+- back
+# ── Old links (M1-i): a retired feature opens the "link no longer works" notice.
+- openLink: agentrix://discover/predict
+- extendedWaitUntil:
+    visible:
+      id: "zone-link-notice-screen"
+    timeout: 10000
+- takeScreenshot: "91-link-retired"
+- back
+# ── A zone link with a ref ───────────────────────────────────
+- openLink: agentrix://matters/pending?ref=smoke-1
+- extendedWaitUntil:
+    visible:
+      id: "matters-home-screen"
+    timeout: 10000

@@ -1,0 +1,126 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Four-zone IA smoke (M1, D3): 伙伴 / 事项 / 分身 / 我的, reached the way the
+# owner reaches them: tabs and rows, no deep links (those are in 91).
+# Only for builds with EXPO_PUBLIC_MOBILE_FOUR_ZONE_IA=1. Kept out of the
+# top-level folder on purpose: CI scans `.maestro/*.yaml` only, and the
+# shipped (flag-off) build has no four-zone tabs. Run it explicitly:
+#   maestro test .maestro/four-zone/90-four-zone-smoke.yaml
+# Selectors are checked against src/ by
+# src/navigation/__tests__/maestroSelectors.test.ts.
+#
+# CI build 528 failed at 外观 when it was opened with a deep link, with no
+# screenshot or log from the run. 外观 is now opened from 我的 (the real
+# path), and a failed step says where the app ended up instead (the
+# `runFlow: when: notVisible` blocks).
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+# ── Four tabs, default is 伙伴 ─────────────────────────────
+- extendedWaitUntil:
+    visible:
+      id: "tab-companion"
+    timeout: 20000
+- assertVisible:
+    id: "tab-matters"
+- assertVisible:
+    id: "tab-twin"
+- assertVisible:
+    id: "tab-my"
+- takeScreenshot: "90-companion"
+# The global pet layer is off in the four-zone IA (5.5).
+- assertNotVisible:
+    id: "floating-ball-sprite"
+# ── 事项 ─────────────────────────────────────────────────
+- tapOn:
+    id: "tab-matters"
+- extendedWaitUntil:
+    visible:
+      id: "matters-home-screen"
+    timeout: 10000
+# 待我处理 is one list (M3-a); an empty account shows the empty line.
+- assertVisible:
+    id: "matters-pending-list"
+- takeScreenshot: "90-matters"
+# ── 分身: onboarding (no twin, 1.9) or the card (twin exists, M4-c) ──
+- tapOn:
+    id: "tab-twin"
+- extendedWaitUntil:
+    visible:
+      id: "twin-home-screen"
+    timeout: 10000
+# Present in both states; the share button is never tapped in a smoke run.
+- assertVisible:
+    id: "twin-open-status"
+- takeScreenshot: "90-twin"
+# ── 我的: catalog-driven home ─────────────────────────────
+- tapOn:
+    id: "tab-my"
+- extendedWaitUntil:
+    visible:
+      id: "my-home-screen"
+    timeout: 10000
+- assertVisible:
+    id: "my-tab-import"
+- assertVisible:
+    id: "my-tab-devices"
+- assertVisible:
+    id: "my-tab-wallet"
+- takeScreenshot: "90-my"
+# 设备 (M1-k): computers + hardware, read-only.
+- tapOn:
+    id: "my-tab-devices"
+- extendedWaitUntil:
+    visible:
+      id: "my-devices-screen"
+    timeout: 10000
+- takeScreenshot: "90-my-devices"
+- back
+- extendedWaitUntil:
+    visible:
+      id: "my-home-screen"
+    timeout: 10000
+# ── 外观 (M1-e / M1-n): 我的 → 外观; the row is below the fold on small screens ──
+- scrollUntilVisible:
+    element:
+      id: "my-tab-appearance"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "my-tab-appearance"
+- extendedWaitUntil:
+    visible:
+      id: "appearance-screen"
+    timeout: 10000
+    optional: true
+# 外观 did not open: fail on the line that names where the app is instead.
+- runFlow:
+    when:
+      notVisible:
+        id: "appearance-screen"
+    commands:
+      # Still on 我的: the tap did nothing.
+      - assertNotVisible:
+          id: "my-home-screen"
+      # Back on 伙伴: the app restarted, or the error boundary reset it after a render error.
+      - assertNotVisible:
+          id: "agent-chat-screen"
+      # No tab bar: the app is not in front (crash, system dialog).
+      - assertVisible:
+          id: "tab-my"
+- assertVisible:
+    id: "appearance-screen"
+- tapOn:
+    id: "appearance-mode-light"
+- tapOn:
+    id: "appearance-accent-sky-blue"
+- takeScreenshot: "90-appearance-light-sky"
+- tapOn:
+    id: "appearance-mode-system"
+- tapOn:
+    id: "appearance-accent-obsidian-cyan"
+- back
+- extendedWaitUntil:
+    visible:
+      id: "my-home-screen"
+    timeout: 10000
