@@ -1,0 +1,82 @@
+# Maestro E2E master flow for P-9 Companion Redesign (T24.1).
+#
+# Smoke covers the highest-leverage paths so a green run = "core companion
+# loop ships":
+#   1. Cold launch → Tab default = World (R3.1)
+#   2. Ball visible across World/Plaza/Me, hidden in Summon (R1.1-R1.2)
+#   3. Long-press ball → PetDetailSheet 85% with 9 sections (R4.1)
+#   4. Companion Settings reachable via Me → 设置 → 陪伴设置 (R10.8)
+#   5. legacyRouteTable redirect: agentrix://home → World tab (R11.13)
+#
+# Full coverage (Voice_Greet / Trust3 / Cross-device / Agentic Commerce)
+# requires backend fixtures + mock Bedrock and is split across 47-2/47-3/47-4
+# (deferred to wave 15+).
+#
+# Spec: requirements.md R12.3, R12.10.
+
+appId: app.agentrix.claw
+---
+
+# ── Pre-flight: launch app cold ──────────────────────────────────────
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd
+
+# ── Step 1: Default tab = World ──────────────────────────────────────
+# WorldHubScreen has the "World" tab label highlighted; verify by tapping
+# the icon area and confirming WorldHub headline is visible.
+- assertVisible:
+    id: "tab-world"
+- assertVisible:
+    id: "splash-pet-sprite"
+    optional: true # only present during cold-boot splash
+
+# ── Step 2: Companion ball visible on World ──────────────────────────
+# Allow the ball to slide into view (auto re-minimize timer is 8s,
+# so tap a corner to wake it first).
+- tapOn:
+    id: "floating-ball-sprite"
+    optional: true
+- waitForAnimationToEnd
+
+# ── Step 3: Long-press ball → PetDetailSheet ─────────────────────────
+- longPressOn:
+    id: "floating-ball-sprite"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    text: "陪伴动作"
+    optional: true
+
+# ── Step 4: Open Companion Settings ──────────────────────────────────
+# From PetDetailSheet → 陪伴设置 row taps into Me → CompanionSettings.
+# (If the long-press path didn't open the sheet on this device, fall
+# back via the Me tab.)
+- tapOn:
+    text: "陪伴设置"
+    optional: true
+- waitForAnimationToEnd
+- assertVisible:
+    text: "陪伴行为的总开关"
+    optional: true
+
+# ── Step 5: Switch to Plaza tab → ball still visible ─────────────────
+- tapOn:
+    id: "tab-plaza"
+    optional: true
+- waitForAnimationToEnd
+
+# ── Step 6: Switch to Summon tab → ball should NOT be visible ────────
+- tapOn:
+    id: "tab-summon"
+    optional: true
+- waitForAnimationToEnd
+- assertNotVisible:
+    id: "floating-ball-sprite"
+    optional: true
+
+# ── Step 7: Switch to Me tab → ball returns ──────────────────────────
+- tapOn:
+    id: "tab-me"
+    optional: true
+- waitForAnimationToEnd

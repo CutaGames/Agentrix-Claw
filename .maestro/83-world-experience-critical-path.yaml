@@ -1,0 +1,134 @@
+# Maestro E2E — World Growth Mobile Experience 关键路径 (task 11.2)
+#
+# spec: .kiro/specs/world-growth-mobile-experience/{requirements,design,tasks}.md
+#   关键路径:世界(World Hub) → 刷创作流(封面三态·绝不黑屏) → 点进详情
+#            → 进入(体验/失败降级) → 下单(ShopQuickOrder·服务端权威) → 我的订单/凭证。
+#   覆盖需求:R4.1(Feed→详情展示封面/标题/offerings)、R4.2(详情「进入」→ enterCreation
+#            → CreationExperience)、R5.1(选中 offering → purchaseCreation 权威结算)、
+#            R5.2(订单在「我的订单」可见)、R7.5(封面 loading/error/success 三态绝不黑屏)。
+#
+# 强断言策略(对齐 80/81/82 的 CI 实证经验):
+#   - **deep-link 确定性进屏**:所有 World 屏都可 deep-link(App.tsx linking:world/feed、
+#     world/creation/:id、world/experience/:id),不依赖 `tapOn tab-world`(launchApp
+#     clearState:false 会复用前序 flow 的栈,点 tab 不重置)。
+#   - **屏壳 testID 强断言**:每屏容器/关键控件 testID 存在即证接线正确;这些在合成 id /
+#     空后端下也确定性渲染(详情/体验/我的订单 均优雅降级:空态 / 10s enter 超时失败态)。
+#   - **后端数据相关步骤(真实卡片、offerings、下单结算)标 `optional: true`**:e2e-token
+#     后端无授权/可能空种子,只触发不断言其服务端结果(与 80「生成/发布只触发不断言」同源)。
+#   - **封面绝不黑屏(R7.5)**:CreationCard/详情/体验封面均为三态(骨架 / 生成式占位 CoverArt /
+#     真图),容器 testID(creation-detail-cover / experience-cover / creation-feed-list)
+#     可见即证"有可读渲染、非黑屏";截图留证。
+appId: app.agentrix.claw
+name: World Growth — 世界体验关键路径
+---
+- launchApp
+- assertVisible:
+    id: "tab-world"
+
+# ── ① 世界(World Hub):入口聚合可达(R7.1)──────────────────
+- openLink: agentrix://world
+- extendedWaitUntil:
+    visible:
+      id: "world-hub-scroll"
+    timeout: 25000
+# 刷创作流 + 我的订单/凭证 入口存在(证 Hub 到关键路径两端的接线)
+- assertVisible:
+    id: "world-hub-feed"
+- assertVisible:
+    id: "world-hub-orders"
+- takeScreenshot: "83-01-world-hub"
+
+# ── ② 刷创作流(Feed):经 Hub 入口进,封面三态绝不黑屏(R7.5)──
+- tapOn:
+    id: "world-hub-feed"
+- extendedWaitUntil:
+    visible:
+      id: "creation-feed-list"
+    timeout: 25000
+# 竖滑触发卡片挂载/回收(抖音式分页);封面容器渲染即非黑屏。
+- swipe:
+    direction: UP
+    duration: 400
+- swipe:
+    direction: DOWN
+    duration: 400
+- takeScreenshot: "83-02-feed-covers"
+
+# ── ③ 点进详情(Feed→Detail,R4.1)────────────────────────────
+# 真实卡片 testID 依赖后端数据(creation-card-action-<id>,id 动态);e2e 空后端可能是
+# 冷启动空态。为确定性覆盖"点进详情",deep-link 直达 CreationDetail 屏壳(合成 id 亦优雅
+# 降级,不崩)。屏壳 + 封面容器 + 「进入」按钮强断言。
+- openLink: agentrix://world/creation/e2e-creation-1
+- extendedWaitUntil:
+    visible:
+      id: "creation-detail-scroll"
+    timeout: 25000
+# R4.1 封面容器(真图优先→CoverArt 生成式兜底,绝不黑屏)+ 「进入/进去逛逛」入口。
+- assertVisible:
+    id: "creation-detail-cover"
+- assertVisible:
+    id: "creation-detail-enter"
+# 可下单项(R4.1/R5.1):有种子数据时点选任一 offering → ShopQuickOrder;空后端时跳过。
+- assertVisible:
+    id: "creation-detail-offerings"
+    optional: true
+- takeScreenshot: "83-03-detail"
+
+# ── ④ 下单(ShopQuickOrder → purchaseCreation,R5.1)─────────
+# offering testID 动态(creation-detail-offering-<id>),依赖后端 offerings;标 optional,
+# 存在则点开下单弹层并触发权威结算(e2e-token 下服务端会拒,只触发不断言结果),
+# 成功可经 shop-quick-order-view-orders 直达"我的订单"。
+- tapOn:
+    id: "creation-detail-offerings"
+    optional: true
+- assertVisible:
+    id: "shop-quick-order-sheet"
+    optional: true
+- tapOn:
+    id: "shop-quick-order-confirm"
+    optional: true
+- takeScreenshot: "83-04-quick-order"
+
+# ── ⑤ 进入(Detail→Enter→Experience,R4.2)───────────────────
+# 「进入」→ enterCreation 取会话 → CreationExperience。合成 id / e2e 空后端下 enter 在 10s
+# 内失败 → 失败态确定性渲染「重试 experience-retry / 查看详情 / 返回」(R4.4 绝不停留空白,
+# 与 flow 74 的 enter→fail→fallback 同源可靠断言);真数据下则渲染 creation-experience-scroll。
+- tapOn:
+    id: "creation-detail-enter"
+- extendedWaitUntil:
+    visible:
+      id: "experience-retry"
+    timeout: 20000
+# 真数据变体:成功进入体验宿主(空后端不出现,故 optional 不阻断)。
+- assertVisible:
+    id: "creation-experience-scroll"
+    optional: true
+- takeScreenshot: "83-05-experience"
+
+# ── ⑥ 我的订单/凭证(R5.2/R5.3)──────────────────────────────
+# MyOrdersVouchers 无 deep-link,经 World Hub 的「我的订单/凭证」入口可达(购买闭环校验)。
+- openLink: agentrix://world
+- extendedWaitUntil:
+    visible:
+      id: "world-hub-scroll"
+    timeout: 25000
+- tapOn:
+    id: "world-hub-orders"
+- extendedWaitUntil:
+    visible:
+      id: "my-orders-tab"
+    timeout: 20000
+# 订单/凭证双 tab 存在(证「我的订单」listMyOrders / 「我的凭证」listMyVouchers 接线);
+# 空后端时渲染 my-orders-empty 空态,绝不空白卡死。
+- assertVisible:
+    id: "my-vouchers-tab"
+- assertVisible:
+    id: "my-orders-empty"
+    optional: true
+- takeScreenshot: "83-06-my-orders"
+# 切到凭证 tab(voucher 履约可见性)
+- tapOn:
+    id: "my-vouchers-tab"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: "83-07-my-vouchers"

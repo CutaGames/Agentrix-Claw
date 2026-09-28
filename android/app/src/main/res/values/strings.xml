@@ -1,0 +1,10 @@
+<resources>
+  <string name="app_name">Agentrix</string>
+  <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
+  <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
+  <string name="expo_runtime_version">1.1.0</string>
+  <string name="background_wake_word_channel_name">Agentrix Background Voice</string>
+  <string name="background_wake_word_channel_description">Keeps the Android floating ball and local wake-word listener active in the background.</string>
+  <string name="background_wake_word_title">Agentrix 后台语音已开启</string>
+  <string name="background_wake_word_message">退出主界面后仍会保留悬浮球，并持续监听本地唤醒词。</string>
+</resources>
