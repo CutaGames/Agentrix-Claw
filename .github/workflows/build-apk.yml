@@ -349,7 +349,10 @@ jobs:
           WORK=$(mktemp -d)
           "$APKSIGNER" rotate --out "$WORK/lineage.bin" \
             --old-signer --ks "$DEBUG_KS" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android \
+            --set-rollback false \
             --new-signer --ks "$RELEASE_KS" --ks-pass env:STORE_PASSWORD --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD
+          # I-044: the debug key is public, so it must not keep the rollback capability; set it
+          # explicitly instead of relying on the apksigner default, and assert it in the verify step.
           "$APKSIGNER" sign \
             --ks "$DEBUG_KS" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android \
             --next-signer --ks "$RELEASE_KS" --ks-pass env:STORE_PASSWORD --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD \
@@ -405,14 +408,24 @@ jobs:
             echo "$SIGNATURE" | grep -Eq 'Verified using v3(\.[0-9])? scheme.*: true' || { echo "ERROR: v3 signature not verified"; exit 1; }
             NEW=$("$APKSIGNER" verify --print-certs --min-sdk-version 28 "$APK" | digests)
             OLD=$("$APKSIGNER" verify --print-certs --max-sdk-version 27 "$APK" | digests)
-            LINEAGE=$("$APKSIGNER" lineage --in "$APK" --print-certs | digests)
+            LINEAGE_RAW=$("$APKSIGNER" lineage --in "$APK" --print-certs -v)
+            LINEAGE=$(echo "$LINEAGE_RAW" | digests)
+            # rollback capability of the debug signer (capability lines follow their "Signer #N" lines)
+            DEBUG_ROLLBACK=$(echo "$LINEAGE_RAW" | awk -v dbg="$DEBUG_CERT_SHA256" '
+              /^Signer #[0-9]+/ { match($0, /#[0-9]+/); cur = substr($0, RSTART + 1, RLENGTH - 1) }
+              tolower($0) ~ /certificate sha-256 digest/ { d = tolower($NF); if (d == dbg) debug = cur }
+              tolower($0) ~ /rollback/ { v = (tolower($0) ~ /true/) ? "true" : ((tolower($0) ~ /false/) ? "false" : "?"); rb[cur] = v }
+              END { print (debug == "" ? "no-debug-signer" : (debug in rb ? rb[debug] : "not-printed")) }')
+            echo "[ci] lineage capabilities:"; echo "$LINEAGE_RAW" | grep -Ei 'Signer #|capabilit|rollback' || true
+            echo "[ci] debug signer rollback capability: $DEBUG_ROLLBACK"
             echo "[ci] API 28+ signer(s): $(echo $NEW)"
             echo "[ci] API <=27 signer(s): $(echo $OLD)"
             echo "[ci] lineage (oldest first): $(echo $LINEAGE)"
             [ "$(echo $NEW)" = "$EXPECTED_RELEASE_CERT_SHA256" ] || { echo "ERROR: API 28+ signer must be exactly $EXPECTED_RELEASE_CERT_SHA256"; exit 1; }
             [ "$(echo $OLD)" = "$DEBUG_CERT_SHA256" ] || { echo "ERROR: API <=27 signer must be exactly the debug certificate"; exit 1; }
             [ "$(echo $LINEAGE)" = "$DEBUG_CERT_SHA256 $EXPECTED_RELEASE_CERT_SHA256" ] || { echo "ERROR: lineage must be debug -> $EXPECTED_RELEASE_CERT_SHA256"; exit 1; }
-            SUMMARY="production \`$EXPECTED_RELEASE_CERT_SHA256\` (API 28+), lineage debug -> production, API <=27 debug"
+            [ "$DEBUG_ROLLBACK" = "false" ] || { echo "ERROR: the public debug certificate must not have the rollback capability in the lineage ($DEBUG_ROLLBACK)"; exit 1; }
+            SUMMARY="production \`$EXPECTED_RELEASE_CERT_SHA256\` (API 28+), lineage debug -> production (debug rollback=false), API <=27 debug"
           fi
           {
             echo "### APK signing certificate"
@@ -437,12 +450,6 @@ jobs:
           elif [ "$MOBILE_SIGNING_CHECK_BUILD" = "true" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "[ci] Signing check build; never deployed"
-          elif [ "$RELEASE_SIGNING" = "true" ]; then
-            # E50: the download page serves 1.1.0, signed with the debug certificate.
-            # Stay off until a build/mobile-signing-check-* run proves the v3 lineage
-            # (debug -> aad75099) end to end; re-enabling is a separate commit.
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "[ci] Production-signed build without v3 lineage; download page not updated (E50)"
           elif [ -n "$DEPLOY_SSH_KEY" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
@@ -472,10 +479,10 @@ jobs:
           scp $OPTS "$APK" "ubuntu@47.130.176.148:${DEST}/ClawLink-latest.apk"
           echo "✅ Deployed ClawLink build-${{ github.run_number }} to server"
 
-      # E50: same reason as the deploy gate - a production-signed APK without the v3
-      # lineage cannot update 1.1.0 installs, so no public Release until the lineage step lands.
+      # Formal builds reach this step only after "Verify APK signing certificate" proved the
+      # production key and the v3 lineage (debug -> aad75099, debug rollback=false).
       - name: Create GitHub Release
-        if: ${{ env.MOBILE_BASELINE_BUILD != 'true' && env.MOBILE_FOUR_ZONE_BUILD != 'true' && env.MOBILE_SIGNING_CHECK_BUILD != 'true' && env.RELEASE_SIGNING != 'true' }}
+        if: ${{ env.MOBILE_BASELINE_BUILD != 'true' && env.MOBILE_FOUR_ZONE_BUILD != 'true' && env.MOBILE_SIGNING_CHECK_BUILD != 'true' }}
         continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
