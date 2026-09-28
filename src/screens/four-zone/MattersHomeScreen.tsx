@@ -36,13 +36,13 @@ function blockedHint(item: MattersPendingItem, lang: Lang): string | null {
   const caps = item.capabilities;
   if (!caps || item.kind !== 'computer_approval') return null;
   if (item.expired || caps.approveBlockedReason === 'expired') {
-    return lang === 'zh' ? '已过期。如仍需要，请在电脑上重新发起。' : 'Expired. Ask again from the computer if still needed.';
+    return lang === 'zh' ? '已过期，不能再批准；这里仍可以拒绝。如仍需要，请在电脑上重新发起。' : 'Expired: it can no longer be approved, but you can reject it. Ask again from the computer if still needed.';
   }
   if (caps.approveBlockedReason === 'requires_local_confirmation') {
-    return lang === 'zh' ? '高风险：请在电脑上批准或拒绝。' : 'High risk: approve or reject on the computer.';
+    return lang === 'zh' ? '较高风险：请在发起它的电脑上批准；这里可以拒绝。' : 'Higher risk: approve it on the computer that asked. You can reject it here.';
   }
-  if (caps.approveBlockedReason === 'requires_receipt_refs') {
-    return lang === 'zh' ? '请在电脑上批准；这里可以拒绝。' : 'Approve this on the computer. You can reject it here.';
+  if (caps.approveBlockedReason === 'missing_request_digest') {
+    return lang === 'zh' ? '这条审批缺少校验信息，请在电脑上处理。' : 'This approval is missing its check value; handle it on the computer.';
   }
   return null;
 }

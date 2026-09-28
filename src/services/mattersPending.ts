@@ -14,10 +14,11 @@
  *
  * Order (5.3 "按过期时间排序"): items that expire come first, soonest first;
  * then items without an expiry by priority (critical → insight), oldest
- * first; expired approvals last, read-only.
+ * first; expired approvals last (they can still be rejected, approval-card
+ * contract v1).
  */
 import type { MobileDesktopApproval } from './desktopSync';
-import { mobileApprovalCapabilities, type MobileApprovalCapabilities } from './mobileApprovalPolicy';
+import { mobileApprovalCapabilities, mobileApprovalStatus, type MobileApprovalCapabilities } from './mobileApprovalPolicy';
 import type { MobileTwinReviewItem } from './twinReviewQueue';
 import type { DigitalTwinReviewPriorityV1 } from '../../shared/types/digital-twin';
 
@@ -59,11 +60,12 @@ function parseTime(value: string | null | undefined): number | null {
 
 function approvalItem(approval: MobileDesktopApproval, now: number): MattersPendingItem | null {
   const id = String(approval?.approvalId ?? '').trim();
-  if (!id || approval.status !== 'pending') return null;
+  if (!id) return null;
+  // Contract projection (+ an unparsable expiry counts as expired); decided records are not shown.
+  const status = mobileApprovalStatus(approval, now);
+  if (status !== 'pending' && status !== 'expired') return null;
   const expiresAt = typeof approval.expiresAt === 'string' && approval.expiresAt ? approval.expiresAt : null;
-  const dueMs = parseTime(expiresAt);
-  // An unparsable expiry fails closed (same rule as the approval policy).
-  const expired = expiresAt !== null && (dueMs === null || dueMs <= now);
+  const expired = status === 'expired';
   const risk = String(approval.riskLevel ?? '');
   return {
     key: `computer_approval:${id}`,

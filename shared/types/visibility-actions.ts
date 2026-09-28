@@ -38,7 +38,7 @@ export const VISIBILITY_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 export const VISIBILITY_TIERS = ['tighten', 'loosen', 'content_edit'] as const;
 export type VisibilityTierV1 = (typeof VISIBILITY_TIERS)[number];
 
-export const VISIBILITY_OBJECT_KINDS = ['passport_share', 'passport_persona', 'twin_public'] as const;
+export const VISIBILITY_OBJECT_KINDS = ['passport_share', 'passport_persona', 'twin_public', 'representation_mandate'] as const;
 export type VisibilityObjectKindV1 = (typeof VISIBILITY_OBJECT_KINDS)[number];
 
 export const PASSPORT_SHARE_OPERATIONS = [
@@ -54,7 +54,10 @@ export const PASSPORT_PERSONA_OPERATIONS = ['confirm'] as const;
 export type PassportPersonaOperationV1 = (typeof PASSPORT_PERSONA_OPERATIONS)[number];
 export const TWIN_PUBLIC_OPERATIONS = ['publish', 'unpublish'] as const;
 export type TwinPublicOperationV1 = (typeof TWIN_PUBLIC_OPERATIONS)[number];
-export type VisibilityOperationV1 = PassportShareOperationV1 | PassportPersonaOperationV1 | TwinPublicOperationV1;
+/** 代表授权（`representation-mandate.ts`）：建立和扩大是放宽，收窄和撤销是收紧。 */
+export const REPRESENTATION_MANDATE_OPERATIONS = ['mandate_grant', 'mandate_widen', 'mandate_narrow', 'mandate_revoke'] as const;
+export type RepresentationMandateOperationV1 = (typeof REPRESENTATION_MANDATE_OPERATIONS)[number];
+export type VisibilityOperationV1 = PassportShareOperationV1 | PassportPersonaOperationV1 | TwinPublicOperationV1 | RepresentationMandateOperationV1;
 
 /** 每个操作的级别。操作名在各对象之间不重复。 */
 export const VISIBILITY_OPERATION_TIER: Readonly<Record<VisibilityOperationV1, VisibilityTierV1>> = {
@@ -67,12 +70,17 @@ export const VISIBILITY_OPERATION_TIER: Readonly<Record<VisibilityOperationV1, V
   confirm: 'content_edit',
   publish: 'loosen',
   unpublish: 'tighten',
+  mandate_grant: 'loosen',
+  mandate_widen: 'loosen',
+  mandate_narrow: 'tighten',
+  mandate_revoke: 'tighten',
 };
 
 const OPERATION_ORDER: readonly VisibilityOperationV1[] = [
   ...PASSPORT_SHARE_OPERATIONS,
   ...PASSPORT_PERSONA_OPERATIONS,
   ...TWIN_PUBLIC_OPERATIONS,
+  ...REPRESENTATION_MANDATE_OPERATIONS,
 ];
 
 /** 一次改动里只要有一项放宽，整次就按放宽算；有内容编辑按内容编辑算；空改动算收紧（什么也不放开）。 */
@@ -359,7 +367,11 @@ export const STEP_UP_MAX_AGE_SECONDS = 600;
 /** 容忍客户端和服务端的时钟差。 */
 export const STEP_UP_CLOCK_SKEW_SECONDS = 60;
 
-/** `authIssuedAtSeconds` 是登录凭据的签发时间（JWT `iat`，秒）。 */
+/**
+ * `authIssuedAtSeconds` 是登录凭据的签发时间（JWT `iat`，秒）。
+ * 以后如果加 token 续期，续出来的 token 必须保留原登录时间（例如另带 `auth_time`），不能用新的 `iat`
+ * 冒充"刚登录"（REQ-backend-017.re-web）。
+ */
 export function isRecentSignInV1(authIssuedAtSeconds: unknown, nowMs: number, maxAgeSeconds: number = STEP_UP_MAX_AGE_SECONDS): boolean {
   if (typeof authIssuedAtSeconds !== 'number' || !Number.isFinite(authIssuedAtSeconds)) return false;
   const issuedMs = authIssuedAtSeconds * 1000;

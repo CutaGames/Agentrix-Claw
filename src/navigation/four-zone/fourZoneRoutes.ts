@@ -23,6 +23,18 @@ export const FOUR_ZONE_TAB_ROUTES: Readonly<Record<NavZoneId, FourZoneTabRoute>>
 /** Legacy tabs kept as hidden routes so old in-app calls and links still resolve (D7). */
 export const FOUR_ZONE_HIDDEN_LEGACY_TABS = ['World', 'Summon', 'Plaza', 'Me'] as const;
 
+/**
+ * Tab options for the hidden legacy tabs. `tabBarButton: () => null` alone is
+ * not enough: bottom-tabs 7 wraps every button in a `flex: 1` item view, so
+ * each hidden tab kept an empty slot and the four real tabs were squeezed
+ * into the left half of the bar (1.3.0 preview, CI build 528 screenshot).
+ * `display: 'none'` on the item removes the slot.
+ */
+export const FOUR_ZONE_HIDDEN_TAB_OPTIONS = {
+  tabBarButton: () => null,
+  tabBarItemStyle: { display: 'none' },
+} as const;
+
 /** Screens registered inside each zone's stack. */
 export const FOUR_ZONE_STACK_SCREENS: Readonly<Record<FourZoneTabRoute, readonly string[]>> = {
   Companion: ['CompanionHome'],

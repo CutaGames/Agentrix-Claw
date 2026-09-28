@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach } from '@jest/globals';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { fourZoneStateFromPath } from '../four-zone/fourZoneLinking';
+import { describeLinkState, fourZoneStateFromPath } from '../four-zone/fourZoneLinking';
 import {
   __resetMobilePushStateForTests,
   handleMobilePushResponse,
@@ -101,10 +101,33 @@ describe('App.tsx wiring (source guard)', () => {
 
   it('tries zone links first, behind the literal four-zone env flag', () => {
     expect(app).toMatch(/const isFourZoneBuild = process\.env\.EXPO_PUBLIC_MOBILE_FOUR_ZONE_IA === 'true'/);
-    const fourZoneIdx = app.indexOf('fourZoneStateFromPath(path)');
+    // resolveFourZoneLinkState runs fourZoneStateFromPath first (fourZoneLegacyLinks.test.ts).
+    const fourZoneIdx = app.indexOf('resolveFourZoneLinkState(path, ');
     const v7Idx = app.indexOf('isMobileV7RouteCandidate(path)');
     expect(fourZoneIdx).toBeGreaterThan(-1);
     expect(v7Idx).toBeGreaterThan(fourZoneIdx);
     expect(app).toMatch(/fourZone: isFourZoneBuild/);
+  });
+});
+
+describe('describeLinkState (Maestro E2E log line)', () => {
+  it('names the focused route at each level, never params', () => {
+    const state = fourZoneStateFromPath('agentrix://matters/pending?ref=appr_1');
+    expect(describeLinkState(state)).toBe('Main > Matters > MattersHome');
+    expect(describeLinkState(state)).not.toContain('appr_1');
+  });
+  it('follows index in a full navigation state', () => {
+    const full = {
+      index: 0,
+      routes: [
+        { name: 'Main', state: { index: 3, routes: [{ name: 'Companion' }, { name: 'Matters' }, { name: 'Twin' }, { name: 'My', state: { index: 1, routes: [{ name: 'MyHome' }, { name: 'Appearance' }] } }] } },
+        { name: 'Inbox' },
+      ],
+    };
+    expect(describeLinkState(full)).toBe('Main > My > Appearance');
+  });
+  it('handles nothing', () => {
+    expect(describeLinkState(undefined)).toBe('(none)');
+    expect(describeLinkState({ routes: [] })).toBe('(none)');
   });
 });

@@ -44,6 +44,24 @@ export function fourZoneStateForDestination(destination: NavDestination): FourZo
 }
 
 /**
+ * `Main > My > Appearance`: the focused route name at each level, no params
+ * (so nothing from a link ends up in a log). Used by the Maestro E2E build to
+ * log where a link or tap landed.
+ */
+export function describeLinkState(
+  state: { index?: number; routes: Array<{ name: string; state?: unknown }> } | null | undefined,
+): string {
+  const names: string[] = [];
+  let current = state;
+  while (current && Array.isArray(current.routes) && current.routes.length > 0 && names.length < 8) {
+    const index = typeof current.index === 'number' ? current.index : current.routes.length - 1;
+    const route = current.routes[index] ?? current.routes[current.routes.length - 1];
+    names.push(String(route.name));
+    current = route.state as typeof state;
+  }
+  return names.length > 0 ? names.join(' > ') : '(none)';
+}
+/**
  * `null` when the path is not a zone link (caller falls back). A zone link
  * that fails validation (unknown tab, bad ref, extra query or depth) fails
  * closed to the notice with no params — nothing from the link is carried.

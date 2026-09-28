@@ -28,7 +28,8 @@ export interface MobileDesktopApproval {
   title: string;
   description: string;
   riskLevel: 'L0' | 'L1' | 'L2' | 'L3';
-  status: 'pending' | 'approved' | 'rejected';
+  /** `expired` is a read projection (approval-card contract v1). */
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
   requestedAt: string;
   respondedAt?: string;
   /** Backend request digest; must be echoed back when deciding. */

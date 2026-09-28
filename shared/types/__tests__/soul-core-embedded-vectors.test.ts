@@ -60,7 +60,19 @@ interface VectorFile {
   };
 }
 
-const frozen = JSON.parse(readFileSync(VECTORS_PATH, 'utf8')) as VectorFile;
+/**
+ * The frozen vectors and the C / Java parity gate live with the embedded SDK, which is not in this
+ * repository (REQ-mobile-008). Without the vectors file this suite is skipped, not failed; the
+ * TypeScript canonicalization itself is still covered by soul-core-embedded.test.ts.
+ */
+const HAS_VECTORS = existsSync(VECTORS_PATH);
+// describe.skip still runs the body to collect tests, and the bodies read `frozen`; so without the
+// file the body is replaced by one skipped placeholder.
+const describeWithVectors = (name: string, body: () => void): void => {
+  if (HAS_VECTORS) describe(name, body);
+  else describe.skip(name, () => test(`needs ${VECTORS_PATH}`, () => undefined));
+};
+const frozen = (HAS_VECTORS ? JSON.parse(readFileSync(VECTORS_PATH, 'utf8')) : null) as VectorFile;
 
 const T0 = '2026-07-30T00:00:00.000Z';
 const T1 = '2026-07-30T00:00:30.000Z';
@@ -144,7 +156,7 @@ const signingPayload: SignedShellCommandSigningPayloadV1 = {
 const nodeSha256 = (utf8: string): string =>
   createHash('sha256').update(Buffer.from(utf8, 'utf8')).digest('hex');
 
-describe('EMB-01.2 frozen canonicalization vectors', () => {
+describeWithVectors('EMB-01.2 frozen canonicalization vectors', () => {
   test('profiles stay frozen and cross-language parity is claimed only with a runnable gate', () => {
     expect(frozen.canonicalizationProfile).toBe('rfc8785-utf8-sha256-v1');
     expect(frozen.digestProfile).toBe('sha256-rfc8785-v1');
@@ -228,7 +240,7 @@ describe('EMB-01.2 frozen canonicalization vectors', () => {
  * EMB-01.2 §8.3 mutation matrix. Every row must fail closed or change the signed preimage;
  * none of these fixtures contains a real key, a real signature or a real certificate.
  */
-describe('EMB-01.2 mutation and rejection matrix', () => {
+describeWithVectors('EMB-01.2 mutation and rejection matrix', () => {
   const lowS = (): string => {
     const bytes = Buffer.alloc(64);
     bytes[31] = 1;

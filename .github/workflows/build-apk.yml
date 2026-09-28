@@ -25,10 +25,25 @@ jobs:
     # four-zone IA (REQ-mobile-017): EXPO_PUBLIC_MOBILE_FOUR_ZONE_IA=1 for both
     # the arm64 build and the x86_64 E2E rebuild, no download-server deploy, no
     # GitHub Release, and the UI job runs only .maestro/four-zone/*.yaml.
+    # E45: from 1.3.0 the formal build (every ref that is not a baseline
+    # fixture) also ships the four-zone IA, so EXPO_PUBLIC_MOBILE_FOUR_ZONE_IA
+    # is '1' everywhere except build/mobile-baseline-*. The flag is inlined at
+    # build time; every runtimeVersion 1.3.0 OTA (eas update) must set it too.
+    # The "Four-zone IA version guard" step stops a pre-1.3.0 app from being
+    # built with it.
     env:
       MOBILE_BASELINE_BUILD: ${{ startsWith(github.ref_name, 'build/mobile-baseline-') }}
       MOBILE_FOUR_ZONE_BUILD: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-') }}
-      EXPO_PUBLIC_MOBILE_FOUR_ZONE_IA: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-') && '1' || '0' }}
+      EXPO_PUBLIC_MOBILE_FOUR_ZONE_IA: ${{ !startsWith(github.ref_name, 'build/mobile-baseline-') && '1' || '0' }}
+      # E50 / I-036 signing. Formal builds (every ref except baseline fixtures and
+      # four-zone previews) must be signed with the production key that signed
+      # 1.2.0; previews and baselines stay on the public debug certificate.
+      # build/mobile-signing-check-* is a formal build that never deploys or
+      # publishes a Release; it exists to prove the Claw secrets are that key.
+      MOBILE_SIGNING_CHECK_BUILD: ${{ startsWith(github.ref_name, 'build/mobile-signing-check-') }}
+      RELEASE_SIGNING: ${{ !startsWith(github.ref_name, 'build/mobile-baseline-') && !startsWith(github.ref_name, 'build/mobile-four-zone-') }}
+      EXPECTED_RELEASE_CERT_SHA256: aad75099b847b182d4eb326a3e9fc41ae986659f0183177d4ecba2b74407f993
+      DEBUG_CERT_SHA256: fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c
       EXPO_PUBLIC_MAESTRO_E2E: ${{ startsWith(github.ref_name, 'build/mobile-baseline-') && '1' || '0' }}
       EXPO_PUBLIC_MOBILE_AGENT_FIRST_IA: ${{ startsWith(github.ref_name, 'build/mobile-baseline-') && '1' || '0' }}
       EXPO_PUBLIC_MOBILE_AGENT_ECONOMY_V1: ${{ startsWith(github.ref_name, 'build/mobile-baseline-') && '1' || '0' }}
@@ -46,6 +61,22 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+
+      # E45: the four-zone IA flag is on for formal builds from 1.3.0. Refuse to
+      # inline it into an older app (e.g. a 1.2.x hotfix branch) by accident.
+      - name: Four-zone IA version guard
+        run: |
+          node -e "
+            const v = String(require('./app.json').expo.version || '');
+            const [maj, min] = v.split('.').map((n) => parseInt(n, 10));
+            const atLeast130 = maj > 1 || (maj === 1 && min >= 3);
+            const flag = process.env.EXPO_PUBLIC_MOBILE_FOUR_ZONE_IA;
+            console.log('[ci] app.json version=' + v + ' EXPO_PUBLIC_MOBILE_FOUR_ZONE_IA=' + flag);
+            if (flag === '1' && !atLeast130) {
+              console.error('[ci] four-zone IA is only for app version >= 1.3.0 (E45); use a build/mobile-baseline-* ref or bump the version');
+              process.exit(1);
+            }
+          "
 
       - name: Java 17
         uses: actions/setup-java@v4
@@ -124,48 +155,67 @@ jobs:
         run: |
           echo "[ci] Skipping legacy React Native module path patch; current RN Gradle plugin rejects REACT_NATIVE_NODE_MODULES_DIR"
 
-      # Inject signingConfigs into build.gradle if signing secrets exist.
-      # This is needed because expo prebuild regenerates build.gradle and would wipe any manual edits.
-      - name: Patch build.gradle — add signingConfig (only when keystore is available)
-        env:
-          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      # Formal builds only (RELEASE_SIGNING): make buildTypes.release really use
+      # signingConfigs.release. expo prebuild keeps the template's
+      # `signingConfig signingConfigs.debug` inside the release block; the old patch
+      # inserted the release line *before* it, so debug still won. Replace it and
+      # assert the release block ends up with exactly one signingConfig = release.
+      - name: Patch build.gradle — release signingConfig (formal builds)
+        if: ${{ env.RELEASE_SIGNING == 'true' }}
         run: |
           python3 - << 'PYEOF'
-          import os, re
-          keystore_b64 = os.environ.get('KEYSTORE_B64', '')
-          if not keystore_b64:
-              print('[skip] No keystore secret — skipping signingConfig patch')
-              exit(0)
+          import re, sys
           filepath = 'android/app/build.gradle'
-          if not os.path.exists(filepath):
-              print(f'[skip] {filepath} not found')
-              exit(0)
-          with open(filepath) as f:
-              content = f.read()
-          if 'MYAPP_UPLOAD_STORE_FILE' in content:
-              print('[ok] signingConfig already patched')
-              exit(0)
-          signing_block = '''
-              release {
-                  if (project.hasProperty('MYAPP_UPLOAD_STORE_FILE')) {
+          content = open(filepath).read()
+
+          def block(text, start_pattern, start=0):
+              """Return (open_brace_index, close_brace_index) of the first block matching start_pattern."""
+              m = re.compile(start_pattern).search(text, start)
+              if not m:
+                  return None
+              i = text.index('{', m.start())
+              depth = 0
+              for j in range(i, len(text)):
+                  if text[j] == '{':
+                      depth += 1
+                  elif text[j] == '}':
+                      depth -= 1
+                      if depth == 0:
+                          return i, j
+              sys.exit('[error] unbalanced braces after ' + start_pattern)
+
+          sc = block(content, r'\bsigningConfigs\s*\{')
+          if not sc:
+              sys.exit('[error] no signingConfigs block in ' + filepath)
+          if not re.search(r'\brelease\s*\{', content[sc[0]:sc[1]]):
+              release_cfg = '''
+                  release {
                       storeFile file(MYAPP_UPLOAD_STORE_FILE)
                       storePassword MYAPP_UPLOAD_STORE_PASSWORD
                       keyAlias MYAPP_UPLOAD_KEY_ALIAS
                       keyPassword MYAPP_UPLOAD_KEY_PASSWORD
-                  }
-              }'''
-          # r'\1' (one backslash): r'\\1' wrote a literal "\1" into build.gradle and
-          # broke every build once ANDROID_KEYSTORE_BASE64 existed.
-          content = re.sub(r'(signingConfigs\s*\{)', r'\1' + signing_block, content, count=1)
-          # Also wire up releaseConfig
-          content = re.sub(
-              r'(buildTypes\s*\{[^}]*release\s*\{)',
-              r'\1\n            signingConfig signingConfigs.release',
-              content, count=1
-          )
-          with open(filepath, 'w') as f:
-              f.write(content)
-          print('[patched] Added signingConfig release block to build.gradle')
+                  }'''
+              content = content[:sc[0] + 1] + release_cfg + content[sc[0] + 1:]
+
+          bt = block(content, r'\bbuildTypes\s*\{')
+          if not bt:
+              sys.exit('[error] no buildTypes block')
+          rel = block(content, r'\brelease\s*\{', bt[0] + 1)
+          if not rel or rel[1] > bt[1]:
+              sys.exit('[error] no buildTypes.release block')
+          body = content[rel[0] + 1:rel[1]]
+          body, n = re.subn(r'signingConfig\s+signingConfigs\.debug', 'signingConfig signingConfigs.release', body)
+          if not re.search(r'signingConfig\s+signingConfigs\.release', body):
+              body = '\n            signingConfig signingConfigs.release' + body
+          content = content[:rel[0] + 1] + body + content[rel[1]:]
+          open(filepath, 'w').write(content)
+
+          bt = block(content, r'\bbuildTypes\s*\{')
+          rel = block(content, r'\brelease\s*\{', bt[0] + 1)
+          lines = re.findall(r'signingConfig\s+(signingConfigs\.\w+)', content[rel[0]:rel[1]])
+          print('[ci] buildTypes.release signingConfig lines:', lines, '(replaced debug x%d)' % n)
+          if lines != ['signingConfigs.release']:
+              sys.exit('[error] buildTypes.release must have exactly one signingConfig = signingConfigs.release')
           PYEOF
 
       # Public/download release stays arm64-only. The UI test job builds its own
@@ -243,25 +293,30 @@ jobs:
       # Generate keystore: keytool -genkeypair -v -keystore release.keystore -alias agentrix
       #   -keyalg RSA -keysize 2048 -validity 10000
       # Encode: base64 -w0 release.keystore
-      - name: Setup release signing (if keystore secrets are present)
+      - name: Setup release signing (formal builds; all four secrets required)
+        if: ${{ env.RELEASE_SIGNING == 'true' }}
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > android/app/release.keystore
-            {
-              echo "MYAPP_UPLOAD_STORE_FILE=release.keystore"
-              echo "MYAPP_UPLOAD_KEY_ALIAS=${KEY_ALIAS}"
-              echo "MYAPP_UPLOAD_STORE_PASSWORD=${STORE_PASSWORD}"
-              echo "MYAPP_UPLOAD_KEY_PASSWORD=${KEY_PASSWORD}"
-            } >> android/gradle.properties
-            echo "[ci] Keystore decoded — APK will be signed"
-          else
-            echo "[ci] No ANDROID_KEYSTORE_BASE64 secret — building unsigned APK"
+          set -euo pipefail
+          missing=""
+          for n in KEYSTORE_B64 KEY_ALIAS KEY_PASSWORD STORE_PASSWORD; do [ -n "${!n}" ] || missing="$missing $n"; done
+          if [ -n "$missing" ]; then
+            echo "ERROR: formal build needs the production signing secrets; missing:$missing"
+            exit 1
           fi
+          umask 077
+          echo "$KEYSTORE_B64" | base64 -d > android/app/release.keystore
+          {
+            echo "MYAPP_UPLOAD_STORE_FILE=release.keystore"
+            echo "MYAPP_UPLOAD_KEY_ALIAS=${KEY_ALIAS}"
+            echo "MYAPP_UPLOAD_STORE_PASSWORD=${STORE_PASSWORD}"
+            echo "MYAPP_UPLOAD_KEY_PASSWORD=${KEY_PASSWORD}"
+          } >> android/gradle.properties
+          echo "[ci] Production keystore decoded"
 
       # Build the public release APK first. This artifact is deployed and attached
       # to the GitHub Release, so it should not contain the x86_64 emulator ABI.
@@ -271,6 +326,41 @@ jobs:
         env:
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true'
 
+      # E50: formal builds carry a v3 signing-certificate lineage debug -> aad75099, so
+      # installs signed with the public debug certificate (download-page 1.1.0) and with
+      # aad75099 (1.2.0) can both update. Android 9+ (API 28) uses the rotated key; the
+      # v1/v2 blocks for API 24-27 keep the original (debug) signer - platform limitation.
+      # The lineage is rebuilt from the two keystores on every run.
+      - name: Re-sign with v3 rotation lineage (formal builds)
+        if: ${{ env.RELEASE_SIGNING == 'true' }}
+        env:
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          [ -n "$APKSIGNER" ] || { echo "ERROR: apksigner not found"; exit 1; }
+          APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          [ -n "$APK" ] || { echo "ERROR: no release APK"; exit 1; }
+          DEBUG_KS=android/app/debug.keystore
+          RELEASE_KS=android/app/release.keystore
+          [ -f "$DEBUG_KS" ] && [ -f "$RELEASE_KS" ] || { echo "ERROR: keystore missing"; exit 1; }
+          WORK=$(mktemp -d)
+          "$APKSIGNER" rotate --out "$WORK/lineage.bin" \
+            --old-signer --ks "$DEBUG_KS" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android \
+            --set-rollback false \
+            --new-signer --ks "$RELEASE_KS" --ks-pass env:STORE_PASSWORD --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD
+          # I-044: the debug key is public, so it must not keep the rollback capability; set it
+          # explicitly instead of relying on the apksigner default, and assert it in the verify step.
+          "$APKSIGNER" sign \
+            --ks "$DEBUG_KS" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android \
+            --next-signer --ks "$RELEASE_KS" --ks-pass env:STORE_PASSWORD --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD \
+            --lineage "$WORK/lineage.bin" --rotation-min-sdk-version 28 \
+            --out "$WORK/signed.apk" "$APK"
+          mv "$WORK/signed.apk" "$APK"
+          rm -rf "$WORK"
+          echo "[ci] re-signed $APK with lineage debug -> release (rotation-min-sdk-version 28)"
       - name: Set build tag and APK paths
         id: tag
         run: echo "tag=build-${{ github.run_id }}" >> $GITHUB_OUTPUT
@@ -291,6 +381,57 @@ jobs:
           echo "release=artifacts/ClawLink-build-${{ github.run_number }}.apk" >> $GITHUB_OUTPUT
           du -h artifacts/ClawLink-build-${{ github.run_number }}.apk
 
+      # E50: formal builds must carry the production certificate (aad75099...) with the
+      # v3 lineage from the debug certificate; previews and baselines the public debug
+      # certificate only. Runs before any deploy or Release step.
+      - name: Verify APK signing certificate
+        run: |
+          set -euo pipefail
+          APK="${{ steps.paths.outputs.release }}"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          [ -n "$APKSIGNER" ] || { echo "ERROR: apksigner not found"; exit 1; }
+          # every "certificate SHA-256 digest: <hex>" in apksigner output, lower-case, unique, in order of appearance
+          digests(){ { grep -Eio 'certificate SHA-256 digest:[[:space:]]*[0-9a-f]{64}' || true; } | awk '{print tolower($NF)}' | awk '!seen[$0]++'; }
+          SIGNATURE=$("$APKSIGNER" verify --verbose --print-certs "$APK")
+          echo "$SIGNATURE" | grep -Ei 'Verified using|certificate (SHA-256 digest|DN)|Number of signers|Signer' || true
+          if [ "$RELEASE_SIGNING" != "true" ]; then
+            DIGESTS=$(echo "$SIGNATURE" | digests)
+            COUNT=$(printf '%s\n' "$DIGESTS" | sed '/^$/d' | wc -l)
+            echo "[ci] expected debug certificate $DEBUG_CERT_SHA256; found ($COUNT): $(echo $DIGESTS)"
+            if [ "$COUNT" -ne 1 ] || [ "$DIGESTS" != "$DEBUG_CERT_SHA256" ]; then
+              echo "ERROR: preview / baseline APK must be signed with exactly the debug certificate"
+              exit 1
+            fi
+            SUMMARY="debug \`$DIGESTS\`"
+          else
+            # Formal: v3 verified; API 28+ signer = aad75099; API <= 27 signer = debug; lineage = debug -> aad75099.
+            echo "$SIGNATURE" | grep -Eq 'Verified using v3(\.[0-9])? scheme.*: true' || { echo "ERROR: v3 signature not verified"; exit 1; }
+            NEW=$("$APKSIGNER" verify --print-certs --min-sdk-version 28 "$APK" | digests)
+            OLD=$("$APKSIGNER" verify --print-certs --max-sdk-version 27 "$APK" | digests)
+            LINEAGE_RAW=$("$APKSIGNER" lineage --in "$APK" --print-certs -v)
+            LINEAGE=$(echo "$LINEAGE_RAW" | digests)
+            # rollback capability of the debug signer (capability lines follow their "Signer #N" lines)
+            DEBUG_ROLLBACK=$(echo "$LINEAGE_RAW" | awk -v dbg="$DEBUG_CERT_SHA256" '
+              /^Signer #[0-9]+/ { match($0, /#[0-9]+/); cur = substr($0, RSTART + 1, RLENGTH - 1) }
+              tolower($0) ~ /certificate sha-256 digest/ { d = tolower($NF); if (d == dbg) debug = cur }
+              tolower($0) ~ /rollback/ { v = (tolower($0) ~ /true/) ? "true" : ((tolower($0) ~ /false/) ? "false" : "?"); rb[cur] = v }
+              END { print (debug == "" ? "no-debug-signer" : (debug in rb ? rb[debug] : "not-printed")) }')
+            echo "[ci] lineage capabilities:"; echo "$LINEAGE_RAW" | grep -Ei 'Signer #|capabilit|rollback' || true
+            echo "[ci] debug signer rollback capability: $DEBUG_ROLLBACK"
+            echo "[ci] API 28+ signer(s): $(echo $NEW)"
+            echo "[ci] API <=27 signer(s): $(echo $OLD)"
+            echo "[ci] lineage (oldest first): $(echo $LINEAGE)"
+            [ "$(echo $NEW)" = "$EXPECTED_RELEASE_CERT_SHA256" ] || { echo "ERROR: API 28+ signer must be exactly $EXPECTED_RELEASE_CERT_SHA256"; exit 1; }
+            [ "$(echo $OLD)" = "$DEBUG_CERT_SHA256" ] || { echo "ERROR: API <=27 signer must be exactly the debug certificate"; exit 1; }
+            [ "$(echo $LINEAGE)" = "$DEBUG_CERT_SHA256 $EXPECTED_RELEASE_CERT_SHA256" ] || { echo "ERROR: lineage must be debug -> $EXPECTED_RELEASE_CERT_SHA256"; exit 1; }
+            [ "$DEBUG_ROLLBACK" = "false" ] || { echo "ERROR: the public debug certificate must not have the rollback capability in the lineage ($DEBUG_ROLLBACK)"; exit 1; }
+            SUMMARY="production \`$EXPECTED_RELEASE_CERT_SHA256\` (API 28+), lineage debug -> production (debug rollback=false), API <=27 debug"
+          fi
+          {
+            echo "### APK signing certificate"
+            echo "- $SUMMARY"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "[ci] APK signing verified: $SUMMARY"
       # ── Deploy + Release BEFORE artifact upload ──────────────────
       # Artifact upload may hit GitHub storage quota and crash the job,
       # so we do the critical deploy/release steps first.
@@ -306,6 +447,9 @@ jobs:
           elif [ "$MOBILE_FOUR_ZONE_BUILD" = "true" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "[ci] Four-zone validation build; skipping production download-server deploy"
+          elif [ "$MOBILE_SIGNING_CHECK_BUILD" = "true" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "[ci] Signing check build; never deployed"
           elif [ -n "$DEPLOY_SSH_KEY" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
@@ -335,8 +479,10 @@ jobs:
           scp $OPTS "$APK" "ubuntu@47.130.176.148:${DEST}/ClawLink-latest.apk"
           echo "✅ Deployed ClawLink build-${{ github.run_number }} to server"
 
+      # Formal builds reach this step only after "Verify APK signing certificate" proved the
+      # production key and the v3 lineage (debug -> aad75099, debug rollback=false).
       - name: Create GitHub Release
-        if: ${{ env.MOBILE_BASELINE_BUILD != 'true' && env.MOBILE_FOUR_ZONE_BUILD != 'true' }}
+        if: ${{ env.MOBILE_BASELINE_BUILD != 'true' && env.MOBILE_FOUR_ZONE_BUILD != 'true' && env.MOBILE_SIGNING_CHECK_BUILD != 'true' }}
         continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
@@ -564,13 +710,17 @@ jobs:
     # finish inside the job timeout (some flows take many minutes), so we
     # round-robin the sorted flow list across 4 shards (each shard boots its own
     # emulator). fail-fast:false so one shard's failure doesn't cancel the rest.
-    # Four-zone validation builds run one flow directory on a single shard.
+    # Four-zone builds run one flow directory on a single shard. Since E45 that
+    # is every ref except build/mobile-baseline-* (same rule as the build job's
+    # EXPO_PUBLIC_MOBILE_FOUR_ZONE_IA), so the formal build is tested against
+    # the IA it actually ships.
     strategy:
       fail-fast: false
       matrix:
-        shard: ${{ fromJSON(startsWith(github.ref_name, 'build/mobile-four-zone-') && '[0]' || '[0, 1, 2, 3]') }}
+        shard: ${{ fromJSON(!startsWith(github.ref_name, 'build/mobile-baseline-') && '[0]' || '[0, 1, 2, 3]') }}
     env:
       MOBILE_FOUR_ZONE_BUILD: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-') }}
+      MOBILE_FOUR_ZONE_IA: ${{ !startsWith(github.ref_name, 'build/mobile-baseline-') }}
 
     steps:
       - name: Checkout (for .maestro/ flows)
@@ -701,7 +851,7 @@ jobs:
           echo "=== Running Maestro flows ==="
           PASS=0; FAIL=0; ERRORS=""
           MAESTRO_INFRA_FLAKE=false
-          if [ "${MOBILE_FOUR_ZONE_BUILD:-false}" = "true" ]; then
+          if [ "${MOBILE_FOUR_ZONE_IA:-false}" = "true" ]; then
             # Top-level flows assert the legacy IA (tab-world) and always fail on a
             # four-zone build; run only the four-zone smoke flows.
             mapfile -t ALL_FLOWS < <(find .maestro/four-zone -maxdepth 1 -type f -name "*.yaml" 2>/dev/null | sort || true)
@@ -715,7 +865,7 @@ jobs:
           # Round-robin this shard's slice (SHARD_INDEX of SHARD_TOTAL).
           SHARD_INDEX=${{ matrix.shard }}
           SHARD_TOTAL=4
-          if [ "${MOBILE_FOUR_ZONE_BUILD:-false}" = "true" ]; then SHARD_TOTAL=1; fi
+          if [ "${MOBILE_FOUR_ZONE_IA:-false}" = "true" ]; then SHARD_TOTAL=1; fi
           FLOWS=()
           for i in "${!ALL_FLOWS[@]}"; do
             if [ "$(( i % SHARD_TOTAL ))" -eq "$SHARD_INDEX" ]; then

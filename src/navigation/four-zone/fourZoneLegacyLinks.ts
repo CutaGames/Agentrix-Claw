@@ -20,7 +20,7 @@
  */
 import { resolveLegacyPath } from '../legacyRouteTable';
 import type { NavDestination } from '../navCatalog';
-import { fourZoneStateForDestination, type FourZonePartialState } from './fourZoneLinking';
+import { fourZoneStateForDestination, fourZoneStateFromPath, type FourZonePartialState } from './fourZoneLinking';
 import { ZONE_UNAVAILABLE_ROUTE } from './fourZoneRoutes';
 
 export const FOUR_ZONE_LINK_NOTICE_REASONS = ['link_retired', 'link_unknown'] as const;
@@ -177,4 +177,23 @@ export function fourZoneStateFromLegacyPath<T>(
   if (state !== undefined) return state;
   const family = fourZoneLegacyFamilyFallback(outcome.path);
   return family ? fourZoneStateForDestination(family) : fourZoneLinkNoticeState('link_unknown');
+}
+
+/**
+ * The four-zone `getStateFromPath`: a zone link first (M1-c), then the legacy
+ * mapping above (M1-i). Never throws. React Navigation calls this from its
+ * `url` listener without a try/catch, and its own parser throws `URIError`
+ * on a malformed escape in a path param (`agentrix://onboarding/social/%E0`),
+ * so an exception here would be an uncaught JS error that closes the release
+ * app. Any failure opens the "link no longer works" notice instead.
+ */
+export function resolveFourZoneLinkState<T>(
+  path: string,
+  legacyState: (legacyPath: string) => T | undefined,
+): FourZonePartialState | T | undefined {
+  try {
+    return fourZoneStateFromPath(path) ?? fourZoneStateFromLegacyPath(path, legacyState);
+  } catch {
+    return fourZoneLinkNoticeState('link_unknown');
+  }
 }

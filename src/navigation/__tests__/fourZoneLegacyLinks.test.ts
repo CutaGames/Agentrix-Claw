@@ -14,6 +14,7 @@ import {
   fourZoneLegacyFamilyFallback,
   fourZoneStateFromLegacyPath,
   isRetiredLegacyPath,
+  resolveFourZoneLinkState,
 } from '../four-zone/fourZoneLegacyLinks';
 import { ZONE_UNAVAILABLE_ROUTE, fourZoneTarget } from '../four-zone/fourZoneRoutes';
 
@@ -163,13 +164,25 @@ describe('legacy table robustness (all builds)', () => {
 });
 
 describe('wiring (source guards)', () => {
-  it('App.tsx falls back to the legacy mapper inside the four-zone branch, before v7 and the plain legacy path', () => {
-    const zoneIdx = app.indexOf('fourZoneStateFromPath(path)');
-    const legacyIdx = app.indexOf('fourZoneStateFromLegacyPath(path, (legacyPath) => defaultGetStateFromPath(legacyPath, options))');
+  it('App.tsx resolves four-zone links through resolveFourZoneLinkState, before v7 and the plain legacy path', () => {
+    const fourZoneIdx = app.indexOf('resolveFourZoneLinkState(path, (legacyPath) => defaultGetStateFromPath(legacyPath, options))');
     const v7Idx = app.indexOf('isMobileV7RouteCandidate(path)');
-    expect(zoneIdx).toBeGreaterThan(-1);
-    expect(legacyIdx).toBeGreaterThan(zoneIdx);
-    expect(v7Idx).toBeGreaterThan(legacyIdx);
+    expect(fourZoneIdx).toBeGreaterThan(-1);
+    expect(v7Idx).toBeGreaterThan(fourZoneIdx);
+  });
+  it('App.tsx never lets the flag-off link parser throw into the url listener', () => {
+    const block = app.slice(app.indexOf('getStateFromPath: (path: string, options: any) => {'), app.indexOf('  config: {'));
+    const tryIdx = block.indexOf('try {');
+    expect(tryIdx).toBeGreaterThan(-1);
+    expect(block.indexOf('isMobileV7RouteCandidate(path)')).toBeGreaterThan(tryIdx);
+    expect(block.indexOf('defaultGetStateFromPath(normalized, options)')).toBeGreaterThan(tryIdx);
+    expect(block).toMatch(/\} catch \{\s+return undefined;\s+\}/);
+  });
+  it('App.tsx logs links and routes only in the Maestro E2E build, without the link text', () => {
+    expect(app).toMatch(/\.\.\.\(isMaestroE2E\s+\? \{ filter: \(\) => \{ console\.log\('\[maestro-e2e\] link received'\); return true; \} \}\s+: \{\}\)/);
+    expect(app).toMatch(/if \(isMaestroE2E\) console\.log\('\[maestro-e2e\] link resolved to', describeLinkState\(state as any\)\);/);
+    expect(app).toMatch(/onStateChange=\{isMaestroE2E \? \(state\) => console\.log\('\[maestro-e2e\] route', describeLinkState\(state as any\)\) : undefined\}/);
+    expect(app).not.toMatch(/console\.log\([^)]*\bpath\b/);
   });
 
   it('the notice screen shows a fixed reason code only', () => {
@@ -177,5 +190,29 @@ describe('wiring (source guards)', () => {
     expect(screen).toMatch(/isFourZoneLinkNoticeReason\(route\.params\?\.reason\)/);
     expect(screen).toMatch(/testID="zone-link-notice-screen"/);
     expect(screen).not.toMatch(/route\.params\?\.(url|path|link)/);
+  });
+});
+
+describe('resolveFourZoneLinkState (App.tsx getStateFromPath, four-zone build)', () => {
+  it('a zone link wins and the legacy parser is not asked', () => {
+    const legacy = jest.fn(parser);
+    const state = resolveFourZoneLinkState('my/appearance', legacy) as any;
+    expect(state.routes[0].state.routes[0]).toEqual({ name: 'My', state: { routes: [{ name: 'Appearance', params: { tab: 'appearance' } }] } });
+    expect(legacy).not.toHaveBeenCalled();
+  });
+  it('anything else goes through the legacy mapping', () => {
+    expect(resolveFourZoneLinkState('discover/predict', parser)).toEqual(notice('link_retired'));
+    expect(resolveFourZoneLinkState('world/map', parser)).toEqual({ routes: [{ name: 'LEGACY', params: { path: 'world/map' } }] });
+    expect(resolveFourZoneLinkState('no/such/place', parser)).toEqual(notice('link_unknown'));
+  });
+  it('never throws: a parser error (URIError on a bad escape) opens the notice', () => {
+    const throwing = () => {
+      throw new URIError('URI malformed');
+    };
+    expect(() => resolveFourZoneLinkState('onboarding/social/%E0', throwing)).not.toThrow();
+    expect(resolveFourZoneLinkState('onboarding/social/%E0', throwing)).toEqual(notice('link_unknown'));
+  });
+  it.each(['%', 'my/%E0%A4%A', '/%zz/%', 'matters/pending?ref=%E0'])('malformed zone-looking link %s does not throw', (p) => {
+    expect(() => resolveFourZoneLinkState(p, parser)).not.toThrow();
   });
 });

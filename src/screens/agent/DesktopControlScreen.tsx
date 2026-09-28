@@ -25,7 +25,7 @@ import {
 import { fetchOperationsContinuity, requestOperationsFollowUp, type OperationsContinuityState } from '../../services/operations';
 import { WatchDataLayerService } from '../../services/wearables/watchDataLayerBridge.service';
 import { themedStyles } from '../../theme/useTheme';
-import { isMobileApprovalBlockedError, mobileApprovalCapabilities } from '../../services/mobileApprovalPolicy';
+import { isMobileApprovalBlockedError, mobileApprovalCapabilities, mobileApprovalStatus } from '../../services/mobileApprovalPolicy';
 
 const prettyJson = (value: unknown) => {
   if (value == null) return 'No result';
@@ -279,29 +279,26 @@ export function DesktopControlScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t({ en: 'Pending Approvals', zh: '待处理审批' })}</Text>
-        {approvals.filter((item) => item.status === 'pending').length === 0 ? (
+        {approvals.filter((item) => ['pending', 'expired'].includes(mobileApprovalStatus(item))).length === 0 ? (
           <Text style={styles.emptyText}>{t({ en: 'No pending approvals.', zh: '暂无待处理审批。' })}</Text>
         ) : (
-          approvals.filter((item) => item.status === 'pending').map((approval, index) => {
+          approvals.filter((item) => ['pending', 'expired'].includes(mobileApprovalStatus(item))).map((approval, index) => {
             const approvalId = getMobileDesktopApprovalId(approval);
             if (!approvalId) return null;
-            // M0-d / M3-a: only what the backend accepts from the phone (mobileApprovalPolicy): L2 reject-only, L3 / expired nothing.
+            // Approval-card contract v1 (mobileApprovalPolicy): reject any level, also after expiry; approve L0 / L1 only.
             const caps = mobileApprovalCapabilities(approval);
             return (
             <View key={approvalId || `${approval.taskId}-${index}`} style={styles.card}>
               <Text style={styles.cardTitle}>{approval.title}</Text>
               <Text style={styles.cardBody}>{approval.description}</Text>
               <Text style={styles.cardMeta}>Risk {approval.riskLevel}</Text>
-              {!caps.canApprove && (caps.approveBlockedReason === 'requires_local_confirmation' || caps.approveBlockedReason === 'requires_receipt_refs') ? (
-                <Text style={styles.cardMeta} testID="approval-local-only-hint">
-                  {caps.approveBlockedReason === 'requires_receipt_refs'
-                    ? t({ en: 'Approve this on the computer. You can reject it here.', zh: '请在电脑上批准；这里可以拒绝。' })
-                    : t({ en: 'High risk: approve or reject on the computer.', zh: '高风险：请在电脑上批准或拒绝。' })}
-                </Text>
-              ) : null}
-              {!caps.canApprove && caps.approveBlockedReason === 'expired' ? (
+              {!caps.canApprove && mobileApprovalStatus(approval) === 'expired' ? (
                 <Text style={styles.cardMeta} testID="approval-expired-hint">
-                  {t({ en: 'Expired. Ask again from the computer if still needed.', zh: '已过期。如仍需要，请在电脑上重新发起。' })}
+                  {t({ en: 'Expired: it can no longer be approved, but you can reject it.', zh: '已过期，不能再批准；这里仍可以拒绝。' })}
+                </Text>
+              ) : !caps.canApprove && caps.approveBlockedReason === 'requires_local_confirmation' ? (
+                <Text style={styles.cardMeta} testID="approval-local-only-hint">
+                  {t({ en: 'Higher risk: approve it on the computer that asked. You can reject it here.', zh: '较高风险：请在发起它的电脑上批准；这里可以拒绝。' })}
                 </Text>
               ) : null}
               <View style={styles.rowWrap}>

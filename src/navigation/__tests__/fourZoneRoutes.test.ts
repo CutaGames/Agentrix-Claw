@@ -12,6 +12,7 @@ import * as path from 'path';
 import { NAV_CATALOG, NAV_ZONE_IDS } from '../navCatalog';
 import {
   FOUR_ZONE_HIDDEN_LEGACY_TABS,
+  FOUR_ZONE_HIDDEN_TAB_OPTIONS,
   FOUR_ZONE_STACK_SCREENS,
   FOUR_ZONE_TAB_ROUTES,
   ZONE_UNAVAILABLE_ROUTE,
@@ -80,6 +81,12 @@ describe('navigator source guards', () => {
     for (const legacy of FOUR_ZONE_HIDDEN_LEGACY_TABS) {
       expect(navigator).toMatch(new RegExp(`name="${legacy}" component=\\{\\w+\\} options=\\{hiddenTabOptions\\}`));
     }
+  });
+
+  it('hidden legacy tabs take no room in the tab bar (preview build 528)', () => {
+    expect(FOUR_ZONE_HIDDEN_TAB_OPTIONS.tabBarButton()).toBeNull();
+    expect(FOUR_ZONE_HIDDEN_TAB_OPTIONS.tabBarItemStyle).toEqual({ display: 'none' });
+    expect(navigator).toMatch(/const hiddenTabOptions = FOUR_ZONE_HIDDEN_TAB_OPTIONS;/);
   });
 
   it('registers every zone stack screen', () => {

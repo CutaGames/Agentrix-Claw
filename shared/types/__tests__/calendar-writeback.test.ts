@@ -40,7 +40,8 @@ describe('calendar writeback (G-09)', () => {
       writeConsent: null,
     });
     expect(decision.writePerformed).toBe(false);
-    expect(decision.reasonCode).toBe('beta_connection_read_only');
+    // `in` narrows the union even with strict off (root jest runs ts-jest with strict: false; REQ-mobile-008).
+    expect('reasonCode' in decision ? decision.reasonCode : undefined).toBe('beta_connection_read_only');
   });
 
   it('allows write when flag, confirmation, and write consent are present', () => {

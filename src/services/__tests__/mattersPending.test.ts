@@ -61,10 +61,11 @@ describe('buildMattersPending', () => {
       now: NOW,
     });
     expect(items.map((item) => item.id)).toEqual(['soon', 'later', 'critical', 'no-expiry', 'old-review', 'insight', 'gone']);
-    expect(items[items.length - 1]).toMatchObject({ expired: true, capabilities: { canApprove: false, canReject: false } });
+    // Expired approvals stay rejectable (approval-card contract v1), never approvable.
+    expect(items[items.length - 1]).toMatchObject({ expired: true, capabilities: { canApprove: false, canReject: true } });
   });
 
-  it('carries the phone policy: L0/L1 both, L2 reject-only, L3 / unknown nothing', () => {
+  it('carries the phone policy: L0/L1 both; L2, L3 and unknown reject-only', () => {
     const items = buildMattersPending({
       approvals: [
         approval({ approvalId: 'l1', riskLevel: 'L1' }),
@@ -76,15 +77,23 @@ describe('buildMattersPending', () => {
     });
     const caps = Object.fromEntries(items.map((item) => [item.id, item.capabilities]));
     expect(caps.l1).toEqual({ canApprove: true, canReject: true });
-    expect(caps.l2).toMatchObject({ canApprove: false, canReject: true, approveBlockedReason: 'requires_receipt_refs' });
-    expect(caps.l3).toMatchObject({ canApprove: false, canReject: false, rejectBlockedReason: 'requires_local_confirmation' });
-    expect(caps.odd).toMatchObject({ canApprove: false, canReject: false });
+    expect(caps.l2).toMatchObject({ canApprove: false, canReject: true, approveBlockedReason: 'requires_local_confirmation' });
+    expect(caps.l3).toMatchObject({ canApprove: false, canReject: true, approveBlockedReason: 'requires_local_confirmation' });
+    expect(caps.odd).toMatchObject({ canApprove: false, canReject: true });
     expect(items.find((item) => item.id === 'odd')?.risk).toBe('unknown');
   });
 
   it('an unparsable expiry fails closed as expired', () => {
     const [item] = buildMattersPending({ approvals: [approval({ expiresAt: 'soon-ish' })], now: NOW });
-    expect(item).toMatchObject({ expired: true, capabilities: { canApprove: false, canReject: false } });
+    expect(item).toMatchObject({ expired: true, capabilities: { canApprove: false, canReject: true } });
+  });
+
+  it("keeps the backend's expired projection and drops decided records", () => {
+    const items = buildMattersPending({
+      approvals: [approval({ approvalId: 'x1', status: 'expired' as any }), approval({ approvalId: 'x2', status: 'rejected' }), approval({ approvalId: 'x3', status: 'weird' as any })],
+      now: NOW,
+    });
+    expect(items.map((item) => [item.id, item.expired])).toEqual([['x1', true]]);
   });
 
   it('review items never carry decision capabilities', () => {

@@ -84,21 +84,21 @@ describe('agent-portability-experience/v2 contracts', () => {
   it('rejects the wrong handoff schema and ambiguous pairing codes', () => {
     const wrongSchema = parseHandoffSessionV1({ ...handoff(), schemaVersion: 'x/9' });
     expect(wrongSchema.ok).toBe(false);
-    if (!wrongSchema.ok) {
+    if (wrongSchema.ok === false) {
       expect(wrongSchema.issues).toContain(`schemaVersion:expected_${HANDOFF_SESSION_SCHEMA}`);
     }
     for (const bad of ['ABCDEFG', 'ABCDEFG0', 'abcdefgh', 'ABCDEFGHIJK']) {
       expect(HANDOFF_PAIRING_CODE_PATTERN.test(bad)).toBe(false);
       const result = parseHandoffSessionV1({ ...handoff(), pairingCode: bad });
       expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.issues).toContain('pairingCode:invalid_format');
+      if (result.ok === false) expect(result.issues).toContain('pairingCode:invalid_format');
     }
   });
 
   it('rejects invalid enums without throwing', () => {
     const result = parseHandoffSessionV1({ ...handoff(), state: 'connected' });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.issues).toContain('state:invalid_enum');
+    if (result.ok === false) expect(result.issues).toContain('state:invalid_enum');
     expect(parseHandoffSessionV1(null).ok).toBe(false);
     expect(parseHandoffSessionV1('string').ok).toBe(false);
     expect(parseHandoffSessionV1([]).ok).toBe(false);
@@ -108,10 +108,10 @@ describe('agent-portability-experience/v2 contracts', () => {
     expect(parseCandidateSnapshotV1(snapshot()).ok).toBe(true);
     const mutable = parseCandidateSnapshotV1({ ...snapshot(), immutable: false });
     expect(mutable.ok).toBe(false);
-    if (!mutable.ok) expect(mutable.issues).toContain('immutable:must_be_true');
+    if (mutable.ok === false) expect(mutable.issues).toContain('immutable:must_be_true');
     const overSelected = parseCandidateSnapshotV1({ ...snapshot(), defaultSelectedCount: 13 });
     expect(overSelected.ok).toBe(false);
-    if (!overSelected.ok) {
+    if (overSelected.ok === false) {
       expect(overSelected.issues).toContain('defaultSelectedCount:exceeds_item_count');
     }
     const negative = parseCandidateSnapshotV1({ ...snapshot(), itemCount: -1 });
@@ -143,10 +143,10 @@ describe('agent-portability-experience/v2 contracts', () => {
     expect(parseExperienceTaskV1(task()).ok).toBe(true);
     const badPhase = parseExperienceTaskV1({ ...task(), phase: 'done' });
     expect(badPhase.ok).toBe(false);
-    if (!badPhase.ok) expect(badPhase.issues).toContain('phase:invalid_enum');
+    if (badPhase.ok === false) expect(badPhase.issues).toContain('phase:invalid_enum');
     const badTime = parseExperienceTaskV1({ ...task(), updatedAt: 'yesterday' });
     expect(badTime.ok).toBe(false);
-    if (!badTime.ok) expect(badTime.issues).toContain('updatedAt:invalid_timestamp');
+    if (badTime.ok === false) expect(badTime.issues).toContain('updatedAt:invalid_timestamp');
   });
 
   it('parses update checks with optional schema and receipt ref', () => {
@@ -166,7 +166,7 @@ describe('agent-portability-experience/v2 contracts', () => {
       capabilityState: 'yes',
     });
     expect(bad.ok).toBe(false);
-    if (!bad.ok) {
+    if (bad.ok === false) {
       expect(bad.issues).toEqual(
         expect.arrayContaining([
           'sourceDigest:required_string',

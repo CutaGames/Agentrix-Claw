@@ -60,8 +60,8 @@ import { getStateFromPath as defaultGetStateFromPath } from '@react-navigation/n
 import { attachLinkingListener } from './src/services/intents/intentBridge';
 import { installDefaultIntentHandlers } from './src/services/intents/defaultIntentHandlers';
 import { flushPendingMobilePush, handleMobilePushResponse, setupMobilePushChannels } from './src/services/mobilePush';
-import { fourZoneStateFromPath } from './src/navigation/four-zone/fourZoneLinking';
-import { fourZoneStateFromLegacyPath } from './src/navigation/four-zone/fourZoneLegacyLinks';
+import { describeLinkState } from './src/navigation/four-zone/fourZoneLinking';
+import { resolveFourZoneLinkState } from './src/navigation/four-zone/fourZoneLegacyLinks';
 import { syncAppearanceNow } from './src/services/appearanceSyncRuntime';
 import { globalLayerPolicy } from './src/navigation/four-zone/globalLayerPolicy';
 import { bootSystemAppearance } from './src/theme/systemAppearance';
@@ -781,23 +781,35 @@ const linking = {
   // Development (Expo Go): resolves to "exp://...". Both are included so QR pairing
   // works on both dev and production builds.
   prefixes: [Linking.createURL('/'), 'agentrix://', 'clawlink://', 'https://clawlink.app', 'https://agentrix.top'],
+  // Maestro E2E build only: log that a link reached the app (not the link itself).
+  ...(isMaestroE2E
+    ? { filter: () => { console.log('[maestro-e2e] link received'); return true; } }
+    : {}),
   getStateFromPath: (path: string, options: any) => {
     if (isFourZoneBuild) {
-      const fourZoneState = fourZoneStateFromPath(path);
-      if (fourZoneState) return fourZoneState as any;
-      // M1-i: an old link opens its four-zone equivalent, a hidden legacy
-      // route (D7), or the "link no longer works" notice; never nothing.
-      return fourZoneStateFromLegacyPath(path, (legacyPath) => defaultGetStateFromPath(legacyPath, options)) as any;
+      // M1-c: a zone link first. M1-i: an old link opens its four-zone
+      // equivalent, a hidden legacy route (D7), or the "link no longer
+      // works" notice; never nothing, and never an exception.
+      const state = resolveFourZoneLinkState(path, (legacyPath) => defaultGetStateFromPath(legacyPath, options));
+      if (isMaestroE2E) console.log('[maestro-e2e] link resolved to', describeLinkState(state as any));
+      return state as any;
     }
-    if (isAgentFirstBuild && isMobileV7RouteCandidate(path)) {
-      const result = normalizeMobileV7Route(path);
-      const strictPath = result.ok === true
-        ? result.path
-        : `/destination-error?reason=${encodeURIComponent(result.error.code)}`;
-      return defaultGetStateFromPath(strictPath, options);
+    // React Navigation calls this from its `url` listener without a
+    // try/catch, and its parser throws URIError on a malformed escape in a
+    // path param: ignore such a link instead of closing the app.
+    try {
+      if (isAgentFirstBuild && isMobileV7RouteCandidate(path)) {
+        const result = normalizeMobileV7Route(path);
+        const strictPath = result.ok === true
+          ? result.path
+          : `/destination-error?reason=${encodeURIComponent(result.error.code)}`;
+        return defaultGetStateFromPath(strictPath, options);
+      }
+      const normalized = resolveLegacyPath(path);
+      return defaultGetStateFromPath(normalized, options);
+    } catch {
+      return undefined;
     }
-    const normalized = resolveLegacyPath(path);
-    return defaultGetStateFromPath(normalized, options);
   },
   config: {
     screens: {
@@ -962,6 +974,8 @@ export default function App() {
                 ref={navigationRef as any}
                 linking={linking as any}
                 onReady={() => flushPendingMobilePush(navigationRef as any, useAuthStore.getState().isAuthenticated)}
+                // Maestro E2E build only: where each tap or link landed (route names, no params).
+                onStateChange={isMaestroE2E ? (state) => console.log('[maestro-e2e] route', describeLinkState(state as any)) : undefined}
               >
                 <StatusBar style={themeMode === 'light' ? 'dark' : 'light'} />
                 <AppNavigator />

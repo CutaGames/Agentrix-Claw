@@ -22,6 +22,7 @@ import { WorldStackNavigator } from '../WorldStackNavigator';
 import { PlazaStackNavigator } from '../PlazaStackNavigator';
 import { MeStackNavigator } from '../MeStackNavigator';
 import { NAV_CATALOG } from '../navCatalog';
+import { FOUR_ZONE_HIDDEN_TAB_OPTIONS } from './fourZoneRoutes';
 import { DesktopControlScreen } from '../../screens/agent/DesktopControlScreen';
 import { MattersHomeScreen } from '../../screens/four-zone/MattersHomeScreen';
 import { TwinHomeScreen } from '../../screens/four-zone/TwinHomeScreen';
@@ -118,7 +119,7 @@ function TabIcon({ glyph, focused, badge, testID }: { glyph: string; focused: bo
   );
 }
 
-const hiddenTabOptions = { tabBarButton: () => null } as const;
+const hiddenTabOptions = FOUR_ZONE_HIDDEN_TAB_OPTIONS;
 
 export function FourZoneTabNavigator() {
   const c = useColors();
