@@ -326,6 +326,38 @@ jobs:
         env:
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true'
 
+      # E50: formal builds carry a v3 signing-certificate lineage debug -> aad75099, so
+      # installs signed with the public debug certificate (download-page 1.1.0) and with
+      # aad75099 (1.2.0) can both update. Android 9+ (API 28) uses the rotated key; the
+      # v1/v2 blocks for API 24-27 keep the original (debug) signer - platform limitation.
+      # The lineage is rebuilt from the two keystores on every run.
+      - name: Re-sign with v3 rotation lineage (formal builds)
+        if: ${{ env.RELEASE_SIGNING == 'true' }}
+        env:
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          [ -n "$APKSIGNER" ] || { echo "ERROR: apksigner not found"; exit 1; }
+          APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          [ -n "$APK" ] || { echo "ERROR: no release APK"; exit 1; }
+          DEBUG_KS=android/app/debug.keystore
+          RELEASE_KS=android/app/release.keystore
+          [ -f "$DEBUG_KS" ] && [ -f "$RELEASE_KS" ] || { echo "ERROR: keystore missing"; exit 1; }
+          WORK=$(mktemp -d)
+          "$APKSIGNER" rotate --out "$WORK/lineage.bin" \
+            --old-signer --ks "$DEBUG_KS" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android \
+            --new-signer --ks "$RELEASE_KS" --ks-pass env:STORE_PASSWORD --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD
+          "$APKSIGNER" sign \
+            --ks "$DEBUG_KS" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android \
+            --next-signer --ks "$RELEASE_KS" --ks-pass env:STORE_PASSWORD --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD \
+            --lineage "$WORK/lineage.bin" --rotation-min-sdk-version 28 \
+            --out "$WORK/signed.apk" "$APK"
+          mv "$WORK/signed.apk" "$APK"
+          rm -rf "$WORK"
+          echo "[ci] re-signed $APK with lineage debug -> release (rotation-min-sdk-version 28)"
       - name: Set build tag and APK paths
         id: tag
         run: echo "tag=build-${{ github.run_id }}" >> $GITHUB_OUTPUT
@@ -346,34 +378,47 @@ jobs:
           echo "release=artifacts/ClawLink-build-${{ github.run_number }}.apk" >> $GITHUB_OUTPUT
           du -h artifacts/ClawLink-build-${{ github.run_number }}.apk
 
-      # E50: formal builds must carry the production certificate (aad75099...),
-      # previews and baselines the public debug certificate. Runs before any
-      # deploy or Release step, so a wrongly signed APK is never published.
+      # E50: formal builds must carry the production certificate (aad75099...) with the
+      # v3 lineage from the debug certificate; previews and baselines the public debug
+      # certificate only. Runs before any deploy or Release step.
       - name: Verify APK signing certificate
         run: |
           set -euo pipefail
           APK="${{ steps.paths.outputs.release }}"
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           [ -n "$APKSIGNER" ] || { echo "ERROR: apksigner not found"; exit 1; }
+          # every "certificate SHA-256 digest: <hex>" in apksigner output, lower-case, unique, in order of appearance
+          digests(){ { grep -Eio 'certificate SHA-256 digest:[[:space:]]*[0-9a-f]{64}' || true; } | awk '{print tolower($NF)}' | awk '!seen[$0]++'; }
           SIGNATURE=$("$APKSIGNER" verify --verbose --print-certs "$APK")
-          echo "$SIGNATURE" | grep -Ei 'Verified using|certificate (SHA-256 digest|DN)|Number of signers' || true
-          # Accept legacy `Signer #N certificate SHA-256 digest:` and current `V<N> Signer: certificate SHA-256 digest:`.
-          DIGESTS=$(echo "$SIGNATURE" |
-            grep -Ei '^(Signer #[0-9]+|V[0-9]+ Signer:) certificate SHA-256 digest:' |
-            sed -E 's/^.*certificate SHA-256 digest:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' | sed '/^$/d' | sort -u)
-          COUNT=$(printf '%s\n' "$DIGESTS" | sed '/^$/d' | wc -l)
-          if [ "$RELEASE_SIGNING" = "true" ]; then EXPECTED="$EXPECTED_RELEASE_CERT_SHA256"; KIND=production; else EXPECTED="$DEBUG_CERT_SHA256"; KIND=debug; fi
-          echo "[ci] expected $KIND certificate $EXPECTED; found ($COUNT): $(echo $DIGESTS)"
-          if [ "$COUNT" -ne 1 ] || [ "$DIGESTS" != "$EXPECTED" ]; then
-            echo "ERROR: APK is not signed with exactly the expected $KIND certificate"
-            exit 1
+          echo "$SIGNATURE" | grep -Ei 'Verified using|certificate (SHA-256 digest|DN)|Number of signers|Signer' || true
+          if [ "$RELEASE_SIGNING" != "true" ]; then
+            DIGESTS=$(echo "$SIGNATURE" | digests)
+            COUNT=$(printf '%s\n' "$DIGESTS" | sed '/^$/d' | wc -l)
+            echo "[ci] expected debug certificate $DEBUG_CERT_SHA256; found ($COUNT): $(echo $DIGESTS)"
+            if [ "$COUNT" -ne 1 ] || [ "$DIGESTS" != "$DEBUG_CERT_SHA256" ]; then
+              echo "ERROR: preview / baseline APK must be signed with exactly the debug certificate"
+              exit 1
+            fi
+            SUMMARY="debug \`$DIGESTS\`"
+          else
+            # Formal: v3 verified; API 28+ signer = aad75099; API <= 27 signer = debug; lineage = debug -> aad75099.
+            echo "$SIGNATURE" | grep -Eq 'Verified using v3(\.[0-9])? scheme.*: true' || { echo "ERROR: v3 signature not verified"; exit 1; }
+            NEW=$("$APKSIGNER" verify --print-certs --min-sdk-version 28 "$APK" | digests)
+            OLD=$("$APKSIGNER" verify --print-certs --max-sdk-version 27 "$APK" | digests)
+            LINEAGE=$("$APKSIGNER" lineage --in "$APK" --print-certs | digests)
+            echo "[ci] API 28+ signer(s): $(echo $NEW)"
+            echo "[ci] API <=27 signer(s): $(echo $OLD)"
+            echo "[ci] lineage (oldest first): $(echo $LINEAGE)"
+            [ "$(echo $NEW)" = "$EXPECTED_RELEASE_CERT_SHA256" ] || { echo "ERROR: API 28+ signer must be exactly $EXPECTED_RELEASE_CERT_SHA256"; exit 1; }
+            [ "$(echo $OLD)" = "$DEBUG_CERT_SHA256" ] || { echo "ERROR: API <=27 signer must be exactly the debug certificate"; exit 1; }
+            [ "$(echo $LINEAGE)" = "$DEBUG_CERT_SHA256 $EXPECTED_RELEASE_CERT_SHA256" ] || { echo "ERROR: lineage must be debug -> $EXPECTED_RELEASE_CERT_SHA256"; exit 1; }
+            SUMMARY="production \`$EXPECTED_RELEASE_CERT_SHA256\` (API 28+), lineage debug -> production, API <=27 debug"
           fi
           {
             echo "### APK signing certificate"
-            echo "- kind: $KIND"
-            echo "- SHA-256: \`$DIGESTS\`"
+            echo "- $SUMMARY"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "[ci] APK signing certificate verified ($KIND)"
+          echo "[ci] APK signing verified: $SUMMARY"
       # ── Deploy + Release BEFORE artifact upload ──────────────────
       # Artifact upload may hit GitHub storage quota and crash the job,
       # so we do the critical deploy/release steps first.
@@ -394,8 +439,8 @@ jobs:
             echo "[ci] Signing check build; never deployed"
           elif [ "$RELEASE_SIGNING" = "true" ]; then
             # E50: the download page serves 1.1.0, signed with the debug certificate.
-            # A production-signed APK without the v3 rotation lineage (debug -> aad75099)
-            # would force those users to uninstall. Stay off until the lineage step lands.
+            # Stay off until a build/mobile-signing-check-* run proves the v3 lineage
+            # (debug -> aad75099) end to end; re-enabling is a separate commit.
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "[ci] Production-signed build without v3 lineage; download page not updated (E50)"
           elif [ -n "$DEPLOY_SSH_KEY" ]; then

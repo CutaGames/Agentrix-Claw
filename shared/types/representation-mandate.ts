@@ -11,11 +11,26 @@
  * - 变更：扩大范围要重新同意（新的 accepted snapshot，旧 Grant 标 `superseded`）；缩小范围立即生效并留回执
  *   （`classifyMandateChangeV1`，和 `visibility-actions.ts` 的收紧 / 放宽一致）。
  *
- * v0：先给 DT、web、mobile 对齐形状；实现排在 TC-02.0 的唯一写入方切换之后。
+ * - step-up：建立和扩大复用可见性合同（`visibility-actions.ts`，对象 `representation_mandate`）：预览给
+ *   `previewDigest`，提交要摘要和最近登录，错误码 428 / 403 `STEP_UP_REQUIRED` / 409 一样；收窄和撤销是收紧类，
+ *   任何一端直接生效、带 `VisibilityActionReceiptV1`。
+ * - 访客只看到粗粒度结果（`representationVisitorOutcomeV1`：能办 / 要找本人），细的拒绝原因只进主人的复核队列，
+ *   免得访客从拒绝原因推出主人的设置。
+ * - `perDay`：纯函数只查单笔；端口实现必须用服务端当天已代收的合计检查 `perDay`，拿不到合计就返回
+ *   `authority_unavailable`，不能只按单笔放行。
+ *
+ * HTTP（主人，Web；手机和桌面只做收窄和撤销）：
+ * - `GET  /api/agent-accounts/:id/twin/mandate` → `{ mandate: RepresentationMandateV1 | null }`
+ * - `POST /api/agent-accounts/:id/twin/mandate/preview`（`{ terms }`）→ `RepresentationMandatePreviewV1`
+ * - `PUT  /api/agent-accounts/:id/twin/mandate`（`{ terms, previewDigest? }`）→ `{ mandate, receipt }`
+ * - `POST /api/agent-accounts/:id/twin/mandate/revoke` → `{ receipt }`
+ *
+ * v0.1：先给 DT、web、mobile 对齐形状；实现排在 TC-02.0 的唯一写入方切换之后。
  */
 import type { AuthorityGrantPreviewRequestV1, AuthorityGrantV1 } from './authority-grant';
 import type { ActorRefV1, AuthorityRootRefV1 } from './agent-attribution';
 import type { Money } from './trust-loop-primitives';
+import type { VisibilityActionReceiptV1, VisibilityPreviewV1 } from './visibility-actions';
 
 export const REPRESENTATION_MANDATE_SCHEMA_VERSION = 'agentrix.representation-mandate.v0' as const;
 export const REPRESENTATION_CAPABILITY_PREFIX = 'twin.represent.' as const;
@@ -49,7 +64,7 @@ export interface RepresentationMandateTermsV1 {
   modes: RepresentationModeV1[];
   audiences: RepresentationAudienceV1[];
   channels: RepresentationChannelV1[];
-  /** 可谈的话题白名单；空数组 = 公开 Facet 里的全部话题。 */
+  /** 可谈的话题白名单：公开 Facet 话题表里的 id（不是自由文本）；空数组 = 全部话题。 */
   topics: string[];
   dataClasses: RepresentationDataClassV1[];
   /** 代收款的上限（付费问答、定金）。没有 = 不能代收款，`paid_answer` / `deposit` 也就不生效。 */
@@ -124,7 +139,7 @@ export interface RepresentationMandateCheckRequestV1 {
   audience: RepresentationAudienceV1;
   channel: RepresentationChannelV1;
   dataClass: RepresentationDataClassV1;
-  /** 回答 / 预约时的话题；由服务端分类得出，不取访客自报。 */
+  /** 回答 / 预约时的话题 id；由服务端分类得出，不取访客自报。 */
   topic?: string;
   /** 代收款时的金额（服务端定价，不取客户端）。 */
   amount?: Money;
@@ -194,6 +209,22 @@ export function evaluateRepresentationMandateV1(
   return { allowed: true, grantRef: mandate.grantRef, grantVersion: mandate.grantVersion, revocationEpoch: mandate.revocationEpoch };
 }
 
+/** 访客看到的结果：只有能办和要找本人两种，不透出拒绝原因。 */
+export function representationVisitorOutcomeV1(result: RepresentationMandateCheckResultV1): 'ok' | 'ask_human' {
+  return result.allowed ? 'ok' : 'ask_human';
+}
+
+export interface RepresentationMandatePreviewV1 {
+  tier: MandateChangeTierV1;
+  widened: string[];
+  visibility: VisibilityPreviewV1;
+}
+
+export interface RepresentationMandateWriteResultV1 {
+  mandate: RepresentationMandateV1 | null;
+  receipt: VisibilityActionReceiptV1;
+}
+
 // ---------------------------------------------------------------------------
 // 变更分级：扩大要重新同意，缩小立即生效
 
@@ -218,14 +249,35 @@ export function classifyMandateChangeV1(
   if ((current.topics.length > 0 && next.topics.length === 0) || (next.topics.length > 0 && current.topics.length > 0 && widens(current.topics, next.topics))) {
     widened.push('topics');
   }
+  // 日期解析失败一律按扩大处理（fail closed）。
   const curUntil = current.validUntil ? Date.parse(current.validUntil) : Infinity;
   const nextUntil = next.validUntil ? Date.parse(next.validUntil) : Infinity;
-  if (nextUntil > curUntil) widened.push('validUntil');
-  if (Date.parse(next.validFrom) < Date.parse(current.validFrom)) widened.push('validFrom');
-  const curCeiling = current.collectionCeiling?.perOrder;
-  const nextCeiling = next.collectionCeiling?.perOrder;
-  if (nextCeiling && (!curCeiling || nextCeiling.currency !== curCeiling.currency || BigInt(nextCeiling.amountMinor) > BigInt(curCeiling.amountMinor))) {
-    widened.push('collectionCeiling');
+  if (Number.isNaN(curUntil) || Number.isNaN(nextUntil) || nextUntil > curUntil) widened.push('validUntil');
+  const curFrom = Date.parse(current.validFrom);
+  const nextFrom = Date.parse(next.validFrom);
+  if (Number.isNaN(curFrom) || Number.isNaN(nextFrom) || nextFrom < curFrom) widened.push('validFrom');
+  if (moneyWidens(current.collectionCeiling?.perOrder, next.collectionCeiling?.perOrder, Boolean(next.collectionCeiling))) {
+    widened.push('collectionCeiling.perOrder');
+  }
+  // perDay：去掉（变成不限）、调高、币种或精度变化都是扩大；没有代收款时不涉及。
+  if (next.collectionCeiling && moneyWidens(current.collectionCeiling?.perDay, next.collectionCeiling.perDay, true, true)) {
+    widened.push('collectionCeiling.perDay');
   }
   return { tier: widened.length > 0 ? 'loosen' : 'tighten', widened };
+}
+
+/**
+ * `present`：新条款里有没有这一项上限。`absentMeansUnlimited`：上限缺省表示"不限"（perDay），
+ * 否则缺省表示"不能代收"（perOrder）。
+ */
+function moneyWidens(current: Money | undefined, next: Money | undefined, present: boolean, absentMeansUnlimited = false): boolean {
+  if (absentMeansUnlimited) {
+    if (!next) return current !== undefined; // 从有上限变成不限
+    if (!current) return false; // 从不限变成有上限，是收紧
+  } else {
+    if (!present || !next) return false; // 不能代收，只会更窄
+    if (!current) return true; // 从不能代收变成能代收
+  }
+  if (next.currency !== current.currency || next.decimals !== current.decimals) return true;
+  return BigInt(next.amountMinor) > BigInt(current.amountMinor);
 }
