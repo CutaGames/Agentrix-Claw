@@ -51,6 +51,23 @@ jobs:
       - name: Build Tauri app (bundles only)
         working-directory: desktop
         run: npx tauri build --target ${{ matrix.target }}
+      # REQ-desktop-022: check the ad-hoc signature of every macOS app on the runner, so no one has to
+      # mount a dmg of the other architecture. A broken signature fails the job.
+      - name: Verify macOS signature (ad-hoc)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$(ls -d desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app | head -1)"
+          exe="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+          {
+            echo "### codesign ${{ matrix.target }}"
+            echo '```'
+            codesign -dv --verbose=4 "$app" 2>&1 | grep -E '^(Identifier|Format|CodeDirectory|Signature|TeamIdentifier|Runtime Version)' || true
+            codesign --verify --deep --strict --verbose=2 "$app" 2>&1
+            echo "archs: $(lipo -archs "$app/Contents/MacOS/$exe")"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload bundles
         uses: actions/upload-artifact@v4
         with:
