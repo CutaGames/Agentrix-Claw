@@ -1,0 +1,18 @@
+[[permission]]
+identifier = "developer-runtime"
+description = """
+Presentation / bootstrap / query / revoke / workspace-trust surface of the
+Developer Runtime Host for the trusted app windows. High-risk claim/decide stay
+inside the Rust host loop and are not WebView-invokable.
+"""
+commands.allow = [
+  "developer_runtime_presentation",
+  "developer_runtime_bootstrap",
+  "developer_runtime_refresh",
+  "developer_runtime_events",
+  "developer_runtime_query",
+  "developer_runtime_cancel",
+  "developer_runtime_revoke",
+  "developer_runtime_probe_vendor",
+  "developer_runtime_trust_selected_workspace",
+]

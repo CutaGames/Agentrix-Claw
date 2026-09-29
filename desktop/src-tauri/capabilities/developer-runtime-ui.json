@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "developer-runtime-ui",
+  "description": "Trusted app windows (Pro Mode workspace + chat panel) may read the Developer Runtime Host presentation, bootstrap/refresh the binding, query/cancel/events an instruction, revoke (Emergency Stop) and pick a trusted workspace. Same-origin app windows; the pet-companion overlay is deliberately excluded.",
+  "windows": ["main", "chat-panel"],
+  "permissions": ["developer-runtime"]
+}

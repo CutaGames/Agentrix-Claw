@@ -1,0 +1,79 @@
+[package]
+name = "agentrix-desktop"
+version = "0.7.21"
+edition = "2021"
+description = "Agentrix Desktop v2.1 - faster desktop tools (event-driven), parallel sub-agent guidance, version sync, Settings update check"
+
+[lib]
+name = "agentrix_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "agentrix-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "devtools", "custom-protocol", "macos-private-api"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-store = "2"
+tauri-plugin-http = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-process = "2"
+tauri-plugin-clipboard-manager = "2"
+reqwest = { version = "0.12", features = ["stream", "json", "blocking"] }
+tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
+mdns-sd = "0.11"
+hostname = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+zip = "2"
+
+# Codex-borrow P1 — Computer Use cross-platform input + capture.
+# `enigo` handles Windows + macOS keyboard/mouse synthesis; `xcap` covers
+# screen + window enumeration on both. We deliberately avoid embedding a
+# Chromium runtime — see docs for system-Chrome CDP rationale.
+enigo = { version = "0.3", features = ["serde"] }
+xcap = "0.0.14"
+base64 = "0.22"
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+# World Creation v6 — L2 WASM sandbox (Tier_C untrusted compute, task 5.2).
+# wasmtime runs `compute.run` logic modules with NO WASI / NO host syscalls
+# (deny-by-default: only explicitly-linked host functions are reachable) and
+# exposes fuel + epoch interruption hooks for the Resource_Watchdog (task 5.3).
+# Pinned to a fixed major to keep the Config/Store API stable across builds.
+wasmtime = "27"
+# Developer Runtime Host (DRW H0): encrypted sqlite journal, AEAD, OS keyring,
+# digests and clocks. Ported from fa95ec68 (build unblock, REQ-desktop-005).
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+aes-gcm = "0.11.1"
+keyring = "4.1.6"
+rand = "0.10.2"
+sha2 = "0.11.0"
+hex = "0.4.3"
+zeroize = "1.9.0"
+chrono = "0.4.45"
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38"
+windows = "0.61"
+
+[dependencies.rfd]
+version = "0.15"
+
+[profile.release]
+opt-level = "s"
+codegen-units = 16
+lto = false
+strip = true
+
+[dev-dependencies]
+tempfile = "3.27.0"
