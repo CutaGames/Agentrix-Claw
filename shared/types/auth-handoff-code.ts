@@ -32,9 +32,10 @@
  * - 服务端给服务商的 OAuth `state` 是自己生成的随机值，发起记录（客户端的 `state`、`code_challenge`、回跳地址）
  *   存在服务端，10 分钟（`AUTH_HANDOFF_START_TTL_SECONDS`），回调时取出即删。过了 10 分钟或者重复回调，
  *   服务端不知道该跳回哪里，只显示一页"请回到 App 重新登录"，不回跳。
- * - 这一版支持的服务商：google、discord、twitter（X 的 OAuth 2.0；只配了 OAuth 1.0a 时回跳 `provider_unavailable`）。
- *   apple 要等网页 Apple 回调改成 POST（E86 ②）才接；在那之前不要用 `handoff_client` 发起 apple（生产上
- *   `/auth/providers` 也说 apple 不可用）。
+ * - 支持的服务商：google、discord、twitter（X 的 OAuth 2.0；只配了 OAuth 1.0a 时回跳 `provider_unavailable`）、
+ *   apple（网页 Apple，E86 ②：Apple 用 form_post 调 `POST /api/auth/apple/callback`，没配网页的 Services ID 时回跳
+ *   `provider_unavailable`）。用不用 handoff，客户端看 `/auth/providers` 的 `handoff`（`authProviderSupportsHandoffV1`）。
+ *   Apple 的用户取消（`user_cancelled_authorize`）回跳 `login_cancelled`。
  * - 发起按 IP 限频，超了也是 429 `handoff_rate_limited`（JSON，不回跳）；次数见 `AUTH_HANDOFF_LIMITS_V1`。
  * - `issue` 换出来的 token，`iat` 和网页那份一样：转交给手机不会让它变成"最近登录"。OAuth 回调发的 code，
  *   `iat` 是这次登录的时间。

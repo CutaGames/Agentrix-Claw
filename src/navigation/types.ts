@@ -9,7 +9,7 @@
 
 export type AuthStackParamList = {
   Login: undefined;
-  AuthCallback: { code?: string; token?: string; provider?: string };
+  AuthCallback: { code?: string; token?: string; provider?: string; state?: string; error?: string };
   WalletConnect: { walletId?: string } | undefined;
 };
 

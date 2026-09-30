@@ -11,6 +11,17 @@ import { ensureMPCWallet } from './mpcWallet';
 import { bindOpenClaw, BindPayload, pollBindSession, createBindSession, getMyInstances } from './openclaw.service';
 import { peekPendingRef, clearPendingRef } from './referralAttribution';
 import { desktopPairConfirmError } from './desktopPairConfirm';
+import { readAuthProviders } from './authProviders';
+import {
+  MOBILE_HANDOFF_PROVIDERS,
+  MobileHandoffSignInError,
+  createMobileHandoffStart,
+  finishMobileHandoff,
+  mobileHandoffEntryUrl,
+  mobileHandoffProvider,
+  onceByCallbackState,
+  rememberMobileHandoff,
+} from './authHandoff';
 
 export { bindOpenClaw };
 
@@ -236,9 +247,37 @@ function parseCallbackUrl(url: string): LoginResponse {
 //   3. 如果未安装 → 直接走 WebBrowser.openAuthSessionAsync 网页 OAuth
 //   4. 后端 /auth/mobile/{provider} 统一处理 OAuth 流程
 
+/**
+ * E84 C: finishes a browser sign-in that came back with a one-time code (`authHandoff.ts`). The auth session
+ * result and the AuthCallback screen can both get the same link on Android; they share one exchange and one
+ * `handleLoginResult`.
+ */
+export const completeHandoffSignIn = onceByCallbackState(async (url: string): Promise<AuthUser> => {
+  const outcome = await finishMobileHandoff(url, { baseUrl: getBackendBaseUrl() });
+  if (outcome.kind !== 'signed_in') throw new MobileHandoffSignInError(outcome.reason);
+  const { session } = outcome;
+  return handleLoginResult(
+    {
+      access_token: session.accessToken,
+      user: {
+        id: session.user.id,
+        agentrixId: session.user.agentrixId ?? '',
+        email: session.user.email ?? undefined,
+        roles: ['user'],
+      },
+    },
+    MOBILE_HANDOFF_PROVIDERS[outcome.provider] as AuthProvider,
+    session.user.id,
+  );
+});
+
 async function socialLogin(provider: string, providerName: string): Promise<AuthUser> {
   const baseUrl = getBackendBaseUrl();
   const callbackUrl = getMobileCallbackUrl();
+  // E84 C: only when this server says the method hands off; otherwise the old callback below.
+  const handoffProvider = mobileHandoffProvider(provider, await readAuthProviders());
+  const handoff = handoffProvider ? await createMobileHandoffStart(handoffProvider, callbackUrl) : null;
+  if (handoff) await rememberMobileHandoff(handoff);
 
   // Telegram native app override: Try deep linking to Telegram app for auth if installed
   if (provider === 'telegram') {
@@ -258,11 +297,12 @@ async function socialLogin(provider: string, providerName: string): Promise<Auth
 
   // 将 redirect_uri 传给后端，让后端知道 OAuth 完成后重定向到哪里
   const isTgNative = provider === 'telegram' && await Linking.canOpenURL('tg://').catch(() => false);
-  const entryUrl = `${baseUrl}/auth/mobile/${provider}?redirect_uri=${encodeURIComponent(callbackUrl)}${isTgNative ? '&native=1' : ''}`;
+  const entryUrl = handoff
+    ? mobileHandoffEntryUrl(baseUrl, handoff)
+    : `${baseUrl}/auth/mobile/${provider}?redirect_uri=${encodeURIComponent(callbackUrl)}${isTgNative ? '&native=1' : ''}`;
 
-  console.log(`[Auth] Starting ${providerName} login`);
-  console.log(`[Auth] Entry URL: ${entryUrl}`);
-  console.log(`[Auth] Expected callback: ${callbackUrl}`);
+  // Not the URLs: the entry carries the state, the callback a code or (old flow) a token.
+  console.log(`[Auth] Starting ${providerName} login${handoff ? ' (one-time code)' : ''}`);
 
   // Note: No HEAD pre-check — it can cause false 403s from nginx/rate-limiting.
   // The openAuthSessionAsync flow will surface backend errors via the redirect URL.
@@ -273,7 +313,7 @@ async function socialLogin(provider: string, providerName: string): Promise<Auth
     preferEphemeralSession: false,
   });
 
-  console.log(`[Auth] ${providerName} result:`, JSON.stringify(result).slice(0, 300));
+  console.log(`[Auth] ${providerName} result: ${result.type}`);
 
   if (result.type !== 'success') {
     if (result.type === 'cancel') {
@@ -289,12 +329,16 @@ async function socialLogin(provider: string, providerName: string): Promise<Auth
     throw new Error(`${providerName} login failed (${result.type})`);
   }
 
+  if (handoff) {
+    return completeHandoffSignIn(result.url);
+  }
+
   // Check for error in the callback URL
   try {
     const loginResult = parseCallbackUrl(result.url);
     return handleLoginResult(loginResult, provider as AuthProvider, loginResult.user?.id);
   } catch (parseErr: any) {
-    console.error(`[Auth] Failed to parse ${providerName} callback:`, result.url, parseErr);
+    console.error(`[Auth] Failed to parse ${providerName} callback:`, parseErr?.message);
     throw new Error(`${providerName} login failed: ${parseErr.message}`);
   }
 }

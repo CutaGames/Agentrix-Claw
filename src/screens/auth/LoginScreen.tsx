@@ -81,8 +81,11 @@ export function LoginScreen() {
     return () => clearTimeout(timer);
   }, [cooldown]);
 
-  const fail = (title: { en: string; zh: string }, error: unknown, fallback: { en: string; zh: string }) =>
-    Alert.alert(t(title), (error as { message?: string } | null)?.message || t(fallback));
+  const fail = (title: { en: string; zh: string }, error: unknown, fallback: { en: string; zh: string }) => {
+    // E84 C sign-in errors carry their own text in both languages (MobileHandoffSignInError).
+    const localized = (error as { localized?: { en: string; zh: string } } | null)?.localized;
+    Alert.alert(t(title), (localized && t(localized)) || (error as { message?: string } | null)?.message || t(fallback));
+  };
 
   const run = async (key: string, task: () => Promise<unknown>, title: { en: string; zh: string }, fallback: { en: string; zh: string }) => {
     try {

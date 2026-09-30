@@ -6,7 +6,9 @@ import type { RouteProp } from '@react-navigation/native';
 import * as Linking from 'expo-linking';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
-import { handleOAuthCallback } from '../../services/auth';
+import { completeHandoffSignIn, handleOAuthCallback } from '../../services/auth';
+import { isMobileHandoffCallback, mobileHandoffCallbackUrlFromParams } from '../../services/authHandoff';
+import { useI18n } from '../../stores/i18nStore';
 import { navRefReset } from '../../navigation/navigationRef';
 import type { AuthStackParamList } from '../../navigation/types';
 import { themedStyles } from '../../theme/useTheme';
@@ -24,6 +26,7 @@ export function AuthCallbackScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteT>();
   const { setAuth } = useAuthStore.getState();
+  const { t } = useI18n();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Processing authentication...');
 
@@ -33,6 +36,21 @@ export function AuthCallbackScreen() {
         // Get params from deep link or route
         const url = await Linking.getInitialURL();
         const params = route.params;
+
+        // E84 C: a one-time code with this phone's state (authHandoff.ts). The auth session may be finishing the
+        // same link right now; completeHandoffSignIn shares that one exchange. The launch URL only counts when the
+        // route brought nothing (it stays the same for the whole process, e.g. a later wallet sign-in).
+        const fromRoute = params?.state || params?.token || params?.code ? params : null;
+        const handoffUrl = fromRoute
+          ? (fromRoute.state ? mobileHandoffCallbackUrlFromParams(fromRoute as Record<string, unknown>) : null)
+          : isMobileHandoffCallback(url) ? url : null;
+        if (handoffUrl) {
+          await completeHandoffSignIn(handoffUrl);
+          setStatus('success');
+          setMessage('Authentication successful!');
+          return;
+        }
+
         const token = params?.token || (url ? extractParam(url, 'token') : null);
         const code = params?.code || (url ? extractParam(url, 'code') : null);
         const provider = params?.provider || (url ? extractParam(url, 'provider') : null);
@@ -86,7 +104,7 @@ export function AuthCallbackScreen() {
           return;
         }
         setStatus('error');
-        setMessage(err?.message || 'Authentication failed. Please try again.');
+        setMessage((err?.localized && t(err.localized)) || err?.message || 'Authentication failed. Please try again.');
         setTimeout(() => navigation.navigate('Login'), 2500);
       }
     };

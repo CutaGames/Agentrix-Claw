@@ -13,7 +13,8 @@
  *   false（它们不跳转，也不用原生 SDK）。
  * - `handoff`（每种方式）/ `handoffIssue`（整体）：服务端认不认 E84 C 的 `handoff_client`（REQ-backend-076.re-mobile）。
  *   客户端只在 `handoff === true` 时带 `handoff_client` 发起，否则走旧流程；旧后端没有这两个字段，解码成 false。
- *   只有发起记录存在各进程共享的 Redis 里、而且没被运维关掉（`AUTH_HANDOFF_DISABLED=1`）时才是 true。
+ *   只有发起记录存在各进程共享的 Redis 里、而且没被运维关掉（`AUTH_HANDOFF_DISABLED=1`）时才是 true；
+ *   Apple 只有网页跳转（`browserRedirect`）能 handoff，原生 SDK 不经过这里。
  *   `handoffIssue` 表示有 `POST /api/auth/handoff/issue`（网页转手机）。
  * - 响应可以缓存 60 秒（`Cache-Control: public, max-age=60`）。
  * - 读失败或认不出时（E86 补充，I-058）：主入口只放 `google`，"更多方式"只放 `password`，用
