@@ -23,10 +23,17 @@ const SHIPPED_VERSION_CODES = [1, 2, 3, 4];
 
 describe('release version', () => {
   it('我的 → 设置与隐私 shows the app\'s own version, not a fixed string (owner checklist step 1)', () => {
-    const settings = fs.readFileSync(path.join(ROOT, 'src', 'screens', 'me', 'ClawSettingsScreen.tsx'), 'utf8');
-    expect(settings).toContain("value: appVersion ? `v${appVersion}` : ''");
+    const settings = fs.readFileSync(path.join(ROOT, 'src', 'screens', 'me', 'ClawSettingsScreen.tsx'), 'utf8').replace(/\r\n/g, '\n');
     expect(settings).toContain('Constants.expoConfig?.version');
-    expect(settings).not.toMatch(/id: 'version'[^\n]*value: '\d/);
+    // The 应用版本 item, up to its closing brace (REQ-mobile-089 made it several lines: an update offer
+    // is shown after the installed version, never instead of it).
+    const at = settings.indexOf("id: 'version'");
+    expect(at).toBeGreaterThan(0);
+    const item = settings.slice(at, settings.indexOf('\n        },', at));
+    expect(item).toContain("appVersion ? `v${appVersion}` : ''");
+    expect(item).toContain('`v${appVersion} · ');
+    expect(item).not.toMatch(/value: '\d/);
+    expect(item).not.toMatch(/`v\d/);
   });
   it('app.json, runtimeVersion, iOS build number and build.gradle agree', () => {
     const code = expo.android.versionCode;

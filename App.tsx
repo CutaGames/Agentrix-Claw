@@ -27,10 +27,8 @@ import { applyPetSoulE2EBootstrap, isPetSoulE2EEnabled } from './src/testing/pet
 import { resolveMobileWakeWordConfig } from './src/config/wakeWord';
 import { hasLocalWakeWordModel, thresholdFromSensitivity } from './src/services/localWakeWord.service';
 import {
+  applyAndroidBackgroundWakeWord,
   isAndroidBackgroundWakeWordAvailable,
-  startAndroidBackgroundWakeWordService,
-  stopAndroidBackgroundWakeWordService,
-  syncAndroidBackgroundWakeWordConfig,
 } from './src/services/androidBackgroundWakeWord.service';
 import { initLlamaBridge } from './src/services/llamaRnBridge';
 import { initCrashReport, setUser as setCrashUser } from './src/services/crashReport';
@@ -307,19 +305,17 @@ function AppNavigator() {
     };
   }, [activeInstance?.id, activeInstance?.name, backgroundWakeWordEnabled, wakeWordConfig.displayName, wakeWordConfig.localModel, wakeWordConfig.sensitivity]);
 
+  // Background wake-word (Android): the service is started while the app is in front and only listens once
+  // the app is in the back; a microphone foreground service cannot be created from the background
+  // (backgroundWakeWordPlan.ts, Claw build 536).
   useEffect(() => {
     if (!isAndroidBackgroundWakeWordAvailable()) {
       return;
     }
 
-    const payload = backgroundWakeWordConfigRef.current;
-    void syncAndroidBackgroundWakeWordConfig(payload).catch((error) => {
-      console.warn('Failed to sync Android background wake-word config:', error);
+    void applyAndroidBackgroundWakeWord(backgroundWakeWordConfigRef.current, AppState.currentState === 'active').catch((error) => {
+      console.warn('Failed to apply Android background wake-word state:', error);
     });
-
-    if (!backgroundWakeWordEnabled || AppState.currentState === 'active') {
-      void stopAndroidBackgroundWakeWordService().catch(() => {});
-    }
   }, [backgroundWakeWordEnabled, activeInstance?.id, activeInstance?.name, wakeWordConfig.displayName, wakeWordConfig.localModel, wakeWordConfig.sensitivity]);
 
   useEffect(() => {
@@ -328,27 +324,12 @@ function AppNavigator() {
     }
 
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        void stopAndroidBackgroundWakeWordService().catch(() => {});
+      if (state !== 'active' && state !== 'background' && state !== 'inactive') {
         return;
       }
-
-      if (state === 'background' || state === 'inactive') {
-        const payload = backgroundWakeWordConfigRef.current;
-        if (!payload.enabled) {
-          void stopAndroidBackgroundWakeWordService().catch(() => {});
-          return;
-        }
-
-        void (async () => {
-          try {
-            await syncAndroidBackgroundWakeWordConfig(payload);
-            await startAndroidBackgroundWakeWordService();
-          } catch (error) {
-            console.warn('Failed to start Android background wake-word service:', error);
-          }
-        })();
-      }
+      void applyAndroidBackgroundWakeWord(backgroundWakeWordConfigRef.current, state === 'active').catch((error) => {
+        console.warn('Failed to apply Android background wake-word state:', error);
+      });
     });
 
     return () => sub.remove();

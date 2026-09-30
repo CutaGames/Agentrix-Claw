@@ -33,6 +33,7 @@ import {
   type WakeWordEngine,
 } from '../../services/localWakeWord.service';
 import { isAnalyticsOptedIn, setOptIn as setAnalyticsOptIn } from '../../services/analytics.service';
+import { appUpdateOffer, readAppVersion, type AppUpdateOfferV1 } from '../../services/appVersionCheck';
 
 export function ClawSettingsScreen() {
   const navigation = useNavigation();
@@ -50,6 +51,17 @@ export function ClawSettingsScreen() {
   // Preview builds only (EXPO_PUBLIC_STAGING_SWITCH=1, I-046): a long press on 应用版本 opens "连接 staging".
   const [stagingSwitchOpen, setStagingSwitchOpen] = useState(false);
   const appVersion: string = ((Constants.expoConfig?.version ?? (Constants as any).manifest?.version) || '') as string;
+  // REQ-mobile-089: a newer APK on the download page (GET /app/version); unreadable = just the version.
+  const [updateOffer, setUpdateOffer] = useState<AppUpdateOfferV1 | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void readAppVersion().then((info) => {
+      if (alive) setUpdateOffer(appUpdateOffer(info, appVersion, Platform.OS));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [appVersion]);
   // Live theme: this screen recolors instantly on toggle (no reload).
   const c = useColors();
   const styles = useThemedStyles(makeStyles);
@@ -349,7 +361,14 @@ export function ClawSettingsScreen() {
     {
       title: t({ en: 'About', zh: '关于' }),
       items: [
-        { id: 'version', icon: 'ℹ️', label: t({ en: 'App Version', zh: '应用版本' }), value: appVersion ? `v${appVersion}` : '' },
+        {
+          id: 'version',
+          icon: 'ℹ️',
+          label: t({ en: 'App Version', zh: '应用版本' }),
+          value: updateOffer
+            ? `v${appVersion} · ${t({ en: `v${updateOffer.latestVersion} available, tap to download`, zh: `v${updateOffer.latestVersion} 可更新，点一下下载` })}`
+            : appVersion ? `v${appVersion}` : '',
+        },
         { id: 'telemetry', icon: '📊', label: t({ en: 'Anonymous Telemetry', zh: '匿名遥测' }), value: telemetryOptIn ? t({ en: 'On', zh: '已开启' }) : t({ en: 'Off', zh: '已关闭' }) },
         { id: 'terms', icon: '📜', label: t({ en: 'Terms of Service', zh: '服务条款' }), value: '' },
         { id: 'privacy', icon: '🔒', label: t({ en: 'Privacy Policy', zh: '隐私政策' }), value: '' },
@@ -611,6 +630,11 @@ export function ClawSettingsScreen() {
                 onLongPress={item.id === 'version' && STAGING_SWITCH_BUILD ? () => setStagingSwitchOpen(true) : undefined}
                 delayLongPress={800}
                 onPress={() => {
+                  if (item.id === 'version') {
+                    // Only an address appUpdateOffer accepted (https, agentrix.top).
+                    if (updateOffer) void RNLinking.openURL(updateOffer.url);
+                    return;
+                  }
                   if (item.id === 'local-ai') {
                     navigation.navigate('LocalAiModel' as never);
                     return;

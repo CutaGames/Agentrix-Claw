@@ -41,12 +41,10 @@ class AndroidBackgroundWakeWordModule(
   fun syncConfig(configJson: String, promise: Promise) {
     try {
       BackgroundWakeWordPreferences.saveConfig(reactApplicationContext, configJson)
-      // Only a running service needs to re-read it; a stopped one reads it when it starts. Starting a
+      // A running service re-reads it in this process; a stopped one reads it when it starts. Starting a
       // foreground service just to sync a setting (every time the app came to the front) raced the
       // following stop and got the app killed (Claw build 535).
-      if (AndroidBackgroundWakeWordService.isRunning) {
-        AndroidBackgroundWakeWordService.enqueueRefresh(reactApplicationContext)
-      }
+      AndroidBackgroundWakeWordService.refreshIfRunning()
       promise.resolve(true)
     } catch (error: Exception) {
       promise.reject("sync_config_failed", error)
@@ -70,6 +68,16 @@ class AndroidBackgroundWakeWordModule(
       promise.resolve(true)
     } catch (error: Exception) {
       promise.reject("stop_service_failed", error)
+    }
+  }
+
+  /** The app came to the front (true) or went to the back (false); resolves whether the service is running. */
+  @ReactMethod
+  fun setAppForeground(foreground: Boolean, promise: Promise) {
+    try {
+      promise.resolve(AndroidBackgroundWakeWordService.setAppInForeground(foreground))
+    } catch (error: Exception) {
+      promise.reject("set_app_foreground_failed", error)
     }
   }
 

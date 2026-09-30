@@ -12,6 +12,12 @@
  *   else's `state` or a malformed code is refused and nothing is exchanged.
  * - On Android the auth session result and the AuthCallback screen can both receive the same link:
  *   `onceByCallbackState` gives both the same outcome, so the code is exchanged once.
+ * - Wallet sign-in goes through the web page (`<APP_URL>/auth/login?tab=wallet&mobile=1`). When the server has
+ *   `POST /auth/handoff/issue` (`handoffIssue`), the phone adds its `state` and `code_challenge`; the page asks
+ *   the owner, then opens `callback?code=…&state=…`. A page that predates this (web and backend deploy
+ *   separately) ignores them and sends the old token link, which has no `state`: that link keeps the old path
+ *   until the old callback is removed on all three clients (E84). A link with a `state` only ever goes through
+ *   the code exchange.
  * - Nothing here logs a URL, a code, a state or a token.
  */
 import * as SecureStore from 'expo-secure-store';
@@ -41,6 +47,12 @@ export const MOBILE_HANDOFF_PROVIDERS: Readonly<Record<'google' | 'discord' | 't
   twitter: 'x',
 };
 export type MobileHandoffProviderV1 = keyof typeof MOBILE_HANDOFF_PROVIDERS;
+/** What a start was for: a browser OAuth sign-in, or the wallet sign-in on the web page. */
+export type MobileHandoffSourceV1 = MobileHandoffProviderV1 | 'wallet';
+
+function isHandoffSource(value: unknown): value is MobileHandoffSourceV1 {
+  return value === 'wallet' || (typeof value === 'string' && Object.prototype.hasOwnProperty.call(MOBILE_HANDOFF_PROVIDERS, value));
+}
 
 export const MOBILE_HANDOFF_EXCHANGE_PATH = '/auth/handoff/exchange';
 export const MOBILE_HANDOFF_PENDING_KEY = 'agentrix_auth_handoff_pending';
@@ -52,6 +64,11 @@ export function mobileHandoffProvider(provider: string, providers: AuthProviders
   if (!Object.prototype.hasOwnProperty.call(MOBILE_HANDOFF_PROVIDERS, provider)) return null;
   const id = provider as MobileHandoffProviderV1;
   return authProviderSupportsHandoffV1(providers, MOBILE_HANDOFF_PROVIDERS[id]) ? id : null;
+}
+
+/** The web page can hand the wallet sign-in over with a code: the server has `POST /auth/handoff/issue`. */
+export function mobileWalletHandoffWanted(providers: AuthProvidersResponseV1 | null): boolean {
+  return providers?.handoffIssue === true;
 }
 
 const BASE64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -73,7 +90,7 @@ export interface PendingMobileHandoffV1 {
   state: string;
   codeVerifier: string;
   codeChallenge: string;
-  provider: MobileHandoffProviderV1;
+  provider: MobileHandoffSourceV1;
   redirectUri: string;
   /** ms since epoch. */
   createdAt: number;
@@ -91,7 +108,7 @@ async function randomToken(random: RandomBytes): Promise<string> {
 }
 
 export async function createMobileHandoffStart(
-  provider: MobileHandoffProviderV1,
+  provider: MobileHandoffSourceV1,
   redirectUri: string,
   deps: { randomBytes?: RandomBytes; now?: () => number } = {},
 ): Promise<PendingMobileHandoffV1> {
@@ -113,6 +130,7 @@ export async function createMobileHandoffStart(
 
 /** `GET /api/auth/<provider>?handoff_client=mobile&state=…&code_challenge=…&code_challenge_method=S256&redirect_uri=…` */
 export function mobileHandoffEntryUrl(baseUrl: string, pending: PendingMobileHandoffV1): string {
+  if (pending.provider === 'wallet') throw new Error('handoff_wallet_uses_the_web_page');
   const K = AUTH_HANDOFF_START_QUERY_V1;
   const query = [
     [K.client, 'mobile'],
@@ -146,16 +164,46 @@ function decodePending(value: unknown): PendingMobileHandoffV1 | null {
   if (typeof v.state !== 'string' || !AUTH_HANDOFF_STATE_PATTERN.test(v.state)) return null;
   if (typeof v.codeVerifier !== 'string' || !AUTH_HANDOFF_CODE_VERIFIER_PATTERN.test(v.codeVerifier)) return null;
   if (typeof v.codeChallenge !== 'string' || v.codeChallenge !== authHandoffPkceChallengeV1(v.codeVerifier)) return null;
-  if (typeof v.provider !== 'string' || !Object.prototype.hasOwnProperty.call(MOBILE_HANDOFF_PROVIDERS, v.provider)) return null;
+  if (!isHandoffSource(v.provider)) return null;
   if (typeof v.redirectUri !== 'string' || typeof v.createdAt !== 'number' || !Number.isFinite(v.createdAt)) return null;
   return {
     state: v.state,
     codeVerifier: v.codeVerifier,
     codeChallenge: v.codeChallenge,
-    provider: v.provider as MobileHandoffProviderV1,
+    provider: v.provider,
     redirectUri: v.redirectUri,
     createdAt: v.createdAt,
   };
+}
+
+/** The wallet sign-in page; with a start, it also carries this phone's `state` and `code_challenge`. */
+export function mobileWalletLoginUrl(appUrl: string, redirectUri: string, pending: PendingMobileHandoffV1 | null): string {
+  const base = `${appUrl.replace(/\/+$/, '')}/auth/login?tab=wallet&mobile=1&callback=${encodeURIComponent(redirectUri)}`;
+  if (!pending) return base;
+  if (pending.provider !== 'wallet' || pending.redirectUri !== redirectUri) throw new Error('handoff_start_mismatch');
+  const K = AUTH_HANDOFF_START_QUERY_V1;
+  return `${base}&${K.state}=${encodeURIComponent(pending.state)}&${K.codeChallenge}=${encodeURIComponent(pending.codeChallenge)}`;
+}
+
+/**
+ * Where the wallet page's answer goes. With a start and a link that carries a `state`: the code exchange
+ * (params for the AuthCallback screen, a token included so that it is refused there). Otherwise the old path.
+ */
+export function walletCallbackRoute(
+  url: string,
+  handoffStarted: boolean,
+): { kind: 'handoff'; params: { code?: string; state: string; error?: string; token?: string } } | { kind: 'legacy' } {
+  if (!handoffStarted || !isMobileHandoffCallback(url)) return { kind: 'legacy' };
+  const q = parseAuthHandoffCallbackParamsV1(url);
+  const state = q?.get('state');
+  if (!q || !state) return { kind: 'legacy' };
+  const params: { code?: string; state: string; error?: string; token?: string } = { state };
+  for (const key of ['code', 'error', 'token'] as const) {
+    const value = q.get(key);
+    if (value !== undefined) params[key] = value;
+  }
+  if (q.has('access_token')) params.token = q.get('access_token');
+  return { kind: 'handoff', params };
 }
 
 /** Keeps the start for the callback (a new start replaces the previous one). */
@@ -207,7 +255,7 @@ export type MobileHandoffFailureV1 =
   | 'invalid';
 
 export type MobileHandoffOutcomeV1 =
-  | { kind: 'signed_in'; session: AuthHandoffExchangeResponseV1; provider: MobileHandoffProviderV1 }
+  | { kind: 'signed_in'; session: AuthHandoffExchangeResponseV1; provider: MobileHandoffSourceV1 }
   | { kind: 'failed'; reason: MobileHandoffFailureV1 };
 
 const CALLBACK_ERRORS: Record<AuthHandoffCallbackErrorV1, MobileHandoffFailureV1> = {

@@ -88,18 +88,50 @@ describe('AndroidBackgroundWakeWordService answers every start (Claw build 535 c
 });
 
 describe('AndroidBackgroundWakeWordModule does not start the service just to sync a setting', () => {
-  it('syncConfig saves the config and refreshes only a service that is already running', () => {
+  it('syncConfig saves the config and refreshes a running service in this process, never starting one', () => {
     const sync = body(moduleSrc, 'syncConfig');
     expect(sync).toMatch(/BackgroundWakeWordPreferences\.saveConfig\(/);
-    const guarded = sync.match(/if\s*\(\s*AndroidBackgroundWakeWordService\.isRunning\s*\)\s*\{([^}]*)\}/);
-    expect(guarded).not.toBeNull();
-    expect(guarded![1]).toMatch(/enqueueRefresh\(/);
-    expect(sync.replace(guarded![0], '')).not.toMatch(/enqueueRefresh|enqueueStart|startForegroundService/);
+    expect(sync).toMatch(/AndroidBackgroundWakeWordService\.refreshIfRunning\(\)/);
+    expect(sync).not.toMatch(/enqueueRefresh|enqueueStart|startForegroundService|startService/);
+    // No REFRESH start is left for anyone to call.
+    expect(service).not.toMatch(/fun enqueueRefresh/);
+    const refresh = body(service, 'refreshIfRunning');
+    expect(refresh).toMatch(/mainHandler\.post/);
+    expect(refresh).not.toMatch(/startForegroundService|startService|Intent\(/);
   });
 
   it('a stop is always sent, also before the service ran onCreate, so a start still in flight is stopped', () => {
     const stop = body(service, 'enqueueStop');
     expect(stop).not.toMatch(/\breturn\b/);
     expect(stop).toMatch(/context\.startService\(/);
+  });
+});
+
+describe('the service is started in front and listens only in the back (Claw build 536)', () => {
+  it('in front it shows no ball and does not listen; the check comes before any overlay or microphone', () => {
+    const refresh = body(service, 'refreshConfigAndRuntime');
+    const guard = refresh.match(/if\s*\(\s*appInForeground\s*\)\s*\{([^}]*)\}/);
+    expect(guard).not.toBeNull();
+    expect(guard![1]).toMatch(/removeOverlay\(\)/);
+    expect(guard![1]).toMatch(/stopMonitoring\(\)/);
+    expect(guard![1]).toMatch(/\breturn\b/);
+    expect(guard![1]).not.toMatch(/startMonitoring|updateOverlay/);
+    const at = refresh.indexOf(guard![0]);
+    expect(refresh.search(/updateOverlay\(\)/)).toBeGreaterThan(at);
+    expect(refresh.search(/startMonitoring\(/)).toBeGreaterThan(at);
+  });
+
+  it('after a sticky restart nothing is in front; the app flag is set only by the app and refreshes a running service', () => {
+    expect(service).toMatch(/@Volatile var appInForeground: Boolean = false\s+private set/);
+    const set = body(service, 'setAppInForeground');
+    expect(set).toMatch(/appInForeground\s*=\s*foreground/);
+    expect(set).toMatch(/refreshIfRunning\(\)/);
+    expect(set).not.toMatch(/startForegroundService|startService/);
+    expect(body(moduleSrc, 'setAppForeground')).toMatch(/AndroidBackgroundWakeWordService\.setAppInForeground\(foreground\)/);
+  });
+
+  it('the running instance is known only between onCreate and onDestroy', () => {
+    expect(body(service, 'onCreate')).toMatch(/instance\s*=\s*this/);
+    expect(body(service, 'onDestroy')).toMatch(/if\s*\(\s*instance\s*===\s*this\s*\)\s*instance\s*=\s*null/);
   });
 });

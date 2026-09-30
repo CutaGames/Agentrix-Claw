@@ -266,7 +266,7 @@ export const completeHandoffSignIn = onceByCallbackState(async (url: string): Pr
         roles: ['user'],
       },
     },
-    MOBILE_HANDOFF_PROVIDERS[outcome.provider] as AuthProvider,
+    (outcome.provider === 'wallet' ? 'wallet' : MOBILE_HANDOFF_PROVIDERS[outcome.provider]) as AuthProvider,
     session.user.id,
   );
 });

@@ -26,6 +26,16 @@ import {
   walletSignatureLogin,
 } from '../services/walletConnect';
 import { themedStyles } from '../theme/useTheme';
+import { APP_URL } from '../config/env';
+import { readAuthProviders } from '../services/authProviders';
+import {
+  createMobileHandoffStart,
+  mobileWalletHandoffWanted,
+  mobileWalletLoginUrl,
+  rememberMobileHandoff,
+  walletCallbackRoute,
+  type PendingMobileHandoffV1,
+} from '../services/authHandoff';
 
 const WALLET_ID_ALIASES: Record<string, WalletProvider> = {
   metamask: 'metamask',
@@ -271,15 +281,28 @@ export const WalletConnectScreen: React.FC<{ navigation?: any; route?: { params?
   // WalletConnect — 通过 WebBrowser 打开前端页面扫码
   const handleWalletConnect = useCallback(async () => {
     setStep('walletconnect');
-    const frontendUrl = 'https://www.agentrix.top';
     const callbackUrl = 'agentrix://auth/callback';
-    const walletLoginUrl = `${frontendUrl}/auth/login?tab=wallet&mobile=1&callback=${encodeURIComponent(callbackUrl)}`;
     try {
+      // E84 C: when the server can issue a code (handoffIssue), the web page hands the sign-in over with a
+      // code for this phone's state instead of the token (authHandoff.ts). APP_URL: staging mode opens the
+      // staging page, not production.
+      let handoff: PendingMobileHandoffV1 | null = null;
+      if (mobileWalletHandoffWanted(await readAuthProviders())) {
+        handoff = await createMobileHandoffStart('wallet', callbackUrl);
+        await rememberMobileHandoff(handoff);
+      }
+      const walletLoginUrl = mobileWalletLoginUrl(APP_URL, callbackUrl, handoff);
       const result = await WebBrowser.openAuthSessionAsync(walletLoginUrl, callbackUrl, {
         presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
       });
 
       if (result.type === 'success' && result.url) {
+        const route = walletCallbackRoute(result.url, handoff !== null);
+        if (route.kind === 'handoff') {
+          navigation?.replace?.('AuthCallback', route.params);
+          return;
+        }
+        // A page that predates the code hand-off: the old token link (no state).
         const parsed = ExpoLinking.parse(result.url);
         const token = typeof parsed.queryParams?.token === 'string' ? parsed.queryParams.token : undefined;
         const code = typeof parsed.queryParams?.code === 'string' ? parsed.queryParams.code : undefined;
@@ -292,10 +315,12 @@ export const WalletConnectScreen: React.FC<{ navigation?: any; route?: { params?
         });
         return;
       }
+    } catch (error) {
+      Alert.alert(tr('Sign-in failed', '登录失败'), tr('Please try again later.', '请稍后重试。'));
     } finally {
       setStep('select');
     }
-  }, [navigation]);
+  }, [navigation, tr]);
 
   const resetFlow = useCallback(() => {
     setStep('select');

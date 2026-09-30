@@ -197,6 +197,7 @@ class AndroidBackgroundWakeWordService : Service() {
 
   override fun onCreate() {
     super.onCreate()
+    instance = this
     isRunning = true
     createNotificationChannel()
     // Nothing else here: onStartCommand always follows and calls startForeground for that start.
@@ -210,7 +211,7 @@ class AndroidBackgroundWakeWordService : Service() {
    * - STOP (sent with startService) never calls startForeground and stops with its own startId;
    * - START / REFRESH / a sticky restart (sent with startForegroundService) call startForeground
    *   first, always, then keep running while the microphone permission is granted (same rule as
-   *   before; the overlay ball shows even when there is no model to listen with).
+   *   before). While the app is in front the service only waits (see refreshConfigAndRuntime).
    * Stopping always goes through stopSelfResult(startId): it does nothing when a newer start is
    * already queued, so a pending startForegroundService() is never left without its startForeground.
    */
@@ -240,12 +241,22 @@ class AndroidBackgroundWakeWordService : Service() {
     monitorThread = null
     stopMonitoring()
     removeOverlay()
+    if (instance === this) instance = null
     isRunning = false
     super.onDestroy()
   }
 
   private fun refreshConfigAndRuntime() {
     config = BackgroundWakeWordPreferences.loadConfig(this)
+    // In front of the user the app listens itself: no ball, no microphone here. The service is started
+    // while the app is in front anyway, because Android does not let an app create a microphone foreground
+    // service from the background (Claw build 536: "Starting FGS with type microphone"); started in front,
+    // it keeps the microphone when the app goes to the back (setAppInForeground(false)).
+    if (appInForeground) {
+      removeOverlay()
+      stopMonitoring()
+      return
+    }
     updateOverlay()
 
     val currentConfig = config
@@ -615,6 +626,16 @@ class AndroidBackgroundWakeWordService : Service() {
     @Volatile var isRunning: Boolean = false
       private set
 
+    /**
+     * The app is in front of the user (the app says so from AppState). Starts false: after a sticky restart
+     * nothing is in front, and the service listens as before.
+     */
+    @Volatile var appInForeground: Boolean = false
+      private set
+
+    @Volatile private var instance: AndroidBackgroundWakeWordService? = null
+    private val mainHandler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+
     fun enqueueStart(context: Context) {
       val intent = Intent(context, AndroidBackgroundWakeWordService::class.java).apply {
         action = ACTION_START
@@ -622,11 +643,20 @@ class AndroidBackgroundWakeWordService : Service() {
       ContextCompat.startForegroundService(context, intent)
     }
 
-    fun enqueueRefresh(context: Context) {
-      val intent = Intent(context, AndroidBackgroundWakeWordService::class.java).apply {
-        action = ACTION_REFRESH
-      }
-      ContextCompat.startForegroundService(context, intent)
+    /**
+     * Re-applies the saved config in the running service, inside this process. Never starts the service:
+     * no startForegroundService() just to sync a setting (Claw build 535). False when none is running.
+     */
+    fun refreshIfRunning(): Boolean {
+      val service = instance ?: return false
+      mainHandler.post { if (instance === service) service.refreshConfigAndRuntime() }
+      return true
+    }
+
+    /** The app came to the front (true) or went to the back (false); true when a service is running. */
+    fun setAppInForeground(foreground: Boolean): Boolean {
+      appInForeground = foreground
+      return refreshIfRunning()
     }
 
     fun enqueueStop(context: Context) {

@@ -1,5 +1,6 @@
 import { NativeModules, Platform } from 'react-native';
 import type { LocalWakeWordModel } from './localWakeWord.service';
+import { planBackgroundWakeWord, runBackgroundWakeWordPlan } from './backgroundWakeWordPlan';
 
 type AndroidBackgroundWakeWordNativeModule = {
   isOverlayPermissionGranted(): Promise<boolean>;
@@ -8,6 +9,8 @@ type AndroidBackgroundWakeWordNativeModule = {
   startService(): Promise<boolean>;
   stopService(): Promise<boolean>;
   isServiceRunning(): Promise<boolean>;
+  /** Not on binaries before the Claw build 536 follow-up; see backgroundWakeWordPlan.ts. */
+  setAppForeground?: (foreground: boolean) => Promise<boolean>;
 };
 
 interface BackgroundWakeWordSyncPayload {
@@ -60,6 +63,27 @@ export async function stopAndroidBackgroundWakeWordService(): Promise<void> {
     return;
   }
   await nativeModule!.stopService();
+}
+
+let applyChain: Promise<void> = Promise.resolve();
+
+/**
+ * Brings the service in line with the setting and the app state (backgroundWakeWordPlan.ts). Calls run one
+ * after another, in the order they were made.
+ */
+export function applyAndroidBackgroundWakeWord(payload: BackgroundWakeWordSyncPayload, appActive: boolean): Promise<void> {
+  if (!isAndroidBackgroundWakeWordAvailable()) {
+    return Promise.resolve();
+  }
+  const native = nativeModule!;
+  const steps = planBackgroundWakeWord({
+    enabled: payload.enabled,
+    appActive,
+    foregroundSignal: typeof native.setAppForeground === 'function',
+  });
+  const run = applyChain.then(() => runBackgroundWakeWordPlan(steps, native, JSON.stringify(payload)));
+  applyChain = run.catch(() => undefined);
+  return run;
 }
 
 export async function isAndroidBackgroundWakeWordRunning(): Promise<boolean> {

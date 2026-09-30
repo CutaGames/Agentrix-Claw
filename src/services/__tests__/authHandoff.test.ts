@@ -5,8 +5,12 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import type { HttpRequestV1, HttpResponseV1, HttpTransportV1 } from '../../../shared/client/transport';
 import {
+  AUTH_HANDOFF_CODE_CHALLENGE_PATTERN,
+  AUTH_HANDOFF_MOBILE_REDIRECTS_V1,
   AUTH_HANDOFF_START_TTL_SECONDS,
+  AUTH_HANDOFF_STATE_PATTERN,
   authHandoffPkceChallengeV1,
+  buildAuthHandoffCallbackUrlV1,
   decodeAuthHandoffStartQueryV1,
   parseAuthHandoffCallbackParamsV1,
 } from '../../../shared/types/auth-handoff-code';
@@ -23,9 +27,12 @@ import {
   mobileHandoffCallbackUrlFromParams,
   mobileHandoffEntryUrl,
   mobileHandoffProvider,
+  mobileWalletHandoffWanted,
+  mobileWalletLoginUrl,
   onceByCallbackState,
   rememberMobileHandoff,
   resetMobileHandoffForTests,
+  walletCallbackRoute,
   type MobileHandoffStoreV1,
   type PendingMobileHandoffV1,
 } from '../authHandoff';
@@ -302,5 +309,74 @@ describe('one exchange per link', () => {
       expect(text.en.length).toBeGreaterThan(0);
       expect(text.zh.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('wallet sign-in through the web page', () => {
+  const APP = 'https://www.agentrix.top/';
+
+  it('asks the page for a code only when the server can issue one (handoffIssue)', () => {
+    expect(mobileWalletHandoffWanted(providersWith({}, { handoffIssue: true }))).toBe(true);
+    expect(mobileWalletHandoffWanted(providersWith({ google: true }))).toBe(false); // old backend: no field
+    expect(mobileWalletHandoffWanted(providersWith({}, { handoffIssue: false }))).toBe(false);
+    expect(mobileWalletHandoffWanted(null)).toBe(false);
+  });
+
+  it('without a start: the old page address, on APP_URL', () => {
+    expect(mobileWalletLoginUrl(APP, CALLBACK, null)).toBe(
+      'https://www.agentrix.top/auth/login?tab=wallet&mobile=1&callback=agentrix%3A%2F%2Fauth%2Fcallback',
+    );
+  });
+
+  it('with a start: adds exactly the state and code_challenge the page reads (web handoff-issue.ts rules)', async () => {
+    const pending = await createMobileHandoffStart('wallet', CALLBACK, { now: () => T0 });
+    const url = mobileWalletLoginUrl(APP, CALLBACK, pending);
+    const q = Object.fromEntries(parseAuthHandoffCallbackParamsV1(url) ?? new Map());
+    expect(Object.keys(q).sort()).toEqual(['callback', 'code_challenge', 'mobile', 'state', 'tab']);
+    expect(q).toMatchObject({ tab: 'wallet', mobile: '1', callback: CALLBACK, state: pending.state, code_challenge: pending.codeChallenge });
+    expect((AUTH_HANDOFF_MOBILE_REDIRECTS_V1 as readonly string[]).includes(q.callback)).toBe(true);
+    expect(q.state).toMatch(AUTH_HANDOFF_STATE_PATTERN);
+    expect(q.code_challenge).toMatch(AUTH_HANDOFF_CODE_CHALLENGE_PATTERN);
+    expect(url).not.toContain(pending.codeVerifier);
+  });
+
+  it('a start for something else, or for another callback, is never put on the page; a wallet start never opens an OAuth route', async () => {
+    const google = await createMobileHandoffStart('google', CALLBACK, { now: () => T0 });
+    expect(() => mobileWalletLoginUrl(APP, CALLBACK, google)).toThrow('handoff_start_mismatch');
+    const wallet = await createMobileHandoffStart('wallet', CALLBACK, { now: () => T0 });
+    expect(() => mobileWalletLoginUrl(APP, 'agentrix://elsewhere', wallet)).toThrow('handoff_start_mismatch');
+    expect(() => mobileHandoffEntryUrl(BASE, wallet)).toThrow('handoff_wallet_uses_the_web_page');
+  });
+
+  it('the page answer: a link with a state goes to the code exchange (a token in it stays, so it is refused)', async () => {
+    const pending = await createMobileHandoffStart('wallet', CALLBACK, { now: () => T0 });
+    const link = buildAuthHandoffCallbackUrlV1({ client: 'mobile', state: pending.state, codeChallenge: pending.codeChallenge, redirectUri: CALLBACK }, { code: CODE });
+    expect(walletCallbackRoute(link, true)).toEqual({ kind: 'handoff', params: { state: pending.state, code: CODE } });
+    expect(walletCallbackRoute(`${link}&token=old`, true)).toEqual({ kind: 'handoff', params: { state: pending.state, code: CODE, token: 'old' } });
+    expect(walletCallbackRoute(`${CALLBACK}?error=login_failed&state=${pending.state}`, true)).toEqual({
+      kind: 'handoff',
+      params: { state: pending.state, error: 'login_failed' },
+    });
+  });
+
+  it('an older page ignores the start and sends the old token link (no state): the old path; no start, always the old path', () => {
+    expect(walletCallbackRoute(`${CALLBACK}?token=jwt&provider=wallet`, true)).toEqual({ kind: 'legacy' });
+    expect(walletCallbackRoute(`${CALLBACK}?code=${CODE}&state=${'s'.repeat(43)}`, false)).toEqual({ kind: 'legacy' });
+  });
+
+  it('the code from the page is exchanged with the saved verifier, also after a cold start; the session is tagged wallet', async () => {
+    const store = memoryStore();
+    const pending = await createMobileHandoffStart('wallet', CALLBACK, { now: () => T0 });
+    await rememberMobileHandoff(pending, store);
+    resetMobileHandoffForTests();
+    const route = walletCallbackRoute(
+      buildAuthHandoffCallbackUrlV1({ client: 'mobile', state: pending.state, codeChallenge: pending.codeChallenge, redirectUri: CALLBACK }, { code: CODE }),
+      true,
+    );
+    expect(route.kind).toBe('handoff');
+    const url = mobileHandoffCallbackUrlFromParams(route.kind === 'handoff' ? route.params : {});
+    const { transport, calls } = transportReturning({ status: 200, body: session });
+    expect(await finishMobileHandoff(url, { baseUrl: BASE, transport, store, now: () => T0 + 5_000 })).toEqual({ kind: 'signed_in', session, provider: 'wallet' });
+    expect(calls[0].body).toEqual({ schemaVersion: 1, code: CODE, state: pending.state, codeVerifier: pending.codeVerifier });
   });
 });
