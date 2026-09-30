@@ -1,0 +1,115 @@
+appId: app.agentrix.claw
+# Current Agent-first baseline: four tabs, non-empty Agent name, Companion,
+# and the complete Soul Core L0 six-anchor read/return path.
+---
+- launchApp:
+    clearState: true
+
+- extendedWaitUntil:
+    visible:
+      id: "tab-agent"
+    timeout: 25000
+
+# Four bottom destinations must be independently laid out and reachable.
+- assertVisible:
+    id: "tab-agent"
+- assertVisible:
+    id: "tab-actions"
+- assertVisible:
+    id: "tab-creation"
+- assertVisible:
+    id: "tab-my"
+- assertVisible:
+    id: "agent-home-screen"
+
+# Seeded instance exercises the same fallback/normalization path as real data.
+- assertVisible:
+    id: "agent-selected-name"
+- assertVisible:
+    text: "QA Agent"
+
+# Companion must be present in the real authenticated shell, including Maestro.
+- extendedWaitUntil:
+    visible:
+      id: "floating-ball-sprite"
+    timeout: 10000
+- longPressOn:
+    id: "voice-floating-ball-core"
+- extendedWaitUntil:
+    visible:
+      id: "pet-detail-sheet"
+    timeout: 8000
+- back
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "tab-actions"
+- extendedWaitUntil:
+    visible:
+      id: "actions-home-screen"
+    timeout: 10000
+- assertVisible:
+    id: "floating-ball-sprite"
+
+- tapOn:
+    id: "tab-creation"
+- extendedWaitUntil:
+    visible:
+      id: "creation-home-screen"
+    timeout: 10000
+- assertVisible:
+    id: "floating-ball-sprite"
+
+- tapOn:
+    id: "tab-my"
+- extendedWaitUntil:
+    visible:
+      id: "me-profile-screen"
+    timeout: 10000
+- assertVisible:
+    id: "floating-ball-sprite"
+
+# Soul Core L0: enter from Me, verify all six anchors, and return deterministically.
+- scrollUntilVisible:
+    element:
+      id: "me-soul-core"
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: "me-soul-core"
+- extendedWaitUntil:
+    visible:
+      id: "soul-core-l0-hero"
+    timeout: 10000
+- assertVisible:
+    id: "soul-core-back"
+- assertVisible:
+    id: "soul-core-anchor-identity"
+- scrollUntilVisible:
+    element:
+      id: "soul-core-anchor-vault"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "soul-core-anchor-authority"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "soul-core-anchor-reputation"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "soul-core-anchor-soulKey"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "soul-core-anchor-ownership"
+    direction: DOWN
+- takeScreenshot: "51-soul-core-l0-six-anchors"
+- tapOn:
+    id: "soul-core-back"
+- extendedWaitUntil:
+    visible:
+      id: "me-profile-screen"
+    timeout: 10000
+- takeScreenshot: "51-baseline-returned-to-me"

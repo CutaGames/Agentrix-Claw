@@ -1,0 +1,25 @@
+appId: app.agentrix.claw
+---
+# Test 02: Auth screen exposes the stable sign-in controls.
+
+- launchApp:
+    clearState: true
+    clearKeychain: true
+
+- waitForAnimationToEnd:
+    timeout: 30000
+
+- assertVisible:
+    text: "Agentrix Claw"
+
+# E84 A: Google, Apple and email code first; the wallet moved under 更多方式.
+- assertVisible:
+    id: "login-google"
+- assertVisible:
+    id: "login-apple"
+- assertVisible:
+    id: "login-email-code"
+- assertVisible:
+    id: "login-guest"
+
+- takeScreenshot: "02-auth-branding"
