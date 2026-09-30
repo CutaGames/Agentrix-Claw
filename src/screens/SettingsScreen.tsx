@@ -9,8 +9,6 @@ import { useAuthStore } from '../stores/authStore';
 import { useI18n, Language } from '../stores/i18nStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { API_BASE } from '../config/env';
-import { STAGING_SWITCH_BUILD } from '../config/stagingMode';
-import { StagingSwitchModal } from '../components/StagingSwitchModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { themedStyles } from '../theme/useTheme';
 
@@ -67,7 +65,6 @@ export const SettingsScreen: React.FC = () => {
   const customApiKeys = useSettingsStore((s) => s.customApiKeys) || {};
   const setCustomApiKey = useSettingsStore((s) => s.setCustomApiKey);
   const queryClient = useQueryClient();
-  const [stagingSwitchOpen, setStagingSwitchOpen] = useState(false);
 
   // ── Current version from app.json ──
   const currentVersion: string = ((Constants.expoConfig?.version ?? (Constants as any).manifest?.version) || '1.0.0') as string;
@@ -392,12 +389,8 @@ export const SettingsScreen: React.FC = () => {
       </TouchableOpacity>
 
       {/* ── App Version & Update ── */}
-      {/* Preview builds only (EXPO_PUBLIC_STAGING_SWITCH=1, I-046): a long press opens "连接 staging". */}
       <TouchableOpacity
         onPress={hasUpdate ? handleUpdate : undefined}
-        onLongPress={STAGING_SWITCH_BUILD ? () => setStagingSwitchOpen(true) : undefined}
-        delayLongPress={800}
-        testID="settings-version-card"
         activeOpacity={hasUpdate ? 0.7 : 1}
         style={[
           settingsStyles.versionCard,
@@ -428,7 +421,6 @@ export const SettingsScreen: React.FC = () => {
       </TouchableOpacity>
 
       <View style={{ height: 20 }} />
-      {STAGING_SWITCH_BUILD ? <StagingSwitchModal visible={stagingSwitchOpen} onClose={() => setStagingSwitchOpen(false)} /> : null}
     </ScrollView>
   );
 };

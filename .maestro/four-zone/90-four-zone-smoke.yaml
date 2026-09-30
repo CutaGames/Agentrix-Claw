@@ -220,15 +220,17 @@ appId: app.agentrix.claw
           id: "tab-my"
 - assertVisible:
     id: "appearance-screen"
+# The default is 浅色 + 晴空蓝 since E83: try the other side, then put the default back.
+- tapOn:
+    id: "appearance-mode-dark"
+- tapOn:
+    id: "appearance-accent-obsidian-cyan"
+- takeScreenshot: "90-appearance-dark-cyan"
 - tapOn:
     id: "appearance-mode-light"
 - tapOn:
     id: "appearance-accent-sky-blue"
 - takeScreenshot: "90-appearance-light-sky"
-- tapOn:
-    id: "appearance-mode-system"
-- tapOn:
-    id: "appearance-accent-obsidian-cyan"
 - back
 - extendedWaitUntil:
     visible:

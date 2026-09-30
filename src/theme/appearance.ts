@@ -113,18 +113,33 @@ export function legacyColorsFromTokens<T extends LegacyColorSet>(token: TokenPal
   };
 }
 
+/** The default before E83 (09-30): 跟随系统 + 曜石青. Only used to read values stored by 1.3.0. */
+export const PRE_E83_DEFAULT_APPEARANCE: Readonly<Appearance> = Object.freeze({ mode: 'system', accent: 'obsidian-cyan' });
+
 /**
  * Read the stored appearance. A missing or corrupt value falls back to the
  * default; a pre-token 'light' / 'dark' choice is kept as the mode.
+ *
+ * `recorded`: the phone also holds a sync state (`app_appearance_sync_v1`), i.e. the value went
+ * through 我的 → 外观 or came from the owner's stored preference. Only then is every field a choice.
+ * Without one, the value was written by 1.3.0's legacy 主题 switch in 设置与隐私, which stored the mode
+ * it was asked for and whatever accent was current: a field equal to the pre-E83 default was never
+ * chosen, so it follows the current default and is not uploaded as a choice (E83, I-050).
  */
-export function readStoredAppearance(get: (key: string) => string | undefined | null): Appearance {
+export function readStoredAppearance(get: (key: string) => string | undefined | null, recorded = true): Appearance {
   const raw = get(APPEARANCE_STORAGE_KEY);
   if (raw) {
+    let stored: Appearance;
     try {
-      return normalizeAppearance(JSON.parse(raw));
+      stored = normalizeAppearance(JSON.parse(raw));
     } catch {
       return { ...DEFAULT_APPEARANCE };
     }
+    if (recorded) return stored;
+    return {
+      mode: stored.mode === PRE_E83_DEFAULT_APPEARANCE.mode ? DEFAULT_APPEARANCE.mode : stored.mode,
+      accent: stored.accent === PRE_E83_DEFAULT_APPEARANCE.accent ? DEFAULT_APPEARANCE.accent : stored.accent,
+    };
   }
   const legacy = get(LEGACY_THEME_STORAGE_KEY);
   if (legacy === 'light' || legacy === 'dark') {

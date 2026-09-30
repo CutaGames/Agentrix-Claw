@@ -7,7 +7,7 @@ import { describe, it, expect } from '@jest/globals';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { HttpRequestV1, HttpResponseV1, HttpTransportV1 } from '../../../shared/client/transport';
-import type { Appearance } from '../../../shared/design-tokens';
+import { DEFAULT_APPEARANCE, type Appearance } from '../../../shared/design-tokens';
 import {
   APPEARANCE_SYNC_STORAGE_KEY,
   isLocalChangeNewer,
@@ -31,7 +31,8 @@ const pref = (overrides: Record<string, unknown> = {}) => ({
   source: 'owner',
   ...overrides,
 });
-const DEFAULT_PREF = { schemaVersion: 1, mode: 'system', accent: 'obsidian-cyan', revision: 0, updatedAt: null, source: 'default' };
+// The shared default (light + 晴空蓝 since E83); tests follow it instead of repeating it.
+const DEFAULT_PREF = { schemaVersion: 1, mode: DEFAULT_APPEARANCE.mode, accent: DEFAULT_APPEARANCE.accent, revision: 0, updatedAt: null, source: 'default' };
 
 type Reply = { status: number; body?: unknown } | 'throw';
 
@@ -73,7 +74,7 @@ const dirty = (revision: number, changedAt: string | null): AppearanceSyncState 
 
 describe('state', () => {
   it('no stored state: the default is clean, a non-default (migrated) value is an unuploaded change without a time', () => {
-    expect(readAppearanceSyncState(undefined, { mode: 'system', accent: 'obsidian-cyan' })).toEqual({ revision: 0, dirty: false, changedAt: null });
+    expect(readAppearanceSyncState(undefined, { ...DEFAULT_APPEARANCE })).toEqual({ revision: 0, dirty: false, changedAt: null });
     expect(readAppearanceSyncState(null, { mode: 'light', accent: 'obsidian-cyan' })).toEqual({ revision: 0, dirty: true, changedAt: null });
   });
 
@@ -82,7 +83,7 @@ describe('state', () => {
     expect(s).toEqual({ revision: 3, dirty: true, changedAt: '2026-09-28T11:00:00.000Z' });
     expect(readAppearanceSyncState(serializeAppearanceSyncState(s), { mode: 'dark', accent: 'ink' })).toEqual(s);
     expect(readAppearanceSyncState('{"revision":-2,"dirty":"yes","changedAt":"soon"}', { mode: 'dark', accent: 'ink' })).toEqual({ revision: 0, dirty: false, changedAt: null });
-    expect(readAppearanceSyncState('not json', { mode: 'system', accent: 'obsidian-cyan' })).toEqual({ revision: 0, dirty: false, changedAt: null });
+    expect(readAppearanceSyncState('not json', { ...DEFAULT_APPEARANCE })).toEqual({ revision: 0, dirty: false, changedAt: null });
     expect(APPEARANCE_SYNC_STORAGE_KEY).toBe('app_appearance_sync_v1');
   });
 
@@ -96,7 +97,7 @@ describe('state', () => {
   it('reads a preference body through the contract normaliser; garbage is not "the default"', () => {
     expect(readAppearancePreferenceBody(pref())).toMatchObject({ mode: 'light', accent: 'ink', revision: 4, source: 'owner' });
     expect(readAppearancePreferenceBody({ success: true, data: pref({ revision: 2 }) })).toMatchObject({ revision: 2 });
-    expect(readAppearancePreferenceBody(pref({ mode: 'neon', accent: 'gold' }))).toMatchObject({ mode: 'system', accent: 'obsidian-cyan', revision: 4 });
+    expect(readAppearancePreferenceBody(pref({ mode: 'neon', accent: 'gold' }))).toMatchObject({ mode: DEFAULT_APPEARANCE.mode, accent: DEFAULT_APPEARANCE.accent, revision: 4 });
     expect(readAppearancePreferenceBody(DEFAULT_PREF)).toMatchObject({ revision: 0, source: 'default' });
     expect(readAppearancePreferenceBody({ message: 'oops' })).toBeNull();
     expect(readAppearancePreferenceBody('x')).toBeNull();
@@ -120,16 +121,29 @@ describe('sync', () => {
   });
 
   it('server never stored anything: the default is kept, nothing is uploaded', async () => {
-    const h = harness({ mode: 'system', accent: 'obsidian-cyan' }, clean(0), [{ status: 200, body: DEFAULT_PREF }]);
+    const h = harness({ ...DEFAULT_APPEARANCE }, clean(0), [{ status: 200, body: DEFAULT_PREF }]);
     await expect(syncAppearanceWithServer(h.deps)).resolves.toEqual({ kind: 'pulled', changed: false, revision: 0 });
     expect(h.calls).toHaveLength(1);
     expect(h.applied).toHaveLength(0);
   });
 
+  it('a server still on the old default (revision 0, 跟随系统 + 曜石青) is not a choice: the phone keeps its own default and stores nothing (E83, I-050)', async () => {
+    // 1.4.0 against a backend deployed before the default changed: revision 0 means "never stored", whatever values it carries.
+    const oldDefault = { schemaVersion: 1, mode: 'system', accent: 'obsidian-cyan', revision: 0, updatedAt: null, source: 'default' };
+    const h = harness({ ...DEFAULT_APPEARANCE }, clean(0), [{ status: 200, body: oldDefault }]);
+    await expect(syncAppearanceWithServer(h.deps)).resolves.toEqual({ kind: 'pulled', changed: false, revision: 0 });
+    expect(h.applied).toHaveLength(0);
+    expect(h.local()).toEqual(DEFAULT_APPEARANCE);
+    // The same values stored by the owner (revision > 0) are a choice and are adopted.
+    const chosen = harness({ ...DEFAULT_APPEARANCE }, clean(0), [{ status: 200, body: { ...oldDefault, revision: 3, updatedAt: '2026-09-20T00:00:00Z', source: 'owner' } }]);
+    await expect(syncAppearanceWithServer(chosen.deps)).resolves.toEqual({ kind: 'pulled', changed: true, revision: 3 });
+    expect(chosen.local()).toEqual({ mode: 'system', accent: 'obsidian-cyan' });
+  });
+
   it('unknown values from the server fall back field by field and are never written as-is', async () => {
     const h = harness({ mode: 'dark', accent: 'ink' }, clean(1), [{ status: 200, body: pref({ mode: 'dark', accent: '<script>' }) }]);
     await syncAppearanceWithServer(h.deps);
-    expect(h.local()).toEqual({ mode: 'dark', accent: 'obsidian-cyan' });
+    expect(h.local()).toEqual({ mode: 'dark', accent: DEFAULT_APPEARANCE.accent });
   });
 
   it('local change: PUT both fields with expectedRevision, adopt the saved value', async () => {

@@ -16,6 +16,7 @@ import {
   type Appearance,
 } from './appearance';
 import { normalizeAppearance, resolvePalette } from '../../shared/design-tokens';
+import { APPEARANCE_SYNC_STORAGE_KEY } from '../services/appearanceSync';
 
 export type ThemeMode = 'dark' | 'light';
 const THEME_KEY = 'app_theme_mode';
@@ -115,7 +116,9 @@ const tokenThemed =
 
 function readAppearance(): Appearance {
   try {
-    return readStoredAppearance((key) => mmkv.getString(key));
+    // A sync state means the value went through 外观 or came from the server: every field is a choice.
+    const recorded = typeof mmkv.getString(APPEARANCE_SYNC_STORAGE_KEY) === 'string';
+    return readStoredAppearance((key) => mmkv.getString(key), recorded);
   } catch {
     return readStoredAppearance(() => undefined);
   }

@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, TextInput, Share, Platform, ActivityIndicator, AppState, Linking as RNLinking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { colors, getThemeMode, setThemeMode, type ThemeMode } from '../../theme/colors';
+import Constants from 'expo-constants';
+import { STAGING_SWITCH_BUILD } from '../../config/stagingMode';
+import { StagingSwitchModal } from '../../components/StagingSwitchModal';
+import { colors, getAppearance, getThemeMode, isTokenThemed, setThemeMode, type ThemeMode } from '../../theme/colors';
+import { changeAppearance } from '../../services/appearanceSyncRuntime';
 import { useColors, useThemedStyles, type Palette } from '../../theme/useTheme';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -43,6 +47,9 @@ export function ClawSettingsScreen() {
   const { language, setLanguage, t } = useI18n();
   const [telemetryOptIn, setTelemetryOptIn] = useState(isAnalyticsOptedIn());
   const [themeMode, setThemeModeState] = useState<ThemeMode>(getThemeMode());
+  // Preview builds only (EXPO_PUBLIC_STAGING_SWITCH=1, I-046): a long press on 应用版本 opens "连接 staging".
+  const [stagingSwitchOpen, setStagingSwitchOpen] = useState(false);
+  const appVersion: string = ((Constants.expoConfig?.version ?? (Constants as any).manifest?.version) || '') as string;
   // Live theme: this screen recolors instantly on toggle (no reload).
   const c = useColors();
   const styles = useThemedStyles(makeStyles);
@@ -342,7 +349,7 @@ export function ClawSettingsScreen() {
     {
       title: t({ en: 'About', zh: '关于' }),
       items: [
-        { id: 'version', icon: 'ℹ️', label: t({ en: 'App Version', zh: '应用版本' }), value: '1.0.0' },
+        { id: 'version', icon: 'ℹ️', label: t({ en: 'App Version', zh: '应用版本' }), value: appVersion ? `v${appVersion}` : '' },
         { id: 'telemetry', icon: '📊', label: t({ en: 'Anonymous Telemetry', zh: '匿名遥测' }), value: telemetryOptIn ? t({ en: 'On', zh: '已开启' }) : t({ en: 'Off', zh: '已关闭' }) },
         { id: 'terms', icon: '📜', label: t({ en: 'Terms of Service', zh: '服务条款' }), value: '' },
         { id: 'privacy', icon: '🔒', label: t({ en: 'Privacy Policy', zh: '隐私政策' }), value: '' },
@@ -600,6 +607,9 @@ export function ClawSettingsScreen() {
               <TouchableOpacity
                 key={item.id}
                 style={[styles.item, i < group.items.length - 1 && styles.itemBorder]}
+                testID={`settings-item-${item.id}`}
+                onLongPress={item.id === 'version' && STAGING_SWITCH_BUILD ? () => setStagingSwitchOpen(true) : undefined}
+                delayLongPress={800}
                 onPress={() => {
                   if (item.id === 'local-ai') {
                     navigation.navigate('LocalAiModel' as never);
@@ -615,7 +625,10 @@ export function ClawSettingsScreen() {
                   }
                   if (item.id === 'theme') {
                     const next: ThemeMode = themeMode === 'light' ? 'dark' : 'light';
-                    setThemeMode(next);
+                    // Four-zone builds: the same path as 我的 → 外观, so the choice is recorded and synced
+                    // (setThemeMode alone stored it unrecorded, and the next sync put the server's value back).
+                    if (isTokenThemed()) changeAppearance({ ...getAppearance(), mode: next });
+                    else setThemeMode(next);
                     setThemeModeState(next);
                     Alert.alert(
                       t({ en: 'Theme switched', zh: '主题已切换' }),
@@ -765,6 +778,7 @@ export function ClawSettingsScreen() {
       >
         <Text style={styles.dangerBtnText}>{t({ en: 'Sign Out', zh: '退出登录' })}</Text>
       </TouchableOpacity>
+      {STAGING_SWITCH_BUILD ? <StagingSwitchModal visible={stagingSwitchOpen} onClose={() => setStagingSwitchOpen(false)} /> : null}
     </ScrollView>
   );
 }

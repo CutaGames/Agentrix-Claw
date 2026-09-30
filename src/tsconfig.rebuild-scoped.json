@@ -72,7 +72,7 @@
     "config/stagingGuardBoot.ts",
     "components/StagingBadge.tsx",
     "components/StagingSwitchModal.tsx",
-    "screens/SettingsScreen.tsx",
+    "screens/me/ClawSettingsScreen.tsx",
     "services/auth.ts",
     "screens/me/ScanScreen.tsx",
     "screens/onboarding/LocalDeployScreen.tsx",

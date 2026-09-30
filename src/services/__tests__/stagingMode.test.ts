@@ -91,9 +91,13 @@ describe('which builds have the switch', () => {
   it('the build flag is read as the literal expression babel inlines, and the switch UI is gated on it', () => {
     const mode = read('src/config/stagingMode.ts');
     expect(mode).toContain('stagingSwitchAvailable(process.env.EXPO_PUBLIC_STAGING_SWITCH)');
-    const settings = read('src/screens/SettingsScreen.tsx');
-    expect(settings).toContain('onLongPress={STAGING_SWITCH_BUILD ? () => setStagingSwitchOpen(true) : undefined}');
+    // The entry is on the screen that 我的 → 设置与隐私 really renders (MeStackNavigator's `Settings`), not the
+    // unreferenced src/screens/SettingsScreen.tsx it was first put on (98df3b76).
+    expect(read('src/navigation/MeStackNavigator.tsx')).toContain('<Stack.Screen name="Settings" component={ClawSettingsScreen}');
+    const settings = read('src/screens/me/ClawSettingsScreen.tsx');
+    expect(settings).toContain("onLongPress={item.id === 'version' && STAGING_SWITCH_BUILD ? () => setStagingSwitchOpen(true) : undefined}");
     expect(settings).toContain('{STAGING_SWITCH_BUILD ? <StagingSwitchModal');
+    expect(read('src/screens/SettingsScreen.tsx')).not.toContain('StagingSwitchModal');
     expect(read('src/components/StagingSwitchModal.tsx')).toContain('if (!STAGING_SWITCH_BUILD) return null;');
     const env = read('src/config/env.ts');
     expect(env).toContain('if (STAGING_SELECTION.active) return \'staging\';');

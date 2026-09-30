@@ -22,6 +22,12 @@ const gradle = fs.readFileSync(path.join(ROOT, 'android', 'app', 'build.gradle')
 const SHIPPED_VERSION_CODES = [1, 2, 3, 4];
 
 describe('release version', () => {
+  it('我的 → 设置与隐私 shows the app\'s own version, not a fixed string (owner checklist step 1)', () => {
+    const settings = fs.readFileSync(path.join(ROOT, 'src', 'screens', 'me', 'ClawSettingsScreen.tsx'), 'utf8');
+    expect(settings).toContain("value: appVersion ? `v${appVersion}` : ''");
+    expect(settings).toContain('Constants.expoConfig?.version');
+    expect(settings).not.toMatch(/id: 'version'[^\n]*value: '\d/);
+  });
   it('app.json, runtimeVersion, iOS build number and build.gradle agree', () => {
     const code = expo.android.versionCode;
     expect(Number.isInteger(code)).toBe(true);
