@@ -65,6 +65,7 @@
     "services/stagingSwitch.ts",
     "services/twinOrderTimeline.ts",
     "services/loginOptions.ts",
+    "services/authProviders.ts",
     "screens/auth/LoginScreen.tsx",
     "screens/four-zone/TwinOrderTimeline.tsx",
     "hooks/useReduceMotion.ts",

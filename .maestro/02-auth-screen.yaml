@@ -12,13 +12,12 @@ appId: app.agentrix.claw
 - assertVisible:
     text: "Agentrix Claw"
 
-# E84 A: Google, Apple and email code first; the wallet moved under 更多方式.
+# E84 A / E86: the main buttons depend on what the server serves (GET /api/auth/providers), so only
+# the parts that are always there are asserted: the page, 更多方式 and 先逛逛.
 - assertVisible:
-    id: "login-google"
+    id: "login-screen"
 - assertVisible:
-    id: "login-apple"
-- assertVisible:
-    id: "login-email-code"
+    id: "login-more"
 - assertVisible:
     id: "login-guest"
 

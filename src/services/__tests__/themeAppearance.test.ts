@@ -133,6 +133,24 @@ describe('readStoredAppearance', () => {
   });
 });
 
+describe('native start-up colours follow the default appearance (E83)', () => {
+  const root = path.resolve(__dirname, '..', '..', '..');
+  const expo = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8')).expo;
+  const scheme = DEFAULT_APPEARANCE.mode === 'dark' ? 'dark' : 'light';
+  const bg = resolvePalette(scheme, DEFAULT_APPEARANCE.accent).bg;
+
+  it('the splash is the default page colour, so a cold start does not flash another scheme', () => {
+    expect(expo.splash.backgroundColor.toUpperCase()).toBe(bg.toUpperCase());
+    // CI runs `expo prebuild` without --clean: the checked-in Android colour must agree with app.json.
+    const colorsXml = fs.readFileSync(path.join(root, 'android/app/src/main/res/values/colors.xml'), 'utf8');
+    expect(colorsXml).toContain(`<color name="splashscreen_background">${expo.splash.backgroundColor}</color>`);
+  });
+
+  it('the OS scheme is not forced, so 跟随系统 and system dialogs can follow it', () => {
+    expect(expo.userInterfaceStyle).toBe('automatic');
+  });
+});
+
 describe('values stored by 1.3.0 without a sync record (E83, I-050)', () => {
   const store = (values: Record<string, string>) => (key: string) => values[key];
   const stored = (value: object) => store({ [APPEARANCE_STORAGE_KEY]: JSON.stringify(value) });

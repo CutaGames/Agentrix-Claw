@@ -42,22 +42,28 @@ appId: app.agentrix.claw
 - assertVisible:
     id: "matters-pending-list"
 - takeScreenshot: "90-matters"
-# 电脑上 → 急停回执 (REQ-mobile-074, L3). Read-only: never tap a quick action,
-# an approval or "同步到手表" on this page. A failed read is said on the page
-# (desktop-control-load-error), not in a dialog, so nothing blocks the run.
-- tapOn:
-    id: "matters-tab-on-computer"
-- scrollUntilVisible:
-    element:
-      id: "device-safety-receipts"
-    direction: DOWN
-    timeout: 15000
-- takeScreenshot: "90-matters-computer-safety-receipts"
-- back
-- extendedWaitUntil:
-    visible:
-      id: "matters-home-screen"
-    timeout: 10000
+# 电脑上 → 急停回执 (REQ-mobile-074, L3). The 电脑上 tab exists only with a paired
+# computer (nav catalog `requires: paired_computer`); the CI session has none,
+# so this is conditional here and 91 opens the page by its zone link instead.
+# Read-only: never tap a quick action, an approval or "同步到手表".
+- runFlow:
+    when:
+      visible:
+        id: "matters-tab-on-computer"
+    commands:
+      - tapOn:
+          id: "matters-tab-on-computer"
+      - scrollUntilVisible:
+          element:
+            id: "device-safety-receipts"
+          direction: DOWN
+          timeout: 15000
+      - takeScreenshot: "90-matters-computer-safety-receipts"
+      - back
+      - extendedWaitUntil:
+          visible:
+            id: "matters-home-screen"
+          timeout: 10000
 # ── 分身: onboarding (no twin, 1.9) or the card (twin exists, M4-c) ──
 - tapOn:
     id: "tab-twin"

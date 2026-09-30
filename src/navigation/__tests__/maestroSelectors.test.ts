@@ -145,6 +145,11 @@ describe('Maestro flows (top level, run by CI)', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('no blocking step needs a tab the CI session does not have (电脑上 needs a paired computer; build 534)', () => {
+    const blocking = FOUR_ZONE_FLOWS.flatMap((flow) => flow.ids.map((id) => `${flow.name}: ${id}`));
+    expect(blocking.filter((entry) => entry.endsWith(': matters-tab-on-computer'))).toEqual([]);
+  });
+
   it('the four-zone flows open every 上线 3 phone screen (I-046)', () => {
     // Any use counts, conditions included (`runFlow: when: visible`): some screens show a card only with data.
     const all = FOUR_ZONE_FLOWS.flatMap((flow) =>

@@ -6,11 +6,11 @@
     "version": "1.4.0",
     "orientation": "portrait",
     "icon": "./Agentrix Logo/agentrix_app_icon_1024.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./Agentrix Logo/agentrix_logo_square_transparent.png",
       "resizeMode": "contain",
-      "backgroundColor": "#000000"
+      "backgroundColor": "#F6F8FA"
     },
     "assetBundlePatterns": [
       "**/*"

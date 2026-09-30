@@ -1,14 +1,15 @@
 /**
  * LoginScreen — sign in or sign up in one page (E84 A, I-049; `briefs/login-simplify-v1.md`).
  *
- * Three main buttons, the same as the Web: Google, Apple, email code (third until the production code
- * store and mail sending are fixed, E84). "更多方式" holds email + password (existing accounts),
- * wallet, X, Discord, Telegram and a self-hosted OpenClaw instance. "先逛逛" (guest) stays.
- * The order lives in `services/loginOptions.ts`. Only the screen changed: every button calls the same
+ * The server says which methods it can serve (`GET /api/auth/providers`, E86); the contract splits them
+ * into main buttons (email code, Google, Apple) and "更多方式" (email + password, wallet, X, Discord,
+ * Telegram), plus a self-hosted OpenClaw instance, always there. A method the server cannot serve is not
+ * shown; if the list cannot be read, the contract's fallback decides and "更多方式" opens by itself.
+ * "先逛逛" (guest) stays. The layout lives in `services/loginOptions.ts`. Every button calls the same
  * sign-in function as before. Colours come from the theme (light by default, E83).
  */
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useI18n } from '../../stores/i18nStore';
@@ -26,15 +27,9 @@ import {
   registerWithEmail,
   sendEmailCode,
 } from '../../services/auth';
-import {
-  EMAIL_CODE_RESEND_SECONDS,
-  LOGIN_MORE_METHODS,
-  LOGIN_PRIMARY_METHODS,
-  isLoginCode,
-  isLoginEmail,
-  type LoginMethod,
-  type LoginMethodId,
-} from '../../services/loginOptions';
+import { EMAIL_CODE_RESEND_SECONDS, isLoginCode, isLoginEmail, loginLayout, type LoginMethod, type LoginMethodId } from '../../services/loginOptions';
+import { readAuthProviders } from '../../services/authProviders';
+import type { AuthProvidersResponseV1 } from '../../../shared/types/auth-providers';
 import type { AuthStackParamList } from '../../navigation/types';
 import { useThemedStyles, type Palette } from '../../theme/useTheme';
 
@@ -63,6 +58,22 @@ export function LoginScreen() {
   const [codeSent, setCodeSent] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [instanceUrl, setInstanceUrl] = useState('');
+  // E86: which methods this server can serve. Read once per open (the service keeps a good answer 60 s).
+  const [providers, setProviders] = useState<{ kind: 'loading' } | { kind: 'ready'; value: AuthProvidersResponseV1 | null }>({ kind: 'loading' });
+
+  useEffect(() => {
+    let alive = true;
+    void readAuthProviders().then((value) => {
+      if (alive) setProviders({ kind: 'ready', value });
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const layout = loginLayout(providers.kind === 'ready' ? providers.value : null, Platform.OS);
+  // Nothing to show as a main button (the list could not be read, or nothing is configured): open 更多方式.
+  const moreOpen = showMore || (providers.kind === 'ready' && layout.primary.length === 0);
 
   useEffect(() => {
     if (cooldown <= 0) return undefined;
@@ -196,17 +207,18 @@ export function LoginScreen() {
             {t({ en: 'Sign in or sign up', zh: '登录或注册' })}
           </Text>
           <Text style={styles.sub}>{t({ en: 'New here? Your account is created as you sign in.', zh: '第一次用会直接帮你建好账号。' })}</Text>
-          {LOGIN_PRIMARY_METHODS.map((method) => methodButton(method, true))}
+          {providers.kind === 'loading' ? <ActivityIndicator style={styles.providersLoading} testID="login-providers-loading" /> : null}
+          {layout.primary.map((method) => methodButton(method, true))}
           <TouchableOpacity
             style={styles.moreToggle}
-            onPress={() => setShowMore((value) => !value)}
+            onPress={() => setShowMore(!moreOpen)}
             accessibilityRole="button"
-            accessibilityState={{ expanded: showMore }}
+            accessibilityState={{ expanded: moreOpen }}
             testID="login-more"
           >
-            <Text style={styles.moreToggleText}>{showMore ? t({ en: 'Fewer ways ▴', zh: '收起 ▴' }) : t({ en: 'More ways ▾', zh: '更多方式 ▾' })}</Text>
+            <Text style={styles.moreToggleText}>{moreOpen ? t({ en: 'Fewer ways ▴', zh: '收起 ▴' }) : t({ en: 'More ways ▾', zh: '更多方式 ▾' })}</Text>
           </TouchableOpacity>
-          {showMore ? <View style={styles.moreList}>{LOGIN_MORE_METHODS.map((method) => methodButton(method, false))}</View> : null}
+          {moreOpen ? <View style={styles.moreList}>{layout.more.map((method) => methodButton(method, false))}</View> : null}
           <TouchableOpacity style={[styles.guest, busy === 'guest' && styles.disabled]} onPress={guest} disabled={busy !== null} accessibilityRole="button" testID="login-guest">
             {busy === 'guest' ? <ActivityIndicator /> : <Text style={styles.guestText}>{t({ en: 'Look around first, sign up later', zh: '先逛逛，之后再注册' })}</Text>}
           </TouchableOpacity>
@@ -357,7 +369,8 @@ const makeStyles = (c: Palette) =>
     screen: { flex: 1, backgroundColor: c.bgPrimary },
     content: { padding: 24, paddingTop: 72, paddingBottom: 40, gap: 12 },
     header: { alignItems: 'center', marginBottom: 20, gap: 8 },
-    logo: { width: 72, height: 72 },
+    // The mark is a dark square tile; rounded, it reads as the app icon on the light page (E83).
+    logo: { width: 72, height: 72, borderRadius: 16 },
     brand: { color: c.textPrimary, fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
     section: { gap: 12 },
     title: { color: c.textPrimary, fontSize: 24, fontWeight: '800', textAlign: 'center' },
@@ -379,6 +392,7 @@ const makeStyles = (c: Palette) =>
     mark: { width: 28, height: 28, borderRadius: 14, backgroundColor: c.bgSecondary, alignItems: 'center', justifyContent: 'center' },
     markText: { color: c.textPrimary, fontSize: 14, fontWeight: '800' },
     spinner: { marginLeft: 8 },
+    providersLoading: { minHeight: 54 },
     moreToggle: { alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 },
     moreToggleText: { color: c.accent, fontSize: 14, fontWeight: '700' },
     moreList: { borderRadius: 14, borderWidth: 1, borderColor: c.border, backgroundColor: c.bgCard, paddingVertical: 4 },

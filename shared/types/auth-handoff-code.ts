@@ -27,6 +27,19 @@
  *   desktop 发起的 code 只能用 desktop 发起时的 `state` 和 `code_challenge` 换，mobile 同理。
  * - `exchange` 按 IP 限频（429 `handoff_rate_limited`）。
  * - 旧的"回调带 token"在三端都切换以后删掉（E84）。发起时不带 `handoff_client` 的，暂时照旧。
+ *
+ * 实现说明（I-053 第 4 步）：
+ * - 服务端给服务商的 OAuth `state` 是自己生成的随机值，发起记录（客户端的 `state`、`code_challenge`、回跳地址）
+ *   存在服务端，10 分钟（`AUTH_HANDOFF_START_TTL_SECONDS`），回调时取出即删。过了 10 分钟或者重复回调，
+ *   服务端不知道该跳回哪里，只显示一页"请回到 App 重新登录"，不回跳。
+ * - 这一版支持的服务商：google、discord、twitter（X 的 OAuth 2.0；只配了 OAuth 1.0a 时回跳 `provider_unavailable`）。
+ *   apple 要等网页 Apple 回调改成 POST（E86 ②）才接；在那之前不要用 `handoff_client` 发起 apple（生产上
+ *   `/auth/providers` 也说 apple 不可用）。
+ * - 发起按 IP 限频，超了也是 429 `handoff_rate_limited`（JSON，不回跳）；次数见 `AUTH_HANDOFF_LIMITS_V1`。
+ * - `issue` 换出来的 token，`iat` 和网页那份一样：转交给手机不会让它变成"最近登录"。OAuth 回调发的 code，
+ *   `iat` 是这次登录的时间。
+ * - 网页转手机（钱包登录，REQ-backend-073 补充第 5 点）：`POST /api/auth/handoff/issue`，只认本人登录凭据，
+ *   服务端发一个同样规则的 code，网页让用户点一下确认以后，自己跳到 `redirectUri?code=…&state=…`。
  */
 import { sha256Hex, utf8Encode } from './trust-loop-primitives';
 
@@ -34,6 +47,7 @@ export const AUTH_HANDOFF_SCHEMA_VERSION = 1 as const;
 
 export const AUTH_HANDOFF_ROUTES = {
   exchange: 'POST /api/auth/handoff/exchange', // AuthHandoffExchangeRequestV1 → AuthHandoffExchangeResponseV1
+  issue: 'POST /api/auth/handoff/issue', // AuthHandoffIssueRequestV1 → AuthHandoffIssueResponseV1（只认本人登录凭据）
 } as const;
 
 /** 发起浏览器登录时追加的查询参数名。 */
@@ -42,14 +56,26 @@ export const AUTH_HANDOFF_START_QUERY_V1 = {
   state: 'state',
   codeChallenge: 'code_challenge',
   codeChallengeMethod: 'code_challenge_method',
+  callbackPort: 'callback_port', // 只给 desktop
+  redirectUri: 'redirect_uri', // 只给 mobile
 } as const;
 
 export const AUTH_HANDOFF_CLIENTS = ['desktop', 'mobile'] as const;
 export type AuthHandoffClientV1 = (typeof AUTH_HANDOFF_CLIENTS)[number];
 
 export const AUTH_HANDOFF_CODE_TTL_SECONDS = 60;
+/** 服务端保存发起记录的时间：用户在服务商页面上最多停留这么久。 */
+export const AUTH_HANDOFF_START_TTL_SECONDS = 10 * 60;
+/** 限频（超了一律 429 `handoff_rate_limited`，带 `retryAfterSeconds`）。 */
+export const AUTH_HANDOFF_LIMITS_V1 = {
+  startsPerIpPerTenMinutes: 30,
+  exchangesPerIpPerMinute: 20,
+  issuesPerUserPerTenMinutes: 10,
+} as const;
 /** 手机回跳地址白名单（前缀精确到路径）。开发构建的 `exp://` 只在非生产环境接受，由服务端决定。 */
 export const AUTH_HANDOFF_MOBILE_REDIRECTS_V1 = ['agentrix://auth/callback'] as const;
+/** 开发构建（Expo Go）的回跳，只在非生产环境接受：`exp://<主机>[:端口]/--/auth/callback`。 */
+export const AUTH_HANDOFF_EXPO_REDIRECT_PATTERN = /^exp:\/\/[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?\/--\/auth\/callback$/;
 /** 桌面回跳：`http://127.0.0.1:<callback_port>/auth-callback`。 */
 export const AUTH_HANDOFF_DESKTOP_CALLBACK_PATH = '/auth-callback' as const;
 
@@ -66,7 +92,8 @@ export const AUTH_HANDOFF_ERROR_CODES = {
   invalidRequest: 'handoff_request_invalid', // 400，请求体格式不对，带 errors
   codeInvalid: 'handoff_code_invalid', // 400：过期、用过、查无此 code、state 或 codeVerifier 对不上
   startInvalid: 'handoff_start_invalid', // 400：发起时 state / code_challenge / 回跳地址不合格
-  rateLimited: 'handoff_rate_limited', // 429，按 IP，带 Retry-After
+  rateLimited: 'handoff_rate_limited', // 429，按 IP，带 retryAfterSeconds 和 Retry-After
+  notAllowed: 'handoff_not_allowed', // 403：issue 只认本人登录凭据（游客、MCP / OAuth 客户端 token、管理员不行）
 } as const;
 
 /** 回跳里 `error=` 的取值（不带服务商的原始报错）。 */
@@ -88,6 +115,27 @@ export interface AuthHandoffExchangeResponseV1 {
   authIssuedAt: number;
   user: { id: string; agentrixId: string | null; email: string | null };
 }
+
+/** 网页转手机：已登录的网页替手机发起时发的 code（REQ-backend-073 补充第 5 点）。 */
+export interface AuthHandoffIssueRequestV1 {
+  schemaVersion: typeof AUTH_HANDOFF_SCHEMA_VERSION;
+  client: 'mobile';
+  state: string;
+  codeChallenge: string;
+  /** 只接受 `AUTH_HANDOFF_MOBILE_REDIRECTS_V1`。 */
+  redirectUri: string;
+}
+
+export interface AuthHandoffIssueResponseV1 {
+  schemaVersion: typeof AUTH_HANDOFF_SCHEMA_VERSION;
+  code: string;
+  expiresAt: string;
+}
+
+/** 服务端解析发起参数后的结果。 */
+export type AuthHandoffStartV1 =
+  | { client: 'desktop'; state: string; codeChallenge: string; callbackPort: number }
+  | { client: 'mobile'; state: string; codeChallenge: string; redirectUri: string };
 
 const BASE64URL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
@@ -128,6 +176,97 @@ export function decodeAuthHandoffExchangeRequestV1(body: unknown): AuthHandoffDe
   if (typeof body.state !== 'string' || !AUTH_HANDOFF_STATE_PATTERN.test(body.state)) errors.push('state: invalid');
   if (typeof body.codeVerifier !== 'string' || !AUTH_HANDOFF_CODE_VERIFIER_PATTERN.test(body.codeVerifier)) errors.push('codeVerifier: invalid');
   return errors.length ? { ok: false, errors } : { ok: true, value: body as unknown as AuthHandoffExchangeRequestV1 };
+}
+
+/**
+ * 服务端用：读发起时的查询参数。没带 `handoff_client` 返回 `{ ok: true, value: null }`（走旧流程）；带了但任何一项
+ * 不合格就是失败（服务端回 400 `handoff_start_invalid`，不回跳）。同一个参数出现两次（数组）也算不合格。
+ * `allowExpoRedirect` 由服务端按环境决定（生产传 false）。
+ */
+export function decodeAuthHandoffStartQueryV1(
+  query: Record<string, unknown> | null | undefined,
+  options: { allowExpoRedirect: boolean },
+): AuthHandoffDecodeResultV1<AuthHandoffStartV1 | null> {
+  const q = isRecord(query) ? query : {};
+  const K = AUTH_HANDOFF_START_QUERY_V1;
+  if (q[K.client] === undefined) return { ok: true, value: null };
+  const errors: string[] = [];
+  const one = (key: string): string | undefined => {
+    const v = q[key];
+    if (v === undefined) return undefined;
+    if (typeof v !== 'string') {
+      errors.push(`${key}: single value`);
+      return undefined;
+    }
+    return v;
+  };
+  const client = one(K.client);
+  const state = one(K.state);
+  const codeChallenge = one(K.codeChallenge);
+  const method = one(K.codeChallengeMethod);
+  const callbackPort = one(K.callbackPort);
+  const redirectUri = one(K.redirectUri);
+  if (!(AUTH_HANDOFF_CLIENTS as readonly unknown[]).includes(client)) errors.push(`${K.client}: one of ${AUTH_HANDOFF_CLIENTS.join(', ')}`);
+  if (typeof state !== 'string' || !AUTH_HANDOFF_STATE_PATTERN.test(state)) errors.push(`${K.state}: invalid`);
+  if (typeof codeChallenge !== 'string' || !AUTH_HANDOFF_CODE_CHALLENGE_PATTERN.test(codeChallenge)) errors.push(`${K.codeChallenge}: invalid`);
+  if (method !== 'S256') errors.push(`${K.codeChallengeMethod}: S256`);
+  if (client === 'desktop') {
+    if (redirectUri !== undefined) errors.push(`${K.redirectUri}: not for desktop`);
+    const port = typeof callbackPort === 'string' && /^[1-9][0-9]{0,4}$/.test(callbackPort) ? Number(callbackPort) : NaN;
+    if (!(port >= 1 && port <= 65535)) errors.push(`${K.callbackPort}: 1-65535`);
+    if (errors.length) return { ok: false, errors };
+    return { ok: true, value: { client: 'desktop', state: state as string, codeChallenge: codeChallenge as string, callbackPort: port } };
+  }
+  if (client === 'mobile') {
+    if (callbackPort !== undefined) errors.push(`${K.callbackPort}: not for mobile`);
+    const allowed =
+      typeof redirectUri === 'string' &&
+      ((AUTH_HANDOFF_MOBILE_REDIRECTS_V1 as readonly string[]).includes(redirectUri) ||
+        (options.allowExpoRedirect && AUTH_HANDOFF_EXPO_REDIRECT_PATTERN.test(redirectUri)));
+    if (!allowed) errors.push(`${K.redirectUri}: not allowed`);
+    if (errors.length) return { ok: false, errors };
+    return { ok: true, value: { client: 'mobile', state: state as string, codeChallenge: codeChallenge as string, redirectUri: redirectUri as string } };
+  }
+  return { ok: false, errors };
+}
+
+/** 回跳地址：desktop 是本机回调口，mobile 是发起时给的 `redirect_uri`。 */
+export function authHandoffDestinationV1(start: AuthHandoffStartV1): string {
+  return start.client === 'desktop' ? `http://127.0.0.1:${start.callbackPort}${AUTH_HANDOFF_DESKTOP_CALLBACK_PATH}` : start.redirectUri;
+}
+
+/** 服务端用：拼回跳 URL，只带 `code` 或 `error`，外加原样的 `state`。 */
+export function buildAuthHandoffCallbackUrlV1(
+  start: AuthHandoffStartV1,
+  result: { code: string } | { error: AuthHandoffCallbackErrorV1 },
+): string {
+  const first = 'code' in result ? `code=${encodeURIComponent(result.code)}` : `error=${encodeURIComponent(result.error)}`;
+  return `${authHandoffDestinationV1(start)}?${first}&state=${encodeURIComponent(start.state)}`;
+}
+
+/** 服务端用：校验 issue 请求体（多余字段也算错）。 */
+export function decodeAuthHandoffIssueRequestV1(body: unknown): AuthHandoffDecodeResultV1<AuthHandoffIssueRequestV1> {
+  const errors: string[] = [];
+  if (!isRecord(body)) return { ok: false, errors: ['body: expected object'] };
+  for (const key of Object.keys(body)) {
+    if (!['schemaVersion', 'client', 'state', 'codeChallenge', 'redirectUri'].includes(key)) errors.push(`${key}: unexpected field`);
+  }
+  if (body.schemaVersion !== AUTH_HANDOFF_SCHEMA_VERSION) errors.push('schemaVersion: 1');
+  if (body.client !== 'mobile') errors.push('client: mobile');
+  if (typeof body.state !== 'string' || !AUTH_HANDOFF_STATE_PATTERN.test(body.state)) errors.push('state: invalid');
+  if (typeof body.codeChallenge !== 'string' || !AUTH_HANDOFF_CODE_CHALLENGE_PATTERN.test(body.codeChallenge)) errors.push('codeChallenge: invalid');
+  if (typeof body.redirectUri !== 'string' || !(AUTH_HANDOFF_MOBILE_REDIRECTS_V1 as readonly string[]).includes(body.redirectUri)) {
+    errors.push('redirectUri: not allowed');
+  }
+  return errors.length ? { ok: false, errors } : { ok: true, value: body as unknown as AuthHandoffIssueRequestV1 };
+}
+
+/** 客户端用：解码 issue 的响应。 */
+export function decodeAuthHandoffIssueResponseV1(value: unknown): AuthHandoffIssueResponseV1 | null {
+  if (!isRecord(value) || value.schemaVersion !== AUTH_HANDOFF_SCHEMA_VERSION) return null;
+  if (typeof value.code !== 'string' || !AUTH_HANDOFF_CODE_PATTERN.test(value.code)) return null;
+  if (typeof value.expiresAt !== 'string' || !Number.isFinite(Date.parse(value.expiresAt))) return null;
+  return { schemaVersion: AUTH_HANDOFF_SCHEMA_VERSION, code: value.code, expiresAt: value.expiresAt };
 }
 
 /** 客户端用：解码换 token 的响应。 */

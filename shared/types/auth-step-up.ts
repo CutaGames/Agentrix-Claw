@@ -12,6 +12,8 @@
  * 3. `POST /api/auth/step-up/finish`，带 `stepUpRef` 和验证码或 WebAuthn 断言。
  * 4. 服务端返回一个新的登录 token：同一个用户，`iat` 是现在。客户端换掉本地 token，重试第 1 步的请求。
  *
+ * 弹框之前可以先 `GET /api/auth/step-up/methods`，看这个账户能用哪几种方式（REQ-backend-073 补充第 1 点）。
+ *
  * 规则：
  * - 只有本人的登录凭据能用（`authIssuedAt` 不为空的 token）。游客、MCP / OAuth 客户端 token、管理员 token、
  *   运行时凭据一律 403 `step_up_not_allowed`，不能用它换出登录 token。
@@ -21,18 +23,46 @@
  *   `type=webauthn.get`、挑战、origin、`rpIdHash`、用户在场标志和签名计数。挑战 5 分钟有效，只能用一次。
  * - `stepUpRef` 绑定发起它的用户和方式；别人的、过期的、用过的一律 `step_up_invalid`，不区分原因。
  * - 换出来的 token 和普通登录 token 一样（30 天，E84 不改期限），只是 `iat` 更新。
+ * - "15 分钟 5 次"只数真的发了码或发了挑战的 start；返回 409 / 429 / 503 的不算。
+ * - `finish` 的请求带着 cookie `agentrix_token` 时，响应同时 `Set-Cookie` 换掉它（属性和 `/auth/cookie-set` 一样），
+ *   网页不用再调 `cookie-set`；不带就只在响应体里返回 token。
+ * - 通行密钥的 `rpId` 是 `agentrix.top`（和 `/api/v1/passkey/register/start` 一致，服务端配置 `PASSKEY_RP_ID` 可改）；
+ *   origin 缺省只收 `https://agentrix.top`、`https://www.agentrix.top`，staging 用 `PASSKEY_ALLOWED_ORIGINS` 配成自己的。
+ * - 429 的错误体带 `retryAfterSeconds`（`api-error.ts` 的转发字段），响应头 `Retry-After` 也带。
+ *   另外每个 IP 对每条路由每分钟 10 次（登录类接口共用的限频），超了也是 429、也带 `retryAfterSeconds`，但 `code` 不是
+ *   `step_up_rate_limited`。客户端对 429 一律按 `retryAfterSeconds` 等，不按 `code` 分支。
  */
 import { STEP_UP_MAX_AGE_SECONDS, STEP_UP_RECENT_SIGN_IN_REASON, STEP_UP_REQUIRED_CODE } from './visibility-actions';
 
 export const AUTH_STEP_UP_SCHEMA_VERSION = 1 as const;
 
 export const AUTH_STEP_UP_ROUTES = {
+  methods: 'GET /api/auth/step-up/methods', // → AuthStepUpMethodsResponseV1
   start: 'POST /api/auth/step-up/start', // AuthStepUpStartRequestV1 → AuthStepUpStartResponseV1
   finish: 'POST /api/auth/step-up/finish', // AuthStepUpFinishRequestV1 → AuthStepUpFinishResponseV1
 } as const;
 
 export const AUTH_STEP_UP_METHODS = ['email_code', 'passkey'] as const;
 export type AuthStepUpMethodV1 = (typeof AUTH_STEP_UP_METHODS)[number];
+
+/**
+ * 某种方式用不了的原因：
+ * - `no_email`：账户没有邮箱；
+ * - `email_unavailable`：服务端现在发不了验证码（`GET /api/auth/providers` 里 `email_code` 不可用）；
+ * - `no_passkey`：账户没有登记通行密钥。
+ */
+export const AUTH_STEP_UP_METHOD_UNAVAILABLE_REASONS = ['no_email', 'email_unavailable', 'no_passkey'] as const;
+export type AuthStepUpMethodUnavailableReasonV1 = (typeof AUTH_STEP_UP_METHOD_UNAVAILABLE_REASONS)[number];
+
+export type AuthStepUpMethodStatusV1 =
+  | { method: AuthStepUpMethodV1; available: true }
+  | { method: AuthStepUpMethodV1; available: false; reason: AuthStepUpMethodUnavailableReasonV1 };
+
+export interface AuthStepUpMethodsResponseV1 {
+  schemaVersion: typeof AUTH_STEP_UP_SCHEMA_VERSION;
+  /** 每种方式一条，顺序照 `AUTH_STEP_UP_METHODS`。 */
+  methods: AuthStepUpMethodStatusV1[];
+}
 
 export const AUTH_STEP_UP_LIMITS_V1 = {
   emailCodeTtlSeconds: 10 * 60,
@@ -204,6 +234,31 @@ export function decodeAuthStepUpStartResponseV1(value: unknown): AuthStepUpStart
     };
   }
   return null;
+}
+
+/**
+ * 客户端用：解码 methods 的响应。认不出的方式跳过（以后加方式不会让旧客户端报错）；原因认不出的，
+ * 按不可用处理，`reason` 记成 `email_unavailable` / `no_passkey` 里对应方式的那个。
+ */
+export function decodeAuthStepUpMethodsResponseV1(value: unknown): AuthStepUpMethodsResponseV1 | null {
+  if (!isRecord(value) || value.schemaVersion !== AUTH_STEP_UP_SCHEMA_VERSION || !Array.isArray(value.methods)) return null;
+  const methods: AuthStepUpMethodStatusV1[] = [];
+  for (const item of value.methods) {
+    if (!isRecord(item) || !(AUTH_STEP_UP_METHODS as readonly unknown[]).includes(item.method)) continue;
+    const method = item.method as AuthStepUpMethodV1;
+    if (methods.some((known) => known.method === method)) continue;
+    if (item.available === true) {
+      methods.push({ method, available: true });
+      continue;
+    }
+    const reason = (AUTH_STEP_UP_METHOD_UNAVAILABLE_REASONS as readonly unknown[]).includes(item.reason)
+      ? (item.reason as AuthStepUpMethodUnavailableReasonV1)
+      : method === 'passkey'
+        ? 'no_passkey'
+        : 'email_unavailable';
+    methods.push({ method, available: false, reason });
+  }
+  return { schemaVersion: AUTH_STEP_UP_SCHEMA_VERSION, methods };
 }
 
 /** 客户端用：解码 finish 的响应。 */

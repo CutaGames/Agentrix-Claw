@@ -44,6 +44,14 @@ describe('fourZoneStateFromPath', () => {
       routes: [{ name: 'Main' }, { name: 'ZoneUnavailable', params: { zone: 'twin', tab: 'visitors' } }],
     });
   });
+  it('matters/on-computer opens 电脑上 even without a paired computer (the tab is hidden, the page is not; Maestro 91)', () => {
+    const state = fourZoneStateFromPath('agentrix://matters/on-computer');
+    expect(state?.routes[0].state?.routes[0]).toEqual({
+      name: 'Matters',
+      state: { routes: [{ name: 'MattersDesktop', params: { tab: 'on-computer' } }] },
+    });
+  });
+
   it('twin/income lands on the orders screen, with an order ref from the order_update push (T7)', () => {
     const state = fourZoneStateFromPath('agentrix://twin/income?ref=ord_0123456789abcdef0123456789abcdef');
     expect(state?.routes[0].state?.routes[0]).toEqual({

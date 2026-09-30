@@ -87,6 +87,17 @@ appId: app.agentrix.claw
     timeout: 10000
 - takeScreenshot: "91-twin-income"
 - back
+# ── 事项 → 电脑上 → 急停回执 (REQ-mobile-074, L3) by its zone link: the tab is
+# hidden without a paired computer, the page is not. A failed read is a line
+# on the page (desktop-control-load-error), never a dialog. Read-only.
+- openLink: agentrix://matters/on-computer
+- scrollUntilVisible:
+    element:
+      id: "device-safety-receipts"
+    direction: DOWN
+    timeout: 15000
+- takeScreenshot: "91-matters-computer-safety-receipts"
+- back
 # ── Old links (M1-i): a retired feature opens the "link no longer works" notice.
 - openLink: agentrix://discover/predict
 - extendedWaitUntil:

@@ -192,26 +192,43 @@ class AndroidBackgroundWakeWordService : Service() {
   private var silentFrames = 0
   private var lastTriggerAt = 0L
   @Volatile private var monitoring = false
+  /** The most recent start delivered to onStartCommand; the service only ever stops with it (see onStartCommand). */
+  @Volatile private var lastStartId = 0
 
   override fun onCreate() {
     super.onCreate()
     isRunning = true
     createNotificationChannel()
-    startForegroundCompat()
-    refreshConfigAndRuntime()
+    // Nothing else here: onStartCommand always follows and calls startForeground for that start.
+    // Stopping from onCreate brought the service down while a startForegroundService() was still
+    // waiting for startForeground, and Android then kills the whole app
+    // (ForegroundServiceDidNotStartInTimeException, Claw build 535).
   }
 
+  /**
+   * Every start is answered here, once, in order:
+   * - STOP (sent with startService) never calls startForeground and stops with its own startId;
+   * - START / REFRESH / a sticky restart (sent with startForegroundService) call startForeground
+   *   first, always, then keep running while the microphone permission is granted (same rule as
+   *   before; the overlay ball shows even when there is no model to listen with).
+   * Stopping always goes through stopSelfResult(startId): it does nothing when a newer start is
+   * already queued, so a pending startForegroundService() is never left without its startForeground.
+   */
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    when (intent?.action) {
-      ACTION_STOP -> {
-        stopSelfSafely()
-        return START_NOT_STICKY
-      }
-      ACTION_REFRESH, ACTION_START, null -> {
-        startForegroundCompat()
-        refreshConfigAndRuntime()
-      }
+    lastStartId = startId
+    if (intent?.action == ACTION_STOP) {
+      stopSafely(startId)
+      return START_NOT_STICKY
     }
+    if (!startForegroundCompat()) {
+      stopSafely(startId)
+      return START_NOT_STICKY
+    }
+    if (!hasRecordPermission()) {
+      stopSafely(startId)
+      return START_NOT_STICKY
+    }
+    refreshConfigAndRuntime()
     return START_STICKY
   }
 
@@ -247,9 +264,10 @@ class AndroidBackgroundWakeWordService : Service() {
     return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
   }
 
-  private fun startForegroundCompat() {
+  /** Satisfies the startForegroundService() contract for this start; false when the system refused. */
+  private fun startForegroundCompat(): Boolean {
     val notification = buildNotification()
-    try {
+    return try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && hasRecordPermission()) {
         // RECORD_AUDIO granted: legal to run a microphone-typed FGS.
         startForeground(NOTIFICATION_ID, notification, ServiceInfoForegroundType.microphone)
@@ -259,22 +277,17 @@ class AndroidBackgroundWakeWordService : Service() {
         // app is not in an eligible state (e.g. a START_STICKY auto-restart from
         // background) — throws SecurityException and crashes the whole process.
         // Start a plain, typeless foreground notification just to satisfy the
-        // startForegroundService() contract, then stand down until the user
-        // enables wake-word and grants the mic permission.
+        // startForegroundService() contract; onStartCommand then stands down (with its startId)
+        // until the user enables wake-word and grants the mic permission.
         startForeground(NOTIFICATION_ID, notification)
-        if (!hasRecordPermission()) {
-          stopSelfSafely()
-        }
       }
+      true
     } catch (t: Throwable) {
       // Never let a foreground-service start failure (SecurityException,
       // ForegroundServiceStartNotAllowedException, InvalidForegroundServiceTypeException,
       // etc.) crash the host app. Log and stand the service down gracefully.
       android.util.Log.w("WakeWordService", "startForeground failed; standing down", t)
-      try {
-        stopSelfSafely()
-      } catch (_: Throwable) {
-      }
+      false
     }
   }
 
@@ -405,7 +418,7 @@ class AndroidBackgroundWakeWordService : Service() {
           longPressRunnable = Runnable {
             if (!moved) {
               Log.i(TAG, "Long-press detected — stopping service and removing overlay")
-              stopSelf()
+              stopSafely(lastStartId)
             }
           }
           longPressHandler?.postDelayed(longPressRunnable!!, 800L)
@@ -580,9 +593,13 @@ class AndroidBackgroundWakeWordService : Service() {
     startActivity(intent)
   }
 
-  private fun stopSelfSafely() {
+  /** Stops only if [startId] is still the latest start; a newer queued start keeps the service alive. */
+  private fun stopSafely(startId: Int) {
+    try {
       stopForegroundCompat(removeNotification = true)
-    stopSelf()
+    } catch (_: Throwable) {
+    }
+    stopSelfResult(startId)
   }
 
     private fun stopForegroundCompat(removeNotification: Boolean) {
