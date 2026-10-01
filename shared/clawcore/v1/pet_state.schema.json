@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentrix.top/schemas/clawcore/v1/pet_state.json",
+  "title": "ClawCore PetState Frame",
+  "description": "Server → device broadcast of a pet's current operational state. Phase 5 HW-10.1.",
+  "type": "object",
+  "required": ["type", "seq", "pet_skin_id", "energy", "paused", "ts"],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "const": "pet_state" },
+    "seq": { "type": "integer", "minimum": 0, "description": "Monotonic per-session sequence number" },
+    "pet_skin_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "energy": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "paused": { "type": "boolean" },
+    "paused_reason": { "type": ["string", "null"], "maxLength": 256 },
+    "daily_spend_cents": { "type": "integer", "minimum": 0 },
+    "ts": { "type": "integer", "minimum": 0, "description": "Unix epoch milliseconds" }
+  }
+}

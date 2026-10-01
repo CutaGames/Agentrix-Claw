@@ -1,0 +1,46 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 22: Plaza marketplace full pass — Skills / Tasks / Pets / Resources
+# (2026-09-27 M1: rewritten for the current marketplace segments; the old
+# Feed / Play segments and "Sports Predictions" were removed — D22.)
+# 强断言:deep-link 进 Plaza,marketplace-seg-* testID 逐段切换 + 内容滚动。
+# 各段内容卡文案随 i18n(CI 为英文),故内容只截图;段切换用 testID 硬断。
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+- assertVisible:
+    id: "tab-world"
+- openLink: agentrix://plaza
+- extendedWaitUntil:
+    visible:
+      id: "marketplace-seg-skills"
+    timeout: 15000
+# ── Skills ──────────────────────────────────────────────
+- tapOn:
+    id: "marketplace-seg-skills"
+- waitForAnimationToEnd
+- scroll
+- takeScreenshot: "22-plaza-skills"
+# ── Tasks ───────────────────────────────────────────────
+- tapOn:
+    id: "marketplace-seg-tasks"
+- waitForAnimationToEnd
+- scroll
+- takeScreenshot: "22-plaza-tasks"
+# ── Pets (skin market) ──────────────────────────────────
+- tapOn:
+    id: "marketplace-seg-pets"
+- waitForAnimationToEnd
+- scroll
+- takeScreenshot: "22-plaza-pets"
+# ── Resources & goods ───────────────────────────────────
+- tapOn:
+    id: "marketplace-seg-resources"
+- waitForAnimationToEnd
+- scroll
+- takeScreenshot: "22-plaza-resources"
+# ── Top bar: search opens and closes ────────────────────
+- assertVisible:
+    id: "marketplace-search"
+- assertNotVisible:
+    id: "marketplace-seg-predictions"

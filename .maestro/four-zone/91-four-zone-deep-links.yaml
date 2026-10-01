@@ -1,0 +1,141 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Four-zone IA deep links (M1-c zone links, M1-i old links, M1-j unbuilt
+# tabs). Split out of 90 after CI build 528: its first `openLink` never
+# showed 外观 and the run left no screenshot or log, so it could not tell
+# "the link was ignored" from "the app reset". Each link below fails on its
+# own step; the first one also says where the app ended up.
+# Only for builds with EXPO_PUBLIC_MOBILE_FOUR_ZONE_IA=1. Run it explicitly:
+#   maestro test .maestro/four-zone/91-four-zone-deep-links.yaml
+# The Maestro E2E build logs `[maestro-e2e] link received`,
+# `[maestro-e2e] link resolved to …` and `[maestro-e2e] route …` to logcat
+# (route names only).
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "tab-companion"
+    timeout: 20000
+# Start on 我的, so "the link did nothing" is recognisable.
+- tapOn:
+    id: "tab-my"
+- extendedWaitUntil:
+    visible:
+      id: "my-home-screen"
+    timeout: 10000
+# ── A zone link to a built screen ────────────────────────────
+- openLink: agentrix://my/appearance
+- extendedWaitUntil:
+    visible:
+      id: "appearance-screen"
+    timeout: 10000
+    optional: true
+# 外观 did not open: fail on the line that names where the app is instead.
+- runFlow:
+    when:
+      notVisible:
+        id: "appearance-screen"
+    commands:
+      # Still on 我的: the link was ignored (never reached the navigator, or no route).
+      - assertNotVisible:
+          id: "my-home-screen"
+      # Back on 伙伴: the app restarted, or the error boundary reset it.
+      - assertNotVisible:
+          id: "agent-chat-screen"
+      # The link resolved to one of the notices instead of 外观.
+      - assertNotVisible:
+          id: "zone-link-notice-screen"
+      - assertNotVisible:
+          id: "zone-unavailable-screen"
+      # No tab bar: the app is not in front (crash, system dialog).
+      - assertVisible:
+          id: "tab-my"
+- assertVisible:
+    id: "appearance-screen"
+- takeScreenshot: "91-link-appearance"
+- back
+# ── An unbuilt tab shows the honest notice (M1-j) ────────────
+- openLink: agentrix://twin/visitors
+- extendedWaitUntil:
+    visible:
+      id: "zone-unavailable-screen"
+    timeout: 10000
+- takeScreenshot: "91-zone-unavailable"
+- back
+# 带入与备份 is not on the phone yet but Web has it: the notice offers the
+# web link. Not tapped here (it would leave the app).
+- openLink: agentrix://my/import
+- extendedWaitUntil:
+    visible:
+      id: "zone-unavailable-open-web"
+    timeout: 10000
+- back
+# ── 分身 → 公开状态 (M4-b). Read-only: never tap the stop button in a smoke run.
+- openLink: agentrix://twin/status
+- extendedWaitUntil:
+    visible:
+      id: "twin-status-screen"
+    timeout: 10000
+- takeScreenshot: "91-twin-status"
+- back
+# ── 分身 → 收入与回执 (T7). Read-only here: never tap a deliver button in a smoke run.
+- openLink: agentrix://twin/income
+- extendedWaitUntil:
+    visible:
+      id: "twin-income-screen"
+    timeout: 10000
+- takeScreenshot: "91-twin-income"
+- back
+# ── 事项 → 电脑上 → 急停回执 (REQ-mobile-074, L3) by its zone link: the tab is
+# hidden without a paired computer, the page is not. A failed read is a line
+# on the page (desktop-control-load-error), never a dialog. Read-only.
+- openLink: agentrix://matters/on-computer
+- scrollUntilVisible:
+    element:
+      id: "device-safety-receipts"
+    direction: DOWN
+    timeout: 15000
+- takeScreenshot: "91-matters-computer-safety-receipts"
+- back
+# ── Old links (M1-i): a retired feature opens the "link no longer works" notice.
+- openLink: agentrix://discover/predict
+- extendedWaitUntil:
+    visible:
+      id: "zone-link-notice-screen"
+    timeout: 10000
+- takeScreenshot: "91-link-retired"
+- back
+# ── A zone link with a ref ───────────────────────────────────
+- openLink: agentrix://matters/pending?ref=smoke-1
+- extendedWaitUntil:
+    visible:
+      id: "matters-home-screen"
+    timeout: 10000
+# A ref that is not an order shows no order notice.
+- assertNotVisible:
+    id: "matters-order-notice"
+# (no `back` here: 事项 is a tab root, and back from it can leave the app)
+# ── T7 `order_update` push landing (L3). The push resolves to exactly this
+# link (MOBILE_PUSH_DESTINATIONS.order_update: 事项 → 待我处理 + the ord_ ref).
+# "我的分身接的单" opens 分身 → 收入与回执 on the phone; it is only there when
+# the account has an Agent. Read-only: never tap a deliver button.
+- openLink: agentrix://matters/pending?ref=ord_0123456789abcdef0123456789abcdef
+- extendedWaitUntil:
+    visible:
+      id: "matters-order-notice"
+    timeout: 10000
+- takeScreenshot: "91-order-update-landing"
+- runFlow:
+    when:
+      visible:
+        id: "matters-order-open-seller"
+    commands:
+      - tapOn:
+          id: "matters-order-open-seller"
+      - extendedWaitUntil:
+          visible:
+            id: "twin-income-screen"
+          timeout: 10000
+      - takeScreenshot: "91-order-update-income"
+      - back
