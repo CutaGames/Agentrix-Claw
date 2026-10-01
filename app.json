@@ -3,7 +3,7 @@
     "name": "Agentrix",
     "slug": "agentrix-mobile",
     "scheme": "agentrix",
-    "version": "1.4.0",
+    "version": "1.4.1",
     "orientation": "portrait",
     "icon": "./Agentrix Logo/agentrix_app_icon_1024.png",
     "userInterfaceStyle": "automatic",
@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.agentrix.claw",
-      "buildNumber": "5",
+      "buildNumber": "6",
       "infoPlist": {
         "CFBundleDisplayName": "Agentrix",
         "UIBackgroundModes": [
@@ -54,7 +54,7 @@
       }
     },
     "android": {
-      "versionCode": 5,
+      "versionCode": 6,
       "adaptiveIcon": {
         "foregroundImage": "./Agentrix Logo/agentrix_app_icon_1024.png",
         "backgroundColor": "#000000"
@@ -98,7 +98,7 @@
       "favicon": "./Agentrix Logo/favicon_64.png"
     },
     "newArchEnabled": true,
-    "runtimeVersion": "1.4.0",
+    "runtimeVersion": "1.4.1",
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",

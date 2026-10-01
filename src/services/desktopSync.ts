@@ -83,6 +83,8 @@ export interface MobileDesktopState {
       clipboardTextPreview?: string;
     };
     lastSeenAt: string;
+    /** Heartbeat within 5 minutes, by the server clock (older backends do not send it). */
+    isOnline?: boolean;
   }>;
   tasks: Array<any>;
   approvals: MobileDesktopApproval[];

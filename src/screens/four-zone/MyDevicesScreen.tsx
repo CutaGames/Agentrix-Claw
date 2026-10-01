@@ -11,6 +11,10 @@
  * read-back, never an optimistic removal. A `device_paired` push (ref = the
  * device id) opens this list with that device highlighted and its unbind
  * button up front; an unknown ref highlights nothing.
+ *
+ * L5 (REQ-mobile-095): 这台手机 registers the phone itself as a device with its own hardware key
+ * (phoneDeviceKey.ts). Only in builds with `EXPO_PUBLIC_PHONE_DEVICE_KEY=1` and the native module; the
+ * phone's own row in the hardware list is labelled 这台手机.
  */
 import React from 'react';
 import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -31,6 +35,8 @@ import {
   type DeviceRevokeOutcome,
   type MobileRegisteredDevice,
 } from '../../services/myDevices';
+import { enrollThisPhone, readThisPhone } from '../../services/phoneDeviceEnrollment';
+import { PHONE_DEVICE_KEY_COPY, PHONE_KEY_HARDWARE_COPY, phoneDeviceKeyErrorText } from '../../services/phoneDeviceKeyCopy';
 
 type Lang = 'zh' | 'en';
 
@@ -58,6 +64,20 @@ export function MyDevicesScreen() {
     retry: 0,
     staleTime: 30_000,
   });
+  const thisPhoneKey = ['four-zone', 'this-phone'];
+  const thisPhone = useQuery({ queryKey: thisPhoneKey, queryFn: readThisPhone, enabled: signedIn, retry: 0, staleTime: 60_000 });
+  const enroll = useMutation({
+    mutationFn: () => enrollThisPhone(t(PHONE_DEVICE_KEY_COPY.prompt)),
+    onError: (error: any) => {
+      if (error?.code === 'user_cancelled') return;
+      Alert.alert(t(PHONE_DEVICE_KEY_COPY.failedTitle), t(phoneDeviceKeyErrorText(error?.code)));
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: thisPhoneKey });
+      void queryClient.invalidateQueries({ queryKey: registryKey });
+    },
+  });
+  const thisPhoneId = thisPhone.data?.deviceId ?? null;
   const computers = normalizeComputers(desktop.data);
   const hardware = registry.data ?? [];
   const focused = findFocusedDevice(hardware, route.params?.ref);
@@ -129,6 +149,39 @@ export function MyDevicesScreen() {
           </Text>
         </View>
       ) : null}
+      {thisPhone.data?.available ? (
+        <>
+          <Text style={styles.section}>{t(PHONE_DEVICE_KEY_COPY.section)}</Text>
+          <View style={styles.block} testID="my-devices-this-phone">
+            {thisPhone.data.registered ? (
+              <Text style={styles.itemLabel} testID="my-devices-this-phone-registered">
+                {t(PHONE_DEVICE_KEY_COPY.enrolled)}
+              </Text>
+            ) : null}
+            {thisPhone.data.registered && thisPhone.data.deviceId ? (
+              <Text style={styles.itemHint}>
+                {shortDeviceId(thisPhone.data.deviceId)}
+                {thisPhone.data.hardware ? ` · ${t(PHONE_KEY_HARDWARE_COPY[thisPhone.data.hardware])}` : ''}
+              </Text>
+            ) : null}
+            <Text style={styles.muted}>{t(PHONE_DEVICE_KEY_COPY.explain)}</Text>
+            {!thisPhone.data.registered ? (
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => enroll.mutate()}
+                disabled={enroll.isPending}
+                accessibilityRole="button"
+                accessibilityLabel={t(PHONE_DEVICE_KEY_COPY.enroll)}
+                testID="my-devices-this-phone-enroll"
+              >
+                <Text style={styles.rowLabel}>{t(enroll.isPending ? PHONE_DEVICE_KEY_COPY.enrolling : PHONE_DEVICE_KEY_COPY.enroll)}</Text>
+                {enroll.isPending ? <ActivityIndicator /> : <Text style={styles.chevron}>›</Text>}
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </>
+      ) : null}
+
       <Text style={styles.section}>{t({ en: 'Computers', zh: '电脑' })}</Text>
       <View style={styles.block} testID="my-devices-computers">
         {desktop.isLoading ? <ActivityIndicator /> : null}
@@ -183,7 +236,10 @@ export function MyDevicesScreen() {
               testID={`my-devices-hardware-${device.deviceId}`}
             >
               <View style={styles.hardwareText}>
-                <Text style={styles.itemLabel}>{device.label ?? shortDeviceId(device.deviceId)}</Text>
+                <Text style={styles.itemLabel}>
+                  {device.deviceId === thisPhoneId ? `${t(PHONE_DEVICE_KEY_COPY.thisPhone)} · ` : ''}
+                  {device.label ?? shortDeviceId(device.deviceId)}
+                </Text>
                 <Text style={styles.itemHint}>
                   {statusLabel(device)}
                   {device.label ? ` · ${shortDeviceId(device.deviceId)}` : ''}

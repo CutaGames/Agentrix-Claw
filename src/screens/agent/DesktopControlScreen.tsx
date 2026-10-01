@@ -35,6 +35,7 @@ import {
   type DeviceSafetyReceiptsRead,
 } from '../../services/deviceSafetyReceipts';
 import { useReduceMotion } from '../../hooks/useReduceMotion';
+import { listedComputers } from '../../services/desktopDevicesView';
 
 const prettyJson = (value: unknown) => {
   if (value == null) return 'No result';
@@ -91,8 +92,9 @@ export function DesktopControlScreen() {
       setState(next);
       setContinuity(nextContinuity);
       setLoadFailed(false);
-      if (!selectedDeviceId && next.devices[0]?.deviceId) {
-        setSelectedDeviceId(next.devices[0].deviceId);
+      const firstListed = listedComputers(next.devices)[0];
+      if (!selectedDeviceId && firstListed?.deviceId) {
+        setSelectedDeviceId(firstListed.deviceId);
       }
     } catch {
       // Said on the page, not in a dialog: the 5 s poll would raise a new one every 5 seconds.
@@ -129,7 +131,9 @@ export function DesktopControlScreen() {
     if (safety?.kind === 'ready') seenReceipts.current = new Set(safety.receipts.map((receipt) => receipt.receiptRef));
   }, [safety]);
 
-  const devices = state?.devices || [];
+  // Bound computers, and others only while online: the old `desktop-<uuid>` row of a computer bound since
+  // is not listed twice (desktopDevicesView.ts).
+  const devices = listedComputers(state?.devices);
   const commands = state?.commands || [];
   const approvals = (state?.approvals || []).map(normalizeMobileDesktopApproval).filter(Boolean);
   const sessions = state?.sessions || [];

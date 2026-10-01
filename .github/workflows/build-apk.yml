@@ -53,6 +53,9 @@ jobs:
       # other ref leaves it empty, and the "Staging switch guard" step fails any
       # formal build (RELEASE_SIGNING) that would inline it from anywhere.
       EXPO_PUBLIC_STAGING_SWITCH: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-staging-') && '1' || '' }}
+      # REQ-mobile-097 / I-118: the phone's own P-256 device key (modules/agentrix-device-key) is
+      # preview-only for now, same refs as the staging switch; the guard below refuses it on formal builds.
+      EXPO_PUBLIC_PHONE_DEVICE_KEY: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-staging-') && '1' || '' }}
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       release-apk: ${{ steps.paths.outputs.release }}
@@ -89,15 +92,15 @@ jobs:
       # EXPO_PUBLIC_* from the environment and from .env files, so check both.
       - name: Staging switch guard
         run: |
-          echo "[ci] ref=$GITHUB_REF_NAME RELEASE_SIGNING=$RELEASE_SIGNING EXPO_PUBLIC_STAGING_SWITCH='${EXPO_PUBLIC_STAGING_SWITCH:-}'"
-          files=$(ls -1a .env* 2>/dev/null | xargs -r grep -lE '^[[:space:]]*(export[[:space:]]+)?EXPO_PUBLIC_STAGING_SWITCH=' 2>/dev/null || true)
+          echo "[ci] ref=$GITHUB_REF_NAME RELEASE_SIGNING=$RELEASE_SIGNING EXPO_PUBLIC_STAGING_SWITCH='${EXPO_PUBLIC_STAGING_SWITCH:-}' EXPO_PUBLIC_PHONE_DEVICE_KEY='${EXPO_PUBLIC_PHONE_DEVICE_KEY:-}'"
+          files=$(ls -1a .env* 2>/dev/null | xargs -r grep -lE '^[[:space:]]*(export[[:space:]]+)?EXPO_PUBLIC_(STAGING_SWITCH|PHONE_DEVICE_KEY)=' 2>/dev/null || true)
           if [ "$RELEASE_SIGNING" = "true" ]; then
-            if [ -n "${EXPO_PUBLIC_STAGING_SWITCH:-}" ] || [ -n "$files" ]; then
-              echo "[ci] formal build with EXPO_PUBLIC_STAGING_SWITCH set (env or: $files); refusing (REQ-mobile-080)"
+            if [ -n "${EXPO_PUBLIC_STAGING_SWITCH:-}" ] || [ -n "${EXPO_PUBLIC_PHONE_DEVICE_KEY:-}" ] || [ -n "$files" ]; then
+              echo "[ci] formal build with EXPO_PUBLIC_STAGING_SWITCH / EXPO_PUBLIC_PHONE_DEVICE_KEY set (env or: $files); refusing (REQ-mobile-080, REQ-mobile-097)"
               exit 1
             fi
-          elif [ "${EXPO_PUBLIC_STAGING_SWITCH:-}" = "1" ] && [ "$MOBILE_FOUR_ZONE_BUILD" != "true" ]; then
-            echo "[ci] staging switch outside a four-zone preview ref; refusing"
+          elif { [ "${EXPO_PUBLIC_STAGING_SWITCH:-}" = "1" ] || [ "${EXPO_PUBLIC_PHONE_DEVICE_KEY:-}" = "1" ]; } && [ "$MOBILE_FOUR_ZONE_BUILD" != "true" ]; then
+            echo "[ci] staging switch / phone device key outside a four-zone preview ref; refusing"
             exit 1
           fi
       - name: Java 17

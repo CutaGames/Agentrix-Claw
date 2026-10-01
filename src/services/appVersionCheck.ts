@@ -7,8 +7,16 @@
  *   `agentrix.top` or one of its subdomains; any other address is never opened.
  * - Android only: the address is an APK. iOS updates come from the store.
  * - A good answer is kept for 10 minutes per API base; a failure is not kept.
+ * - The body is read with the contract's decoder (`shared/types/app-version.ts`, REQ-backend-083): the same
+ *   version and download-address rules as the server.
  */
 import type { HttpTransportV1 } from '../../shared/client/transport';
+import {
+  APP_VERSION_PATTERN,
+  decodeAppVersionInfoResponseV1,
+  isTrustedAppDownloadUrlV1,
+  type AppVersionInfoResponseV1,
+} from '../../shared/types/app-version';
 import { getApiConfig } from './api';
 import { mobileV6HttpTransport } from './mobileV6Runtime';
 
@@ -16,23 +24,9 @@ export const APP_VERSION_PATH = '/app/version';
 export const APP_VERSION_CACHE_MS = 10 * 60_000;
 export const APP_VERSION_TIMEOUT_MS = 5_000;
 
-export interface AppVersionInfoV1 {
-  latestVersion: string;
-  apkUrl: string;
-  releaseNotes: string | null;
-}
-
 export interface AppUpdateOfferV1 {
   latestVersion: string;
   url: string;
-}
-
-const VERSION = /^\d{1,4}(\.\d{1,4}){1,3}$/;
-/** https, host `agentrix.top` or `<labels>.agentrix.top`, nothing else before the path (no user, no port). */
-const TRUSTED_DOWNLOAD = /^https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*agentrix\.top(?:\/[^\s\\]*)?$/i;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** -1, 0 or 1; missing parts count as 0 (1.4 = 1.4.0). Both must look like versions. */
@@ -47,31 +41,16 @@ export function compareAppVersions(a: string, b: string): number {
   return 0;
 }
 
-export function isTrustedDownloadUrl(url: unknown): url is string {
-  return typeof url === 'string' && url.length <= 2048 && TRUSTED_DOWNLOAD.test(url);
-}
-
-export function decodeAppVersionInfo(value: unknown): AppVersionInfoV1 | null {
-  const body = isRecord(value) && isRecord(value.data) ? value.data : value;
-  if (!isRecord(body)) return null;
-  if (typeof body.latestVersion !== 'string' || !VERSION.test(body.latestVersion)) return null;
-  if (typeof body.apkUrl !== 'string') return null;
-  return {
-    latestVersion: body.latestVersion,
-    apkUrl: body.apkUrl,
-    releaseNotes: typeof body.releaseNotes === 'string' ? body.releaseNotes : null,
-  };
-}
-
 /** What the row offers, or null (nothing newer, not Android, an address we do not open, unreadable). */
-export function appUpdateOffer(info: AppVersionInfoV1 | null, installedVersion: string, platform: string): AppUpdateOfferV1 | null {
-  if (!info || platform !== 'android' || !VERSION.test(installedVersion)) return null;
+export function appUpdateOffer(info: AppVersionInfoResponseV1 | null, installedVersion: string, platform: string): AppUpdateOfferV1 | null {
+  if (!info || platform !== 'android' || !APP_VERSION_PATTERN.test(installedVersion)) return null;
   if (compareAppVersions(info.latestVersion, installedVersion) <= 0) return null;
-  if (!isTrustedDownloadUrl(info.apkUrl)) return null;
+  // The decoder already turns an untrusted address into null; checked again where it is opened.
+  if (!isTrustedAppDownloadUrlV1(info.apkUrl)) return null;
   return { latestVersion: info.latestVersion, url: info.apkUrl };
 }
 
-let cached: { baseUrl: string; at: number; value: AppVersionInfoV1 } | null = null;
+let cached: { baseUrl: string; at: number; value: AppVersionInfoResponseV1 } | null = null;
 
 export function clearAppVersionCache(): void {
   cached = null;
@@ -79,7 +58,7 @@ export function clearAppVersionCache(): void {
 
 export async function readAppVersion(
   input: { baseUrl?: string; transport?: HttpTransportV1; now?: () => number; timeoutMs?: number } = {},
-): Promise<AppVersionInfoV1 | null> {
+): Promise<AppVersionInfoResponseV1 | null> {
   const baseUrl = (input.baseUrl ?? getApiConfig().baseUrl ?? '').replace(/\/+$/, '');
   const now = input.now ?? Date.now;
   if (cached && cached.baseUrl === baseUrl && now() - cached.at < APP_VERSION_CACHE_MS) return cached.value;
@@ -93,7 +72,7 @@ export async function readAppVersion(
       }),
     ]);
     if (!response || response.status < 200 || response.status >= 300) return null;
-    const value = decodeAppVersionInfo(response.body);
+    const value = decodeAppVersionInfoResponseV1(response.body);
     if (value) cached = { baseUrl, at: now(), value };
     return value;
   } catch {

@@ -27,6 +27,7 @@ import { isSafeTwinAgentId } from '../../services/twinStatus';
 import { getBuyerOrderWebUrl, getSellerOrderWebUrl, getTwinWebUrl, isOrderRef } from '../../services/webHandoff';
 import { NAV_CATALOG, visibleNavTabs } from '../../navigation/navCatalog';
 import { resolveFourZoneNavigation, ZONE_UNAVAILABLE_ROUTE } from '../../navigation/four-zone/fourZoneRoutes';
+import { listedComputers } from '../../services/desktopDevicesView';
 
 type Lang = 'zh' | 'en';
 
@@ -106,7 +107,8 @@ export function MattersHomeScreen() {
   // A twin that is not set up (or switched off) is not an error; any other failure is said out loud.
   const reviewFailed =
     review.isError || (reviewState !== undefined && (reviewState.kind === 'error' || reviewState.kind === 'unsupported_schema'));
-  const hasPairedComputer = (desktop.data?.devices?.length ?? 0) > 0;
+  // A pre-binding `desktop-<uuid>` row that went offline does not count (desktopDevicesView.ts).
+  const hasPairedComputer = listedComputers(desktop.data?.devices).length > 0;
   const tabs = visibleNavTabs('matters', { hasPairedComputer });
   const openUnavailable = (tab: string) => navigation.navigate(ZONE_UNAVAILABLE_ROUTE, { zone: 'matters', tab });
 
