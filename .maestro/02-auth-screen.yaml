@@ -1,0 +1,24 @@
+appId: app.agentrix.claw
+---
+# Test 02: Auth screen exposes the stable sign-in controls.
+
+- launchApp:
+    clearState: true
+    clearKeychain: true
+
+- waitForAnimationToEnd:
+    timeout: 30000
+
+- assertVisible:
+    text: "Agentrix Claw"
+
+# E84 A / E86: the main buttons depend on what the server serves (GET /api/auth/providers), so only
+# the parts that are always there are asserted: the page, 更多方式 and 先逛逛.
+- assertVisible:
+    id: "login-screen"
+- assertVisible:
+    id: "login-more"
+- assertVisible:
+    id: "login-guest"
+
+- takeScreenshot: "02-auth-branding"
