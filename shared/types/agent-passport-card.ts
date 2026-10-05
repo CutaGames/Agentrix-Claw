@@ -19,6 +19,7 @@ import {
   passportNumberFromHash,
   readPassportCredentialsPublic,
   readPassportExactCountsV1,
+  readPassportIdentityCredentialState,
   PASSPORT_CREDENTIAL_KINDS,
   type AgentPassportAuthorityV1,
   type AgentPassportCredentialsPublicV1,
@@ -323,6 +324,8 @@ export interface PassportEvidence {
   track: PassportTrackEvidence | null;
   /** `null` when the credential store could not be read or the feature is off; a real zero is `{ verifiedBucket: 0, … }`. */
   credentials: PassportCredentialsEvidence | null;
+  /** True only when the Agentrix-signed identity credential on the current DID verifies; the DID is never on the card. */
+  identityCredential: boolean;
 }
 
 export interface PassportVisa {
@@ -364,6 +367,7 @@ export function emptyPassportEvidence(): PassportEvidence {
     skillsMore: 0,
     track: null,
     credentials: null,
+    identityCredential: false,
   };
 }
 
@@ -378,6 +382,7 @@ const TASK_UNIT = { zh: '单', en: 'tasks' };
 const PARTNER_UNIT = { zh: '个伙伴', en: 'partners' };
 const CREDENTIAL_UNIT = { zh: '份可验证凭证', en: 'verifiable credentials' };
 const ANCHORED_LINE: LocalizedLine = { zh: '已上链锚定', en: 'anchored on-chain' };
+const IDENTITY_CREDENTIAL_LINE: LocalizedLine = { zh: '持 Agentrix 签发的身份凭证', en: 'holds an Agentrix-signed identity credential' };
 
 function budgetLine(budget: PassportBudget): LocalizedLine {
   const label = `${budget.amount}${budget.currency ? ` ${budget.currency}` : ''}`;
@@ -504,15 +509,19 @@ export function factsFromEvidence(evidence: PassportEvidence): AgentPassportFact
     tone: 'ready',
   };
 
+  const home: LocalizedLine = evidence.issuedOn
+    ? { zh: `${evidence.issuedOn} 在 Agentrix 安家`, en: `Home on Agentrix since ${evidence.issuedOn}` }
+    : { zh: '已在 Agentrix 安家', en: 'At home on Agentrix' };
+  const signedIdentity = evidence.identityReady && evidence.identityCredential;
   const identity: AgentPassportFact = {
     id: 'identity',
     label: { zh: '安家', en: 'Home' },
     value: evidence.identityReady
-      ? evidence.issuedOn
-        ? { zh: `${evidence.issuedOn} 在 Agentrix 安家`, en: `Home on Agentrix since ${evidence.issuedOn}` }
-        : { zh: '已在 Agentrix 安家', en: 'At home on Agentrix' }
+      ? signedIdentity ? joinLines([home, IDENTITY_CREDENTIAL_LINE]) : home
       : { zh: '家刚安好，身份还在确认', en: 'Home is new. Identity is still confirming.' },
-    why: { zh: '有家、有名字、有编号；改名不换脸。', en: 'A home, a name, a number. Renaming never changes its face.' },
+    why: signedIdentity
+      ? { zh: '有家、有名字、有编号，身份凭证谁都能离线验签；改名不换脸。', en: 'A home, a name, a number, and an identity credential anyone can verify offline. Renaming never changes its face.' }
+      : { zh: '有家、有名字、有编号；改名不换脸。', en: 'A home, a name, a number. Renaming never changes its face.' },
     tone: evidence.identityReady ? 'ready' : 'unknown',
   };
 
@@ -647,6 +656,11 @@ export interface PublicPassportShareV3 extends Omit<PublicPassportShareV2, 'v'> 
    * omitted = not anchored), `m` latest month. Links minted before 3.1 omit it → unknown.
    */
   cr?: { n: PassportCountBucket; k?: CredentialKindCode[]; a?: 'a' | 'p'; m?: string };
+  /**
+   * L5 backend 9 B — `1` when the Agent holds a verified Agentrix-signed identity credential.
+   * Never the DID. Links minted before omit it and decoders that predate it drop it → no claim.
+   */
+  ic?: 1;
 }
 
 export type PublicPassportShare = PublicPassportShareV1 | PublicPassportShareV2 | PublicPassportShareV3;
@@ -949,6 +963,7 @@ function decodeShareV3(parsed: Record<string, unknown>): PublicPassportShareV3 |
       ...(typeof parsed.cr.m === 'string' && CREDENTIAL_MONTH.test(parsed.cr.m) ? { m: parsed.cr.m } : {}),
     };
   }
+  if (parsed.ic === 1) share.ic = 1;
   return share;
 }
 
@@ -997,8 +1012,8 @@ function evidenceToShare(evidence: PassportEvidence): PublicPassportShareV2['e']
 }
 
 /** Partner-facing extras for the v3 payload. Drafts never travel; only a confirmed persona does. */
-function partnerFactsToShare(evidence: PassportEvidence): Pick<PublicPassportShareV3, 'p' | 'sk' | 'sm' | 'tr' | 'cr'> {
-  const out: Pick<PublicPassportShareV3, 'p' | 'sk' | 'sm' | 'tr' | 'cr'> = {};
+function partnerFactsToShare(evidence: PassportEvidence): Pick<PublicPassportShareV3, 'p' | 'sk' | 'sm' | 'tr' | 'cr' | 'ic'> {
+  const out: Pick<PublicPassportShareV3, 'p' | 'sk' | 'sm' | 'tr' | 'cr' | 'ic'> = {};
   if (evidence.persona.status === 'confirmed' && evidence.persona.tagline && evidence.persona.tags.length) {
     out.p = { t: evidence.persona.tagline, g: evidence.persona.tags.slice(0, 3) };
   }
@@ -1020,6 +1035,7 @@ function partnerFactsToShare(evidence: PassportEvidence): Pick<PublicPassportSha
   }
   // A known zero travels too ("none verified" is a fact); only an unreadable store omits `cr`.
   if (evidence.credentials) out.cr = credentialsToShare(evidence.credentials);
+  if (evidence.identityCredential) out.ic = 1;
   return out;
 }
 
@@ -1048,6 +1064,7 @@ function evidenceFromShare(share: PublicPassportShareV2 | PublicPassportShareV3)
       ? { tasksBucket: extras.tr.c, partnersBucket: extras.tr.p, since: extras.tr.s ? `${extras.tr.s.slice(0, 7)}-01` : null }
       : null,
     credentials: credentialsFromShare(extras?.cr),
+    identityCredential: extras?.ic === 1,
   };
 }
 
@@ -1236,6 +1253,7 @@ export function buildAgentPassportCard(input: AgentPassportCardInput): AgentPass
     ...skillsEvidence(input.passport),
     track: trackEvidence(input.passport),
     credentials: input.passport ? credentialsEvidenceFromPublic(input.passport.credentials) : null,
+    identityCredential: readPassportIdentityCredentialState(input.passport?.identityCredential) === 'verified',
   };
 
   // The visual identity is seeded by the account id so the card never changes
@@ -1367,6 +1385,7 @@ export function shareFromPublicPassport(passport: AgentPassportPublicV1): Public
   }
   const credentials = credentialsEvidenceFromPublic(passport.credentials);
   if (credentials) share.cr = credentialsToShare(credentials);
+  if (readPassportIdentityCredentialState(passport.identityCredential) === 'verified') share.ic = 1;
   return share;
 }
 
@@ -1449,6 +1468,7 @@ export function publicPassportFromAgentCard(value: unknown): AgentPassportPublic
     authority: authorityFromCard(extension.authority),
     // Cards from a backend before slice 3.1 have no block → unavailable, never zero.
     credentials: readPassportCredentialsPublic(extension.credentials),
+    identityCredential: readPassportIdentityCredentialState(extension.identityCredential),
   };
 }
 
@@ -1497,6 +1517,7 @@ export function passportViewFromJson(value: unknown): AgentPassportViewV1 | null
     track,
     authority: authorityFromCard(record.authority),
     credentials: readPassportCredentialsPublic(record.credentials),
+    identityCredential: readPassportIdentityCredentialState(record.identityCredential),
     audience: record.audience,
     fields,
   };

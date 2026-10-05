@@ -29,6 +29,9 @@ import { LOCALES, LOCALE_LABELS, type Locale } from "../i18n/strings";
 import { useUserModeStore, type UserMode } from "../services/userMode";
 import { seedInvitesEnabled } from "../services/seedInvites";
 import SeedInvitesPanel from "./SeedInvitesPanel";
+import L6OwnerEntriesSection from "./L6OwnerEntriesPanels";
+import { devicePassportsEnabled } from "../services/devicePassports";
+import DevicePassportsPanel from "./DevicePassportsPanel";
 
 function LanguageSwitcher() {
   const { locale, setLocale } = useI18n();
@@ -300,6 +303,8 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
           <button onClick={onClose} style={closeBtn}>✕</button>
         </div>
         {seedInvitesEnabled() ? <SeedInvitesPanel /> : null}
+        <L6OwnerEntriesSection />
+        {devicePassportsEnabled() ? <DevicePassportsPanel /> : null}
 
         {/* User info */}
         {user && (

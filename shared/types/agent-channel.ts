@@ -302,3 +302,66 @@ export function decodeAgentChannelDraftApproveV0(value: unknown): { text?: strin
   const text = value.text.trim();
   return text.length > 0 && text.length <= 4096 ? { text } : null;
 }
+
+// ── 代表回复授权（`channel.reply.send`，A2 第 4 片） ─────────────────────────────────────
+
+/**
+ * Agent 模式的代表档，除了 `AGENT_CHANNEL_AGENT_REPRESENT_FLAG_V0`，还要主人给这一个绑定单独开 `channel.reply.send`：
+ * 只管这一个聊天，最长 30 天，随时撤销；开要最近登录（E84 B），撤销不要。没有有效授权时代表档照旧写草稿。
+ * 分身模式的代表走公开分身回答的门槛，不用这个授权。路由在 `AGENT_CHANNEL_V0_FLAG` 关着时 404。
+ */
+export const AGENT_CHANNEL_REPLY_GRANT_ROUTES_V0 = {
+  read: 'GET /api/agent-channels/bindings/:bindingRef/reply-grant',
+  grant: 'POST /api/agent-channels/bindings/:bindingRef/reply-grant',
+  revoke: 'POST /api/agent-channels/bindings/:bindingRef/reply-grant/revoke',
+} as const;
+export const AGENT_CHANNEL_REPLY_GRANT_SCOPE_V0 = 'channel.reply.send';
+export const AGENT_CHANNEL_REPLY_GRANT_MAX_DAYS_V0 = 30;
+
+export interface AgentChannelReplyGrantCommandV0 {
+  /** 1–30 天。 */
+  days: number;
+}
+
+export interface AgentChannelReplyGrantViewV0 {
+  bindingRef: string;
+  scope: typeof AGENT_CHANNEL_REPLY_GRANT_SCOPE_V0;
+  /** 现在有没有有效授权（没撤销、没过期）。 */
+  active: boolean;
+  /** 最近一次授权；从没开过时都是 null。 */
+  grantedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+}
+
+/** 服务端用：解码开授权的请求。多出来的键丢掉。 */
+export function decodeAgentChannelReplyGrantCommandV0(value: unknown): AgentChannelReplyGrantCommandV0 | null {
+  if (!isRecord(value)) return null;
+  const days = value.days;
+  if (typeof days !== 'number' || !Number.isInteger(days) || days < 1 || days > AGENT_CHANNEL_REPLY_GRANT_MAX_DAYS_V0) return null;
+  return { days };
+}
+
+/** 有效 = 没撤销，而且还没到期。 */
+export function agentChannelReplyGrantActiveV0(grant: { expiresAt: string; revokedAt: string | null }, nowMs: number): boolean {
+  const expires = Date.parse(grant.expiresAt);
+  return grant.revokedAt === null && Number.isFinite(expires) && expires > nowMs;
+}
+
+/** web / mobile 用：解码授权状态。`active` 要和时间对得上（有效就一定有授权和到期时间、没有撤销时间）。 */
+export function decodeAgentChannelReplyGrantViewV0(value: unknown): AgentChannelReplyGrantViewV0 | null {
+  if (!isRecord(value)) return null;
+  const { bindingRef, scope, active, grantedAt, expiresAt, revokedAt } = value;
+  if (typeof bindingRef !== 'string' || !/^acb_[0-9a-f]{32}$/.test(bindingRef) || scope !== AGENT_CHANNEL_REPLY_GRANT_SCOPE_V0 || typeof active !== 'boolean') return null;
+  for (const at of [grantedAt, expiresAt, revokedAt]) if (at !== null && !isIso(at)) return null;
+  if ((grantedAt === null) !== (expiresAt === null)) return null;
+  if (active && (grantedAt === null || revokedAt !== null)) return null;
+  return {
+    bindingRef,
+    scope: AGENT_CHANNEL_REPLY_GRANT_SCOPE_V0,
+    active,
+    grantedAt: grantedAt as string | null,
+    expiresAt: expiresAt as string | null,
+    revokedAt: revokedAt as string | null,
+  };
+}
