@@ -133,6 +133,14 @@ export interface AgentPassportCredentialsPublicV1 {
   latestOn: string | null;
 }
 
+/**
+ * L5 backend 9 B: whether the Agent holds the identity credential Agentrix signed onto its
+ * current DID (`agent_reputation_vc` kind `identity`, issuer signature checks out). Only this
+ * yes / no reaches the passport; the DID itself stays on the owner's side. `unavailable` = the
+ * identity credential feature is off, the store is not wired, or it could not be read.
+ */
+export type PassportIdentityCredentialState = 'verified' | 'none' | 'unavailable';
+
 export interface AgentPassportProjectionV1 {
   schemaVersion: 1;
   agentAccountId: string;
@@ -149,6 +157,8 @@ export interface AgentPassportProjectionV1 {
   authority: AgentPassportAuthorityV1;
   /** Slice 3.1. Older servers omit it; readers treat a missing block as `unavailable`. */
   credentials: AgentPassportCredentialsV1;
+  /** L5 backend 9 B. Older servers omit it; readers treat a missing value as `unavailable`. */
+  identityCredential?: PassportIdentityCredentialState;
 }
 
 /** What leaves the owner's side: confirmed persona, buckets, skill names, authority boundary. */
@@ -167,6 +177,8 @@ export interface AgentPassportPublicV1 {
   track: { state: 'available' | 'unavailable'; tasksBucket: PassportCountBucket; partnersBucket: PassportCountBucket; since: string | null };
   authority: AgentPassportAuthorityV1;
   credentials: AgentPassportCredentialsPublicV1;
+  /** L5 backend 9 B: the yes / no only, never the DID. Older servers omit it → `unavailable`. */
+  identityCredential?: PassportIdentityCredentialState;
 }
 
 /**
@@ -185,6 +197,8 @@ export interface AgentPassportCardExtensionV1 {
   authority: AgentPassportAuthorityV1;
   /** Slice 3.1: verified reputation credentials as a range + kinds + anchor state; never the DID or a count. */
   credentials: AgentPassportCredentialsPublicV1;
+  /** L5 backend 9 B: whether an Agentrix-signed identity credential verifies; never the DID. */
+  identityCredential?: PassportIdentityCredentialState;
   issuedOn: string | null;
   /** The human-readable passport page for this Agent (`/share/agent/<agentRef>`). */
   passportUrl: string;
@@ -236,6 +250,11 @@ export function readPassportCredentialsPublic(value: unknown): AgentPassportCred
     anchor: isPassportCredentialAnchor(record.anchor) ? record.anchor : 'not_anchored',
     latestOn: typeof record.latestOn === 'string' && CREDENTIAL_MONTH_PATTERN.test(record.latestOn) ? record.latestOn : null,
   };
+}
+
+/** Identity credential yes / no out of untrusted JSON; anything but `verified` / `none` is `unavailable`. */
+export function readPassportIdentityCredentialState(value: unknown): PassportIdentityCredentialState {
+  return value === 'verified' || value === 'none' ? value : 'unavailable';
 }
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,8 @@
  * The owner picks how far an Agent may go on its own. Each level fixes, per tool class, whether the Agent may act
  * without asking, must ask, or may not act; and it maps onto the D1 spending budget (`spend-budget.ts`): below
  * `commit` every limit is 0, so no payment can run on its own; `commit` uses limits the owner states explicitly.
- * v0 stores the level and applies the budget mapping; enforcing the tool classes in chat comes later.
+ * v0 stores the level and applies the budget mapping. Chat enforces the tool classes once the owner has picked a level
+ * and the server also has `TRUST_LADDER_CHAT_ENFORCEMENT_V0_ENABLED` exactly `1` (backend trust-ladder-tool-gate.ts).
  *
  * Server switch: `TRUST_LADDER_V0_ENABLED` exactly `1` (and D1 budget settings on); otherwise 404.
  * Web: `NEXT_PUBLIC_TRUST_LADDER_ENABLED` exactly `1`.

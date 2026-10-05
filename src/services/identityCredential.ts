@@ -3,12 +3,25 @@
  * read-only on the passport screen. Off unless the build sets `EXPO_PUBLIC_SOUL_CORE_IDENTITY_VC_ENABLED=1`; the server
  * answers 404 while `SOUL_CORE_IDENTITY_VC_ENABLED` is off (and to anyone but the owner), and then nothing shows.
  *
- * `GET /agent-accounts/:id/identity-credential` → `{ success, data: { did, credential, verified } }`, decoded as strictly
- * as the Web (frontend/lib/soul-core-console/identity-credential.ts): type AgentIdentityCredential, subject id equals
- * the DID, ownerVerified true, issuedOn a day; anything else is unreadable. Issuing stays on the Web. No React Native
- * import: the transport and token are injected (TwinIdentityCredential.tsx binds them).
+ * `GET /agent-accounts/:id/identity-credential` → `{ success, data: { did, credential, verified } }`, decoded with the
+ * shared contract (shared/types/agent-identity-credential.ts, the same decoder as the Web): type AgentIdentityCredential,
+ * subject id equals the DID, ownerVerified true, issuedOn a day; anything else is unreadable. Issuing stays on the Web.
+ * No React Native import: the transport and token are injected (TwinIdentityCredential.tsx binds them).
  */
 import type { HttpResponseV1, HttpTransportV1 } from '../../shared/client/transport';
+import {
+  agentIdentityCredentialPathV1,
+  decodeIdentityCredentialStateV1,
+  type IdentityCredentialStateV1,
+} from '../../shared/types/agent-identity-credential';
+
+export {
+  decodeIdentityCredentialV1,
+  decodeIdentityCredentialStateV1 as decodeIdentityCredentialState,
+  type IdentityCredentialStateV1,
+  type IdentityCredentialSubjectV1,
+  type IdentityCredentialV1,
+} from '../../shared/types/agent-identity-credential';
 
 type Copy = { zh: string; en: string };
 
@@ -20,93 +33,8 @@ export function identityCredentialEnabled(value: unknown): boolean {
 export const IDENTITY_CREDENTIAL_ENABLED = identityCredentialEnabled(process.env.EXPO_PUBLIC_SOUL_CORE_IDENTITY_VC_ENABLED);
 
 const SAFE_ID = /^[0-9a-zA-Z_-]{8,80}$/;
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-export interface IdentityCredentialSubjectV1 {
-  id: string;
-  kind: 'identity';
-  agentRef: string;
-  passportNumber: string;
-  ownerVerified: true;
-  ownerVerification: string;
-  issuedOn: string;
-}
-
-export interface IdentityCredentialV1 {
-  '@context': string[];
-  type: string[];
-  issuer: string;
-  issuanceDate: string;
-  credentialSubject: IdentityCredentialSubjectV1;
-  proof: { type: string; jws: string; verificationMethod: string };
-}
-
-export interface IdentityCredentialStateV1 {
-  /** `null` when the Agent has no wallet, so no DID to sign for. */
-  did: string | null;
-  credential: IdentityCredentialV1 | null;
-  verified: boolean;
-}
-
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
-
-function strings(value: unknown): string[] | null {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string') ? (value as string[]) : null;
-}
-
-export function decodeIdentityCredentialV1(value: unknown): IdentityCredentialV1 | null {
-  const vc = record(value);
-  const subject = record(vc?.credentialSubject);
-  const proof = record(vc?.proof);
-  const context = strings(vc?.['@context']);
-  const type = strings(vc?.type);
-  if (!vc || !subject || !proof || !context || !type || !type.includes('AgentIdentityCredential')) return null;
-  if (typeof vc.issuer !== 'string' || !vc.issuer.startsWith('did:') || typeof vc.issuanceDate !== 'string') return null;
-  if (typeof proof.type !== 'string' || typeof proof.jws !== 'string' || !proof.jws || typeof proof.verificationMethod !== 'string') return null;
-  if (
-    typeof subject.id !== 'string' || !subject.id.startsWith('did:')
-    || subject.kind !== 'identity'
-    || typeof subject.agentRef !== 'string'
-    || typeof subject.passportNumber !== 'string'
-    || subject.ownerVerified !== true
-    || typeof subject.ownerVerification !== 'string'
-    || typeof subject.issuedOn !== 'string' || !DAY.test(subject.issuedOn)
-  ) return null;
-  return {
-    '@context': context,
-    type,
-    issuer: vc.issuer,
-    issuanceDate: vc.issuanceDate,
-    credentialSubject: {
-      id: subject.id,
-      kind: 'identity',
-      agentRef: subject.agentRef,
-      passportNumber: subject.passportNumber,
-      ownerVerified: true,
-      ownerVerification: subject.ownerVerification,
-      issuedOn: subject.issuedOn,
-    },
-    proof: { type: proof.type, jws: proof.jws, verificationMethod: proof.verificationMethod },
-  };
-}
-
-/** `{ success, data: { did, credential, verified } }`; anything else is unreadable. */
-export function decodeIdentityCredentialState(body: unknown): IdentityCredentialStateV1 | null {
-  const data = record(record(body)?.data);
-  if (!data || typeof data.verified !== 'boolean') return null;
-  const did = data.did === null ? null : typeof data.did === 'string' && data.did.startsWith('did:') ? data.did : undefined;
-  if (did === undefined) return null;
-  if (data.credential === null) return { did, credential: null, verified: false };
-  const credential = decodeIdentityCredentialV1(data.credential);
-  if (!credential || credential.credentialSubject.id !== did) return null;
-  return { did, credential, verified: data.verified };
-}
-
-export function identityCredentialPath(agentAccountId: string): string {
-  return `/agent-accounts/${encodeURIComponent(agentAccountId)}/identity-credential`;
-}
+export const identityCredentialPath = agentIdentityCredentialPathV1;
 
 export type IdentityCredentialRead =
   | { kind: 'ready'; state: IdentityCredentialStateV1 }
@@ -143,7 +71,7 @@ export function createMobileIdentityCredentialClient(deps: {
       }
       if (response.status === 404) return { kind: 'hidden' };
       if (response.status !== 200) return { kind: 'unreadable' };
-      const state = decodeIdentityCredentialState(response.body);
+      const state = decodeIdentityCredentialStateV1(response.body);
       return state ? { kind: 'ready', state } : { kind: 'unreadable' };
     },
   };

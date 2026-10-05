@@ -15,6 +15,9 @@
  * L5 (REQ-mobile-095): 这台手机 registers the phone itself as a device with its own hardware key
  * (phoneDeviceKey.ts). Only in builds with `EXPO_PUBLIC_PHONE_DEVICE_KEY=1` and the native module; the
  * phone's own row in the hardware list is labelled 这台手机.
+ *
+ * L5 B2 phone: once registered, and with `EXPO_PUBLIC_DEVICE_MESH_ENABLED=1`, 这台手机 can tell the active Agent
+ * what it can do (shell binding + signed capability declaration, phoneCapabilityDeclaration.ts).
  */
 import React from 'react';
 import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -35,11 +38,20 @@ import {
   type DeviceRevokeOutcome,
   type MobileRegisteredDevice,
 } from '../../services/myDevices';
-import { enrollThisPhone, readThisPhone } from '../../services/phoneDeviceEnrollment';
+import { declareThisPhone, enrollThisPhone, readThisPhone } from '../../services/phoneDeviceEnrollment';
 import { isDeviceMeshReadonlyEnabled, readMyDevices, readRentalEarnings } from '../../services/deviceMeshReadonly';
+import { devicePassportJobsText, devicePassportServicesText, isDevicePassportsEnabled, readDevicePassports } from '../../services/devicePassports';
 import { getApiConfig } from '../../services/api';
 import { mobileV6HttpTransport } from '../../services/mobileV6Runtime';
-import { PHONE_DEVICE_KEY_COPY, PHONE_KEY_HARDWARE_COPY, phoneDeviceKeyErrorText } from '../../services/phoneDeviceKeyCopy';
+import {
+  PHONE_DECLARE_COPY,
+  PHONE_DECLARE_FAILURE_COPY,
+  PHONE_DEVICE_KEY_COPY,
+  PHONE_KEY_HARDWARE_COPY,
+  phoneDeclaredText,
+  phoneDeviceKeyErrorText,
+} from '../../services/phoneDeviceKeyCopy';
+import { useNotificationStore } from '../../stores/notificationStore';
 
 type Lang = 'zh' | 'en';
 
@@ -96,6 +108,32 @@ export function MyDevicesScreen() {
     retry: 0,
     staleTime: 60_000,
   });
+  // L7-4 v0: a read-only passport per device (devicePassports.ts).
+  const passportsOn = isDevicePassportsEnabled();
+  const passports = useQuery({
+    queryKey: ['four-zone', 'device-passports'],
+    queryFn: () => readDevicePassports(mobileV6HttpTransport, getApiConfig().baseUrl || 'https://api.agentrix.top/api', getApiConfig().token ?? null),
+    enabled: signedIn && passportsOn,
+    retry: 0,
+    staleTime: 60_000,
+  });
+  const activeInstance = useAuthStore((state) => state.activeInstance);
+  const agentAccountId: string | null = activeInstance?.agentAccountId ?? activeInstance?.metadata?.agentAccountId ?? null;
+  const pushReachable = useNotificationStore((state) => !!state.pushToken);
+  const declare = useMutation({
+    mutationFn: () => declareThisPhone({ agentAccountId, pushReachable }, t(PHONE_DECLARE_COPY.prompt)),
+    onSuccess: (result) => {
+      if (result.ok === true) {
+        void queryClient.invalidateQueries({ queryKey: ['four-zone', 'device-mesh-devices'] });
+        return;
+      }
+      if (result.reason === 'user_cancelled') return;
+      Alert.alert(t(PHONE_DECLARE_COPY.failedTitle), t(PHONE_DECLARE_FAILURE_COPY[result.reason]));
+    },
+    onError: () => Alert.alert(t(PHONE_DECLARE_COPY.failedTitle), t(PHONE_DECLARE_FAILURE_COPY.network)),
+  });
+  const declaredMinutes =
+    declare.data?.ok === true ? Math.max(1, Math.round((Date.parse(declare.data.expiresAt) - Date.now()) / 60_000)) : null;
   const thisPhoneId = thisPhone.data?.deviceId ?? null;
   const computers = normalizeComputers(desktop.data);
   const hardware = registry.data ?? [];
@@ -197,6 +235,27 @@ export function MyDevicesScreen() {
                 {enroll.isPending ? <ActivityIndicator /> : <Text style={styles.chevron}>›</Text>}
               </TouchableOpacity>
             ) : null}
+            {meshOn && thisPhone.data.registered ? (
+              <>
+                <Text style={styles.muted}>{t(PHONE_DECLARE_COPY.explain)}</Text>
+                <TouchableOpacity
+                  style={styles.row}
+                  onPress={() => declare.mutate()}
+                  disabled={declare.isPending}
+                  accessibilityRole="button"
+                  accessibilityLabel={t(PHONE_DECLARE_COPY.declare)}
+                  testID="my-devices-this-phone-declare"
+                >
+                  <Text style={styles.rowLabel}>{t(declare.isPending ? PHONE_DECLARE_COPY.declaring : PHONE_DECLARE_COPY.declare)}</Text>
+                  {declare.isPending ? <ActivityIndicator /> : <Text style={styles.chevron}>›</Text>}
+                </TouchableOpacity>
+                {declaredMinutes !== null ? (
+                  <Text style={styles.itemHint} testID="my-devices-this-phone-declared">
+                    {t(phoneDeclaredText(declaredMinutes))}
+                  </Text>
+                ) : null}
+              </>
+            ) : null}
           </View>
         </>
       ) : null}
@@ -223,6 +282,30 @@ export function MyDevicesScreen() {
                 {`${t({ en: 'Rental earnings', zh: '出租收入' })} $${(meshEarnings.data.value.totalCents / 100).toFixed(2)} · ${t({ en: 'test mode', zh: '测试模式' })}`}
               </Text>
             ) : null}
+          </View>
+        </>
+      ) : null}
+
+      {passportsOn ? (
+        <>
+          <Text style={styles.section}>{t({ en: 'Device passports (read only)', zh: '设备护照（只读）' })}</Text>
+          <View style={styles.block} testID="my-devices-passports">
+            {passports.data?.kind === 'closed' ? <Text style={styles.muted}>{t({ en: 'Not open on the platform yet.', zh: '平台还没开放。' })}</Text> : null}
+            {passports.data?.kind === 'unreadable' ? <Text style={styles.muted}>{t({ en: 'Cannot be read right now.', zh: '暂时读不到。' })}</Text> : null}
+            {passports.data?.kind === 'ready' && passports.data.value.length === 0 ? (
+              <Text style={styles.muted}>{t({ en: 'No device has said what it can do in the last 15 minutes.', zh: '最近 15 分钟没有设备上报能做什么。' })}</Text>
+            ) : null}
+            {passports.data?.kind === 'ready'
+              ? passports.data.value.map((passport) => (
+                  <View key={passport.deviceId} testID={`my-devices-passport-${passport.deviceId}`}>
+                    <Text style={styles.itemLabel}>{`${passport.kind} · ${shortDeviceId(passport.deviceId)}`}</Text>
+                    <Text style={styles.itemHint}>
+                      {devicePassportServicesText(passport, lang) ?? t({ en: 'No market service declared', zh: '没有可接单的服务' })}
+                    </Text>
+                    <Text style={styles.itemHint}>{devicePassportJobsText(passport, lang)}</Text>
+                  </View>
+                ))
+              : null}
           </View>
         </>
       ) : null}

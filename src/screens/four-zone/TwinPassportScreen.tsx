@@ -41,6 +41,14 @@ import { SpendBudgetCard } from '../../components/SpendBudgetCard';
 import { SPEND_BUDGET_CARD_ENABLED } from '../../services/spendBudget';
 import { SeedInvitesCard } from '../../components/SeedInvitesCard';
 import { SEED_INVITES_ENABLED } from '../../services/seedInvites';
+import { TrustLadderCard } from '../../components/TrustLadderCard';
+import { TRUST_LADDER_ENABLED } from '../../services/trustLadder';
+import { AgentRequestsCard } from '../../components/AgentRequestsCard';
+import { AGENT_COLLABORATION_ENABLED } from '../../services/agentCollaboration';
+import { SharePagesCard } from '../../components/SharePagesCard';
+import { SHARE_PAGES_ENABLED } from '../../services/sharePages';
+import { OwnerGoalsCard } from '../../components/OwnerGoalsCard';
+import { OWNER_GOALS_ENABLED } from '../../services/ownerGoals';
 import { TwinPassportVisitors } from './TwinPassportVisitors';
 import { useAuthStore } from '../../stores/authStore';
 import { useI18n } from '../../stores/i18nStore';
@@ -212,7 +220,11 @@ export function TwinPassportScreen() {
 
       {IDENTITY_CREDENTIAL_ENABLED && agentAccountId ? <TwinIdentityCredential agentAccountId={agentAccountId} /> : null}
       {SPEND_BUDGET_CARD_ENABLED && agentAccountId ? <SpendBudgetCard agentAccountId={agentAccountId} /> : null}
+      {TRUST_LADDER_ENABLED && agentAccountId ? <TrustLadderCard agentAccountId={agentAccountId} /> : null}
       {SEED_INVITES_ENABLED ? <SeedInvitesCard /> : null}
+      {OWNER_GOALS_ENABLED ? <OwnerGoalsCard /> : null}
+      {AGENT_COLLABORATION_ENABLED ? <AgentRequestsCard /> : null}
+      {SHARE_PAGES_ENABLED ? <SharePagesCard /> : null}
 
       <Text style={styles.section}>{t({ en: 'Share links', zh: '分享链接' })}</Text>
       <View style={styles.block} testID="twin-passport-shares">

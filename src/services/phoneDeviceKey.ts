@@ -39,7 +39,7 @@ export const PHONE_KEY_ALGORITHM = 'ecdsa-p256-sha256' as const;
 
 /** Where the private key lives, as the native side reports it. */
 export type PhoneKeyHardwareV1 = 'strongbox' | 'tee' | 'secure_enclave' | 'software' | 'unknown';
-const HARDWARE_BACKED: readonly PhoneKeyHardwareV1[] = ['strongbox', 'tee', 'secure_enclave'];
+export const HARDWARE_BACKED: readonly PhoneKeyHardwareV1[] = ['strongbox', 'tee', 'secure_enclave'];
 
 export interface PhoneKeyPublicV1 {
   /** P-256 public point, 32 bytes each, base64url without padding. */

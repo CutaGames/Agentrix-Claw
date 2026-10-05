@@ -8,6 +8,8 @@
  * - The signature is the enrolled E32 key over `deviceCapabilityDeclarationMessageV0` (five lines, the digest
  *   of the canonical declaration), P1363 base64url. That key asks the owner every time, so uploads are an
  *   explicit owner action; the separate no-verification declaration key (contract 6 a) needs native work.
+ * - The declaration names the phone's shell binding; `declarePhoneCapabilities` gets one first
+ *   (phoneShellBinding.ts) and only once the device mesh is on.
  * - Off unless the build sets `EXPO_PUBLIC_DEVICE_MESH_ENABLED=1` and the server's switch table
  *   (`GET /api/device-mesh/config`, read with the contract decoder; unreadable or stale means off) has
  *   `DEVICE_MESH_V0_ENABLED=1`. A rejected upload is reported with its status and code, never retried.
@@ -27,6 +29,7 @@ import {
   type DeviceMeshConfigV0,
 } from '../../shared/types/device-capability';
 import { PhoneDeviceKeyError, signWithPhoneKey, type PhoneDeviceKeyNativeV1 } from './phoneDeviceKey';
+import { ensurePhoneShellBinding, type PhoneShellBindingStoreV1 } from './phoneShellBinding';
 
 export const PHONE_DEVICE_MESH_SERVER_FLAG = 'DEVICE_MESH_V0_ENABLED';
 
@@ -152,4 +155,80 @@ export async function uploadPhoneCapabilityDeclaration(
   const body = (response.body ?? {}) as { expiresAt?: unknown; replayed?: unknown };
   if (response.status === 200 && typeof body.expiresAt === 'string') return { ok: true, expiresAt: body.expiresAt, replayed: body.replayed === true };
   return { ok: false, reason: 'rejected', status: response.status, code: parseApiErrorBodyV1(response.body).code };
+}
+
+/** The device mesh's code for a declaration whose binding is not active (backend `DEVICE_MESH_ERROR_CODES_V0.bindingInvalid`). */
+export const PHONE_DECLARATION_BINDING_INVALID = 'DEVICE_CAPABILITY_BINDING_INVALID';
+
+export interface PhoneDeclareInput {
+  agentAccountId: string | null;
+  deviceId: string | null;
+  credentialRef: string | null;
+  pushReachable: boolean;
+  hardwareKey: boolean;
+  foreground: boolean;
+  grantedSensors?: readonly PhoneSensorType[];
+  onPower?: boolean | null;
+}
+
+export interface PhoneDeclareDeps extends PhoneCapabilityUploadDeps {
+  bindingStore: PhoneShellBindingStoreV1;
+  /** A fresh UUID v4. */
+  newDeclarationId: () => string;
+}
+
+export type PhoneDeclareFailureReason =
+  | Extract<PhoneCapabilityUploadResult, { ok: false }>['reason']
+  | 'not_enrolled'
+  | 'no_agent'
+  | 'invalid'
+  | 'binding_closed'
+  | 'binding_rejected'
+  | 'binding_unreadable';
+
+export type PhoneDeclareResult =
+  | { ok: true; expiresAt: string; replayed: boolean }
+  | { ok: false; reason: PhoneDeclareFailureReason; status?: number; code?: string | null };
+
+/**
+ * 这台手机 → tell the Agent what it can do: the server switch, a shell binding (kept or new), the declaration, one
+ * signature, the upload. Nothing goes to the server before the local switch, the enrollment and an Agent are there,
+ * and no binding is asked for while the device mesh is off. A declaration refused for its binding drops the kept one.
+ */
+export async function declarePhoneCapabilities(input: PhoneDeclareInput, deps: PhoneDeclareDeps): Promise<PhoneDeclareResult> {
+  if (!deps.localEnabled) return { ok: false, reason: 'off' };
+  if (!input.deviceId || !input.credentialRef) return { ok: false, reason: 'not_enrolled' };
+  if (!input.agentAccountId) return { ok: false, reason: 'no_agent' };
+  const config = await readPhoneDeviceMeshConfig(deps);
+  if (config?.flags[PHONE_DEVICE_MESH_SERVER_FLAG] !== '1') return { ok: false, reason: 'off' };
+
+  const bound = await ensurePhoneShellBinding(
+    { agentAccountId: input.agentAccountId, deviceId: input.deviceId, credentialRef: input.credentialRef },
+    { postJson: deps.postJson, store: deps.bindingStore, nowMs: deps.nowMs },
+  );
+  if (bound.ok === false) {
+    if (bound.reason === 'rejected') return { ok: false, reason: 'binding_rejected', status: bound.status, code: bound.code };
+    if (bound.reason === 'closed') return { ok: false, reason: 'binding_closed' };
+    if (bound.reason === 'unreadable') return { ok: false, reason: 'binding_unreadable' };
+    return { ok: false, reason: bound.reason };
+  }
+
+  const built = buildPhoneCapabilityDeclaration({
+    deviceId: input.deviceId,
+    credentialRef: input.credentialRef,
+    shellBinding: { id: bound.binding.id, version: bound.binding.version },
+    declarationId: deps.newDeclarationId(),
+    now: new Date(deps.nowMs()),
+    pushReachable: input.pushReachable,
+    hardwareKey: input.hardwareKey,
+    foreground: input.foreground,
+    grantedSensors: input.grantedSensors,
+    onPower: input.onPower,
+  });
+  if (built.ok === false) return { ok: false, reason: 'invalid' };
+  const uploaded = await uploadPhoneCapabilityDeclaration(built.declaration, deps);
+  if (uploaded.ok === false && uploaded.reason === 'rejected' && uploaded.code === PHONE_DECLARATION_BINDING_INVALID) {
+    await deps.bindingStore.clear().catch(() => undefined);
+  }
+  return uploaded;
 }

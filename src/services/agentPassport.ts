@@ -5,9 +5,10 @@ import {
   formatPassportShareText,
   type AgentPassportCardModel,
 } from "../../shared/types/agent-passport-card";
-import type {
-  AgentPassportCredentialsV1,
-  AgentPassportProjectionV1,
+import {
+  readPassportIdentityCredentialState,
+  type AgentPassportCredentialsV1,
+  type AgentPassportProjectionV1,
 } from "../../shared/types/agent-passport";
 import type { HttpTransportV1 } from "../../shared/client";
 import { getApiConfig } from "./api";
@@ -139,6 +140,7 @@ export function normalizeAgentPassportProjection(
     credentials: isRecord(record.credentials)
       ? (record.credentials as unknown as AgentPassportCredentialsV1)
       : unavailablePassportCredentialsOwner(),
+    identityCredential: readPassportIdentityCredentialState(record.identityCredential),
   };
   return projection;
 }

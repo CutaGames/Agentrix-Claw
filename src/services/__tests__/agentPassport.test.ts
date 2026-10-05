@@ -65,6 +65,7 @@ const FIXTURE: AgentPassportProjectionV1 = {
   },
   authority: { approvalRequired: true, limits: { daily: 20, currency: "USDC" } },
   credentials: unavailablePassportCredentialsOwner(),
+  identityCredential: "unavailable",
 };
 
 function transportReturning(status: number, body: unknown): HttpTransportV1 & { calls: Array<{ path: string; headers?: Record<string, string> }> } {
@@ -93,6 +94,15 @@ describe("agentPassport — projection intake", () => {
     const projection = normalizeAgentPassportProjection({ success: true, data: withoutCredentials });
     expect(projection?.credentials).toEqual(unavailablePassportCredentialsOwner());
     expect(projection?.credentials.state).toBe("unavailable");
+  });
+
+  it("keeps the identity credential yes / no; an older backend or an unknown value is unavailable, never signed (L5 backend 9 B)", () => {
+    const { identityCredential: _omitted, ...older } = FIXTURE;
+    expect(normalizeAgentPassportProjection({ success: true, data: older })?.identityCredential).toBe("unavailable");
+    expect(normalizeAgentPassportProjection({ ...FIXTURE, identityCredential: "verified" })?.identityCredential).toBe("verified");
+    expect(normalizeAgentPassportProjection({ ...FIXTURE, identityCredential: "none" })?.identityCredential).toBe("none");
+    expect(normalizeAgentPassportProjection({ ...FIXTURE, identityCredential: "did:pkh:eip155:97:0xagent" })?.identityCredential).toBe("unavailable");
+    expect(normalizeAgentPassportProjection({ ...FIXTURE, identityCredential: true })?.identityCredential).toBe("unavailable");
   });
 
   it("refuses payloads that are not a v1 projection", () => {
@@ -125,6 +135,30 @@ describe("agentPassport — the phone prints the same card as Web (§3.2, §5.4)
     expect(mobile.stage).toEqual(web.stage);
     expect(mobile.share).toEqual(web.share);
     expect(mobile.name).toBe("QA Agent");
+  });
+
+  it("prints the Agentrix-signed identity credential on the Home stamp only when it verifies, word for word as Web, never the DID (L5 backend 9 B)", () => {
+    const signed = normalizeAgentPassportProjection({ success: true, data: { ...FIXTURE, identityCredential: "verified" } })!;
+    const mobile = buildMobileAgentPassportCard({ name: "", agentAccountId: ACCOUNT_ID, passport: signed });
+    const web = buildAgentPassportCard({
+      name: FIXTURE.name,
+      agentAccountId: ACCOUNT_ID,
+      passport: signed,
+      calendarConnected: null,
+      deviceCount: null,
+    });
+    const home = mobile.facts.find((fact) => fact.id === "identity")!;
+    expect(home.value.zh).toBe("2026-09-01 在 Agentrix 安家 · 持 Agentrix 签发的身份凭证");
+    expect(home.value.en).toBe("Home on Agentrix since 2026-09-01 · holds an Agentrix-signed identity credential");
+    expect(mobile.facts).toEqual(web.facts);
+    // The share link carries the claim alone.
+    const share = decodePassportShare(getAgentPassportShareUrl(mobile, AGENT_REF, "https://www.agentrix.top").split("?c=")[1]) as PublicPassportShareV3;
+    expect(share.ic).toBe(1);
+    expect(JSON.stringify(share)).not.toContain("did:");
+    // Not signed: the stamp is unchanged and nothing travels.
+    const unsigned = buildMobileAgentPassportCard({ name: "", agentAccountId: ACCOUNT_ID, passport: { ...FIXTURE, identityCredential: "none" } });
+    expect(unsigned.facts.find((fact) => fact.id === "identity")!.value.zh).toBe("2026-09-01 在 Agentrix 安家");
+    expect((unsigned.share as PublicPassportShareV3).ic).toBeUndefined();
   });
 
   it("derives the number from the account id hash and keeps the fact order of the shared contract", () => {

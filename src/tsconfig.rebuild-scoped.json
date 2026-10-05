@@ -73,7 +73,9 @@
     "services/desktopDevicesView.ts",
     "services/phoneDeviceKey.ts",
     "services/phoneCapabilityDeclaration.ts",
+    "services/phoneShellBinding.ts",
     "services/deviceMeshReadonly.ts",
+    "services/devicePassports.ts",
     "services/phoneDeviceKeyNative.ts",
     "services/phoneDeviceKeyCopy.ts",
     "services/phoneDeviceEnrollment.ts",
@@ -120,6 +122,15 @@
     "services/__tests__/spendBudget.test.ts",
     "services/seedInvites.ts",
     "components/SeedInvitesCard.tsx",
-    "services/__tests__/seedInvites.test.ts"
+    "services/__tests__/seedInvites.test.ts",
+    "services/trustLadder.ts",
+    "components/TrustLadderCard.tsx",
+    "services/agentCollaboration.ts",
+    "components/AgentRequestsCard.tsx",
+    "services/sharePages.ts",
+    "components/SharePagesCard.tsx",
+    "services/ownerGoals.ts",
+    "components/OwnerGoalsCard.tsx",
+    "services/__tests__/l6OwnerEntries.test.ts"
   ]
 }

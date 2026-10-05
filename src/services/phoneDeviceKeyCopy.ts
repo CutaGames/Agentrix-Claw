@@ -2,6 +2,7 @@
  * What 我的 → 设备 → 这台手机 says (phoneDeviceKey.ts, modules/agentrix-device-key). No React Native import,
  * so a test can check that every error code the key and the enrollment can raise has words.
  */
+import type { PhoneDeclareFailureReason } from './phoneCapabilityDeclaration';
 import type { PhoneKeyHardwareV1 } from './phoneDeviceKey';
 
 export type PhoneKeyCopyV1 = { zh: string; en: string };
@@ -56,3 +57,33 @@ export const PHONE_DEVICE_KEY_ERROR_COPY: Readonly<Record<string, PhoneKeyCopyV1
 export function phoneDeviceKeyErrorText(code: unknown): PhoneKeyCopyV1 {
   return (typeof code === 'string' && PHONE_DEVICE_KEY_ERROR_COPY[code]) || { zh: '没有登记成功，请稍后再试。', en: 'Not registered. Try again later.' };
 }
+
+/** 这台手机 → tell the Agent what it can do (phoneCapabilityDeclaration.ts `declarePhoneCapabilities`). */
+export const PHONE_DECLARE_COPY = {
+  explain: {
+    zh: '告诉 Agent 这台手机现在能做什么：能不能收到推送、能不能由你本人确认、钥匙在不在安全硬件里。15 分钟内有效，Agent 据此决定要不要把事情交给这台手机。要用钥匙签一次名，会请你确认。',
+    en: 'Tells your Agent what this phone can do right now: whether it gets push notifications, whether you can confirm on it, whether its key is in secure hardware. Valid for 15 minutes; your Agent uses it to decide whether to hand this phone a task. The key signs once, so you will be asked to confirm.',
+  },
+  declare: { zh: '告诉 Agent 这台手机能做什么', en: 'Tell your Agent what this phone can do' },
+  declaring: { zh: '正在告诉 Agent…', en: 'Telling your Agent…' },
+  prompt: { zh: '确认把这台手机能做的事告诉 Agent', en: 'Confirm telling your Agent what this phone can do' },
+  failedTitle: { zh: '没有告诉 Agent', en: 'Your Agent was not told' },
+} as const;
+
+export function phoneDeclaredText(minutesLeft: number): PhoneKeyCopyV1 {
+  return { zh: `已告诉 Agent，${minutesLeft} 分钟内有效`, en: `Your Agent knows; valid for ${minutesLeft} min` };
+}
+
+export const PHONE_DECLARE_FAILURE_COPY: Readonly<Record<PhoneDeclareFailureReason, PhoneKeyCopyV1>> = {
+  off: { zh: '平台还没开放设备网。', en: 'The device mesh is not open on the platform yet.' },
+  not_enrolled: { zh: '先把这台手机登记为你的设备。', en: 'Register this phone as your device first.' },
+  no_agent: { zh: '先选一个 Agent。', en: 'Pick an Agent first.' },
+  invalid: { zh: '这台手机的信息不完整，什么都没发。', en: "This phone's details are incomplete; nothing was sent." },
+  binding_closed: { zh: '平台还没开放手机接入，或者当前的 Agent 不在你名下。', en: 'Phones cannot connect on the platform yet, or this Agent is not yours.' },
+  binding_rejected: { zh: '服务器没有让这台手机接入，钥匙可能已经失效，请重新登记后再试。', en: 'The server did not let this phone connect; its key may no longer be valid. Register again and retry.' },
+  binding_unreadable: { zh: '服务器的回答看不懂，什么都没发。', en: "The server answer could not be read; nothing was sent." },
+  user_cancelled: { zh: '你取消了确认，什么都没发。', en: 'You cancelled; nothing was sent.' },
+  sign_failed: { zh: '钥匙没能签名，请再试一次。', en: 'The key could not sign. Try again.' },
+  network: { zh: '连不上 Agentrix，请检查网络后重试。', en: 'Could not reach Agentrix. Check the network and try again.' },
+  rejected: { zh: '服务器没有接受这次上报，请再试一次。', en: 'The server did not accept it. Try again.' },
+};
