@@ -1,0 +1,53 @@
+#!/bin/sh
+# Agentrix guard — Desktop D3: a Claude Code PreToolUse hook that honours the
+# Agentrix emergency stop.
+#
+# Source: desktop/src-tauri/hooks/agentrix-guard (no .sh in the repo: the root
+# .gitignore ignores *.sh). Installed as agentrix-guard.sh.
+#
+# Agentrix Desktop mirrors its emergency-stop state into kill-switch.state next
+# to this script (written by src-tauri/src/agent_hooks.rs, mode 0600):
+#   missing   → Agentrix has never run here: no opinion (exit 0, no output)
+#   released  → no opinion (exit 0, no output); Claude Code's own permission
+#               flow decides as usual — this hook never auto-approves anything
+#   engaged   → block the tool call (exit 2, reason on stderr)
+#   other / unreadable → block (fail closed)
+#
+# The hook reads nothing but the state file: no network, no command parsing,
+# no secrets. It never writes to stdout, so it cannot return an "allow".
+LC_ALL=C
+export LC_ALL
+
+# Claude Code sends the event as JSON on stdin; drain it so the writer never
+# sees a broken pipe. The content is not used.
+cat >/dev/null 2>&1
+
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || {
+  echo "Agentrix guard: cannot locate its directory; blocked." >&2
+  exit 2
+}
+state="$dir/kill-switch.state"
+
+[ -e "$state" ] || exit 0
+
+if [ ! -r "$state" ]; then
+  echo "Agentrix guard: cannot read the emergency-stop state; blocked. (Agentrix：读不到急停状态，已拦截。)" >&2
+  exit 2
+fi
+
+value=""
+IFS= read -r value < "$state" || [ -n "$value" ] || value=""
+
+case "$value" in
+  released)
+    exit 0
+    ;;
+  engaged)
+    echo "Agentrix emergency stop is engaged: AI actions on this computer are paused. Release it in Agentrix, then try again. (Agentrix 急停已拉下：这台电脑上的 AI 操作全部暂停，在 Agentrix 里解除后再试。)" >&2
+    exit 2
+    ;;
+  *)
+    echo "Agentrix guard: unrecognised emergency-stop state; blocked. (Agentrix：急停状态无法识别，已拦截。)" >&2
+    exit 2
+    ;;
+esac

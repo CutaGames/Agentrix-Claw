@@ -1,0 +1,87 @@
+name: Build Desktop internal (Win/Mac)
+# Public build mirror (E71). This branch holds only desktop/ and shared/, copied from
+# CutaGames/Agentrix by coord. Internal test packages: macOS ad-hoc signed, Windows unsigned,
+# no updater artifacts, no GitHub release, no deploy. Bundles go to Actions artifacts.
+on:
+  push:
+    branches: ['desktop/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: desktop-internal-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: agentrix-desktop-windows
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: agentrix-desktop-macos-arm64
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: agentrix-desktop-macos-x64
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+          key: ${{ matrix.target }}
+      - name: Install frontend dependencies
+        working-directory: desktop
+        run: npm ci
+      - name: Build Tauri app (bundles only)
+        working-directory: desktop
+        # The owner-facing sections whose server switches are on in production (first wave, 1b, second wave).
+        # Seed invites and device rental stay off, as on the server.
+        env:
+          VITE_TRUST_LADDER_ENABLED: "1"
+          VITE_AGENT_COLLABORATION_ENABLED: "1"
+          VITE_SHARE_PAGES_ENABLED: "1"
+          VITE_OWNER_GOALS_ENABLED: "1"
+          VITE_OWNER_FOLLOW_UPS_ENABLED: "1"
+          VITE_DEVICE_MARKET_ENABLED: "1"
+          VITE_DEVICE_MESH_ENABLED: "1"
+        run: npx tauri build --target ${{ matrix.target }}
+      # REQ-desktop-022: check the ad-hoc signature of every macOS app on the runner, so no one has to
+      # mount a dmg of the other architecture. A broken signature fails the job.
+      - name: Verify macOS signature (ad-hoc)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$(ls -d desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app | head -1)"
+          exe="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+          {
+            echo "### codesign ${{ matrix.target }}"
+            echo '```'
+            codesign -dv --verbose=4 "$app" 2>&1 | grep -E '^(Identifier|Format|CodeDirectory|Signature|TeamIdentifier|Runtime Version)' || true
+            codesign --verify --deep --strict --verbose=2 "$app" 2>&1
+            echo "archs: $(lipo -archs "$app/Contents/MacOS/$exe")"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*
+          retention-days: 14
+          if-no-files-found: error
