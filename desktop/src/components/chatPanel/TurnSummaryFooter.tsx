@@ -44,7 +44,7 @@ export default function TurnSummaryFooter({ message, workspaceChanges }: Props) 
         detail: { messageId: message.id, dataUrl, capturedAt: Date.now() },
       }));
     } catch (err: any) {
-      setVerifyError(err?.message || "截图失败,可在 Settings 启用 Computer Use 后再试");
+      setVerifyError(err?.message || "截图失败，可在设置里开启「操作电脑」后再试");
     } finally {
       setVerifying(false);
     }
@@ -95,12 +95,9 @@ interface BuiltSummary {
 function buildSummary(message: ChatMessage, workspaceChanges: GitFileChange[]): BuiltSummary | null {
   if (message.role !== "assistant") return null;
   if (message.streaming) return null;
-  if (message.error) {
-    return {
-      what: "执行没有顺利完成,看上面的错误信息",
-      next: "可以点 Continue 重试,或者改一下问法再试一次",
-    };
-  }
+  // A failed turn already says what happened and offers 重试 in its own bubble (chatFailureCopy.ts); a second
+  // summary under it repeated that and pointed at a Continue button that is not there (T7 r1, 10-16).
+  if (message.error) return null;
   const text = message.content || "";
   const len = text.trim().length;
   if (len === 0) return null;

@@ -171,7 +171,7 @@ export default function AgentEconomyPanel({ open, onClose }: Props) {
               onClick={() => setTab(t)}
               style={{ ...tabBtn, ...(tab === t ? tabBtnActive : {}) }}
             >
-              {t === "overview" ? "📊" : t === "transactions" ? "📋" : t === "a2a" ? "🔗 A2A" : t === "skills" ? "🧩" : t === "skin" ? "🎨 Skin" : "💎 AXP"}
+              {t === "overview" ? "📊" : t === "transactions" ? "📋" : t === "a2a" ? "🔗 A2A" : t === "skills" ? "🧩" : t === "skin" ? "🎨 Skin" : "💎 AXP 积分"}
             </button>
           ))}
         </div>
@@ -215,7 +215,7 @@ export default function AgentEconomyPanel({ open, onClose }: Props) {
                 ✨ 创建/选择主宠
               </button>
               <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 6 }}>
-                也可以切换上方 「💎 AXP」标签查看每日签到积分
+                也可以切换上方 「💎 AXP 积分」标签查看每日签到积分
               </div>
             </div>
           )}

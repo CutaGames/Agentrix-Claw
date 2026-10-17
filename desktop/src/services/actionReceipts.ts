@@ -127,7 +127,7 @@ export async function resolveSoulCoreId(
     return { status: "resolved", soulCoreId: fromMetadata.trim(), agentAccountId, source: "metadata.soulCoreId" };
   }
   if (!token) {
-    return { status: "unauthenticated", soulCoreId: null, agentAccountId, message: "登录后可解析当前 Agent 的 Soul Core id。" };
+    return { status: "unauthenticated", soulCoreId: null, agentAccountId, message: "登录后可解析当前 Agent 的回执编号。" };
   }
   try {
     const response = await apiFetch(
@@ -140,7 +140,7 @@ export async function resolveSoulCoreId(
         soulCoreId: null,
         agentAccountId,
         httpStatus: response.status,
-        message: `Backend 没有该 Agent 的 Soul Core 映射（HTTP ${response.status}）；Desktop 不用 Agent id 冒充 Soul Core id。`,
+        message: `Backend 没有该 Agent 的回执编号映射（HTTP ${response.status}）；Desktop 不用 Agent id 冒充回执编号。`,
       };
     }
     const data = unwrapData(await readJson(response)) as { soulCoreId?: unknown } | null;
@@ -151,7 +151,7 @@ export async function resolveSoulCoreId(
         soulCoreId: null,
         agentAccountId,
         httpStatus: response.status,
-        message: "Backend 返回的 Soul Core id 不合 `sc_` 合同；Desktop 不猜。",
+        message: "Backend 返回的回执编号不合 `sc_` 合同；Desktop 不猜。",
       };
     }
     return { status: "resolved", soulCoreId: soulCoreId.trim(), agentAccountId, source: "agent-accounts.soul-core-id" };
@@ -160,7 +160,7 @@ export async function resolveSoulCoreId(
       status: "network_error",
       soulCoreId: null,
       agentAccountId,
-      message: "无法连接 Backend 解析 Soul Core id；本地不缓存、不猜。",
+      message: "无法连接 Backend 解析回执编号；本地不缓存、不猜。",
     };
   }
 }
@@ -269,7 +269,7 @@ export async function fetchActionReceiptInventory(
             ...base,
             receipt: null,
             receiptStatus: "invalid_contract",
-            receiptErrors: ["receipt does not belong to this task / Soul Core"],
+            receiptErrors: ["receipt does not belong to this task"],
           };
         }
         return { ...base, receipt, receiptStatus: "ready" };

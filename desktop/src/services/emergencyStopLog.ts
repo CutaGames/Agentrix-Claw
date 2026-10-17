@@ -14,6 +14,7 @@
  */
 import type { KillSwitchOrigin } from "./executionFence";
 import { developerRuntime } from "./developerRuntime";
+import { fill, zhT, type Translator } from "../i18n/strings";
 
 export const EMERGENCY_STOP_LOG_KEY = "agentrix_desktop_emergency_stop_log";
 export const EMERGENCY_STOP_LOG_CHANGED_EVENT = "agentrix:emergency-stop-log-changed";
@@ -206,35 +207,18 @@ export function nowForEmergencyStop(): number {
 
 // ── 界面文案 ──────────────────────────────────────────────────────────────
 
-const ORIGIN_TEXT: Record<string, string> = {
-  tray: "托盘",
-  settings: "设置",
-  shortcut: "快捷键",
-  "local-user": "本人",
-  "remote-stop": "远程停止",
-  test: "测试",
-};
-
-const READBACK_TEXT: Record<GateReadback, string> = {
-  pending: "确认中",
-  confirmed: "已确认",
-  not_confirmed: "未确认",
-  unavailable: "读不到",
-};
-
-export function describeEmergencyStopRecord(record: EmergencyStopRecord): string {
-  const parts = [`${record.kind === "engaged" ? "拉下" : "解除"}（${ORIGIN_TEXT[record.origin] || record.origin}）`];
-  parts.push(`电脑侧闸门${READBACK_TEXT[record.nativeGate]}`);
+/** One line of the log in the app language (`t`; Chinese when none is passed). The words are `estop.*` in `i18n/strings.ts`. */
+export function describeEmergencyStopRecord(record: EmergencyStopRecord, t: Translator = zhT): string {
+  const originKey = `estop.origin.${record.origin}`;
+  const origin = t(originKey) === originKey ? record.origin : t(originKey);
+  const parts = [fill(t(record.kind === "engaged" ? "estop.log.engaged" : "estop.log.released"), { origin })];
+  parts.push(fill(t("estop.log.nativeGate"), { state: t(`estop.readback.${record.nativeGate}`) }));
   if (record.kind === "engaged") {
-    parts.push(`本机运行时撤销${READBACK_TEXT[record.runtime || "pending"]}`);
-    if (record.approvalsRejected) parts.push(`驳回 ${record.approvalsRejected} 个待审批`);
+    parts.push(fill(t("estop.log.runtime"), { state: t(`estop.readback.${record.runtime || "pending"}`) }));
+    if (record.approvalsRejected) parts.push(fill(t("estop.log.rejected"), { n: record.approvalsRejected }));
   }
   if (typeof record.settledAfterMs === "number") {
-    parts.push(
-      record.withinBudget
-        ? `${record.settledAfterMs} ms 内生效（3 秒内）`
-        : `用时 ${record.settledAfterMs} ms，没有在 3 秒内全部确认`,
-    );
+    parts.push(fill(t(record.withinBudget ? "estop.log.inBudget" : "estop.log.overBudget"), { ms: record.settledAfterMs }));
   }
   return parts.join(" · ");
 }

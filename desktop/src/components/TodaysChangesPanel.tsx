@@ -24,11 +24,13 @@ import {
   type WorkspaceBackupFileRow,
   type WorkspaceFileBackup,
 } from "../services/workspaceBackups";
+import { useI18n } from "../i18n/I18nProvider";
+import { fill } from "../i18n/strings";
 import {
-  SNAPSHOT_SKIPPED_TEXT,
   canRevertSnapshot,
   describeSnapshotAgents,
   describeSnapshotReason,
+  describeSnapshotSkipped,
   groupSnapshotsByFile,
   listAgentSnapshots,
   revertAgentSnapshot,
@@ -52,6 +54,7 @@ interface Props {
 }
 
 export default function TodaysChangesPanel({ open, onClose }: Props) {
+  const { t } = useI18n();
   const backups = useChatPanelRuntimeStore((s) => s.workspaceBackups);
   const removeBackup = useChatPanelRuntimeStore((s) => s.removeWorkspaceBackup);
   const [reverting, setReverting] = useState<Set<string>>(new Set());
@@ -166,7 +169,7 @@ export default function TodaysChangesPanel({ open, onClose }: Props) {
       // Let the rest of the app know so workspaceChanges can refresh.
       window.dispatchEvent(new CustomEvent("agentrix:workspace-reverted", { detail: { path } }));
     } catch (err: any) {
-      setErrors((prev) => ({ ...prev, [path]: err?.message || "撤销失败" }));
+      setErrors((prev) => ({ ...prev, [path]: err?.message || t("changes.undoFailed") }));
     } finally {
       setReverting((prev) => {
         const next = new Set(prev);
@@ -180,7 +183,7 @@ export default function TodaysChangesPanel({ open, onClose }: Props) {
   const revertAgentRow = async (row: AgentSnapshotFileRow): Promise<boolean> => {
     const result = await revertAgentSnapshot(row.earliest.id);
     if (!result.ok) {
-      setAgentErrors((prev) => ({ ...prev, [row.targetPath]: describeSnapshotReason(result.reason) || "撤销失败" }));
+      setAgentErrors((prev) => ({ ...prev, [row.targetPath]: describeSnapshotReason(result.reason, t) || t("changes.undoFailed") }));
       return false;
     }
     setAgentErrors((prev) => {
@@ -223,7 +226,7 @@ export default function TodaysChangesPanel({ open, onClose }: Props) {
         removeBackup(b.targetPath);
         setDiskBackups((prev) => prev.filter((item) => item.targetPath !== b.targetPath));
       } catch (err: any) {
-        setErrors((prev) => ({ ...prev, [b.targetPath]: err?.message || "撤销失败" }));
+        setErrors((prev) => ({ ...prev, [b.targetPath]: err?.message || t("changes.undoFailed") }));
       }
     }
     for (const row of revertableAgentRows) {
@@ -240,20 +243,20 @@ export default function TodaysChangesPanel({ open, onClose }: Props) {
         style={panelStyle}
         role="dialog"
         aria-modal="true"
-        aria-label="今天的改动"
+        aria-label={t("changes.aria")}
         onClick={(e) => e.stopPropagation()}
       >
         <div style={headerStyle}>
           <div>
-            <div style={eyebrowStyle}>今天 Agent 做了什么</div>
-            <div style={titleStyle}>{ownRows.length + agentRows.length} 个文件被改动</div>
+            <div style={eyebrowStyle}>{t("changes.eyebrow")}</div>
+            <div style={titleStyle}>{fill(t("changes.count"), { n: ownRows.length + agentRows.length })}</div>
           </div>
-          <button onClick={onClose} style={closeBtnStyle} aria-label="关闭">✕</button>
+          <button onClick={onClose} style={closeBtnStyle} aria-label={t("common.close")}>✕</button>
         </div>
 
         <div style={listStyle}>
           {ownRows.length === 0 && agentRows.length === 0 && (
-            <div style={emptyStyle}>今天 Agent 还没有动过任何文件。</div>
+            <div style={emptyStyle}>{t("changes.empty")}</div>
           )}
           {ownRows.map((row) => {
             const path = row.targetPath;
@@ -263,11 +266,11 @@ export default function TodaysChangesPanel({ open, onClose }: Props) {
             const error = errors[path];
             const time = new Date(row.latestAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
             const note = same
-              ? "和改之前一样（没改成或已撤销）"
+              ? t("changes.own.same")
               : !row.earliest.existedBefore
-                ? "新建的文件，撤销会删掉它"
+                ? t("changes.own.created")
                 : row.edits > 1
-                  ? `改了 ${row.edits} 次`
+                  ? fill(t("changes.edits"), { n: row.edits })
                   : "";
             return (
               <div key={path} style={rowStyle} data-testid="todays-changes-own-row">
@@ -288,10 +291,10 @@ export default function TodaysChangesPanel({ open, onClose }: Props) {
                     opacity: same || busy ? 0.5 : 1,
                     cursor: same ? "not-allowed" : busy ? "wait" : "pointer",
                   }}
-                  aria-label={`撤销今天对 ${path} 的改动`}
-                  title="回到今天第一次改它之前"
+                  aria-label={fill(t("changes.own.undoAria"), { path })}
+                  title={t("changes.own.undoTitle")}
                 >
-                  {isReverting ? "撤销中…" : "撤销"}
+                  {isReverting ? t("changes.undoing") : t("changes.undo")}
                 </button>
               </div>
             );
@@ -299,26 +302,26 @@ export default function TodaysChangesPanel({ open, onClose }: Props) {
 
           {agentRows.length > 0 && (
             <div style={groupTitleStyle} data-testid="todays-changes-agent-group">
-              {describeSnapshotAgents(agentRows.flatMap((row) => row.agents))} 改的
+              {fill(t("changes.agent.group"), { who: describeSnapshotAgents(agentRows.flatMap((row) => row.agents), t("changes.agent.sep")) })}
             </div>
           )}
           {agentRows.map((row) => {
             const isBusy = agentBusy.has(row.targetPath);
             const error = agentErrors[row.targetPath];
             const revertable = canRevertSnapshot(row.earliest);
-            const who = describeSnapshotAgents(row.agents);
+            const who = describeSnapshotAgents(row.agents, t("changes.agent.sep"));
             const time = new Date(row.latestAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
             const note = row.earliest.skipped
-              ? SNAPSHOT_SKIPPED_TEXT[row.earliest.skipped] || "没有留快照"
+              ? describeSnapshotSkipped(row.earliest.skipped, t)
               : !row.earliest.verified
-                ? "没法确认这张快照是 Agentrix 自己留的，不能一键撤回"
+                ? t("changes.agent.unverified")
               : row.earliest.current === "same"
-                ? "和改之前一样（没改成或已撤回）"
+                ? t("changes.agent.same")
                 : row.earliest.current === "unknown"
-                  ? "现在读不到这个文件"
+                  ? t("changes.agent.unreadable")
                   : row.earliest.existedBefore
-                    ? `改了 ${row.edits} 次`
-                    : "新建的文件，撤回会删掉它";
+                    ? fill(t("changes.edits"), { n: row.edits })
+                    : t("changes.agent.created");
             return (
               <div key={row.targetPath} style={rowStyle} data-testid="todays-changes-agent-row">
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -337,10 +340,10 @@ export default function TodaysChangesPanel({ open, onClose }: Props) {
                     opacity: !revertable || isBusy || revertingAll ? 0.5 : 1,
                     cursor: !revertable ? "not-allowed" : isBusy || revertingAll ? "wait" : "pointer",
                   }}
-                  aria-label={`撤销 ${who} 今天对 ${row.targetPath} 的改动`}
-                  title={`回到 ${who} 今天第一次改它之前`}
+                  aria-label={fill(t("changes.agent.undoAria"), { who, path: row.targetPath })}
+                  title={fill(t("changes.agent.undoTitle"), { who })}
                 >
-                  {isBusy ? "撤销中…" : "撤销"}
+                  {isBusy ? t("changes.undoing") : t("changes.undo")}
                 </button>
               </div>
             );
@@ -358,7 +361,7 @@ export default function TodaysChangesPanel({ open, onClose }: Props) {
                 cursor: revertingAll ? "wait" : "pointer",
               }}
             >
-              {revertingAll ? "正在撤销全部…" : `撤销今天全部 ${totalChanges} 个改动`}
+              {revertingAll ? t("changes.all.busy") : fill(t("changes.all"), { n: totalChanges })}
             </button>
           </div>
         )}

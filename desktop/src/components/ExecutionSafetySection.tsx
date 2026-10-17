@@ -10,7 +10,6 @@
  */
 import { useEffect, useState, type CSSProperties } from "react";
 import {
-  BACKEND_REMOTE_MUTATION_FLAG,
   engageKillSwitch,
   FENCE_SETTINGS_CHANGED_EVENT,
   getBackendRemoteMutationState,
@@ -30,16 +29,13 @@ import {
   type EmergencyStopRecord,
 } from "../services/emergencyStopLog";
 import EmergencyStopRing from "./EmergencyStopRing";
+import { useI18n } from "../i18n/I18nProvider";
+import { fill } from "../i18n/strings";
 
 const SHOWN_RECORDS = 5;
 
-const BACKEND_STATE_LABEL = {
-  unknown: "未知（还没有收到远程命令）",
-  enabled: "已开启",
-  disabled: "已关闭",
-} as const;
-
 export default function ExecutionSafetySection() {
+  const { t } = useI18n();
   const [killSwitch, setKillSwitch] = useState<KillSwitchState>(() => getKillSwitchState());
   const [remoteMutation, setRemoteMutation] = useState(() => isRemoteMutationEnabled());
   const [rawShell, setRawShell] = useState(() => isRawShellEnabled());
@@ -65,16 +61,16 @@ export default function ExecutionSafetySection() {
 
   return (
     <div style={section} aria-labelledby="execution-safety-title">
-      <div id="execution-safety-title" style={sectionTitle}>这台电脑的执行安全</div>
+      <div id="execution-safety-title" style={sectionTitle}>{t("safety.title")}</div>
 
       <div role="status" aria-live="polite" style={killSwitch.engaged ? engagedBox : idleBox}>
         <div style={{ fontSize: 13, fontWeight: 600 }}>
-          {killSwitch.engaged ? "急停已拉下" : "正常运行"}
+          {killSwitch.engaged ? t("safety.state.engaged") : t("safety.state.idle")}
         </div>
         <div style={hint}>
           {killSwitch.engaged
-            ? `AI 在这台电脑上的操作已全部暂停，只允许停止类命令。${killSwitch.engagedAt ? `拉下时间：${new Date(killSwitch.engagedAt).toLocaleString()}。` : ""}`
-            : "拉下急停后，AI 不能再在这台电脑上执行任何操作，Computer Use 也会关闭。"}
+            ? `${t("safety.desc.engaged")}${killSwitch.engagedAt ? ` ${fill(t("safety.desc.engagedAt"), { time: new Date(killSwitch.engagedAt).toLocaleString() })}` : ""}`
+            : t("safety.desc.idle")}
         </div>
         {/* The box above is already a polite live region: the ring does not add another. */}
         <EmergencyStopRing record={records[0]} live={false} />
@@ -89,40 +85,41 @@ export default function ExecutionSafetySection() {
           }}
           style={killSwitch.engaged ? releaseButton : stopButton}
         >
-          {killSwitch.engaged ? "解除急停" : "急停"}
+          {killSwitch.engaged ? t("safety.btn.release") : t("safety.btn.engage")}
         </button>
       </div>
 
       <SwitchRow
         id="fence-remote-mutation"
-        label="允许手机和云端在这台电脑上做改动"
-        description="关闭时，只允许读取类和停止类命令。打开后每个改动仍需审批，高风险的要在这台电脑上确认。"
+        label={t("safety.remote.label")}
+        description={t("safety.remote.desc")}
         value={remoteMutation}
         disabled={killSwitch.engaged}
         onChange={(v) => setRemoteMutationEnabled(v)}
       />
       <SwitchRow
         id="fence-raw-shell"
-        label="允许 AI 运行命令"
-        description="关闭时，拒绝所有 shell 命令（包括聊天和远程）。打开后每条命令都要审批，不能记住。"
+        label={t("safety.shell.label")}
+        description={t("safety.shell.desc")}
         value={rawShell}
         disabled={killSwitch.engaged}
         onChange={(v) => setRawShellEnabled(v)}
       />
-      <div style={hint}>
-        服务端开关 {BACKEND_REMOTE_MUTATION_FLAG}：{BACKEND_STATE_LABEL[backendState.state]}
+      {/* The server switch is named by what it does, never by its setting name (T7 r2, 10-16). */}
+      <div style={hint} data-testid="safety-backend-state">
+        {fill(t("safety.backend.line"), { state: t(`safety.backend.${backendState.state}`) })}
       </div>
       {records.length > 0 && (
         <div style={{ marginTop: 8 }}>
-          <div id="emergency-stop-log-title" style={{ fontSize: 12, fontWeight: 600 }}>急停记录</div>
+          <div id="emergency-stop-log-title" style={{ fontSize: 12, fontWeight: 600 }}>{t("safety.log.title")}</div>
           <ul aria-labelledby="emergency-stop-log-title" style={recordList} data-testid="emergency-stop-log">
             {records.slice(0, SHOWN_RECORDS).map((record) => (
               <li key={record.id} style={hint}>
-                <time dateTime={record.at}>{new Date(record.at).toLocaleString()}</time> {describeEmergencyStopRecord(record)}
+                <time dateTime={record.at}>{new Date(record.at).toLocaleString()}</time> {describeEmergencyStopRecord(record, t)}
               </li>
             ))}
           </ul>
-          <div style={hint}>这是这台电脑上的本机记录，还不是服务端回执。</div>
+          <div style={hint}>{t("safety.log.note")}</div>
         </div>
       )}
     </div>

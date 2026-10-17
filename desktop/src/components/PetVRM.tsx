@@ -22,6 +22,8 @@ import { VRMLoaderPlugin, VRMUtils, type VRM } from "@pixiv/three-vrm";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { PetEmotion, PetState } from "../../../shared/types/agentrix-presence";
 import { triggerPetInteraction } from "../services/petSdk";
+import { detectInitialLocale } from "../i18n/I18nProvider";
+import { translate } from "../i18n/strings";
 
 // VRM 1.0 standard ExpressionPresetName values. We map the 10 Agentrix
 // emotions onto the closest standard preset so any VRoid Studio export works
@@ -295,7 +297,7 @@ export default function PetVRM({ url, size = 96, style, showLevelBadge = true }:
       onDoubleClick={handleDoubleClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      title="Living Pet"
+      title={translate(detectInitialLocale(), "pet.title")}
     >
       <div ref={mountRef} style={{ width: size, height: size }} />
       {showLevelBadge && lv > 0 && (

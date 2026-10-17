@@ -25,6 +25,8 @@ import {
   type OrderDeskLoad,
 } from "../services/orderDesk";
 import { useAuthStore } from "../services/store";
+import { useI18n } from "../i18n/I18nProvider";
+import { fill, type Translator } from "../i18n/strings";
 import { DEVICE_ENROLLMENT_CHANGED_EVENT, readEnrollmentStatus, renewRuntimeCredential } from "../services/deviceEnrollment";
 import {
   BACKGROUND_DRAFT_CHANGED_EVENT,
@@ -40,25 +42,24 @@ import {
   type ComputerDraftMark,
 } from "../services/orderRuntimeDraft";
 
-export const ORDER_STATUS_TEXT: Record<OrderSellerView["status"], string> = {
-  awaiting_payment: "等买方付款",
-  paid: "已付款，等你交付",
-  delivered: "已交付，等买方验收",
-  accepted: "买方已验收，等放款",
-  settled: "已放款",
-  cancelled: "已取消",
-  refund_pending: "退款处理中",
-  refunded: "已退款",
-  disputed: "买方发起了争议，平台处理中",
-  unknown: "结果确认中，不要重复操作",
-};
+export function orderStatusText(status: OrderSellerView["status"], t: Translator): string {
+  return t(`orders.status.${status}`);
+}
 
-const KIND_TEXT: Record<OrderSellerView["kind"], string> = {
-  paid_question: "付费问答",
-  consultation_deposit: "咨询定金",
-};
+function orderKindText(kind: OrderSellerView["kind"], t: Translator): string {
+  return t(`orders.kind.${kind}`);
+}
+
+/**
+ * Reasons that all mean "your main Agent could not be found" — there is no twin yet, so there is nothing to retry
+ * (T7 r2, 10-16: the desk said "没有读到订单：读不到主 Agent 的编号" with a 重试 that could never work).
+ */
+export function isNoTwinReason(reason: string): boolean {
+  return reason === "agent_unresolved" || reason === "no_agent";
+}
 
 export default function OrderDeskSection() {
+  const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
   const instances = useAuthStore((s) => s.instances);
   const activeInstanceId = useAuthStore((s) => s.activeInstanceId);
@@ -121,25 +122,31 @@ export default function OrderDeskSection() {
     );
 
   let body;
-  if (load === null) body = <div style={hint}>读取中…</div>;
-  else if (load.state === "signed_out") body = <div style={hint}>登录以后，分身接到的单会出现在这里。</div>;
-  else if (load.state === "unavailable") body = <div style={hint} data-testid="order-desk-unavailable">接单还没有开放。</div>;
+  if (load === null) body = <div style={hint}>{t("orders.loading")}</div>;
+  else if (load.state === "signed_out") body = <div style={hint}>{t("orders.signedOut")}</div>;
+  else if (load.state === "unavailable") body = <div style={hint} data-testid="order-desk-unavailable">{t("orders.unavailable")}</div>;
+  else if (load.state === "error" && isNoTwinReason(load.reason))
+    body = (
+      <div style={hint} role="status" data-testid="order-desk-no-twin">
+        {t("orders.noTwin")}
+      </div>
+    );
   else if (load.state === "error")
     body = (
       <div style={hint} role="status">
-        没有读到订单：{describeOrderDeskReason(load.reason)}
+        {fill(t("orders.readError"), { reason: describeOrderDeskReason(load.reason, t) })}
         <button type="button" style={{ ...button, marginLeft: 8 }} onClick={() => void reload()}>
-          重试
+          {t("common.retry")}
         </button>
       </div>
     );
-  else if (load.orders.length === 0) body = <div style={hint}>还没有订单。</div>;
+  else if (load.orders.length === 0) body = <div style={hint}>{t("orders.empty")}</div>;
   else
     body = (
       <>
         {load.orders.some((order) => order.environment === "test") && (
           <div role="note" style={testBanner} data-testid="order-desk-test-mode">
-            测试模式，不会真的扣款。
+            {t("orders.testMode")}
           </div>
         )}
         {load.orders.map((order) => (
@@ -159,10 +166,8 @@ export default function OrderDeskSection() {
 
   return (
     <section style={box} aria-labelledby="order-desk-title" data-testid="order-desk">
-      <h2 id="order-desk-title" style={title}>接单与交付</h2>
-      <div style={hint}>
-        分身接到的付费问答和定金。你写好回答、看过一遍再交付；钱在托管里，买方验收以后才放款。
-      </div>
+      <h2 id="order-desk-title" style={title}>{t("orders.title")}</h2>
+      <div style={hint}>{t("orders.intro")}</div>
       {computerCanDraft && (
         <div style={{ marginTop: 8 }}>
           <label htmlFor="order-desk-background" style={{ ...hint, display: "flex", gap: 6, alignItems: "center", marginTop: 0 }}>
@@ -174,10 +179,10 @@ export default function OrderDeskSection() {
               aria-describedby="order-desk-background-desc"
               data-testid="order-desk-background-toggle"
             />
-            有新付款的单时，让电脑先备一份
+            {t("orders.bg.label")}
           </label>
           <div id="order-desk-background-desc" style={hint}>
-            只在这台电脑接着电源、急停没拉下时备，一次一张，只用本地模型。备好以后发一条本机通知，交付照旧要你看过、勾选。
+            {t("orders.bg.desc")}
           </div>
         </div>
       )}
@@ -205,6 +210,7 @@ function OrderCard({
   onComputerDrafted: () => void;
   onStale: () => void;
 }) {
+  const { t } = useI18n();
   const saved = order.deliveryDraft?.answerText ?? "";
   const [text, setText] = useState(saved);
   const [busy, setBusy] = useState(false);
@@ -221,7 +227,7 @@ function OrderCard({
   const dirty = text !== saved;
   const invalid = validateAnswer(text);
   const reviewable = deliverable && !dirty ? reviewableDeliveryDraft(order) : null;
-  const buyerName = order.buyer.displayName ?? (order.buyer.kind === "visitor" ? "访客" : "用户");
+  const buyerName = order.buyer.displayName ?? (order.buyer.kind === "visitor" ? t("orders.buyer.visitor") : t("orders.buyer.user"));
   const textId = `order-answer-${order.orderId}`;
   const reviewId = `order-reviewed-${order.orderId}`;
 
@@ -230,7 +236,7 @@ function OrderCard({
       onChanged(result.order);
       setMessage(done);
     } else {
-      setMessage(describeOrderDeskReason(result.reason));
+      setMessage(describeOrderDeskReason(result.reason, t));
       if (result.reason === "order_version_conflict" || result.reason === "delivery_digest_mismatch") onStale();
     }
   };
@@ -239,7 +245,7 @@ function OrderCard({
     setBusy(true);
     setMessage("");
     try {
-      finish(await saveDeliveryDraft({ token, order, answerText: text }), "草稿已保存。交付前请再看一遍。");
+      finish(await saveDeliveryDraft({ token, order, answerText: text }), t("orders.msg.saved"));
     } finally {
       setBusy(false);
     }
@@ -253,13 +259,9 @@ function OrderCard({
       if (result.ok) {
         onChanged(result.order);
         onComputerDrafted();
-        setMessage(
-          result.marked
-            ? "电脑备好了一份草稿，请看过、改好再交付。"
-            : "电脑备好了一份草稿（没能在本机记下是电脑备的），请看过、改好再交付。",
-        );
+        setMessage(result.marked ? t("orders.msg.computerDrafted") : t("orders.msg.computerDraftedNoMark"));
       } else {
-        setMessage(describeComputerDraftReason(result.reason));
+        setMessage(describeComputerDraftReason(result.reason, t));
         if (result.reason === "order_version_conflict" || result.reason === "draft_exists") onStale();
       }
     } finally {
@@ -272,25 +274,25 @@ function OrderCard({
     setBusy(true);
     setMessage("");
     try {
-      finish(await deliverReviewedDraft({ token, order, reviewedDigest }), "已交付，等买方验收。");
+      finish(await deliverReviewedDraft({ token, order, reviewedDigest }), t("orders.msg.delivered"));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <article style={card} data-testid="order-desk-order" aria-label={`${KIND_TEXT[order.kind]}，${buyerName}`}>
+    <article style={card} data-testid="order-desk-order" aria-label={fill(t("orders.cardLabel"), { kind: orderKindText(order.kind, t), buyer: buyerName })}>
       <div style={cardHeader}>
-        <strong>{KIND_TEXT[order.kind]}</strong>
+        <strong>{orderKindText(order.kind, t)}</strong>
         <span>{formatMoney(order.amounts.total)}</span>
-        <span style={statusTag} data-testid="order-desk-status">{ORDER_STATUS_TEXT[order.status]}</span>
+        <span style={statusTag} data-testid="order-desk-status">{orderStatusText(order.status, t)}</span>
       </div>
-      <div style={hint}>来自 {buyerName}</div>
+      <div style={hint}>{fill(t("orders.from"), { name: buyerName })}</div>
       <div style={quote} data-testid="order-desk-buyer-note">{order.buyerNote}</div>
 
       {order.delivery && (
         <div style={hint}>
-          已交付的内容：
+          {t("orders.deliveredContent")}
           <div style={quote}>{order.delivery.answerText ?? ""}</div>
         </div>
       )}
@@ -300,18 +302,18 @@ function OrderCard({
           {computerCanDraft && !order.deliveryDraft && text === "" && (
             <div style={{ marginTop: 8 }}>
               <button type="button" style={button} disabled={busy} onClick={() => void draftOnComputer()} data-testid="order-desk-computer-draft-button">
-                {busy ? "电脑正在备稿…" : "让电脑先备一份"}
+                {busy ? t("orders.draftBusy") : t("orders.draftBtn")}
               </button>
-              <div style={hint}>只用这台电脑上的本地模型，买方的问题不会发给别的服务。备好以后你看过、改好再交付。</div>
+              <div style={hint}>{t("orders.draftHint")}</div>
             </div>
           )}
           {computerDraft && !dirty && (
             <div role="note" style={computerNote} data-testid="order-desk-computer-draft">
-              这份是电脑备的，请看过再交付。
+              {t("orders.computerNote")}
             </div>
           )}
           <label htmlFor={textId} style={{ ...hint, display: "block", marginTop: 8 }}>
-            你的回答（{[...text].length} / {ORDER_DELIVERY_ANSWER_MAX_CHARS}）
+            {fill(t("orders.answerLabel"), { n: [...text].length, max: ORDER_DELIVERY_ANSWER_MAX_CHARS })}
           </label>
           <textarea
             id={textId}
@@ -324,13 +326,13 @@ function OrderCard({
             style={textarea}
           />
           <button type="button" style={button} disabled={busy || !dirty || invalid !== null} onClick={() => void save()}>
-            {busy ? "正在保存…" : "保存草稿"}
+            {busy ? t("orders.saving") : t("orders.save")}
           </button>
-          {dirty && invalid === null && <span style={{ ...hint, marginLeft: 8 }}>有没保存的修改，保存以后才能交付。</span>}
+          {dirty && invalid === null && <span style={{ ...hint, marginLeft: 8 }}>{t("orders.dirty")}</span>}
 
           {reviewable && (
             <div style={reviewBox} data-testid="order-desk-review">
-              <div style={hint}>交付前再看一遍。买方会收到下面这段，交付以后不能再改：</div>
+              <div style={hint}>{t("orders.reviewIntro")}</div>
               <div style={quote} data-testid="order-desk-review-text">{reviewable.draft.answerText ?? ""}</div>
               <label htmlFor={reviewId} style={{ ...hint, display: "flex", gap: 6, alignItems: "center" }}>
                 <input
@@ -339,7 +341,7 @@ function OrderCard({
                   checked={reviewedDigest === reviewable.digest}
                   onChange={(e) => setReviewedDigest(e.target.checked ? reviewable.digest : null)}
                 />
-                我看过了，就交这一份
+                {t("orders.reviewed")}
               </label>
               <button
                 type="button"
@@ -347,7 +349,7 @@ function OrderCard({
                 disabled={busy || reviewedDigest !== reviewable.digest}
                 onClick={() => void deliver()}
               >
-                {busy ? "正在交付…" : "交付"}
+                {busy ? t("orders.delivering") : t("orders.deliver")}
               </button>
             </div>
           )}

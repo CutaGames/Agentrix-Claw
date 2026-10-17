@@ -18,6 +18,7 @@ import {
 } from "./taskStatusUi";
 import { useVisibleStreamFeedback } from "./useFeedbackTimer";
 import { useIsSimpleMode } from "../../services/userMode";
+import { useI18n } from "../../i18n/I18nProvider";
 import MentionAutocomplete from "./MentionAutocomplete";
 
 type ChatMode = "ask" | "agent" | "plan";
@@ -128,6 +129,7 @@ export default function InputZone({
   // Ask/Agent/Plan rail. Non-coder users don't need to choose modes —
   // the default "agent" handles everything they want.
   const isSimple = useIsSimpleMode();
+  const { t } = useI18n();
   return (
     <div
       style={{
@@ -140,7 +142,7 @@ export default function InputZone({
     >
       {(tokenUsage || streamCost) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>Context</span>
+          <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>{t("chat.context")}</span>
           <div style={{ flex: 1, height: 3, borderRadius: 2, background: "var(--bg-overlay-light)", overflow: "hidden" }}>
             <div style={{
               height: "100%",

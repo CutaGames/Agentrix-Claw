@@ -14,32 +14,51 @@ import {
   type SoulCoreResolution,
 } from "../services/actionReceipts";
 import { useAuthStore } from "../services/store";
+import { useI18n } from "../i18n/I18nProvider";
+import { fill, type Translator } from "../i18n/strings";
 
-const ROW_STATUS_TEXT: Record<ActionReceiptRow["receiptStatus"], string> = {
-  ready: "有回执",
-  pending: "还没结束",
-  not_found: "没有回执",
-  disabled: "回执功能未开启",
-  invalid_contract: "拒绝展示（不合规）",
-  http_error: "读取失败",
-};
+/**
+ * What the owner reads when the receipts list is not there (T7 r2, 10-16).
+ * - The Agent has no receipts record on the server (the id lookup answered 404): "no receipts yet", no HTTP code.
+ * - Anything else that went wrong: one plain sentence and a retry.
+ */
+export function receiptsNotice(
+  inventory: ActionReceiptInventory,
+  resolution: SoulCoreResolution | null,
+  t: Translator,
+): { text: string; retry: boolean } | null {
+  switch (inventory.status) {
+    case "ready":
+      return null;
+    case "no_agent":
+      return { text: t("receipts.status.noAgent"), retry: false };
+    case "unauthenticated":
+      return { text: t("receipts.status.signedOut"), retry: false };
+    case "disabled":
+      return { text: t("receipts.status.disabled"), retry: false };
+    case "no_soul_core":
+      return resolution?.status === "unmapped" && resolution.httpStatus === 404
+        ? { text: t("receipts.none"), retry: false }
+        : { text: t("receipts.unavailable"), retry: true };
+    default:
+      return { text: t("receipts.unavailable"), retry: true };
+  }
+}
 
-const INVENTORY_TEXT: Record<ActionReceiptInventory["status"], string> = {
-  ready: "",
-  no_agent: "没有当前 Agent。",
-  no_soul_core: "这个 Agent 在服务端没有 Soul Core，读不到回执。",
-  unauthenticated: "登录后才能读回执。",
-  http_error: "服务端的事项列表读不到。",
-  network_error: "连不上服务端。",
-  invalid_contract: "服务端返回的列表格式无法识别，不当成没有回执。",
-  disabled: "回执功能未开启。",
-};
-
-function environmentText(value: string): string {
-  return value === "production" ? "" : `（${value} 环境）`;
+function environmentText(value: string, t: Translator): string {
+  return value === "production" ? "" : fill(t("receipts.row.env"), { env: value });
 }
 
 export default function ActionReceiptsSection() {
+  const { t } = useI18n();
+  const rowStatusText: Record<ActionReceiptRow["receiptStatus"], string> = {
+    ready: t("receipts.row.ready"),
+    pending: t("receipts.row.pending"),
+    not_found: t("receipts.row.notFound"),
+    disabled: t("receipts.row.disabled"),
+    invalid_contract: t("receipts.row.invalid"),
+    http_error: t("receipts.row.httpError"),
+  };
   const token = useAuthStore((state) => state.token);
   const agents = useAuthStore((state) => state.agents);
   const activeAgentId = useAuthStore((state) => state.activeAgentId);
@@ -65,23 +84,29 @@ export default function ActionReceiptsSection() {
     };
   }, [load]);
 
+  const notice = inventory ? receiptsNotice(inventory, resolution, t) : null;
+
   return (
     <section style={box} aria-labelledby="action-receipts-title" data-testid="action-receipts">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <h2 id="action-receipts-title" style={title}>回执</h2>
+        <h2 id="action-receipts-title" style={title}>{t("receipts.title")}</h2>
         <button type="button" style={button} disabled={loading} onClick={() => void load()}>
-          {loading ? "读取中…" : "重新读取"}
+          {loading ? t("receipts.loading") : t("receipts.reload")}
         </button>
       </div>
-      <div style={hint}>服务端签发的回执，按共享合同校验过才显示。这台电脑不写、不补回执。</div>
-      {inventory && inventory.status !== "ready" && (
+      <div style={hint}>{t("receipts.intro")}</div>
+      {notice && (
         <div role="status" style={hint} data-testid="action-receipts-status">
-          {INVENTORY_TEXT[inventory.status] || inventory.status}
-          {resolution?.status === "unmapped" && `（HTTP ${resolution.httpStatus}）`}
+          {notice.text}
+          {notice.retry && (
+            <button type="button" style={{ ...button, marginLeft: 8 }} disabled={loading} onClick={() => void load()} data-testid="action-receipts-retry">
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
       {inventory?.status === "ready" && inventory.rows.length === 0 && (
-        <div style={hint}>这个 Agent 还没有做过的事。</div>
+        <div style={hint}>{t("receipts.noTasks")}</div>
       )}
       {inventory?.status === "ready" && inventory.rows.length > 0 && (
         <ul style={list}>
@@ -90,17 +115,14 @@ export default function ActionReceiptsSection() {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                 <span style={{ fontSize: 13 }}>{row.toolName}</span>
                 <span style={row.receiptStatus === "invalid_contract" || row.receiptStatus === "http_error" ? badText : hint}>
-                  {ROW_STATUS_TEXT[row.receiptStatus]}
+                  {rowStatusText[row.receiptStatus]}
                 </span>
               </div>
               {row.receipt && (
                 <div style={hint}>
-                  回执 {row.receipt.receiptId} · 第 {row.receipt.outcomeVersion} 版 · {new Date(row.receipt.recordedAt).toLocaleString()}
-                  {environmentText(row.receipt.environment)}
+                  {fill(t("receipts.row.detail"), { id: row.receipt.receiptId, version: row.receipt.outcomeVersion })} · {new Date(row.receipt.recordedAt).toLocaleString()}
+                  {environmentText(row.receipt.environment, t)}
                 </div>
-              )}
-              {!row.receipt && row.receiptErrors && row.receiptErrors.length > 0 && (
-                <div style={hint}>原因：{row.receiptErrors.slice(0, 3).join("；")}</div>
               )}
             </li>
           ))}

@@ -14,6 +14,8 @@
  * - 本机运行时的结果一律是 LOCAL_RUNTIME_UNCERTIFIED：不产生回执，不算正式完成。
  */
 
+import { zhT, type Translator } from "../i18n/strings";
+
 export const DEVELOPER_RUNTIME_COMMANDS = [
   "developer_runtime_presentation",
   "developer_runtime_bootstrap",
@@ -213,37 +215,22 @@ export function runtimeStateLabel(status: RuntimeStatusProjection, killSwitchEng
   return "unknown";
 }
 
-export const RUNTIME_STATE_TEXT: Record<RuntimeStateLabel, string> = {
-  revoked: "已撤销（重启应用后才能重新绑定）",
-  stopped: "急停已拉下：不能绑定，也不能信任新的工作区",
-  off: "默认关闭",
-  unbound: "已开启，还没有绑定这台电脑",
-  bound: "已绑定",
-  unknown: "未知",
-};
+/** The words for a state, in the app language (`t`; Chinese when none is passed). A state the host did not report reads "Not detected". */
+export function runtimeStateText(label: RuntimeStateLabel, t: Translator = zhT): string {
+  return t(`runtime.state.${label}`);
+}
 
-const REASON_TEXT: Record<string, string> = {
-  runtime_default_off: "默认关闭",
-  runtime_revoked: "已撤销，重启应用后才能重新绑定",
-  kill_switch_engaged: "急停已拉下",
-  binding_bootstrap_unavailable: "还没有绑定这台电脑",
-  channel_credential_missing: "没有通道凭据",
-  channel_credential_corrupt: "通道凭据损坏",
-  workspace_trust_missing: "没有选择工作区",
-  workspace_digest_mismatch: "所选文件夹和绑定的工作区不一致",
-  workspace_untrusted: "工作区不可信（路径或文件权限不符合要求）",
-  workspace_trust_io: "写入信任记录失败",
-  vendor_cli_unavailable: "没有找到 Cursor agent CLI",
-  vendor_cli_present_unverified: "找到了 Cursor agent CLI（还没验证能用）",
-  command_not_allowlisted: "命令不在白名单里",
-  runtime_lock: "运行时忙，请稍后再试",
-  invalid_presentation: "宿主返回的格式无法识别",
-};
+/** Reason codes that only describe how the host answered; they are noise to the owner and are not printed. */
+export function isTechnicalRuntimeReason(reasonCode: string | null | undefined): boolean {
+  return !reasonCode || reasonCode === "invalid_presentation" || reasonCode.startsWith("invoke_failed");
+}
 
-export function describeRuntimeReason(reasonCode: string | null | undefined): string {
+export function describeRuntimeReason(reasonCode: string | null | undefined, t: Translator = zhT): string {
   if (!reasonCode) return "";
-  if (reasonCode.startsWith("invoke_failed")) return "这个窗口不能调用本机运行时";
-  return REASON_TEXT[reasonCode] || reasonCode;
+  if (reasonCode.startsWith("invoke_failed")) return t("runtime.reason.invoke_failed");
+  const key = `runtime.reason.${reasonCode}`;
+  const text = t(key);
+  return text === key ? reasonCode : text;
 }
 
 // ── 调用 ─────────────────────────────────────────────────────────────────

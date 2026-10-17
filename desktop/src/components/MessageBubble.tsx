@@ -7,6 +7,8 @@ import { subTaskAnchorPlugin, dispatchSubTaskAnchor } from "../services/chatMark
 import DiffView from "./DiffView";
 import TerminalOutput from "./TerminalOutput";
 import OpportunityCards from "./OpportunityCards";
+import { useI18n } from "../i18n/I18nProvider";
+import { chatFailureRaw, chatFailureText } from "./chatPanel/chatFailureCopy";
 
 function extractTextFromChildren(children: ReactNode): string {
   if (typeof children === "string") return children;
@@ -27,6 +29,9 @@ function MessageBubbleImpl({ message, onRetry }: Props) {
   const isUser = message.role === "user";
   const isError = message.error;
   const renderPlainText = isUser || message.streaming;
+  const { t, locale } = useI18n();
+  // A failed turn with nothing else in it shows one plain sentence; the raw error is folded under 技术细节 (T7 r1).
+  const failureRaw = isError ? chatFailureRaw(message.content) : null;
 
   // Extract <think>...</think> and [Thinking]...[/Thinking] blocks, plus tool markers, diff blocks, terminal output
   const { thinkContent, displayContent, toolCalls, toolProgress, diffBlocks, terminalBlocks } = useMemo(() => {
@@ -207,7 +212,17 @@ function MessageBubbleImpl({ message, onRetry }: Props) {
       )}
 
       {/* Keep streaming lightweight; markdown/highlight runs once the turn settles. */}
-      {displayContent && (
+      {failureRaw !== null ? (
+        <div data-testid="chat-failure">
+          <div>{chatFailureText(failureRaw, locale)}</div>
+          {failureRaw ? (
+            <details style={{ marginTop: 4, fontSize: 11, color: "var(--text-dim)" }}>
+              <summary style={{ cursor: "pointer" }}>{t("chat.failure.detail")}</summary>
+              <code style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{failureRaw}</code>
+            </details>
+          ) : null}
+        </div>
+      ) : displayContent ? (
         renderPlainText ? (
           <span style={{ whiteSpace: "pre-wrap" }}>{displayContent}</span>
         ) : (
@@ -216,7 +231,7 @@ function MessageBubbleImpl({ message, onRetry }: Props) {
             {renderContentWithBlocks(displayContent, diffBlocks, terminalBlocks)}
           </div>
         )
-      )}
+      ) : null}
 
       {/* Inline artifacts surfaced from tool results (e.g. screenshots).
           Without this, computer_use_screenshot only appeared as a green
@@ -358,7 +373,7 @@ function MessageBubbleImpl({ message, onRetry }: Props) {
             fontSize: 12,
           }}
         >
-          ↻ Retry
+          {t("chat.retry")}
         </button>
       )}
 

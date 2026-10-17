@@ -5,7 +5,15 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { fetchAxpBalance, type AxpBalanceView } from "../services/axp";
-import { fetchMySubscription, fetchMyQuota, type MySubscription, type MyQuota, type SubscriptionTier } from "../services/subscription";
+import {
+  budgetPercent,
+  effectiveTier,
+  fetchMySubscription,
+  fetchMyQuota,
+  type MySubscription,
+  type MyQuota,
+  type SubscriptionTier,
+} from "../services/subscription";
 
 const TIER_LABEL: Record<SubscriptionTier, string> = {
   free: "FREE", lite: "LITE", plus: "PLUS", pro: "PRO", elite: "ELITE", enterprise: "ENT",
@@ -48,19 +56,22 @@ export default function AxpEconomyTab() {
     };
   }, []);
 
-  const tier: SubscriptionTier = sub?.effective_tier ?? "free";
+  const tier: SubscriptionTier = effectiveTier(sub, quota);
   const tierColor = TIER_COLORS[tier];
-  const budgetCents = quota?.quota.llm_budget_cents_monthly ?? 0;
-  const usedCents = quota?.llm_usage_cents_this_month ?? 0;
-  const pct = budgetCents > 0 ? Math.min(100, Math.round((usedCents / budgetCents) * 100)) : 0;
-  const overBudget = budgetCents > 0 && usedCents >= budgetCents;
+  const budgetCents = quota?.llm_budget_cents_monthly ?? 0;
+  // The backend does not send this month's usage yet; without it the bar
+  // would always read 0% (T7 r1), so only the budget is shown.
+  const pct = budgetPercent(quota);
+  const usedCents = quota?.llm_usage_cents_this_month;
+  const overBudget = pct !== null && pct >= 100;
+  const cashbackBps = quota?.axp_cashback_bps ?? 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {/* AXP Balance */}
       <div style={card}>
         <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>
-          AXP 余额
+          AXP 积分余额
         </div>
         <div style={{ fontSize: 26, fontWeight: 800, color: "#22d3ee", marginTop: 4 }}>
           💎 {(balance?.balance ?? 0).toLocaleString()}
@@ -92,7 +103,7 @@ export default function AxpEconomyTab() {
             {TIER_LABEL[tier]}
           </div>
         </div>
-        {budgetCents > 0 ? (
+        {budgetCents > 0 && pct !== null && typeof usedCents === "number" ? (
           <>
             <div style={{ fontSize: 12, color: "var(--text-card)", marginBottom: 6 }}>
               本月 LLM ${(usedCents / 100).toFixed(2)} / ${(budgetCents / 100).toFixed(2)}
@@ -108,18 +119,22 @@ export default function AxpEconomyTab() {
             </div>
             {overBudget && (
               <div style={{ fontSize: 10, color: "#f87171", marginTop: 6 }}>
-                ⚠️ 预算已用完。可用 AXP 抵扣 / 绑卡续用 / BYOK 自带 key。
+                ⚠️ 预算已用完。可用 AXP 积分抵扣 / 绑卡续用 / BYOK 自带 key。
               </div>
             )}
           </>
+        ) : budgetCents > 0 ? (
+          <div style={{ fontSize: 12, color: "var(--text-card)" }}>
+            每月模型额度 ${(budgetCents / 100).toFixed(2)}
+          </div>
         ) : (
           <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
             Free 档无独立 LLM 预算 · 升级解锁更多配额
           </div>
         )}
-        {sub?.axp_cashback_bps ? (
+        {cashbackBps > 0 ? (
           <div style={{ marginTop: 8, fontSize: 11, color: "#22d3ee" }}>
-            💎 消费赠送 {(sub.axp_cashback_bps / 100).toFixed(0)}% AXP
+            💎 消费赠送 {(cashbackBps / 100).toFixed(0)}% AXP 积分
           </div>
         ) : null}
       </div>
@@ -131,18 +146,18 @@ export default function AxpEconomyTab() {
             配额
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-            <Quota label="🐾 主宠" value={quota.quota.pets_max} />
-            <Quota label="🖥 设备" value={quota.quota.devices_max} />
-            <Quota label="⚡ 技能" value={quota.quota.skills_publish_max} />
-            <Quota label="👗 皮肤" value={quota.quota.skins_publish_max} />
-            <Quota label="📦 商品" value={quota.quota.products_publish_max} />
-            <Quota label="🎮 游戏" value={quota.quota.games_publish_max} />
+            <Quota label="🐾 主宠" value={quota.pets_max} />
+            <Quota label="🖥 设备" value={quota.devices_max} />
+            <Quota label="⚡ 技能" value={quota.skills_publish_max} />
+            <Quota label="👗 皮肤" value={quota.skins_publish_max} />
+            <Quota label="📦 商品" value={quota.products_publish_max} />
+            <Quota label="🎮 游戏" value={quota.games_publish_max} />
           </div>
         </div>
       )}
 
       <div style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "center", opacity: 0.7 }}>
-        点击右上角档位 Badge → 订阅目录 / AXP 抵扣 slider
+        点击右上角档位 Badge → 订阅目录 / AXP 积分抵扣
       </div>
     </div>
   );

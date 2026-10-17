@@ -8,6 +8,8 @@ import {
   RIVE_STATE_MACHINE_NAME,
   type RiveTriggerInputLike,
 } from "../services/riveEmotionMap";
+import { detectInitialLocale } from "../i18n/I18nProvider";
+import { translate } from "../i18n/strings";
 
 const EMOTION_AURA: Record<PetEmotion, string> = {
   calm: "#a78bfa",
@@ -212,7 +214,7 @@ export default function PetRive({ url, size = 96, style, showLevelBadge = true }
       onDoubleClick={handleDoubleClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      title="Living Pet"
+      title={translate(detectInitialLocale(), "pet.title")}
     >
       <canvas
         ref={canvasRef}

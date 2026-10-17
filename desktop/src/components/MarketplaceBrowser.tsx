@@ -212,7 +212,7 @@ export default function MarketplaceBrowser({ onClose, onEquipSkin }: Props) {
                     <div>
                       <span style={priceText}>${skin.priceUsd.toFixed(2)}</span>
                       {skin.axpAccepted && (
-                        <span style={axpBadge}>AXP -{skin.axpDiscountPercent}%</span>
+                        <span style={axpBadge}>AXP 积分 -{skin.axpDiscountPercent}%</span>
                       )}
                     </div>
                   ) : (

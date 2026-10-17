@@ -7,7 +7,12 @@ import type {
   ShellBindingFenceCompanionV1,
   ShellBindingRevocationReceiptV1,
 } from './shell-revocation-journal';
-import { computeDigest, type DigestRef, type RecordRef } from './trust-loop-primitives';
+import {
+  canonicalizeJson,
+  computeDigest,
+  type DigestRef,
+  type RecordRef,
+} from './trust-loop-primitives';
 
 export const TRUST_CORE_REVOCATION_SCHEMA_VERSION = 1 as const;
 export const TRUST_CORE_APPLICABLE_SET_POLICY_V1 =
@@ -474,7 +479,15 @@ function exactEpochSet(
   value: unknown,
   expected: TrustCoreRevocationEpochV1[],
 ): boolean {
-  return Array.isArray(value) && JSON.stringify(value) === JSON.stringify(expected);
+  if (!Array.isArray(value)) return false;
+  // Compare through canonicalizeJson: epochs stored in jsonb come back with
+  // object keys re-ordered, while array order, values and key sets must still
+  // match exactly. A canonicalization failure counts as "not equal".
+  try {
+    return canonicalizeJson(value) === canonicalizeJson(expected);
+  } catch {
+    return false;
+  }
 }
 
 function validateWriterReceiptEvidenceV1(

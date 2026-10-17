@@ -23,6 +23,7 @@ import {
 } from "../../../shared/types/order-escrow-view";
 import { ORDER_DELIVERY_ANSWER_MAX_CHARS } from "../../../shared/types/order-escrow";
 import { API_BASE, apiFetch } from "./store";
+import { fill, zhT, type Translator } from "../i18n/strings";
 
 export type OrderDeskLoad =
   | { state: "signed_out" }
@@ -178,31 +179,15 @@ export async function deliverReviewedDraft(input: { token: string; order: OrderS
   });
 }
 
-const REASON_TEXT: Record<string, string> = {
-  signed_out: "请先登录",
-  no_agent: "没有找到你的主 Agent",
-  agent_unresolved: "读不到主 Agent 的编号",
-  network: "连不上服务器，稍后再试",
-  invalid_response: "服务器返回的格式无法识别，没有改动",
-  order_id_invalid: "订单编号不对",
-  not_deliverable: "这张单现在不能交付",
-  answer_empty: "回答不能是空的",
-  answer_too_long: `回答不能超过 ${ORDER_DELIVERY_ANSWER_MAX_CHARS} 个字`,
-  draft_not_reviewable: "草稿和服务器上的对不上，请重新保存后再看一遍",
-  draft_changed: "你看过之后草稿又变了，请再看一遍",
-  order_version_conflict: "这张单刚刚有变化，已经重新读取，请再看一遍",
-  delivery_digest_mismatch: "交付的内容和你看过的不一致，没有交付",
-  owner_review_required: "要先看过交付内容",
-  action_not_allowed_in_status: "这张单现在的状态不能交付",
-  actor_not_allowed: "只有主人本人能交付",
-  order_delivery_draft_missing: "还没有草稿",
-  sign_in_required: "需要用你本人的登录交付（重新登录后再试）",
-  order_not_found: "找不到这张单",
-  orders_unavailable: "接单还没有开放",
-  rate_limited: "操作太频繁，稍后再试",
-};
-
-export function describeOrderDeskReason(reason: string | undefined): string {
+/**
+ * Plain words for a reason code, in the app language (`t`; Chinese when the caller does not pass one).
+ * The words live in `i18n/strings.ts` under `orders.reason.<code>`.
+ */
+export function describeOrderDeskReason(reason: string | undefined, t: Translator = zhT): string {
   if (!reason) return "";
-  return REASON_TEXT[reason] ?? `没有完成（${reason}）`;
+  const key = `orders.reason.${reason}`;
+  const text = t(key);
+  // `http_500` and codes the catalog does not know never reach the screen; the owner reads one plain sentence.
+  if (text === key || /^http_\d+$/.test(reason)) return t("orders.reason.generic");
+  return fill(text, { max: ORDER_DELIVERY_ANSWER_MAX_CHARS });
 }

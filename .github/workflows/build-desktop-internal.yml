@@ -50,16 +50,6 @@ jobs:
         run: npm ci
       - name: Build Tauri app (bundles only)
         working-directory: desktop
-        # The owner-facing sections whose server switches are on in production (first wave, 1b, second wave).
-        # Seed invites and device rental stay off, as on the server.
-        env:
-          VITE_TRUST_LADDER_ENABLED: "1"
-          VITE_AGENT_COLLABORATION_ENABLED: "1"
-          VITE_SHARE_PAGES_ENABLED: "1"
-          VITE_OWNER_GOALS_ENABLED: "1"
-          VITE_OWNER_FOLLOW_UPS_ENABLED: "1"
-          VITE_DEVICE_MARKET_ENABLED: "1"
-          VITE_DEVICE_MESH_ENABLED: "1"
         run: npx tauri build --target ${{ matrix.target }}
       # REQ-desktop-022: check the ad-hoc signature of every macOS app on the runner, so no one has to
       # mount a dmg of the other architecture. A broken signature fails the job.

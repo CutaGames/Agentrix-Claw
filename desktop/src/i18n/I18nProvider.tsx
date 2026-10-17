@@ -31,7 +31,7 @@ interface I18nContextValue {
 const I18nContext = createContext<I18nContextValue | null>(null);
 const STORAGE_KEY = "agentrix-locale";
 
-function detectInitialLocale(): Locale {
+export function detectInitialLocale(): Locale {
   if (typeof window === "undefined") return DEFAULT_LOCALE;
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -92,10 +92,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 export function useI18n(): I18nContextValue {
   const ctx = useContext(I18nContext);
   if (!ctx) {
+    // Outside a provider (a part rendered alone): follow the same stored or system language the provider would.
+    const locale = detectInitialLocale();
     return {
-      locale: DEFAULT_LOCALE,
+      locale,
       setLocale: () => undefined,
-      t: (key: string) => translate(DEFAULT_LOCALE, key),
+      t: (key: string) => translate(locale, key),
     };
   }
   return ctx;

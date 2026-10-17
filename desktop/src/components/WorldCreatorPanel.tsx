@@ -302,7 +302,7 @@ export default function WorldCreatorPanel(props: Props) {
 
             <textarea
               style={{ ...textareaStyle, marginTop: 12 }}
-              placeholder="输入自然语言编辑指令,例如:把货架价格调到 5 AXP…"
+              placeholder="输入自然语言编辑指令,例如:把货架价格调到 5 AXP 积分…"
               value={instruction}
               onChange={(e) => setInstruction(e.target.value)}
             />

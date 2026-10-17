@@ -15,22 +15,11 @@ import {
 } from "../services/approvalInbox";
 import { decideDesktopApproval } from "../services/desktopApproval";
 import { useAuthStore } from "../services/store";
-
-const BLOCKED_TEXT = {
-  decided: "",
-  expired: "已过期，只能拒绝",
-  device_signature_required: "高风险批准需要这台电脑的设备签名，绑定电脑后才能在这里批准；现在只能拒绝",
-  other_device: "这是另一台电脑发起的，只能在那台电脑上批准",
-} as const;
-
-const SYNC_TEXT: Record<string, string> = {
-  local_only: "只在这台电脑上生效（服务端没有这条记录）",
-  signed_out: "没有登录，未同步到服务端",
-  device_signature_unavailable: "未同步到服务端（高风险批准需要设备签名）",
-  missing_request_digest: "未同步到服务端（审批记录缺少摘要）",
-};
+import { useI18n } from "../i18n/I18nProvider";
+import { fill } from "../i18n/strings";
 
 export default function ApprovalInboxSection() {
+  const { t } = useI18n();
   const token = useAuthStore((state) => state.token);
   const [entries, setEntries] = useState<ApprovalInboxEntry[]>(() => getApprovalInboxSnapshot());
   const [busy, setBusy] = useState<string | null>(null);
@@ -49,9 +38,13 @@ export default function ApprovalInboxSection() {
     setMessage("");
     try {
       const result = await decideDesktopApproval({ token, approval: entry.approval, decision });
-      const verb = decision === "approved" ? "已批准" : "已拒绝";
+      const verb = decision === "approved" ? t("approvals.approved") : t("approvals.rejected");
       if (result.synced) setMessage(verb);
-      else setMessage(`${verb}；${SYNC_TEXT[result.reason || ""] || `未同步到服务端（${result.reason || "未知"}）`}`);
+      else {
+        const syncKey = `approvals.sync.${result.reason || ""}`;
+        const syncText = t(syncKey) === syncKey ? fill(t("approvals.sync.other"), { reason: result.reason || t("common.unknown") }) : t(syncKey);
+        setMessage(`${verb}${t("common.sep")}${syncText}`);
+      }
     } finally {
       setBusy(null);
       reload();
@@ -60,32 +53,32 @@ export default function ApprovalInboxSection() {
 
   return (
     <section style={box} aria-labelledby="approval-inbox-title" data-testid="approval-inbox">
-      <h2 id="approval-inbox-title" style={title}>待审批</h2>
-      {entries.length === 0 && <div style={hint}>现在没有等你决定的操作。</div>}
+      <h2 id="approval-inbox-title" style={title}>{t("approvals.title")}</h2>
+      {entries.length === 0 && <div style={hint}>{t("approvals.empty")}</div>}
       {entries.length > 0 && (
         <ul style={list}>
           {entries.map((entry) => {
             const { approval } = entry;
             const actions = approvalInboxActions(approval);
-            const blocked = actions.approveBlockedBy ? BLOCKED_TEXT[actions.approveBlockedBy] : "";
+            const blocked = actions.approveBlockedBy && actions.approveBlockedBy !== "decided" ? t(`approvals.blocked.${actions.approveBlockedBy}`) : "";
             return (
               <li key={approval.approvalId} style={item} data-testid={`approval-${approval.approvalId}`}>
                 <div style={row}>
                   <span style={{ fontSize: 13 }}>{approval.title}</span>
-                  <span style={badge}>{approval.riskLevel}{actions.status === "expired" ? " · 已过期" : ""}</span>
+                  <span style={badge}>{approval.riskLevel}{actions.status === "expired" ? ` · ${t("approvals.expiredTag")}` : ""}</span>
                 </div>
                 {approval.description && approval.description !== approval.title && <div style={hint}>{approval.description}</div>}
-                {actions.localConfirmation && <div style={hint}>这台电脑上发起的操作，以你在这里的确认为准。</div>}
+                {actions.localConfirmation && <div style={hint}>{t("approvals.localConfirmation")}</div>}
                 {blocked && <div style={hint}>{blocked}</div>}
                 <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
                   {actions.canApprove && (
                     <button type="button" style={approveButton} disabled={busy !== null} onClick={() => void decide(entry, "approved")}>
-                      批准
+                      {t("approvals.approve")}
                     </button>
                   )}
                   {actions.canReject && (
                     <button type="button" style={button} disabled={busy !== null} onClick={() => void decide(entry, "rejected")}>
-                      拒绝
+                      {t("approvals.reject")}
                     </button>
                   )}
                 </div>

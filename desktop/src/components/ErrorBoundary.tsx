@@ -1,5 +1,6 @@
 import { Component, type ReactNode, type ErrorInfo } from "react";
 import { reportCrash as queueCrash } from "../services/crashReport";
+import { DEFAULT_LOCALE, LOCALES, translate, type Locale } from "../i18n/strings";
 
 interface Props {
   children: ReactNode;
@@ -9,6 +10,22 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
+}
+
+/**
+ * The boundary sits outside `I18nProvider` in `main.tsx`, so it reads the
+ * app language the same way the provider does (stored choice, then the
+ * system language). T7 r1: the crash page was English on a Chinese desktop.
+ */
+function boundaryLocale(): Locale {
+  try {
+    const stored = window.localStorage.getItem("agentrix-locale");
+    if (stored && (LOCALES as readonly string[]).includes(stored)) return stored as Locale;
+  } catch {
+    // localStorage can be unavailable in some Tauri sandbox modes.
+  }
+  const nav = (typeof navigator !== "undefined" ? navigator.language || "" : "").slice(0, 2).toLowerCase();
+  return (LOCALES as readonly string[]).includes(nav) ? (nav as Locale) : DEFAULT_LOCALE;
 }
 
 export default class ErrorBoundary extends Component<Props, State> {
@@ -30,32 +47,36 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      const locale = boundaryLocale();
+      const t = (key: string) => translate(locale, key);
       return (
-        <div style={containerStyle}>
+        <div style={containerStyle} role="alert">
           <div style={cardStyle}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>💥</div>
             <h2 style={{ margin: "0 0 8px", fontSize: 16, color: "var(--text, #e0e0e0)" }}>
-              Something went wrong
+              {t("errorBoundary.title")}
             </h2>
-            <p style={{ color: "var(--text-dim, #8a8a8a)", fontSize: 13, margin: "0 0 16px" }}>
-              {this.state.error?.message || "An unexpected error occurred"}
+            <p style={{ color: "var(--text-dim, #8a8a8a)", fontSize: 13, margin: "0 0 16px", lineHeight: 1.5 }}>
+              {t("errorBoundary.body")}
             </p>
-            <details style={{ marginBottom: 16, fontSize: 11, color: "var(--text-dim)", maxHeight: 200, overflow: "auto" }}>
-              <summary style={{ cursor: "pointer", marginBottom: 8 }}>Stack trace</summary>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 16 }}>
+              <button onClick={() => window.location.reload()} style={btnStyle}>
+                {t("errorBoundary.reload")}
+              </button>
+              <button onClick={this.handleReset} style={secondaryBtnStyle}>
+                {t("errorBoundary.retry")}
+              </button>
+            </div>
+            {/* The raw message and stacks stay available, folded, for support. */}
+            <details style={{ fontSize: 11, color: "var(--text-dim, #8a8a8a)", maxHeight: 200, overflow: "auto", textAlign: "left" }}>
+              <summary style={{ cursor: "pointer", marginBottom: 8 }}>{t("errorBoundary.detail")}</summary>
               <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                {this.state.error?.message}
+                {"\n\n"}
                 {this.state.error?.stack}
                 {"\n\nComponent Stack:\n"}
                 {this.state.errorInfo?.componentStack}
               </pre>
             </details>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={this.handleReset} style={btnStyle}>
-                Try Again
-              </button>
-              <button onClick={() => window.location.reload()} style={{ ...btnStyle, background: "transparent", border: "1px solid var(--border)" }}>
-                Reload App
-              </button>
-            </div>
           </div>
         </div>
       );
@@ -117,4 +138,14 @@ const btnStyle: React.CSSProperties = {
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 600,
+  minHeight: 36,
+};
+
+// T7 r1: the second button used white text on a transparent background, so
+// on the light card it was nearly invisible. It now takes the text colour.
+const secondaryBtnStyle: React.CSSProperties = {
+  ...btnStyle,
+  background: "transparent",
+  border: "1px solid var(--border, rgba(127,127,127,0.4))",
+  color: "var(--text, #e0e0e0)",
 };

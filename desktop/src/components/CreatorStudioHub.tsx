@@ -31,7 +31,7 @@ const TABS: Array<{ key: Tab; emoji: string; label: string; hint: string }> = [
   { key: "poster", emoji: "🎨", label: "Poster",         hint: "海报 / 社交图 / 路演物料" },
   { key: "video",  emoji: "🎬", label: "Video Studio",   hint: "单镜头 / 多场景剧情" },
   { key: "skin",   emoji: "👗", label: "Wardrobe",       hint: "皮肤 · 切换装备 · 上架市场" },
-  { key: "mimic",  emoji: "📸", label: "Photo Mimic",    hint: "每周赛季 · 冠军 5000 AXP" },
+  { key: "mimic",  emoji: "📸", label: "Photo Mimic",    hint: "每周赛季 · 冠军 5000 AXP 积分" },
   { key: "world",  emoji: "🌐", label: "World",          hint: "Tier_C 世界创作器(AI World Creation v6)" },
 ];
 
@@ -52,7 +52,7 @@ export default function CreatorStudioHub({ visible, initialTab = "pet", onClose 
             <span style={{ fontSize: 22 }}>🎨</span>
             <div>
               <div style={titleStyle}>Creator Studio</div>
-              <div style={subtitleStyle}>每次成功上架 · 被装备 · 赢赛季 → AXP 奖励</div>
+              <div style={subtitleStyle}>每次成功上架 · 被装备 · 赢赛季 → AXP 积分奖励</div>
             </div>
           </div>
           <button style={closeBtn} onClick={onClose}>✕</button>
@@ -77,7 +77,7 @@ export default function CreatorStudioHub({ visible, initialTab = "pet", onClose 
 
         <div style={rewardHintRow}>
           {TABS.find((t) => t.key === tab)?.hint}
-          <span style={axpHintStyle}>💎 生成完成 · 上架 · 被赞 · 赢赛季 都给 AXP</span>
+          <span style={axpHintStyle}>💎 生成完成 · 上架 · 被赞 · 赢赛季 都给 AXP 积分</span>
         </div>
 
         {/* Routed content */}

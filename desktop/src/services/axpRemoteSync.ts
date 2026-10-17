@@ -42,7 +42,7 @@ function onRemote(e: Event) {
   if (!detail || !detail.amount || detail.amount <= 0) return;
 
   const src = detail.source ?? "admin_grant";
-  const info = SOURCE_LABELS[src] ?? { en: "AXP earned", zh: "获得 AXP", emoji: "💎" };
+  const info = SOURCE_LABELS[src] ?? { en: "AXP points earned", zh: "获得 AXP 积分", emoji: "💎" };
   const reasonZh = detail.reasonZh ?? info.zh;
   const reasonEn = detail.reasonEn ?? info.en;
 

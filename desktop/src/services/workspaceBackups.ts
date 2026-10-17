@@ -193,6 +193,9 @@ export async function listWorkspaceFileBackups(options: { since?: number; limit?
   } catch {
     return [];
   }
+  // T7 r1: a host that answers null (no folder yet, or an older bridge) must
+  // read as "no snapshots", not throw inside the today's-changes panel.
+  if (!Array.isArray(entries)) return [];
   const candidates = entries
     .filter((entry) => !entry.is_dir)
     .map((entry) => ({ entry, match: BACKUP_FILE_PATTERN.exec(entry.name) }))

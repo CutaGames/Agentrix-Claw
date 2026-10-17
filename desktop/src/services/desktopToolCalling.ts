@@ -1395,7 +1395,7 @@ async function executeComputerUse(
         }
         await requireApproval(
           "computer-use-click",
-          `Computer Use: click at (${x}, ${y})`,
+          `Computer use: click at (${x}, ${y})`,
           `Allow Agentrix to click ${args.button || "left"} button at screen coordinates (${x}, ${y})?`,
         );
         await invokeDesktopCommand<void>("computer_use_click", {
@@ -1420,7 +1420,7 @@ async function executeComputerUse(
         if (!text) return JSON.stringify({ error: "text is required" });
         await requireApproval(
           "computer-use-type",
-          `Computer Use: type ${text.length} chars`,
+          `Computer use: type ${text.length} chars`,
           `Allow Agentrix to type the following into the focused window?\n\n${text.slice(0, 200)}${text.length > 200 ? "..." : ""}`,
         );
         await invokeDesktopCommand<void>("computer_use_type", { text });
@@ -1431,7 +1431,7 @@ async function executeComputerUse(
         if (!combo) return JSON.stringify({ error: "combo is required" });
         await requireApproval(
           "computer-use-key",
-          `Computer Use: key combo ${combo}`,
+          `Computer use: key combo ${combo}`,
           `Allow Agentrix to send key combo '${combo}'?`,
         );
         await invokeDesktopCommand<void>("computer_use_key", { combo });
@@ -1505,7 +1505,7 @@ async function executeComputerUse(
         });
         await requireApproval(
           "computer-use-click",
-          `Computer Use: click ${el.role} "${el.name || mark}"`,
+          `Computer use: click ${el.role} "${el.name || mark}"`,
           `Allow Agentrix to click element ${mark} (${el.role}${el.name ? ` "${el.name}"` : ""}) at (${x}, ${y}) in ${grounding.appName}? [risk: ${tier}]`,
         );
         await invokeDesktopCommand<void>("computer_use_click", {

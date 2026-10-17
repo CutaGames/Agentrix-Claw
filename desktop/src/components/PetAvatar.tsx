@@ -19,6 +19,8 @@ import { useEffect, useState, type CSSProperties } from "react";
 import PetSpriteCanvas, { spriteAssetsAvailable, type PetAction } from "./PetSpriteCanvas";
 import PetCanvas from "./PetCanvas";
 import { getPetMode, subscribePetMode, PET_MODE_TO_SPRITE, type PetMode } from "../services/petMode";
+import { detectInitialLocale } from "../i18n/I18nProvider";
+import { translate } from "../i18n/strings";
 
 interface Props {
   /**
@@ -120,7 +122,7 @@ export default function PetAvatar({ mode: modeProp, size = 48, style, glow = fal
   // React remounts the inner canvas on mode change → clean RAF reset.
   if (spritesAvailable) {
     return (
-      <div style={containerStyle} title="Living Pet" data-pet-mode={effectiveMode}>
+      <div style={containerStyle} title={translate(detectInitialLocale(), "pet.title")} data-pet-mode={effectiveMode}>
         <PetSpriteCanvas key={action} action={action} size={size} facing="right" />
       </div>
     );
@@ -129,7 +131,7 @@ export default function PetAvatar({ mode: modeProp, size = 48, style, glow = fal
   // Fallback: static PNG via PetCanvas (P-1 default while we wait for
   // sprite probing or while assets are missing).
   return (
-    <div style={containerStyle} title="Living Pet" data-pet-mode={effectiveMode}>
+    <div style={containerStyle} title={translate(detectInitialLocale(), "pet.title")} data-pet-mode={effectiveMode}>
       <PetCanvas size={size} noHalo showLevelBadge={false} />
     </div>
   );

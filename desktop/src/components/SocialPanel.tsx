@@ -104,7 +104,7 @@ function CoRaisingTab() {
   return (
     <>
       <div style={sectionLead}>
-        邀请朋友帮你喂主宠。每次喂食给他们 5 AXP、你 2 AXP · 未来收益 5% 分他。
+        邀请朋友帮你喂主宠。每次喂食给他们 5 AXP 积分、你 2 AXP 积分 · 未来收益 5% 分他。
       </div>
       {items.length === 0 ? (
         <div style={emptyBox}>
@@ -161,7 +161,7 @@ function GreetingTab() {
   return (
     <>
       <div style={sectionLead}>
-        选一个场景，让主宠替你给朋友送上祝福。免费模板不限量，Premium 模板扣 AXP。
+        选一个场景，让主宠替你给朋友送上祝福。免费模板不限量，Premium 模板扣 AXP 积分。
       </div>
       <div style={sectionHeading}>免费模板</div>
       <div style={gridStyle}>
@@ -169,7 +169,7 @@ function GreetingTab() {
           <TemplateCard key={t.key} template={t} />
         ))}
       </div>
-      <div style={sectionHeading}>Premium (消耗 AXP)</div>
+      <div style={sectionHeading}>Premium（消耗 AXP 积分）</div>
       <div style={gridStyle}>
         {premium.map((t) => (
           <TemplateCard key={t.key} template={t} />
@@ -189,7 +189,7 @@ function TemplateCard({ template }: { template: GreetingTemplate }) {
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{template.category}</div>
       {template.axp_cost > 0 && (
         <div style={{ fontSize: 10, color: "#fbbf24", marginTop: 6, fontWeight: 700 }}>
-          💎 {template.axp_cost} AXP
+          💎 {template.axp_cost} AXP 积分
         </div>
       )}
     </div>
@@ -267,7 +267,7 @@ function MimicTab() {
           {season.theme_desc_zh || season.theme_desc_en}
         </div>
         <div style={{ marginTop: 6, fontSize: 12, color: "#fbbf24", fontWeight: 700 }}>
-          🏆 奖金池 {Number(season.prize_pool_axp).toLocaleString()} AXP
+          🏆 奖金池 {Number(season.prize_pool_axp).toLocaleString()} AXP 积分
         </div>
       </div>
 
@@ -293,7 +293,7 @@ function MimicTab() {
             disabled={submitting || !imageUrl.trim()}
             style={{ ...primaryBtn, marginTop: 8, opacity: !imageUrl.trim() ? 0.5 : 1 }}
           >
-            {submitting ? "提交中…" : "🚀 提交 (+30 AXP)"}
+            {submitting ? "提交中…" : "🚀 提交（+30 AXP 积分）"}
           </button>
         </div>
       )}

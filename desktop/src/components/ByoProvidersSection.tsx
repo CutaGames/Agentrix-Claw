@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { API_BASE, apiFetch, useAuthStore } from '../services/store';
+import { useI18n } from '../i18n/I18nProvider';
+import { fill } from '../i18n/strings';
 
 interface ProviderDef {
   id: string;
@@ -38,13 +40,8 @@ async function readJson<T>(path: string, token: string, init?: RequestInit): Pro
   return text ? JSON.parse(text) as T : [] as T;
 }
 
-const TIER_NOTE: Record<string, string> = {
-  A: '完整支持',
-  B: '受控测试：会话过期时要重新连接',
-  C: '兼容 / 实验：可能违反服务商的使用条款',
-};
-
 export default function ByoProvidersSection() {
+  const { t } = useI18n();
   const token = useAuthStore((state) => state.token);
   const [catalog, setCatalog] = useState<ProviderDef[]>([]);
   const [configs, setConfigs] = useState<SavedConfig[]>([]);
@@ -61,13 +58,13 @@ export default function ByoProvidersSection() {
     setConfigs(nextConfigs);
   }, [token]);
 
-  useEffect(() => { void load().catch(() => setStatus('读不到你的 key 和订阅，稍后再试')); }, [load]);
+  useEffect(() => { void load().catch(() => setStatus(t('byo.loadFailed'))); }, [load]);
 
   if (!token) {
     return (
       <div style={section}>
-        <div style={sectionTitle}>自己的 key 和订阅</div>
-        <div style={hint}>登录以后，可以接上你自己的 API key 或订阅。</div>
+        <div style={sectionTitle}>{t('byo.title')}</div>
+        <div style={hint}>{t('byo.signedOut')}</div>
       </div>
     );
   }
@@ -78,7 +75,7 @@ export default function ByoProvidersSection() {
     const existing = savedOf(provider.id);
     const apiKey = keyDraft[provider.id] || (existing ? '__saved__' : '');
     if (!apiKey) {
-      setStatus('先填上 key');
+      setStatus(t('byo.needKey'));
       return;
     }
     await readJson('/ai-providers/configs', token, {
@@ -92,14 +89,14 @@ export default function ByoProvidersSection() {
       }),
     });
     setKeyDraft((prev) => ({ ...prev, [provider.id]: '' }));
-    setStatus(`已保存 ${provider.name}。key 存在服务端，不显示在这里。`);
+    setStatus(fill(t('byo.saved'), { name: provider.name }));
     await load();
   };
 
   return (
     <div style={section}>
-      <div style={sectionTitle}>自己的 key 和订阅</div>
-      <div style={hint}>和手机、Web 用同一套设置。选模型时只显示模型和“你的 key / 你的订阅”，不显示账号。</div>
+      <div style={sectionTitle}>{t('byo.title')}</div>
+      <div style={hint}>{t('byo.intro')}</div>
       {catalog.slice(0, 12).map((provider) => {
         const saved = savedOf(provider.id);
         const tier = provider.supportTier ?? 'A';
@@ -109,27 +106,27 @@ export default function ByoProvidersSection() {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13 }}>{provider.icon} {provider.name}</div>
               <div style={hint}>
-                等级 {tier} · {TIER_NOTE[tier]}
+                {fill(t('byo.tier'), { tier })} · {t(`byo.tierNote.${tier}`)}
                 {saved ? ` · ${saved.apiKeyPrefix ?? '••••'}` : ''}
-                {health === 'needs_reauth' ? ' · 需要重新连接' : ''}
+                {health === 'needs_reauth' ? ` · ${t('byo.needsReauth')}` : ''}
                 {provider.quotaWindowSupport && provider.quotaWindowSupport !== 'none'
-                  ? ` · 额度窗口：${saved?.health?.quotaWindow?.source === 'upstream' && saved.health.quotaWindow.remaining !== undefined
+                  ? ` · ${fill(t('byo.quotaWindow'), { value: saved?.health?.quotaWindow?.source === 'upstream' && saved.health.quotaWindow.remaining !== undefined
                     ? saved.health.quotaWindow.remaining
-                    : '服务商没有公布'}`
+                    : t('byo.quotaUnknown') })}`
                   : ''}
               </div>
             </div>
             <input
               type="password"
               autoComplete="off"
-              placeholder={saved ? '留空就不改' : (provider.placeholder.apiKey || 'key')}
-              aria-label={`${provider.name} 的 key`}
+              placeholder={saved ? t('byo.keepKey') : (provider.placeholder.apiKey || 'key')}
+              aria-label={fill(t('byo.keyLabel'), { name: provider.name })}
               value={keyDraft[provider.id] ?? ''}
               onChange={(event) => setKeyDraft((prev) => ({ ...prev, [provider.id]: event.target.value }))}
               style={input}
             />
-            <button type="button" style={button} onClick={() => void save(provider).catch(() => setStatus(`${provider.name} 没有保存成功，稍后再试`))}>
-              保存
+            <button type="button" style={button} onClick={() => void save(provider).catch(() => setStatus(fill(t('byo.saveFailed'), { name: provider.name })))}>
+              {t('common.save')}
             </button>
           </div>
         );

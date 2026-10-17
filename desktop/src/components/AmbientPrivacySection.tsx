@@ -12,6 +12,8 @@ import {
   setActiveAppAwarenessEnabled,
   setClipboardSyncEnabled,
 } from "../services/ambientPrivacy";
+import { useI18n } from "../i18n/I18nProvider";
+import { fill } from "../i18n/strings";
 
 function Switch({ id, label, checked, onChange }: { id: string; label: string; checked: boolean; onChange: (next: boolean) => void }) {
   return (
@@ -50,6 +52,7 @@ function Switch({ id, label, checked, onChange }: { id: string; label: string; c
 }
 
 export default function AmbientPrivacySection() {
+  const { t } = useI18n();
   const [clipboard, setClipboard] = useState(isClipboardSyncEnabled);
   const [activeApp, setActiveApp] = useState(isActiveAppAwarenessEnabled);
   useEffect(
@@ -63,25 +66,24 @@ export default function AmbientPrivacySection() {
 
   return (
     <section style={box} aria-labelledby="ambient-privacy-title" data-testid="ambient-privacy">
-      <h2 id="ambient-privacy-title" style={title}>隐私</h2>
+      <h2 id="ambient-privacy-title" style={title}>{t("ambient.title")}</h2>
       <div style={row}>
         <div>
-          <label htmlFor="ambient-privacy-clipboard" style={{ fontSize: 13 }}>同步剪贴板到我的其他设备</label>
+          <label htmlFor="ambient-privacy-clipboard" style={{ fontSize: 13 }}>{t("ambient.clipboard")}</label>
           <div style={hint} id="ambient-privacy-clipboard-desc">
-            打开后，Agentrix 每 2 秒读一次这台电脑的剪贴板；复制的文字（每次最多 {CLIPBOARD_SYNC_MAX_CHARS} 字）会经 Agentrix
-            服务器发到你登录的其他设备。像密码、密钥、token 的内容不会读取，也不会发送。默认关。
+            {fill(t("ambient.clipboard.desc"), { max: CLIPBOARD_SYNC_MAX_CHARS })}
           </div>
         </div>
-        <Switch id="ambient-privacy-clipboard" label="同步剪贴板到我的其他设备" checked={clipboard} onChange={setClipboardSyncEnabled} />
+        <Switch id="ambient-privacy-clipboard" label={t("ambient.clipboard")} checked={clipboard} onChange={setClipboardSyncEnabled} />
       </div>
       <div style={row}>
         <div>
-          <label htmlFor="ambient-privacy-active-app" style={{ fontSize: 13 }}>让桌宠知道我在用哪个应用</label>
+          <label htmlFor="ambient-privacy-active-app" style={{ fontSize: 13 }}>{t("ambient.activeApp")}</label>
           <div style={hint}>
-            打开后，Agentrix 每 8 秒读一次最前面那个应用的名字（不读窗口标题、不读内容），显示在桌宠旁边。只留在这台电脑上。默认关。
+            {t("ambient.activeApp.desc")}
           </div>
         </div>
-        <Switch id="ambient-privacy-active-app" label="让桌宠知道我在用哪个应用" checked={activeApp} onChange={setActiveAppAwarenessEnabled} />
+        <Switch id="ambient-privacy-active-app" label={t("ambient.activeApp")} checked={activeApp} onChange={setActiveAppAwarenessEnabled} />
       </div>
     </section>
   );

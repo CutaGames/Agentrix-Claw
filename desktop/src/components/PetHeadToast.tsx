@@ -73,12 +73,12 @@ function Pill({
         transition: "opacity 260ms ease, transform 260ms ease",
       }}
       role="alert"
-      aria-label={`${sign}${toast.amount} AXP`}
+      aria-label={`${sign}${toast.amount} AXP 积分`}
     >
       {toast.emoji ? <span style={emojiStyle}>{toast.emoji}</span> : null}
       <span style={isEarn ? amountEarnStyle : amountSpendStyle}>
         {sign}
-        {toast.amount.toLocaleString()} AXP
+        {toast.amount.toLocaleString()} AXP 积分
       </span>
       <span style={reasonStyle}>{toast.reason.zh || toast.reason.en}</span>
       <span style={sparkleStyle}>✨</span>

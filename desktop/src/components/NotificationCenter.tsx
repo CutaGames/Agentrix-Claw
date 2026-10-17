@@ -8,6 +8,8 @@ import {
   type AppNotification,
   type NotificationType,
 } from "../services/notifications";
+import { useI18n } from "../i18n/I18nProvider";
+import { fill, type Translator } from "../i18n/strings";
 
 interface Props {
   open: boolean;
@@ -24,6 +26,7 @@ const typeIcons: Record<NotificationType, string> = {
 };
 
 export default function NotificationCenter({ open, onClose }: Props) {
+  const { t } = useI18n();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   useEffect(() => subscribe(setNotifications), []);
@@ -38,20 +41,20 @@ export default function NotificationCenter({ open, onClose }: Props) {
         {/* Header */}
         <div style={headerStyle}>
           <span style={{ fontWeight: 600, fontSize: 14 }}>
-            Notifications {unreadCount > 0 && <span style={badgeStyle}>{unreadCount}</span>}
+            {t("notif.title")} {unreadCount > 0 && <span style={badgeStyle}>{unreadCount}</span>}
           </span>
           <div style={{ display: "flex", gap: 8 }}>
             {unreadCount > 0 && (
-              <button onClick={markAllRead} style={headerBtnStyle} title="Mark all read">
-                ✓ All
+              <button onClick={markAllRead} style={headerBtnStyle} title={t("notif.markAllRead")}>
+                {t("notif.all")}
               </button>
             )}
             {notifications.length > 0 && (
-              <button onClick={clearAll} style={headerBtnStyle} title="Clear all">
-                Clear
+              <button onClick={clearAll} style={headerBtnStyle} title={t("notif.clearAll")}>
+                {t("notif.clear")}
               </button>
             )}
-            <button onClick={onClose} style={headerBtnStyle}>
+            <button onClick={onClose} style={headerBtnStyle} aria-label={t("common.close")}>
               ✕
             </button>
           </div>
@@ -60,7 +63,7 @@ export default function NotificationCenter({ open, onClose }: Props) {
         {/* List */}
         <div style={listStyle}>
           {notifications.length === 0 ? (
-            <div style={emptyStyle}>No notifications</div>
+            <div style={emptyStyle}>{t("notif.empty")}</div>
           ) : (
             notifications.map((n) => (
               <div
@@ -81,13 +84,14 @@ export default function NotificationCenter({ open, onClose }: Props) {
                       removeNotification(n.id);
                     }}
                     style={removeBtnStyle}
-                    title="Dismiss"
+                    title={t("notif.dismiss")}
+                    aria-label={t("notif.dismiss")}
                   >
                     ×
                   </button>
                 </div>
                 <div style={bodyStyle}>{n.body}</div>
-                <div style={timeStyle}>{formatTime(n.timestamp)}</div>
+                <div style={timeStyle}>{formatTime(n.timestamp, t)}</div>
                 {n.action && (
                   <button
                     onClick={(e) => {
@@ -111,17 +115,18 @@ export default function NotificationCenter({ open, onClose }: Props) {
   );
 }
 
-function formatTime(ts: number): string {
+function formatTime(ts: number, t: Translator): string {
   const diff = Date.now() - ts;
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  if (diff < 60_000) return t("notif.justNow");
+  if (diff < 3_600_000) return fill(t("notif.minutesAgo"), { n: Math.floor(diff / 60_000) });
+  if (diff < 86_400_000) return fill(t("notif.hoursAgo"), { n: Math.floor(diff / 3_600_000) });
   return new Date(ts).toLocaleDateString();
 }
 
 export function NotificationBadge({ count, onClick }: { count: number; onClick: () => void }) {
+  const { t } = useI18n();
   return (
-    <button onClick={onClick} style={bellBtnStyle} title="Notifications">
+    <button onClick={onClick} style={bellBtnStyle} title={t("notif.title")}>
       🔔
       {count > 0 && <span style={floatingBadgeStyle}>{count > 99 ? "99+" : count}</span>}
     </button>

@@ -12,12 +12,14 @@ import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { fetchAxpBalance, fetchAxpHistory, type AxpBalanceView, type AxpLedgerEntry } from "../services/axp";
 import { useAuthStore } from "../services/store";
+import { useI18n } from "../i18n/I18nProvider";
 
 interface Props {
   onOpenCheckin?: () => void;
 }
 
 export default function AxpCornerIndicator({ onOpenCheckin }: Props) {
+  const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
   const [balance, setBalance] = useState<AxpBalanceView | null>(null);
   const [open, setOpen] = useState(false);
@@ -55,7 +57,7 @@ export default function AxpCornerIndicator({ onOpenCheckin }: Props) {
       <button
         style={chipStyle}
         onClick={() => setOpen((v) => !v)}
-        title="Click for AXP history · Ctrl-click to check in"
+        title={t("axp.cornerTitle")}
       >
         <span style={chipEmoji}>💎</span>
         <span style={chipValue}>{balance.balance.toLocaleString()}</span>
@@ -101,7 +103,7 @@ function AxpHistorySheet({
     <div style={sheetStyle} onClick={(e) => e.stopPropagation()}>
       <div style={sheetHeader}>
         <div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>AXP 余额</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>AXP 积分余额</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: "#22d3ee" }}>
             💎 {balance.balance.toLocaleString()}
           </div>
@@ -120,7 +122,7 @@ function AxpHistorySheet({
         {loading ? (
           <div style={emptyStyle}>加载中…</div>
         ) : items.length === 0 ? (
-          <div style={emptyStyle}>还没有 AXP 记录 · 每日签到、陪伴主宠、邀请好友都能获得</div>
+          <div style={emptyStyle}>还没有 AXP 积分记录 · 每日签到、陪伴主宠、邀请好友都能获得</div>
         ) : (
           items.map((e) => (
             <div key={e.id} style={rowStyle}>

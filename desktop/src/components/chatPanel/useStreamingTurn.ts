@@ -908,10 +908,10 @@ export function useStreamingTurn({
             : `${event.error || "stream interrupted"} · 点击 Continue 续写`,
         });
       } else {
+        // The bubble explains it and offers 重试 (chatFailureCopy.ts); this line only says it failed (T7 r1).
         setStreamFeedback({
           tone: "error",
-          label: "请求失败",
-          detail: event.error,
+          label: "这次没能回复",
         });
       }
     }
@@ -1104,10 +1104,10 @@ export function useStreamingTurn({
           : `${err || "stream interrupted"} · 点击 Continue 续写`,
       });
     } else {
+      // The bubble explains it and offers 重试 (chatFailureCopy.ts); this line only says it failed (T7 r1).
       setStreamFeedback({
         tone: "error",
-        label: "请求失败",
-        detail: err,
+        label: "这次没能回复",
       });
     }
     resolve();

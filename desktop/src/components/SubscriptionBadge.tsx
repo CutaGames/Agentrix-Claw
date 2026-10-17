@@ -6,9 +6,19 @@
  */
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
-import { fetchMyQuota, fetchMySubscription, type MyQuota, type MySubscription, type SubscriptionTier } from "../services/subscription";
+import {
+  budgetPercent,
+  effectiveTier,
+  fetchMyQuota,
+  fetchMySubscription,
+  subscriptionBadgeTip,
+  type MyQuota,
+  type MySubscription,
+  type SubscriptionTier,
+} from "../services/subscription";
 import SubscribeSheet from "./SubscribeSheet";
 import { useAuthStore } from "../services/store";
+import { useI18n } from "../i18n/I18nProvider";
 
 const TIER_COLORS: Record<SubscriptionTier, { bg: string; fg: string; border: string; bgLight: string; fgLight: string; borderLight: string }> = {
   free:       { bg: "rgba(156,163,175,0.18)", fg: "#d1d5db", border: "rgba(156,163,175,0.4)",
@@ -30,6 +40,7 @@ const TIER_LABEL: Record<SubscriptionTier, string> = {
 };
 
 export default function SubscriptionBadge() {
+  const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
   const [sub, setSub] = useState<MySubscription | null>(null);
   const [quota, setQuota] = useState<MyQuota | null>(null);
@@ -57,7 +68,7 @@ export default function SubscriptionBadge() {
 
   if (!token) return null;
 
-  const tier: SubscriptionTier = sub?.effective_tier ?? "free";
+  const tier: SubscriptionTier = effectiveTier(sub, quota);
   const c = TIER_COLORS[tier];
   // Sprint P-5 r4 (2026-05-22): solid filled badge on light theme so
   // FREE / LITE / PLUS pills don't dissolve into a white bg. Detect
@@ -67,20 +78,20 @@ export default function SubscriptionBadge() {
   const tierBg = isLight ? c.bgLight : c.bg;
   const tierFg = isLight ? c.fgLight : c.fg;
   const tierBorder = isLight ? c.borderLight : c.border;
-  const budgetCents = quota?.quota.llm_budget_cents_monthly ?? 0;
-  const usedCents = quota?.llm_usage_cents_this_month ?? 0;
-  const pct = budgetCents > 0 ? Math.min(100, Math.round((usedCents / budgetCents) * 100)) : 0;
-  const overBudget = budgetCents > 0 && usedCents >= budgetCents;
+  // Usage is shown only when the backend says how much was used; a made-up
+  // "0%" read as "nothing used" (T7 r1).
+  const pct = budgetPercent(quota);
+  const overBudget = pct !== null && pct >= 100;
 
   return (
     <>
       <button
         onClick={() => setOpen(true)}
         style={{ ...badgeStyle, background: tierBg, color: tierFg, borderColor: tierBorder }}
-        title={budgetCents > 0 ? `本月 $${(usedCents / 100).toFixed(2)} / $${(budgetCents / 100).toFixed(2)} (${pct}%)` : ""}
+        title={subscriptionBadgeTip(quota, t)}
       >
         <span style={{ fontWeight: 800, letterSpacing: 0.4 }}>{TIER_LABEL[tier]}</span>
-        {budgetCents > 0 && (
+        {pct !== null && (
           <span style={{ ...budgetStyle, color: overBudget ? "#f87171" : tierFg }}>
             {pct}%
           </span>

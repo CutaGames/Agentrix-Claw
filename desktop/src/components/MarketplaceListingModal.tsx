@@ -182,7 +182,7 @@ export default function MarketplaceListingModal({ skin, onClose, onSuccess }: Pr
             </div>
             <p className="mt-1 text-xs text-white/40">
               {priceCurrency === "AXP"
-                ? `${price} AXP（站内积分，不能提现，没有固定的美元价值）`
+                ? `${price} AXP 积分（站内通用，不能提现，没有固定的美元价值）`
                 : `$${price} · 平台抽成 30%，你获得 $${(price * 0.7).toFixed(2)}`}
             </p>
           </Field>

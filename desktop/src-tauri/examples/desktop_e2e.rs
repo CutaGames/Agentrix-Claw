@@ -377,7 +377,7 @@ fn main() {
             return Ok("release exe not built yet — skip".into());
         }
         let bytes = std::fs::read(&exe).map_err(|e| format!("read exe: {e}"))?;
-        if contains_bytes(&bytes, b"Toggle Living Pet") {
+        if contains_bytes(&bytes, b"Toggle Desktop pet") {
             Ok("tray entry embedded".into())
         } else {
             Err("tray menu missing pet entry".into())

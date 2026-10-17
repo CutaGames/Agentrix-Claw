@@ -6,6 +6,7 @@ import { NotificationBadge } from "../NotificationCenter";
 import type { OpenClawInstance } from "../../services/store";
 import type { ExecutionMode } from "../../services/turnRouter";
 import { useIsSimpleMode, useUserMode } from "../../services/userMode";
+import { useI18n } from "../../i18n/I18nProvider";
 import PushToDeviceButton from "../PushToDeviceButton";
 
 /**
@@ -152,6 +153,7 @@ export default function ChatTitleBar({
   // a curated 4-panel More menu; Pro shows all 9. Simple hides the More
   // button entirely (along with cross-device hub + DeepOS).
   const userMode = useUserMode();
+  const { t } = useI18n();
   return (
     <div
       style={{
@@ -184,7 +186,8 @@ export default function ChatTitleBar({
         */}
         <PetAvatar size={48} glow />
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      {/* overflow hidden: whatever does not fit is cut at this box instead of painting over the icons (T7 r1). */}
+      <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }} data-testid="chat-title-main">
         {compactTitleBar ? (
           <div style={{ minWidth: 0 }}>
             <div
@@ -228,7 +231,7 @@ export default function ChatTitleBar({
                 WebkitAppRegion: "no-drag",
               }}
             >
-              {instances.length === 0 && <option value="">No agent selected</option>}
+              {instances.length === 0 && <option value="">{t("chat.noAgent")}</option>}
               {instances.map((inst) => {
                 const label = inst.resolvedModelLabel || inst.resolvedModel || inst.capabilities?.activeModel || "";
                 const provider = inst.resolvedProvider || inst.capabilities?.llmProvider || "";
@@ -504,14 +507,14 @@ export default function ChatTitleBar({
       >
         <button onClick={() => setSettingsOpen(true)} style={iconBtnStyle} title="Settings">⚙</button>
         {!effectiveProMode && (
-          <button onClick={() => void enterWindowProMode()} style={windowActionBtnStyle} title="Enter Pro mode">Pro</button>
+          <button onClick={() => void enterWindowProMode()} style={windowActionBtnStyle} title={t("chat.window.proTip")}>{t("chat.window.pro")}</button>
         )}
         <button
           onClick={() => void toggleWindowMaximize()}
           style={windowActionBtnStyle}
-          title={windowChromeState.maximized ? "Restore window" : "Maximize window (F11 for fullscreen)"}
+          title={windowChromeState.maximized ? t("chat.window.restoreTip") : t("chat.window.maximizeTip")}
         >
-          {windowChromeState.maximized ? "Restore" : "Max"}
+          {windowChromeState.maximized ? t("chat.window.restore") : t("chat.window.maximize")}
         </button>
         <div
           style={{

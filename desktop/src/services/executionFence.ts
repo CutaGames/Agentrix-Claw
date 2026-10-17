@@ -759,7 +759,7 @@ const DENY_MESSAGES: Record<FenceDenyReason, string> = {
   kill_switch_engaged: "急停已拉下，这台电脑暂停执行 AI 操作",
   remote_mutation_disabled: "这台电脑没有打开\"允许远程改动\"，已拒绝来自手机或云端的改动操作",
   raw_shell_disabled: "这台电脑没有打开\"允许运行命令\"，已拒绝运行 shell 命令",
-  computer_use_disabled: "Computer Use 未打开，已拒绝",
+  computer_use_disabled: "操作电脑未打开，已拒绝",
   browser_automation_disabled: "浏览器自动化未打开，已拒绝",
   sensitive_path: "目标是密钥或凭证文件，远程访问已拒绝",
   outside_workspace: "路径不在已选工作区内，远程访问已拒绝",

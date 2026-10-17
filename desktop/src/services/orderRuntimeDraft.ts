@@ -16,6 +16,7 @@ import { ORDER_DELIVERY_ANSWER_MAX_CHARS } from "../../../shared/types/order-esc
 import { LocalLLMSidecar, type ChatMessage } from "./localLLM";
 import { checkDesktopLocalModelReady, ensureDesktopLocalSidecar } from "./localChat";
 import { canDeliver, validateAnswer } from "./orderDesk";
+import { fill, zhT, type Translator } from "../i18n/strings";
 
 export interface ComputerDraftMark {
   orderId: string;
@@ -233,33 +234,10 @@ export async function draftWithComputer(input: {
   }
 }
 
-const REASON_TEXT: Record<string, string> = {
-  not_enrolled: "这台电脑还没绑定（或绑定到期了），先在“这台电脑”里绑定",
-  runtime_credential_expired: "这台电脑的运行时凭据过期了，重新登录后再试",
-  runtime_credential_rejected: "服务器不认这台电脑的运行时凭据了，请在“这台电脑”里重新绑定",
-  signed_out: "请先登录",
-  enroll_credential_rejected: "服务器没有给这台电脑换新凭据，稍后再试",
-  kill_switch_engaged: "急停拉着，电脑不备稿",
-  local_model_unavailable: "本机模型还没准备好（设置 → 本地模型）",
-  local_model_failed: "本机模型没有写出来，稍后再试",
-  model_answer_empty: "本机模型没有写出能用的回答，请自己写",
-  draft_exists: "这张单已经有草稿了，电脑不会盖掉它",
-  draft_digest_mismatch: "服务器存下的草稿和电脑写的不一样，请自己看一遍",
-  not_deliverable: "这张单现在不能交付",
-  order_id_invalid: "订单编号不对",
-  invalid_response: "返回的格式无法识别，没有改动",
-  native_failed: "电脑这边没有完成，稍后再试",
-  order_version_conflict: "这张单刚刚有变化，已经重新读取",
-  action_not_allowed_in_status: "这张单现在的状态不能写草稿",
-  order_not_found: "这台电脑看不到这张单（绑定的不是这只 Agent？）",
-  orders_unavailable: "接单还没有开放",
-  order_invalid: "草稿格式不对，没有保存",
-  rate_limited: "操作太频繁，稍后再试",
-  network_not_allowlisted: "连接地址不在允许范围内",
-  runtime_channel_unavailable: "连不上服务器，稍后再试",
-};
-
-export function describeComputerDraftReason(reason: string | undefined): string {
+/** Plain words for why the computer could not draft, in the app language (`orders.draft.<code>` in `i18n/strings.ts`). */
+export function describeComputerDraftReason(reason: string | undefined, t: Translator = zhT): string {
   if (!reason) return "";
-  return REASON_TEXT[reason] ?? `电脑没有备好（${reason}）`;
+  const key = `orders.draft.${reason}`;
+  const text = t(key);
+  return text === key || /^http_\d+$/.test(reason) ? t("orders.draft.generic") : text;
 }

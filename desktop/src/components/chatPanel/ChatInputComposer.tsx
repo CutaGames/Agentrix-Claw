@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useI18n } from "../../i18n/I18nProvider";
 import type {
   CSSProperties,
   ChangeEventHandler,
@@ -39,6 +40,7 @@ function ChatInputComposerImpl({
   voiceButton,
   iconButtonStyle,
 }: Props) {
+  const { t } = useI18n();
   const attachBusy = attachDisabled || uploadingAttachments;
   const primaryDisabled = !sending && uploadingAttachments;
 
@@ -55,7 +57,7 @@ function ChatInputComposerImpl({
         defaultValue=""
         onKeyDown={onKeyDown}
         onPaste={onPaste}
-        placeholder="Type a message... (/ for commands)"
+        placeholder={t("chat.input.placeholder")}
         rows={1}
         style={{
           flex: 1,

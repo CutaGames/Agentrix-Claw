@@ -23,7 +23,10 @@ export type DesktopZoneId = AnyNavZoneId;
 
 export interface DesktopZone {
   id: DesktopZoneId;
+  /** Chinese name (the contract's `label.zh`). */
   label: string;
+  /** English name (the contract's `label.en`); every language other than Chinese shows this one. */
+  labelEn: string;
   /** 与手机、Web 同名的前四区；false 表示桌面独有。 */
   shared: boolean;
   icon: string;
@@ -43,6 +46,7 @@ const ZONE_ICONS: Record<DesktopZoneId, string> = {
 export const DESKTOP_ZONES: readonly DesktopZone[] = NAV_ZONES_BY_SURFACE.desktop.map((id) => ({
   id,
   label: navZone(id).label.zh,
+  labelEn: navZone(id).label.en,
   shared: isNavZoneId(id),
   icon: ZONE_ICONS[id],
 }));
@@ -99,6 +103,11 @@ export function isDesktopShellEnabled(): boolean {
   }
 }
 
+/** The zone's name in the app language: Chinese for `zh`, English for every other language. */
+export function desktopZoneLabel(zone: DesktopZone, locale: string): string {
+  return locale === "zh" ? zone.label : zone.labelEn;
+}
+
 export function isDesktopZoneId(value: unknown): value is DesktopZoneId {
   return typeof value === "string" && DESKTOP_ZONES.some((zone) => zone.id === value);
 }
@@ -123,6 +132,9 @@ export function openDesktopPanel(panel: DesktopPanelId) {
 }
 
 export interface ZoneEntry {
+  /** Catalog key: the words are `zone.entry.<key>.label` / `.desc` in `i18n/strings.ts`. */
+  key: string;
+  /** Chinese words (also the source of the zh catalog entries; the shell reads the catalog). */
   label: string;
   description: string;
   panel?: DesktopPanelId;
@@ -131,6 +143,8 @@ export interface ZoneEntry {
 }
 
 export interface ZoneSection {
+  /** Catalog key: the title is `zone.section.<key>` in `i18n/strings.ts`. */
+  key: string;
   title: string;
   entries: ZoneEntry[];
 }
@@ -144,28 +158,32 @@ export const WEB_APP_ORIGIN = "https://www.agentrix.top";
 export const ZONE_SECTIONS: Readonly<Record<Exclude<DesktopZoneId, "companion">, ZoneSection[]>> = {
   matters: [
     {
+      key: "pending",
       title: "待我处理",
       entries: [
         // The approvals themselves are in ApprovalInboxSection right above this list; this entry
         // opens the notification center (panel id kept for the chat panel's opener).
-        { label: "通知", description: "提醒、任务结果和同步消息", panel: "approvals" },
-        { label: "今日改动", description: "今天 AI 在这台电脑上改过的文件", panel: "todays-changes" },
+        { key: "notifications", label: "通知", description: "提醒、任务结果和同步消息", panel: "approvals" },
+        { key: "todays", label: "今日改动", description: "今天 AI 在这台电脑上改过的文件", panel: "todays-changes" },
       ],
     },
     {
+      key: "tasks",
       title: "任务",
       entries: [
-        { label: "后台任务", description: "运行中、排队和已完成的任务", panel: "background-tasks" },
-        { label: "任务台", description: "拆解与执行中的任务", panel: "task-workbench" },
-        { label: "工作日志", description: "每一步做了什么", panel: "task-log" },
+        { key: "bgTasks", label: "后台任务", description: "运行中、排队和已完成的任务", panel: "background-tasks" },
+        { key: "workbench", label: "任务台", description: "拆解与执行中的任务", panel: "task-workbench" },
+        { key: "workLog", label: "工作日志", description: "每一步做了什么", panel: "task-log" },
       ],
     },
   ],
   twin: [
     {
+      key: "twin",
       title: "分身",
       entries: [
         {
+          key: "twinWeb",
           label: "在网页上管理分身",
           description: "创建、公开页和名片在 Web 上编辑；桌面负责用本机文件补充分身",
           href: `${WEB_APP_ORIGIN}/agents`,
@@ -175,53 +193,58 @@ export const ZONE_SECTIONS: Readonly<Record<Exclude<DesktopZoneId, "companion">,
   ],
   "my-ais": [
     {
+      key: "dev",
       title: "开发",
       entries: [
-        { label: "Worktree", description: "多条工作线并行", panel: "worktree" },
-        { label: "改动对比", description: "查看工作区的 Diff", panel: "diff" },
-        { label: "文件树", description: "浏览工作区文件", panel: "file-tree" },
-        { label: "代码搜索", description: "文本、符号和语义搜索", panel: "code-search" },
+        { key: "worktree", label: "Worktree", description: "多条工作线并行", panel: "worktree" },
+        { key: "diff", label: "改动对比", description: "查看工作区的 Diff", panel: "diff" },
+        { key: "fileTree", label: "文件树", description: "浏览工作区文件", panel: "file-tree" },
+        { key: "codeSearch", label: "代码搜索", description: "文本、符号和语义搜索", panel: "code-search" },
       ],
     },
     {
+      key: "connect",
       title: "连接与扩展",
       entries: [
-        { label: "MCP", description: "本机 MCP 服务", panel: "mcp" },
-        { label: "插件", description: "已安装的插件", panel: "plugins" },
-        { label: "技能画布", description: "编排技能", panel: "skill-canvas" },
+        { key: "mcp", label: "MCP", description: "本机 MCP 服务", panel: "mcp" },
+        { key: "plugins", label: "插件", description: "已安装的插件", panel: "plugins" },
+        { key: "skillCanvas", label: "技能画布", description: "编排技能", panel: "skill-canvas" },
       ],
     },
   ],
   "this-computer": [],
   my: [
     {
+      key: "identity",
       title: "身份与记忆",
       entries: [
-        { label: "记忆", description: "它记得的关于你的事", panel: "memory" },
-        { label: "记忆百科", description: "整理成条目的长期记忆", panel: "wiki" },
-        { label: "梦境整理", description: "空闲时整理记忆", panel: "dreaming" },
-        { label: "自我进化", description: "记忆、梦境和百科的变化", panel: "self-evolution" },
+        { key: "memory", label: "记忆", description: "它记得的关于你的事", panel: "memory" },
+        { key: "wiki", label: "记忆百科", description: "整理成条目的长期记忆", panel: "wiki" },
+        { key: "dreaming", label: "梦境整理", description: "空闲时整理记忆", panel: "dreaming" },
+        { key: "evolution", label: "自我进化", description: "记忆、梦境和百科的变化", panel: "self-evolution" },
       ],
     },
     {
+      key: "pet",
       title: "伙伴形象",
       entries: [
-        { label: "衣橱", description: "形象与装扮", panel: "wardrobe" },
-        { label: "形态", description: "形态与节日装扮", panel: "pet-variant" },
-        { label: "灵魂", description: "性格与说话方式", panel: "soul-picker" },
-        { label: "成长", description: "成长数据", panel: "pet-growth" },
-        { label: "成就", description: "", panel: "pet-achievements" },
-        { label: "相册", description: "一起留下的记忆", panel: "pet-memory-album" },
-        { label: "创建新形象", description: "", panel: "pet-creator" },
+        { key: "wardrobe", label: "衣橱", description: "形象与装扮", panel: "wardrobe" },
+        { key: "variant", label: "形态", description: "形态与节日装扮", panel: "pet-variant" },
+        { key: "soul", label: "灵魂", description: "性格与说话方式", panel: "soul-picker" },
+        { key: "growth", label: "成长", description: "成长数据", panel: "pet-growth" },
+        { key: "achievements", label: "成就", description: "", panel: "pet-achievements" },
+        { key: "album", label: "相册", description: "一起留下的记忆", panel: "pet-memory-album" },
+        { key: "createLook", label: "创建新形象", description: "", panel: "pet-creator" },
       ],
     },
     {
+      key: "devices",
       title: "设备与其他",
       entries: [
-        { label: "跨设备", description: "手机、手表和其他电脑", panel: "cross-device" },
-        { label: "每日签到", description: "", panel: "checkin" },
-        { label: "对话历史", description: "", panel: "history" },
-        { label: "设置", description: "账号、模型、快捷键", panel: "settings" },
+        { key: "crossDevice", label: "跨设备", description: "手机、手表和其他电脑", panel: "cross-device" },
+        { key: "checkin", label: "每日签到", description: "", panel: "checkin" },
+        { key: "history", label: "对话历史", description: "", panel: "history" },
+        { key: "settings", label: "设置", description: "账号、模型、快捷键", panel: "settings" },
       ],
     },
   ],

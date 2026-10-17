@@ -11,6 +11,8 @@
  */
 import { useEffect, useState, type CSSProperties } from "react";
 import { EMERGENCY_STOP_BUDGET_MS, type EmergencyStopRecord, type GateReadback } from "../services/emergencyStopLog";
+import { useI18n } from "../i18n/I18nProvider";
+import { fill } from "../i18n/strings";
 
 /** 结果在这里留多久。 */
 export const RING_VISIBLE_FOR_MS = 60_000;
@@ -22,13 +24,6 @@ const RADIUS = 27;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 type Phase = "confirming" | "done" | "not_confirmed" | "stalled";
-
-const GATE_TEXT: Record<GateReadback, string> = {
-  pending: "确认中",
-  confirmed: "已确认",
-  not_confirmed: "未确认",
-  unavailable: "读不到",
-};
 
 function prefersReducedMotion(): boolean {
   try {
@@ -52,6 +47,7 @@ export default function EmergencyStopRing({
   /** Own live region for the caption. Pass false inside a container that is already one. */
   live?: boolean;
 }) {
+  const { t } = useI18n();
   const [now, setNow] = useState(() => Date.now());
   const [reduced] = useState(prefersReducedMotion);
   const startedAt = record ? Date.parse(record.at) : NaN;
@@ -92,18 +88,20 @@ export default function EmergencyStopRing({
   const fraction = phase === "confirming" ? remaining / EMERGENCY_STOP_BUDGET_MS : 1;
   const stroke = phase === "done" ? "#16a34a" : phase === "confirming" ? (engaged ? "#dc2626" : "var(--accent)") : "#d97706";
   const center =
-    phase === "confirming" ? `${(remaining / 1000).toFixed(1)} s` : phase === "done" ? (engaged ? "已停" : "已解除") : "未确认";
-  const gates: Array<[string, GateReadback]> = [["电脑侧闸门", record.nativeGate]];
-  if (engaged) gates.push(["本机开发运行时", record.runtime ?? "pending"]);
+    phase === "confirming"
+      ? `${(remaining / 1000).toFixed(1)} s`
+      : phase === "done"
+        ? engaged ? t("estop.ring.stopped") : t("estop.ring.released")
+        : t("estop.ring.notConfirmed");
+  const gates: Array<[string, GateReadback]> = [[t("estop.gate.native"), record.nativeGate]];
+  if (engaged) gates.push([t("estop.gate.runtime"), record.runtime ?? "pending"]);
 
   let caption: string;
-  if (phase === "confirming") caption = engaged ? "正在确认两道闸都停下了（3 秒内）" : "正在确认电脑侧闸门已解除（3 秒内）";
+  if (phase === "confirming") caption = engaged ? t("estop.caption.confirmingEngaged") : t("estop.caption.confirmingReleased");
   else if (phase === "done")
-    caption = engaged
-      ? `${record.settledAfterMs ?? 0} ms 内两道闸都已确认，AI 在这台电脑上已经停下`
-      : `${record.settledAfterMs ?? 0} ms 内确认电脑侧闸门已解除`;
-  else if (phase === "stalled") caption = "没有读到结论，请看下面的急停记录";
-  else caption = "没有在 3 秒内全部确认，请看下面的急停记录";
+    caption = fill(t(engaged ? "estop.caption.doneEngaged" : "estop.caption.doneReleased"), { ms: record.settledAfterMs ?? 0 });
+  else if (phase === "stalled") caption = t("estop.caption.stalled");
+  else caption = t("estop.caption.late");
 
   const finish: CSSProperties = reduced
     ? {}
@@ -136,11 +134,11 @@ export default function EmergencyStopRing({
         <div {...(live ? { role: "status", "aria-live": "polite" as const } : {})} style={captionStyle} data-testid="emergency-stop-ring-caption">
           {caption}
         </div>
-        <ul style={gateList} aria-label="两道闸">
+        <ul style={gateList} aria-label={t("estop.gates")}>
           {gates.map(([label, state]) => (
             <li key={label} style={gateRow} data-testid="emergency-stop-ring-gate">
               <span aria-hidden="true" style={{ ...dot, background: DOT[state] }} />
-              {label}：{GATE_TEXT[state]}
+              {fill(t("estop.gate.line"), { label, state: t(`estop.readback.${state}`) })}
             </li>
           ))}
         </ul>

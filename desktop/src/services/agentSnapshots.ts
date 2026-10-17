@@ -13,6 +13,8 @@
  * 宿主没说的一律按"不能撤回"处理。
  */
 
+import { zhT, type Translator } from "../i18n/strings";
+
 export type SnapshotCurrent = "same" | "changed" | "unknown";
 
 export type SnapshotAgent = "claude-code" | "cursor";
@@ -139,10 +141,10 @@ export function groupSnapshotsByFile(snapshots: AgentSnapshot[]): AgentSnapshotF
 }
 
 /** "Claude Code" / "Cursor" / "Claude Code、Cursor". */
-export function describeSnapshotAgents(agents: readonly SnapshotAgent[]): string {
+export function describeSnapshotAgents(agents: readonly SnapshotAgent[], separator = "、"): string {
   return AGENT_ORDER.filter((agent) => agents.includes(agent))
     .map((agent) => SNAPSHOT_AGENT_NAME[agent])
-    .join("、");
+    .join(separator);
 }
 
 function hasNativeHost(): boolean {
@@ -193,9 +195,12 @@ const REASON_TEXT: Record<string, string> = {
   invalid_response: "本机返回的格式无法识别",
 };
 
-export function describeSnapshotReason(reason: string | undefined): string {
+/** Plain words for a revert failure, in the app language (`snap.reason.<code>`); an unknown code never reaches the screen. */
+export function describeSnapshotReason(reason: string | undefined, t: Translator = zhT): string {
   if (!reason) return "";
-  return REASON_TEXT[reason] || reason;
+  const key = `snap.reason.${reason}`;
+  const text = t(key);
+  return text === key || !(reason in REASON_TEXT) ? t("snap.reason.generic") : text;
 }
 
 export const SNAPSHOT_SKIPPED_TEXT: Record<string, string> = {
@@ -203,3 +208,10 @@ export const SNAPSHOT_SKIPPED_TEXT: Record<string, string> = {
   not_regular_file: "不是普通文件，没有留快照",
   unreadable_event: "没读懂这次操作，没有留快照",
 };
+
+/** Why no snapshot was kept, in the app language (`snap.skipped.<code>`). */
+export function describeSnapshotSkipped(skipped: string, t: Translator = zhT): string {
+  const key = `snap.skipped.${skipped}`;
+  const text = t(key);
+  return text === key ? t("changes.agent.noSnapshot") : text;
+}

@@ -80,11 +80,11 @@ export default function CheckinModal({ visible, onClose }: Props) {
                 )}
               </div>
               <div style={breakdown}>
-                基础 {status.base_amount} AXP + 连击 {status.streak_bonus} AXP（最高 +{status.streak_bonus_cap}）
+                基础 {status.base_amount} AXP 积分 + 连击 {status.streak_bonus} AXP 积分（最高 +{status.streak_bonus_cap}）
               </div>
               {status.can_checkin_today ? (
                 <button onClick={claim} disabled={claiming} style={claimBtnStyle}>
-                  {claiming ? "领取中…" : `领取 +${status.pending_amount} AXP ✨`}
+                  {claiming ? "领取中…" : `领取 +${status.pending_amount} AXP 积分 ✨`}
                 </button>
               ) : (
                 <div style={doneBadge}>

@@ -1732,7 +1732,7 @@ pub fn run() {
             let new_chat    = MenuItemBuilder::with_id("new_chat", "New Chat").build(app)?;
             let voice_chat  = MenuItemBuilder::with_id("voice_chat", "🎤 Voice Chat (Ctrl+Shift+V)").build(app)?;
             let pet_creator = MenuItemBuilder::with_id("pet_creator", "🐾 Pet Creator").build(app)?;
-            let pet_companion = MenuItemBuilder::with_id("pet_companion", "🐾 Toggle Living Pet").build(app)?;
+            let pet_companion = MenuItemBuilder::with_id("pet_companion", "🐾 Toggle Desktop pet").build(app)?;
             let settings    = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
             let check_update = MenuItemBuilder::with_id("check_update", "Check for Updates…").build(app)?;
             let open_logs   = MenuItemBuilder::with_id("open_logs", "Open Logs Folder").build(app)?;

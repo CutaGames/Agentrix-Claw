@@ -175,7 +175,7 @@ async function runRemoteCommand(payload: RunPayload): Promise<string> {
       window.dispatchEvent(new CustomEvent("agentrix:cu-active", { detail: { active: true } }));
       // Bring the Pro panel up so the user can see the agent working.
       await openProPanel(false).catch(() => {});
-      return "已启动 Computer Use";
+      return "已开启操作电脑";
     }
     case "desktop.computer-use.stop": {
       try {
@@ -183,7 +183,7 @@ async function runRemoteCommand(payload: RunPayload): Promise<string> {
       } catch { /* ignore */ }
       window.dispatchEvent(new CustomEvent("agentrix:computer-use-changed", { detail: { enabled: false } }));
       window.dispatchEvent(new CustomEvent("agentrix:cu-active", { detail: { active: false } }));
-      return "已停止 Computer Use";
+      return "已停止操作电脑";
     }
     case "desktop.pro-mode.toggle": {
       await openProPanel(true);
@@ -204,7 +204,7 @@ function describeRemoteCommand(payload: RunPayload): string {
   const who = payload.requestedBy ? `（来自 ${payload.requestedBy}）` : "";
   switch (payload.command) {
     case "desktop.computer-use.start":
-      return `手机请求在这台电脑上打开 Computer Use${who}。打开后 AI 可以控制鼠标、键盘和屏幕，每个动作仍需审批。只有在这台电脑上确认才会生效。`;
+      return `手机请求在这台电脑上打开「操作电脑」${who}。打开后 AI 可以控制鼠标、键盘和屏幕，每个动作仍需审批。只有在这台电脑上确认才会生效。`;
     case "desktop.pro-mode.toggle":
       return `手机请求打开 Pro 模式面板${who}。`;
     case "desktop.aira-work-mode.start":

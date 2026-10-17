@@ -24,17 +24,8 @@ import { agentAccountIdOf } from "../services/actionReceipts";
 import { getKillSwitchState, onKillSwitchChange } from "../services/executionFence";
 import { useAuthStore } from "../services/store";
 import { stagingApiOrigin } from "../services/apiTarget";
-
-const REASON_TEXT: Record<string, string> = {
-  signed_out: "请先登录",
-  no_agent: "没有找到你的主 Agent，先在网页上建一个",
-  no_native_host: "这个窗口不能调用本机功能",
-  not_bound: "服务端没有确认绑定",
-  kill_switch_engaged: "急停拉下时不能绑定",
-  workspace_pick_failed: "没能打开文件夹选择框",
-  enroll_backend_disabled: "服务端还没开放绑定，什么都没建",
-  enroll_backend_unknown: "没能确认服务端能不能绑定，什么都没建，稍后再试",
-};
+import { useI18n } from "../i18n/I18nProvider";
+import { fill, zhT, type Translator } from "../i18n/strings";
 
 /** 绑定还剩几小时（向上取整，至少 1）；没有到期时间时是 null。 */
 export function bindingHoursLeft(expiresAt: string | null | undefined, nowMs: number = Date.now()): number | null {
@@ -43,16 +34,18 @@ export function bindingHoursLeft(expiresAt: string | null | undefined, nowMs: nu
   return Math.max(1, Math.ceil((at - nowMs) / 3_600_000));
 }
 
-export function describeEnrollReason(reason: string | undefined): string {
+/** Plain words for a binding failure, in the app language (`bind.reason.<code>` in `i18n/strings.ts`). */
+export function describeEnrollReason(reason: string | undefined, t: Translator = zhT): string {
   if (!reason) return "";
   const [code, detail] = reason.split(":");
-  if (REASON_TEXT[code]) return REASON_TEXT[code];
-  if (code.startsWith("enroll_")) return detail ? `服务端拒绝了（${detail}）` : "服务端拒绝了";
-  if (code === "network_not_allowlisted") return "地址不在允许列表里";
+  const key = `bind.reason.${code}`;
+  if (t(key) !== key) return t(key);
+  if (code.startsWith("enroll_")) return detail ? fill(t("bind.reason.rejectedDetail"), { detail }) : t("bind.reason.rejected");
   return reason;
 }
 
 export default function DeviceBindingSection() {
+  const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
   const instances = useAuthStore((s) => s.instances);
   const activeInstanceId = useAuthStore((s) => s.activeInstanceId);
@@ -96,10 +89,9 @@ export default function DeviceBindingSection() {
     try {
       const result = await enrollThisComputer({ userJwt: token, agentAccountId, label: label || "Agentrix Desktop" });
       if (result.ok) {
-        const runtime = result.runtime?.outcome === "ok" ? "，开发者运行时也已接上" : "";
-        setMessage(`已绑定${runtime}`);
+        setMessage(result.runtime?.outcome === "ok" ? t("bind.msg.boundWithRuntime") : t("bind.msg.bound"));
       } else {
-        setMessage(`没有完成：${describeEnrollReason(result.reason)}`);
+        setMessage(fill(t("bind.msg.failed"), { reason: describeEnrollReason(result.reason, t) }));
       }
     } finally {
       setBusy(false);
@@ -115,34 +107,31 @@ export default function DeviceBindingSection() {
   if (!bound && !available) return null;
   return (
     <section style={box} aria-labelledby="device-binding-title" data-testid="device-binding">
-      <h2 id="device-binding-title" style={title}>绑定这台电脑</h2>
-      <div style={hint}>
-        绑定以后，手机或网页发来的高风险操作可以在这台电脑上批准（会再弹一次系统确认框，用这台电脑的设备密钥签名）；
-        这台电脑会出现在"我的 → 设备"里，随时可以解绑。登录凭据只在绑定这一次交给本机，不会保存。
-      </div>
+      <h2 id="device-binding-title" style={title}>{t("bind.title")}</h2>
+      <div style={hint}>{t("bind.intro")}</div>
       {stagingOrigin && (
         <div role="note" style={{ ...hint, marginTop: 8 }} data-testid="device-binding-target">
-          这次启动连的是 staging（{stagingOrigin}），绑定和登录都只在 staging 上，和正式环境互不影响。
+          {fill(t("bind.staging"), { origin: stagingOrigin })}
         </div>
       )}
       <div style={{ ...hint, marginTop: 8 }} data-testid="device-binding-status">
         {status === null
-          ? "读取中…"
+          ? t("runtime.loading")
           : bound
-            ? `已绑定：${status.deviceId}，还剩 ${bindingHoursLeft(status.bindingExpiresAt) ?? "?"} 小时。到期以后再点"绑定这台电脑"。`
-            : "还没有绑定"}
+            ? fill(t("bind.status.bound"), { device: status.deviceId ?? "", hours: bindingHoursLeft(status.bindingExpiresAt) ?? "?" })
+            : t("bind.status.unbound")}
       </div>
       {canReconnect && (
         <>
           <button type="button" style={button} disabled={busy || engaged || !token} onClick={() => void bind()}>
-            {busy ? "正在接上…" : "重新接上开发者运行时"}
+            {busy ? t("bind.reconnecting") : t("bind.reconnect")}
           </button>
-          {engaged && <div style={hint}>急停拉下时不能接上。</div>}
+          {engaged && <div style={hint}>{t("bind.engagedReconnect")}</div>}
         </>
       )}
       {!bound && (
         <>
-          <label htmlFor="device-binding-label" style={{ ...hint, display: "block", marginTop: 8 }}>电脑名（会显示在设备列表里）</label>
+          <label htmlFor="device-binding-label" style={{ ...hint, display: "block", marginTop: 8 }}>{t("bind.nameLabel")}</label>
           <input
             id="device-binding-label"
             value={label}
@@ -152,9 +141,9 @@ export default function DeviceBindingSection() {
             style={input}
           />
           <button type="button" style={button} disabled={busy || engaged || !token} onClick={() => void bind()}>
-            {busy ? "正在绑定…" : "绑定这台电脑"}
+            {busy ? t("bind.binding") : t("bind.title")}
           </button>
-          {engaged && <div style={hint}>急停拉下时不能绑定。</div>}
+          {engaged && <div style={hint}>{t("bind.engagedBind")}</div>}
         </>
       )}
       {message && (

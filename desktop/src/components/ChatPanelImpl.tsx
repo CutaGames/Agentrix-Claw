@@ -558,7 +558,9 @@ export default function ChatPanel({
     setRememberApprovalForSessionBySession(value, sessionIdRef.current);
   }, [setRememberApprovalForSessionBySession]);
 
-  const compactTitleBar = !effectiveProMode && windowBounds.width < 760;
+  // T7 r1 (10-16): below 760 px the full header (two model selects, the tier switch and nine icons) cannot fit and
+  // drew over itself, also in Pro mode; the compact header is used for every narrow window.
+  const compactTitleBar = windowBounds.width < 760;
   const activeHeaderInstance = useMemo(
     () => (activeInstanceId ? instances.find((instance) => instance.id === activeInstanceId) : undefined),
     [activeInstanceId, instances],
@@ -1418,7 +1420,7 @@ export default function ChatPanel({
       "",
       tier === "unsupported"
         ? "建议切换到 **云端** 或 **智能** 模式（顶部栏切换），平台会用 Claude / GPT 等高性能云端模型为你服务，体验流畅得多。"
-        : "如要继续使用本地，建议先从 Llama 3.2 3B / Gemma Nano 这类小模型起步，并在设置里关闭 Computer Use 工具集减少 prompt 体积。",
+        : "如要继续使用本地，建议先从 Llama 3.2 3B / Gemma Nano 这类小模型起步，并在设置里关闭「操作电脑」工具集减少 prompt 体积。",
     ];
     addSystemMessage(lines.join("\n"));
     hardwareWarnedRef.current = true;

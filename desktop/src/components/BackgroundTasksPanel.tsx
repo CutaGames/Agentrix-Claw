@@ -9,6 +9,8 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useAuthStore } from "../services/store";
+import { useI18n } from "../i18n/I18nProvider";
+import { fill } from "../i18n/strings";
 import {
   cancelBackgroundTask,
   fetchBackgroundTaskLogs,
@@ -25,15 +27,16 @@ interface Props {
   onClose: () => void;
 }
 
-const STATUS_LABEL: Record<BackgroundTaskStatus, string> = {
-  pending: "排队中",
-  queued: "排队中",
-  running: "运行中",
-  succeeded: "已完成",
-  done: "已完成",
-  failed: "失败",
-  canceled: "已取消",
-  cancelled: "已取消",
+/** Catalog key (`bg.status.*`) of each task status. */
+const STATUS_KEY: Record<BackgroundTaskStatus, string> = {
+  pending: "bg.status.queued",
+  queued: "bg.status.queued",
+  running: "bg.status.running",
+  succeeded: "bg.status.done",
+  done: "bg.status.done",
+  failed: "bg.status.failed",
+  canceled: "bg.status.canceled",
+  cancelled: "bg.status.canceled",
 };
 
 const STATUS_TONE: Record<BackgroundTaskStatus, string> = {
@@ -48,6 +51,7 @@ const STATUS_TONE: Record<BackgroundTaskStatus, string> = {
 };
 
 export default function BackgroundTasksPanel({ open, onClose }: Props) {
+  const { t: tr } = useI18n();
   const token = useAuthStore((s) => s.token);
   const activeAgentId = useAuthStore((s) => s.activeAgentId);
   const activeInstanceId = useAuthStore((s) => s.activeInstanceId);
@@ -127,20 +131,20 @@ export default function BackgroundTasksPanel({ open, onClose }: Props) {
         style={panelStyle}
         role="dialog"
         aria-modal="true"
-        aria-label="后台任务"
+        aria-label={tr("bg.aria")}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div style={headerStyle}>
           <div>
-            <div style={eyebrowStyle}>后台任务</div>
-            <div style={titleStyle}>{tasks.length} 个任务</div>
+            <div style={eyebrowStyle}>{tr("bg.aria")}</div>
+            <div style={titleStyle}>{fill(tr("bg.count"), { n: tasks.length })}</div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => setComposeOpen((v) => !v)} style={primaryActionStyle}>
-              {composeOpen ? "✕ 收起" : "+ 派一个新任务"}
+              {composeOpen ? tr("bg.collapse") : tr("bg.new")}
             </button>
-            <button onClick={onClose} style={closeBtnStyle} aria-label="关闭">✕</button>
+            <button onClick={onClose} style={closeBtnStyle} aria-label={tr("common.close")}>✕</button>
           </div>
         </div>
 
@@ -150,7 +154,7 @@ export default function BackgroundTasksPanel({ open, onClose }: Props) {
             <textarea
               value={composeText}
               onChange={(e) => setComposeText(e.target.value)}
-              placeholder="把任务交给 Agent 后台跑,关掉桌面也不会中断..."
+              placeholder={tr("bg.placeholder")}
               rows={3}
               style={composeTextStyle}
             />
@@ -163,7 +167,7 @@ export default function BackgroundTasksPanel({ open, onClose }: Props) {
                 cursor: (submitting || !composeText.trim()) ? "not-allowed" : "pointer",
               }}
             >
-              {submitting ? "提交中…" : "派 →"}
+              {submitting ? tr("bg.submitting") : tr("bg.submit")}
             </button>
           </div>
         )}
@@ -172,7 +176,7 @@ export default function BackgroundTasksPanel({ open, onClose }: Props) {
         <div style={bodyStyle}>
           <div style={listStyle}>
             {tasks.length === 0 && (
-              <div style={emptyStyle}>还没有后台任务。点击「派一个新任务」交给 Agent。</div>
+              <div style={emptyStyle}>{tr("bg.empty")}</div>
             )}
             {tasks.map((task) => {
               const active = task.id === selectedId;
@@ -190,7 +194,7 @@ export default function BackgroundTasksPanel({ open, onClose }: Props) {
                 >
                   <div style={rowTopStyle}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: STATUS_TONE[task.status] }}>
-                      {STATUS_LABEL[task.status]}
+                      {tr(STATUS_KEY[task.status] ?? "bg.status.queued")}
                     </span>
                     <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{time}</span>
                   </div>
@@ -205,7 +209,7 @@ export default function BackgroundTasksPanel({ open, onClose }: Props) {
                       onClick={(e) => { e.stopPropagation(); void onCancelTask(task.id); }}
                       style={inlineCancelBtnStyle}
                     >
-                      取消
+                      {tr("bg.cancel")}
                     </button>
                   )}
                 </button>
@@ -219,14 +223,15 @@ export default function BackgroundTasksPanel({ open, onClose }: Props) {
                   {selected.description}
                 </div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 12 }}>
-                  {STATUS_LABEL[selected.status]}{selected.costUsd ? ` · 花费 $${selected.costUsd.toFixed(4)}` : ""}
+                  {tr(STATUS_KEY[selected.status] ?? "bg.status.queued")}
+                  {selected.costUsd ? ` · ${fill(tr("bg.cost"), { cost: selected.costUsd.toFixed(4) })}` : ""}
                 </div>
                 {selected.resultPreview && (
                   <div style={resultStyle}>{selected.resultPreview}</div>
                 )}
-                <div style={logHeaderStyle}>执行日志</div>
+                <div style={logHeaderStyle}>{tr("bg.logs")}</div>
                 <div style={logListStyle}>
-                  {logs.length === 0 && <div style={emptyStyle}>暂无日志</div>}
+                  {logs.length === 0 && <div style={emptyStyle}>{tr("bg.noLogs")}</div>}
                   {logs.map((log) => (
                     <div key={log.id} style={logRowStyle}>
                       <span style={{ fontSize: 10, color: "var(--text-muted)", marginRight: 8 }}>
@@ -241,7 +246,7 @@ export default function BackgroundTasksPanel({ open, onClose }: Props) {
                 </div>
               </>
             ) : (
-              <div style={emptyStyle}>选一条任务查看进度。</div>
+              <div style={emptyStyle}>{tr("bg.pick")}</div>
             )}
           </div>
         </div>

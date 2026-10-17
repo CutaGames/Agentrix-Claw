@@ -10,6 +10,8 @@
  * 宿主没说的一律按"未知"显示，不当成受保护。
  */
 
+import { zhT, type Translator } from "../i18n/strings";
+
 export type ClaudeProtection =
   | "not_installed"
   | "unprotected"
@@ -135,68 +137,63 @@ export const installCursorGuard = () => edit("desktop_bridge_agent_guard_install
 export const uninstallCursorGuard = () => edit("desktop_bridge_agent_guard_uninstall", "cursor");
 
 // ── 界面文案 ──────────────────────────────────────────────────────────────
+// The words live in `i18n/strings.ts` under `guard.*`; these helpers pick the right key.
+// A state the host did not report reads "Not detected" (`guard.*.unknown`), never "unknown".
 
-export const CLAUDE_PROTECTION_TEXT: Record<ClaudeProtection, string> = {
-  protected: "受保护：急停拉下时，Claude Code 的每个工具调用都会被拦下",
-  unprotected: "未受保护：急停管不到 Claude Code",
-  script_missing: "未受保护：配置还在，但拦截脚本不见了，重新安装即可",
-  unreadable: "未受保护：Claude Code 的设置文件读不懂，没有改动它",
-  not_installed: "这台电脑上没有发现 Claude Code",
-  unsupported: "这个系统上还不支持",
-  unknown: "未知",
-};
+export function claudeProtectionText(state: ClaudeProtection, t: Translator = zhT): string {
+  return t(`guard.claude.${state}`);
+}
 
-export const CURSOR_PROTECTION_TEXT: Record<ClaudeProtection, string> = {
-  protected: "受保护：急停拉下时，Cursor 的 Agent 每个工具调用都会被拦下",
-  unprotected: "未受保护：急停管不到 Cursor",
-  script_missing: "未受保护：配置还在，但拦截脚本不见了，重新安装即可",
-  unreadable: "未受保护：Cursor 的 hooks.json 读不懂，没有改动它",
-  not_installed: "这台电脑上没有发现 Cursor",
-  unsupported: "这个系统上还不支持",
-  unknown: "未知",
-};
+export function cursorProtectionText(state: ClaudeProtection, t: Translator = zhT): string {
+  return t(`guard.cursor.${state}`);
+}
 
-export const CLAUDE_SNAPSHOT_TEXT: Record<ClaudeSnapshotProtection, string> = {
-  on: "改文件前留快照：Claude Code 改过的文件可以在\"今天的改动\"里撤回",
-  off: "没有留快照：Claude Code 改的文件撤不回，重新点\"开启保护\"即可加上",
-  binary_missing: "快照没在工作：Agentrix 换了位置，重新点\"开启保护\"即可",
-  translocated: "快照没开：Agentrix 是从下载位置直接打开的，先把它拖进\"应用程序\"文件夹再开启",
-  unsupported: "这个系统上还不支持快照",
-  unknown: "快照状态未知",
-};
+export function claudeSnapshotText(state: ClaudeSnapshotProtection, t: Translator = zhT): string {
+  return t(`guard.claudeSnap.${state}`);
+}
 
-export const CURSOR_SNAPSHOT_TEXT: Record<ClaudeSnapshotProtection, string> = {
-  on: "改文件前留快照：Cursor 改过、删掉的文件可以在\"今天的改动\"里撤回",
-  off: "没有留快照：Cursor 改的文件撤不回，重新点\"开启保护\"即可加上",
-  binary_missing: "快照没在工作：Agentrix 换了位置，重新点\"开启保护\"即可",
-  translocated: "快照没开：Agentrix 是从下载位置直接打开的，先把它拖进\"应用程序\"文件夹再开启",
-  unsupported: "这个系统上还不支持快照",
-  unknown: "快照状态未知",
-};
+export function cursorSnapshotText(state: ClaudeSnapshotProtection, t: Translator = zhT): string {
+  return t(`guard.cursorSnap.${state}`);
+}
 
 /** 快照开着才算"撤得回"。 */
 export function snapshotsOn(status: ClaudeSnapshotProtection): boolean {
   return status === "on";
 }
 
-const REASON_TEXT: Record<string, string> = {
-  kill_switch_engaged: "急停拉下时不能移除保护",
-  claude_code_not_found: "没有发现 Claude Code（~/.claude 不存在）",
-  settings_unreadable: "Claude Code 的设置文件读不懂，没有改动它",
-  settings_unexpected_shape: "Claude Code 的设置文件结构和预期不同，没有改动它",
-  hooks_path_unsafe: "应用数据目录的路径里有不安全的字符",
-  hooks_path_not_utf8: "应用数据目录的路径编码不支持",
-  script_write_failed: "写拦截脚本失败",
-  backup_failed: "备份原设置失败，没有改动它",
-  settings_write_failed: "写设置文件失败",
-  unsupported_platform: "这个系统上还不支持",
-  no_native_host: "这个窗口不能调用本机功能",
-  invalid_response: "本机返回的格式无法识别",
-};
-
-export function describeAgentGuardReason(reason: string | undefined): string {
+export function describeAgentGuardReason(reason: string | undefined, t: Translator = zhT): string {
   if (!reason) return "";
-  return REASON_TEXT[reason] || reason;
+  const key = `guard.reason.${reason}`;
+  const text = t(key);
+  return text === key ? reason : text;
+}
+
+/**
+ * Which buttons a row shows (T7 r2, 10-16). When the state could not be read, neither "turn on" nor "remove" is
+ * offered, only a quiet "check again": the owner is not asked to act on something we could not see.
+ * A state that was read as off offers "turn on"; one read as on offers "remove".
+ */
+export interface GuardControls {
+  /** The host answered with something we can act on. */
+  readable: boolean;
+  /** Offer "turn on" (read as off). */
+  enable: boolean;
+  /** Offer "reinstall" (the script is gone, or the snapshot part is missing on a protected row). */
+  reinstall: boolean;
+  /** Offer "remove" (read as on, or the setup is there with its script gone). */
+  disable: boolean;
+}
+
+export function guardControls(state: ClaudeProtection, snapshots: ClaudeSnapshotProtection): GuardControls {
+  if (state === "unknown" || state === "unreadable") return { readable: false, enable: false, reinstall: false, disable: false };
+  if (state === "not_installed" || state === "unsupported") return { readable: true, enable: false, reinstall: false, disable: false };
+  const snapshotsMissing = snapshots === "off" || snapshots === "binary_missing";
+  return {
+    readable: true,
+    enable: state === "unprotected",
+    reinstall: state === "script_missing" || (state === "protected" && snapshotsMissing),
+    disable: state === "protected" || state === "script_missing",
+  };
 }
 
 /** "受保护"只认 protected；其他任何值（包括未知）都算未受保护。 */

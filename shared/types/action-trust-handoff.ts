@@ -13,6 +13,7 @@ import {
   type ActionAttributionV1,
 } from './agent-attribution';
 import {
+  canonicalizeJson,
   computeDigest,
   type DigestRef,
   type PartyRef,
@@ -254,6 +255,22 @@ function refsEqual(left: RecordRef | undefined, right: RecordRef | undefined): b
   return recordRefsEqual(left, right);
 }
 
+/**
+ * JSON equality that ignores object key order and nothing else. Values read
+ * back from Postgres jsonb arrive with keys re-ordered (by UTF-8 byte length,
+ * then bytes), so `JSON.stringify(a) === JSON.stringify(b)` is not a safe
+ * comparison for them. Array order, scalar values and types, and extra or
+ * missing keys still make the two sides unequal. Anything canonicalizeJson
+ * rejects (non-finite number, bigint, function, ...) is treated as not equal.
+ */
+function jsonEqualIgnoringKeyOrder(left: unknown, right: unknown): boolean {
+  try {
+    return canonicalizeJson(left) === canonicalizeJson(right);
+  } catch {
+    return false;
+  }
+}
+
 export function resolveActionCapabilityPolicyV1(toolName: string): ActionCapabilityPolicyV1 {
   if (!(ACTION_TOOL_NAMES_V1 as readonly string[]).includes(toolName)) {
     throw new ActionTrustContractValidationError([`toolName: unclassified tool ${JSON.stringify(toolName)}`]);
@@ -342,7 +359,7 @@ export function validateTrustCoreActionReceiptV1(input: unknown): ActionTrustCon
     errors.push('receipt.capability: expected object');
   } else if ((ACTION_TOOL_NAMES_V1 as readonly unknown[]).includes(input.toolName)) {
     const expected = resolveActionCapabilityPolicyV1(String(input.toolName));
-    if (JSON.stringify(capability) !== JSON.stringify(expected)) {
+    if (!jsonEqualIgnoringKeyOrder(capability, expected)) {
       errors.push('receipt.capability: does not match the closed server capability matrix');
     }
   }
@@ -476,7 +493,7 @@ export function validateActionTrustHandoffEventV1(input: unknown): ActionTrustCo
   if (isObject(input.receipt)) {
     if (input.receipt.receiptId !== input.actionReceiptId) errors.push('handoff.actionReceiptId: receipt mismatch');
     if (input.receipt.actionId !== input.actionId || input.receipt.taskId !== input.taskId) errors.push('handoff.action/task: receipt mismatch');
-    if (!isDigestRef(input.receiptDigest) || JSON.stringify(input.receipt.receiptDigest) !== JSON.stringify(input.receiptDigest)) {
+    if (!isDigestRef(input.receiptDigest) || !jsonEqualIgnoringKeyOrder(input.receipt.receiptDigest, input.receiptDigest)) {
       errors.push('handoff.receiptDigest: receipt mismatch');
     }
   }

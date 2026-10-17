@@ -14,7 +14,6 @@ import {
   ACCENT_IDS,
   ACCENT_LABELS,
   APPEARANCE_CHANGED_EVENT,
-  APPEARANCE_MODE_LABELS,
   readAppearanceAccent,
   readAppearanceMode,
   setAppearanceAccent,
@@ -25,7 +24,7 @@ import {
 import { recordLocalAppearanceChange, syncAppearance } from "../services/appearanceSync";
 import { readAutostartEnabled, setAutostartEnabled } from "../services/autostart";
 import { useI18n } from "../i18n/I18nProvider";
-import { LOCALES, LOCALE_LABELS, type Locale } from "../i18n/strings";
+import { LOCALES, LOCALE_LABELS, fill, type Locale } from "../i18n/strings";
 import { useUserModeStore, type UserMode } from "../services/userMode";
 import { seedInvitesEnabled } from "../services/seedInvites";
 import SeedInvitesPanel from "./SeedInvitesPanel";
@@ -73,6 +72,7 @@ interface Props {
 }
 
 export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models = [], selectedModel = "", onModelChange }: Props) {
+  const { t, locale } = useI18n();
   const { user, logout } = useAuthStore();
   // 开机自启：null = 还没读到 / 读不到（不在 Tauri 里）。初始值不再写死为"开"。
   const [autoStart, setAutoStart] = useState<boolean | null>(null);
@@ -196,14 +196,14 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
         window.dispatchEvent(new CustomEvent("agentrix:workspace-changed"));
       }
     } catch (error: any) {
-      setWorkspaceError(error?.message || "Failed to select a workspace folder.");
+      setWorkspaceError(error?.message || t("set.ws.errPick"));
     }
   };
 
   const handleSaveWorkspacePath = async () => {
     const trimmed = workspaceInput.trim();
     if (!trimmed) {
-      setWorkspaceError("Enter a workspace path first.");
+      setWorkspaceError(t("set.ws.errEnter"));
       return;
     }
 
@@ -214,7 +214,7 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
       setWorkspaceInput(dir);
       window.dispatchEvent(new CustomEvent("agentrix:workspace-changed"));
     } catch (error: any) {
-      setWorkspaceError(error?.message || "Failed to save the workspace path.");
+      setWorkspaceError(error?.message || t("set.ws.errSave"));
     }
   };
 
@@ -281,7 +281,7 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
       sensitivity: Number(wakeWordSensitivity) || 0.65,
     });
     setWakeWordSensitivity(String(saved.sensitivity));
-    setWakeWordStatus(saved.accessKey ? `Saved. Active keyword: ${saved.displayName}` : "Saved. Add an access key to enable wake-word listening.");
+    setWakeWordStatus(saved.accessKey ? fill(t("set.wake.saved"), { name: saved.displayName }) : t("set.wake.savedNoKey"));
   };
 
   const handleResetWakeWord = () => {
@@ -292,99 +292,35 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
     setWakeWordCustomKeywordPath(reset.customKeywordPath);
     setWakeWordDisplayName(reset.displayName);
     setWakeWordSensitivity(String(reset.sensitivity));
-    setWakeWordStatus("Reset. Runtime config now falls back to packaged env/window defaults.");
+    setWakeWordStatus(t("set.wake.resetDone"));
   };
+
+  const accentLabel = (accent: AppearanceAccent) => ACCENT_LABELS[accent][locale === "zh" ? "zh" : "en"];
 
   return (
     <div style={overlay} onClick={onClose}>
       <div style={panel} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Settings</h3>
-          <button onClick={onClose} style={closeBtn}>✕</button>
+          <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{t("settings.title")}</h3>
+          <button onClick={onClose} style={closeBtn} aria-label={t("common.close")}>✕</button>
         </div>
-        {seedInvitesEnabled() ? <SeedInvitesPanel /> : null}
-        <L6OwnerEntriesSection />
-        {devicePassportsEnabled() ? <DevicePassportsPanel /> : null}
 
-        {/* User info */}
+        {/* First screen: account, appearance, language, voice (T7 r2, 10-16). */}
         {user && (
-          <div style={section}>
-            <div style={sectionTitle}>Account</div>
+          <div style={section} data-testid="settings-account">
+            <div style={sectionTitle}>{t("set.account")}</div>
             <div style={{ fontSize: 13, color: "var(--text)" }}>
-              {user.email || user.username || "User"}
+              {user.email || user.username || t("set.userFallback")}
             </div>
           </div>
         )}
 
-        {/* Voice settings */}
-        <div style={section}>
-          <div style={sectionTitle}>Voice</div>
-          <ToggleRow
-            label="Auto-play TTS responses"
-            value={ttsEnabled}
-            onChange={onTtsToggle}
-          />
-        </div>
-
-        <div style={section}>
-          <div style={sectionTitle}>Wake Word</div>
-          <ToggleRow
-            label="Enable wake-word listening"
-            value={wakeWordEnabled}
-            onChange={setWakeWordEnabled}
-          />
-          <div style={fieldStack}>
-            <input
-              value={wakeWordAccessKey}
-              onChange={(event) => setWakeWordAccessKey(event.target.value)}
-              placeholder="Picovoice access key"
-              style={workspaceInputStyle}
-            />
-            <input
-              value={wakeWordDisplayName}
-              onChange={(event) => setWakeWordDisplayName(event.target.value)}
-              placeholder="Wake-word label, e.g. Hey Agentrix"
-              style={workspaceInputStyle}
-            />
-            <input
-              value={wakeWordBuiltInKeyword}
-              onChange={(event) => setWakeWordBuiltInKeyword(event.target.value)}
-              placeholder="Built-in keyword"
-              style={workspaceInputStyle}
-            />
-            <input
-              value={wakeWordCustomKeywordPath}
-              onChange={(event) => setWakeWordCustomKeywordPath(event.target.value)}
-              placeholder="Custom .ppn path (takes priority when filled)"
-              style={workspaceInputStyle}
-            />
-            <input
-              value={wakeWordSensitivity}
-              onChange={(event) => setWakeWordSensitivity(event.target.value)}
-              placeholder="0.65"
-              style={workspaceInputStyle}
-            />
-          </div>
-          <div style={{ display: "flex", gap: 8, paddingTop: 8 }}>
-            <button onClick={handleSaveWakeWord} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)", flex: 1 }}>
-              Save Wake Word
-            </button>
-            <button onClick={handleResetWakeWord} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)", flex: 1 }}>
-              Reset
-            </button>
-          </div>
-          <div style={{ fontSize: 11, color: "var(--text-dim)", paddingTop: 6 }}>
-            Fill a custom `.ppn` path to use your own wake word. Leave it empty to use the built-in keyword.
-          </div>
-          {wakeWordStatus ? <div style={{ fontSize: 11, color: "var(--accent-light)", paddingTop: 4 }}>{wakeWordStatus}</div> : null}
-        </div>
-
         {/* Appearance */}
-        <div style={section}>
-          <div style={sectionTitle}>Appearance</div>
+        <div style={section} data-testid="settings-appearance">
+          <div style={sectionTitle}>{t("set.appearance")}</div>
           {/* Desktop D1 — D11 appearance mode. Accent colours arrive with
               the shared design tokens (REQ-desktop-003). */}
-          <div role="radiogroup" aria-label="外观" style={{ display: "flex", gap: 6, padding: "6px 0" }}>
+          <div role="radiogroup" aria-label={t("set.appearance")} style={{ display: "flex", gap: 6, padding: "6px 0" }}>
             {(["system", "light", "dark"] as AppearanceMode[]).map((mode) => (
               <button
                 key={mode}
@@ -405,17 +341,17 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
                   fontWeight: appearanceMode === mode ? 600 : 400,
                 }}
               >
-                {APPEARANCE_MODE_LABELS[mode]}
+                {t(`set.mode.${mode}`)}
               </button>
             ))}
           </div>
           {appearanceMode !== "dark" && (
             <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>
-              浅色仍在完善中，个别面板可能对比度不足。
+              {t("set.lightNote")}
             </div>
           )}
           {/* D11 accent colours from shared/design-tokens. */}
-          <div role="radiogroup" aria-label="主题色" style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "6px 0" }}>
+          <div role="radiogroup" aria-label={t("set.accent")} style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "6px 0" }}>
             {ACCENT_IDS.map((accent) => (
               <button
                 key={accent}
@@ -441,25 +377,40 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
                   fontWeight: appearanceAccent === accent ? 600 : 400,
                 }}
               >
-                {ACCENT_LABELS[accent].zh}
+                {accentLabel(accent)}
               </button>
             ))}
           </div>
-          {/* Sprint Pre-launch P-3 (2026-05-23) — User experience-mode
-              picker. Default Simple keeps non-coder users from being
-              overwhelmed by tier router / risk levels / 9 deep panels. */}
-          <UserModeRow />
         </div>
 
         {/* Language (P4 — i18n 6 locales) */}
-        <div style={section}>
-          <div style={sectionTitle}>Language / 语言</div>
+        <div style={section} data-testid="settings-language">
+          <div style={sectionTitle}>{t("set.language")}</div>
           <LanguageSwitcher />
         </div>
+
+        {/* Voice settings */}
+        <div style={section} data-testid="settings-voice">
+          <div style={sectionTitle}>{t("set.voice")}</div>
+          <ToggleRow
+            label={t("set.tts")}
+            value={ttsEnabled}
+            onChange={onTtsToggle}
+          />
+        </div>
+
+        {/* Sprint Pre-launch P-3 (2026-05-23) — User experience-mode
+            picker. Default Simple keeps non-coder users from being
+            overwhelmed by tier router / risk levels / 9 deep panels. */}
+        <div style={section}>
+          <div style={sectionTitle}>{t("set.depth")}</div>
+          <UserModeRow />
+        </div>
+
         {/* AI Model */}
         {models.length > 0 && (
           <div style={section}>
-            <div style={sectionTitle}>AI Model</div>
+            <div style={sectionTitle}>{t("set.model")}</div>
             <select
               value={selectedModel}
               onChange={(e) => onModelChange?.(e.target.value)}
@@ -484,115 +435,23 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
           </div>
         )}
 
-        <ByoProvidersSection />
-
         {/* System settings */}
         <div style={section}>
-          <div style={sectionTitle}>System</div>
+          <div style={sectionTitle}>{t("set.system")}</div>
           <ToggleRow
-            label="Start on login"
+            label={t("set.autostart")}
             value={autoStart === true}
             onChange={handleToggleAutoStart}
             disabled={autoStart === null || autoStartBusy}
-            hint={autoStart === null ? "(status unknown)" : undefined}
+            hint={autoStart === null ? `(${t("common.unknown")})` : undefined}
           />
         </div>
-
-        {/* E64 — clipboard sync and active-app awareness, both off by default */}
-        <AmbientPrivacySection />
-
-        {/* Desktop D0 — kill switch, remote mutation, raw shell */}
-        <ExecutionSafetySection />
-        {/* Computer Use (Phase B) */}
-        <div style={section}>
-          <div style={sectionTitle}>Computer Use</div>
-          <ToggleRow
-            label="Allow Agent to control mouse / keyboard / screen"
-            value={computerUseEnabled}
-            onChange={(v) => {
-              setComputerUseEnabled(v);
-              localStorage.setItem(COMPUTER_USE_ENABLED_KEY, v ? "1" : "0");
-              window.dispatchEvent(new CustomEvent("agentrix:computer-use-changed", { detail: { enabled: v } }));
-            }}
-          />
-          <ToggleRow
-            label="Allow Agent to drive an isolated Chrome browser"
-            value={computerUseBrowserEnabled}
-            onChange={(v) => {
-              setComputerUseBrowserEnabled(v);
-              localStorage.setItem(COMPUTER_USE_BROWSER_KEY, v ? "1" : "0");
-            }}
-          />
-          <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 6, lineHeight: 1.5 }}>
-            Each action still asks for your approval. Terminals, sudo/runas, and the
-            Agentrix window itself are blocked at the Rust layer regardless of this
-            setting.
-          </div>
-        </div>
-
-        {/* Hotkeys */}
-        <div style={section}>
-          <div style={sectionTitle}>Shortcuts</div>
-          <div style={hotkeyRow}>
-            <span>Voice</span>
-            <kbd style={kbdStyle}>Ctrl+Shift+A</kbd>
-          </div>
-          <div style={hotkeyRow}>
-            <span>Pro Mode</span>
-            <kbd style={kbdStyle}>Ctrl+Shift+S</kbd>
-          </div>
-        </div>
-
-        {/* Workspace / Coding Agent */}
-        <div style={section}>
-          <div style={sectionTitle}>Workspace (Coding Agent)</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {workspaceDir ? (
-                <div style={{ fontSize: 12, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  📁 {workspaceDir}
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: "var(--text-dim)" }}>No workspace selected</div>
-              )}
-            </div>
-            <button onClick={handlePickWorkspace} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)" }}>
-              {workspaceDir ? "Change" : "Select Folder"}
-            </button>
-          </div>
-          <div style={{ display: "flex", gap: 8, paddingTop: 6 }}>
-            <input
-              value={workspaceInput}
-              onChange={(event) => setWorkspaceInput(event.target.value)}
-              placeholder="Paste workspace path, e.g. D:\\wsl\\Ubuntu-24.04\\Code\\Agentrix\\Agentrix-website"
-              style={workspaceInputStyle}
-            />
-            <button onClick={handleSaveWorkspacePath} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)", whiteSpace: "nowrap" }}>
-              Use Path
-            </button>
-          </div>
-          {workspaceError ? (
-            <div style={{ fontSize: 11, color: "var(--tone-danger-text)", padding: "2px 0" }}>{workspaceError}</div>
-          ) : null}
-          <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "2px 0" }}>
-            Agent can read/edit files in this folder for coding tasks. If Select Folder fails, paste the path manually.
-          </div>
-        </div>
-
-        {/* Local Models */}
-        <LocalModelSection />
-
-        {/* Local compute node (D-MESH Phase 2) — opt-in */}
-        <ComputeNodeSection />
-
-        {/* Living Pet (3D / VRM) */}
-        <PetVrmSection />
 
         {/* Privacy / Telemetry — Sprint G-2 / US-G2-4 */}
         <div style={section}>
-          <div style={sectionTitle}>Privacy</div>
+          <div style={sectionTitle}>{t("set.privacy")}</div>
           <ToggleRow
-            label="发送匿名使用数据"
+            label={t("set.telemetry")}
             value={telemetryOptIn}
             onChange={(v: boolean) => {
               setTelemetryOptIn(v);
@@ -601,43 +460,202 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
             }}
           />
           <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "4px 0", lineHeight: "16px" }}>
-            匿名启动 / 登录 / 首次对话事件，帮助我们改进 Agentrix。崩溃报告独立机制，仅含设备指纹（始终上报）。
+            {t("set.telemetry.hint")}
+          </div>
+        </div>
+
+        {/* E64 — clipboard sync and active-app awareness, both off by default */}
+        <AmbientPrivacySection />
+
+        {/* Desktop D0 — kill switch, remote mutation, raw shell */}
+        <ExecutionSafetySection />
+
+        {/* Computer use (Phase B) */}
+        <div style={section}>
+          <div style={sectionTitle}>{t("settings.section.computerUse")}</div>
+          <ToggleRow
+            label={t("set.cu.screen")}
+            value={computerUseEnabled}
+            onChange={(v) => {
+              setComputerUseEnabled(v);
+              localStorage.setItem(COMPUTER_USE_ENABLED_KEY, v ? "1" : "0");
+              window.dispatchEvent(new CustomEvent("agentrix:computer-use-changed", { detail: { enabled: v } }));
+            }}
+          />
+          <ToggleRow
+            label={t("set.cu.browser")}
+            value={computerUseBrowserEnabled}
+            onChange={(v) => {
+              setComputerUseBrowserEnabled(v);
+              localStorage.setItem(COMPUTER_USE_BROWSER_KEY, v ? "1" : "0");
+            }}
+          />
+          <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 6, lineHeight: 1.5 }}>
+            {t("set.cu.note")}
           </div>
         </div>
 
         {/* Version & Update */}
-        <div style={{ ...section, borderBottom: "none" }}>
-          <div style={sectionTitle}>About</div>
+        <div style={section}>
+          <div style={sectionTitle}>{t("set.about")}</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0" }}>
             <span style={{ fontSize: 12, color: "var(--text-dim)" }}>
-              Agentrix Desktop {currentVersion ? `v${currentVersion}` : ""}
+              {fill(t("set.about.version"), { v: currentVersion ? `v${currentVersion}` : "" }).trim()}
             </span>
             {updateStatus === "idle" && (
               <button onClick={handleCheckUpdate} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)" }}>
-                Check for Updates
+                {t("settings.checkForUpdates")}
               </button>
             )}
             {updateStatus === "checking" && (
-              <span style={{ fontSize: 11, color: "var(--text-dim)" }}>Checking...</span>
+              <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{t("set.update.checking")}</span>
             )}
             {updateStatus === "up-to-date" && (
-              <span style={{ fontSize: 11, color: "var(--tone-success-text)" }}>✓ Up to date</span>
+              <span style={{ fontSize: 11, color: "var(--tone-success-text)" }}>{t("set.update.upToDate")}</span>
             )}
             {updateStatus === "available" && (
               <button onClick={handleInstallUpdate} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--accent)", color: "var(--accent)" }}>
-                Update to {updateVersion}
+                {fill(t("set.update.to"), { v: updateVersion })}
               </button>
             )}
             {updateStatus === "downloading" && (
-              <span style={{ fontSize: 11, color: "var(--accent-light)" }}>Downloading...</span>
+              <span style={{ fontSize: 11, color: "var(--accent-light)" }}>{t("set.update.downloading")}</span>
             )}
             {updateStatus === "error" && (
               <button onClick={handleCheckUpdate} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)" }}>
-                Retry
+                {t("common.retry")}
               </button>
             )}
           </div>
         </div>
+
+        {/* Developer and diagnostic parts: folded until the owner opens them (T7 r2, 10-16). */}
+        <details style={{ ...section, borderBottom: "none" }} data-testid="settings-advanced">
+          <summary style={advancedSummary}>{t("common.advanced")}</summary>
+
+          {seedInvitesEnabled() ? <SeedInvitesPanel /> : null}
+          <L6OwnerEntriesSection />
+          {devicePassportsEnabled() ? <DevicePassportsPanel /> : null}
+
+          <ByoProvidersSection />
+
+          <div style={section}>
+            <div style={sectionTitle}>{t("set.wake.title")}</div>
+            <ToggleRow
+              label={t("set.wake.enable")}
+              value={wakeWordEnabled}
+              onChange={setWakeWordEnabled}
+            />
+            <div style={fieldStack}>
+              <input
+                value={wakeWordAccessKey}
+                onChange={(event) => setWakeWordAccessKey(event.target.value)}
+                placeholder={t("set.wake.accessKey")}
+                aria-label={t("set.wake.accessKey")}
+                style={workspaceInputStyle}
+              />
+              <input
+                value={wakeWordDisplayName}
+                onChange={(event) => setWakeWordDisplayName(event.target.value)}
+                placeholder={t("set.wake.label")}
+                aria-label={t("set.wake.label")}
+                style={workspaceInputStyle}
+              />
+              <input
+                value={wakeWordBuiltInKeyword}
+                onChange={(event) => setWakeWordBuiltInKeyword(event.target.value)}
+                placeholder={t("set.wake.builtIn")}
+                aria-label={t("set.wake.builtIn")}
+                style={workspaceInputStyle}
+              />
+              <input
+                value={wakeWordCustomKeywordPath}
+                onChange={(event) => setWakeWordCustomKeywordPath(event.target.value)}
+                placeholder={t("set.wake.custom")}
+                aria-label={t("set.wake.custom")}
+                style={workspaceInputStyle}
+              />
+              <input
+                value={wakeWordSensitivity}
+                onChange={(event) => setWakeWordSensitivity(event.target.value)}
+                placeholder="0.65"
+                aria-label={t("set.wake.sensitivity")}
+                style={workspaceInputStyle}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 8, paddingTop: 8 }}>
+              <button onClick={handleSaveWakeWord} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)", flex: 1 }}>
+                {t("set.wake.save")}
+              </button>
+              <button onClick={handleResetWakeWord} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)", flex: 1 }}>
+                {t("common.reset")}
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-dim)", paddingTop: 6 }}>
+              {t("set.wake.hint")}
+            </div>
+            {wakeWordStatus ? <div style={{ fontSize: 11, color: "var(--accent-light)", paddingTop: 4 }}>{wakeWordStatus}</div> : null}
+          </div>
+
+          {/* Hotkeys */}
+          <div style={section}>
+            <div style={sectionTitle}>{t("set.shortcuts")}</div>
+            <div style={hotkeyRow}>
+              <span>{t("set.sc.voice")}</span>
+              <kbd style={kbdStyle}>Ctrl+Shift+A</kbd>
+            </div>
+            <div style={hotkeyRow}>
+              <span>{t("set.sc.pro")}</span>
+              <kbd style={kbdStyle}>Ctrl+Shift+S</kbd>
+            </div>
+          </div>
+
+          {/* Workspace / Coding Agent */}
+          <div style={section}>
+            <div style={sectionTitle}>{t("set.workspace")}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {workspaceDir ? (
+                  <div style={{ fontSize: 12, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    📁 {workspaceDir}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{t("set.ws.none")}</div>
+                )}
+              </div>
+              <button onClick={handlePickWorkspace} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)" }}>
+                {workspaceDir ? t("common.change") : t("set.ws.select")}
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 8, paddingTop: 6 }}>
+              <input
+                value={workspaceInput}
+                onChange={(event) => setWorkspaceInput(event.target.value)}
+                placeholder={t("set.ws.placeholder")}
+                aria-label={t("set.ws.placeholder")}
+                style={workspaceInputStyle}
+              />
+              <button onClick={handleSaveWorkspacePath} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)", whiteSpace: "nowrap" }}>
+                {t("set.ws.use")}
+              </button>
+            </div>
+            {workspaceError ? (
+              <div style={{ fontSize: 11, color: "var(--tone-danger-text)", padding: "2px 0" }}>{workspaceError}</div>
+            ) : null}
+            <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "2px 0" }}>
+              {t("set.ws.hint")}
+            </div>
+          </div>
+
+          {/* Local Models */}
+          <LocalModelSection />
+
+          {/* Local compute node (D-MESH Phase 2) — opt-in */}
+          <ComputeNodeSection />
+
+          {/* Desktop pet (3D / VRM) */}
+          <PetVrmSection />
+        </details>
 
         {/* Logout */}
         <button
@@ -647,7 +665,7 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
           }}
           style={logoutBtn}
         >
-          Log Out
+          {t("settings.logout")}
         </button>
       </div>
     </div>
@@ -658,16 +676,16 @@ export default function SettingsPanel({ ttsEnabled, onTtsToggle, onClose, models
 // Standard / Pro). See `services/userMode.ts` and the positioning doc
 // `docs/agentrix-positioning-2026-05.zh-CN.md` for rationale.
 function UserModeRow() {
+  const { t } = useI18n();
   const mode = useUserModeStore((s) => s.mode);
   const setMode = useUserModeStore((s) => s.setMode);
   const options: Array<{ id: UserMode; label: string; description: string }> = [
-    { id: "simple", label: "Simple · 简单", description: "默认。隐藏高级开关,接近 ChatGPT 体验" },
-    { id: "standard", label: "Standard · 标准", description: "显示工具调用、Plan/Agent/Ask 切换、跨端" },
-    { id: "pro", label: "Pro · 高级", description: "全部高级开关 / tier 路由 / 记忆 wiki" },
+    { id: "simple", label: t("set.depth.simple"), description: t("set.depth.simple.desc") },
+    { id: "standard", label: t("set.depth.standard"), description: t("set.depth.standard.desc") },
+    { id: "pro", label: t("set.depth.pro"), description: t("set.depth.pro.desc") },
   ];
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 8 }}>
-      <div style={{ fontSize: 12, color: "var(--text-dim)" }}>使用深度 / Experience depth</div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {options.map((option) => {
           const active = option.id === mode;
@@ -804,6 +822,14 @@ const sectionTitle: CSSProperties = {
   marginBottom: 8,
 };
 
+const advancedSummary: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: "var(--text-dim)",
+  cursor: "pointer",
+  marginBottom: 8,
+};
+
 const hotkeyRow: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
@@ -852,6 +878,7 @@ const logoutBtn: CSSProperties = {
 };
 
 function PetVrmSection() {
+  const { t } = useI18n();
   const [vrmUrl, setVrmUrl] = useState<string | null>(() => {
     try { return localStorage.getItem("agentrix_pet_vrm_url") || null; } catch { return null; }
   });
@@ -873,7 +900,7 @@ function PetVrmSection() {
       const selected = await open({
         directory: false,
         multiple: false,
-        title: "Select VRM file",
+        title: t("set.pet.pickTitle"),
         filters: [{ name: "VRM Model", extensions: ["vrm"] }],
       });
       const path = Array.isArray(selected) ? selected[0] : selected;
@@ -883,7 +910,7 @@ function PetVrmSection() {
       const url = path.startsWith("file:") ? path : `file://${path.replace(/\\/g, "/")}`;
       persist(url);
     } catch (err: any) {
-      setError(err?.message || "Failed to pick VRM file.");
+      setError(err?.message || t("set.pet.err"));
     }
   };
 
@@ -891,7 +918,7 @@ function PetVrmSection() {
 
   return (
     <div style={section}>
-      <div style={sectionTitle}>Living Pet (3D / VRM)</div>
+      <div style={sectionTitle}>{t("set.pet")}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           {vrmUrl ? (
@@ -899,15 +926,15 @@ function PetVrmSection() {
               🐱 {vrmUrl.replace(/^file:\/\//, "")}
             </div>
           ) : (
-            <div style={{ fontSize: 12, color: "var(--text-dim)" }}>Using fallback SVG pet</div>
+            <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{t("set.pet.fallback")}</div>
           )}
         </div>
         <button onClick={handlePick} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)" }}>
-          {vrmUrl ? "Change" : "Import VRM"}
+          {vrmUrl ? t("common.change") : t("set.pet.import")}
         </button>
         {vrmUrl && (
           <button onClick={handleClear} style={{ ...kbdStyle, cursor: "pointer", border: "1px solid var(--border)" }}>
-            Reset
+            {t("common.reset")}
           </button>
         )}
       </div>
@@ -915,9 +942,7 @@ function PetVrmSection() {
         <div style={{ fontSize: 11, color: "var(--tone-danger-text)", padding: "2px 0" }}>{error}</div>
       ) : null}
       <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "2px 0", lineHeight: 1.5 }}>
-        Export a character from VRoid Studio as <code>.vrm</code>, then pick it here.
-        Standard VRM expressions (happy / sad / angry / surprised / relaxed) drive the
-        10 Agentrix emotions.
+        {t("set.pet.hint")}
       </div>
 
       <FloatingModeToggle />
@@ -926,6 +951,7 @@ function PetVrmSection() {
 }
 
 function FloatingModeToggle() {
+  const { t } = useI18n();
   const [mode, setMode] = useState<"pet" | "abstract">(() => {
     try {
       return (localStorage.getItem("agentrix_floating_mode") as "pet" | "abstract") || "pet";
@@ -945,7 +971,7 @@ function FloatingModeToggle() {
   return (
     <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
       <div style={{ fontSize: 12, color: "var(--text)", marginBottom: 6, fontWeight: 600 }}>
-        Floating Entry Style
+        {t("set.float.title")}
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <button
@@ -958,7 +984,7 @@ function FloatingModeToggle() {
             color: mode === "pet" ? "#fff" : "var(--text)",
           }}
         >
-          🐾 Living Pet
+          {t("set.float.pet")}
         </button>
         <button
           onClick={() => change("abstract")}
@@ -970,19 +996,18 @@ function FloatingModeToggle() {
             color: mode === "abstract" ? "#fff" : "var(--text)",
           }}
         >
-          🟣 Abstract Ball
+          {t("set.float.ball")}
         </button>
       </div>
       <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "6px 0 0", lineHeight: 1.5 }}>
-        {mode === "pet"
-          ? "Your main pet shows up as the floating entry and reacts to every action (voice / clipboard / AXP). Recommended."
-          : "Classic purple orb. Useful if your machine can't render VRM/Rive smoothly or you prefer minimal visuals."}
+        {mode === "pet" ? t("set.float.petDesc") : t("set.float.ballDesc")}
       </div>
     </div>
   );
 }
 
 function LocalModelSection() {
+  const { t } = useI18n();
   const [models, setModels] = useState<Array<{ name: string; path: string; sizeBytes: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -1041,16 +1066,16 @@ function LocalModelSection() {
 
   const handleBinaryDownload = async () => {
     setBinaryDownloading(true);
-    setBinaryMessage("正在下载推理引擎…");
+    setBinaryMessage(t("set.lm.engineDownloading"));
     try {
       const result = await invoke<{ available: boolean; path: string | null; message: string | null }>(
         "desktop_bridge_download_llama_server"
       );
       setBinaryAvailable(result.available);
       setBinaryPath(result.path);
-      setBinaryMessage(result.message || "安装完成");
+      setBinaryMessage(result.message || t("set.lm.engineDone"));
     } catch (err: any) {
-      setBinaryMessage(`下载失败: ${typeof err === "string" ? err : err?.message || "unknown"}`);
+      setBinaryMessage(fill(t("set.lm.engineFail"), { reason: typeof err === "string" ? err : err?.message || t("common.unknown") }));
     } finally {
       setBinaryDownloading(false);
     }
@@ -1065,7 +1090,7 @@ function LocalModelSection() {
       fileName: "gemma-4-E2B-it-Q4_K_M.gguf",
       url: "https://hf-mirror.com/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf?download=true",
       matchTerms: ["gemma-4-e2b", "gemma-4-E2B"],
-      desc: "端侧入门，2.3B 有效参数，适合手机和轻薄本。支持文本+图像+语音。",
+      desc: t("set.lm.desc.e2b"),
     },
     {
       id: "gemma-4-e4b",
@@ -1075,7 +1100,7 @@ function LocalModelSection() {
       fileName: "gemma-4-E4B-it-Q4_K_M.gguf",
       url: "https://hf-mirror.com/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf?download=true",
       matchTerms: ["gemma-4-e4b", "gemma-4-E4B"],
-      desc: "日常推荐，4.5B 有效参数，适合 8GB+ 内存。支持文本+图像+语音。",
+      desc: t("set.lm.desc.e4b"),
     },
     {
       id: "gemma-4-26b-a4b",
@@ -1085,7 +1110,7 @@ function LocalModelSection() {
       fileName: "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
       url: "https://hf-mirror.com/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-Q4_K_M.gguf?download=true",
       matchTerms: ["gemma-4-26b-a4b", "gemma-4-26B-A4B"],
-      desc: "MoE 架构，26B 总参但仅 4B 激活，推理速度接近 4B。建议 32GB+ RAM。",
+      desc: t("set.lm.desc.26b"),
     },
     {
       id: "gemma-4-31b",
@@ -1095,7 +1120,7 @@ function LocalModelSection() {
       fileName: "gemma-4-31b-it-Q4_K_M.gguf",
       url: "https://hf-mirror.com/QuantFactory/gemma-4-31b-it-GGUF/resolve/main/gemma-4-31b-it-Q4_K_M.gguf?download=true",
       matchTerms: ["gemma-4-31b", "gemma-4-31B"],
-      desc: "Dense 31B 全量模型，最高质量本地推理，建议 48GB+ RAM/GPU。",
+      desc: t("set.lm.desc.31b"),
     },
   ];
 
@@ -1144,7 +1169,7 @@ function LocalModelSection() {
         fileName: target.fileName,
         onProgress: (event: LocalModelDownloadEvent) => {
           if (event.status === "error") {
-            setDownloadMessage(event.message || "模型下载失败");
+            setDownloadMessage(event.message || t("set.lm.fail"));
             return;
           }
 
@@ -1153,18 +1178,18 @@ function LocalModelSection() {
           }
 
           if (event.status === "started") {
-            setDownloadMessage("开始下载模型…");
+            setDownloadMessage(t("set.lm.start"));
           } else if (event.status === "progress" && event.totalBytes) {
             setDownloadMessage(`${formatSize(event.downloadedBytes)} / ${formatSize(event.totalBytes)}`);
           } else if (event.status === "completed") {
-            setDownloadMessage("模型下载完成");
+            setDownloadMessage(t("set.lm.done"));
           }
         },
       });
 
       await refreshModels();
     } catch (error: any) {
-      const msg = typeof error === 'string' ? error : (error?.message || "模型下载失败");
+      const msg = typeof error === 'string' ? error : (error?.message || t("set.lm.fail"));
       setDownloadMessage(msg);
     } finally {
       setDownloadingId(null);
@@ -1183,11 +1208,11 @@ function LocalModelSection() {
 
   return (
     <div style={section}>
-      <div style={sectionTitle}>Local Models (端侧 AI)</div>
+      <div style={sectionTitle}>{t("set.lm.title")}</div>
 
       {/* Tri-tier explanation */}
       <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "4px 0", lineHeight: "16px" }}>
-        📱 Local → ☁️ Cloud API → 🧠 Ultra. Download a local model for offline inference, faster wake word detection, and privacy filtering.
+        {t("set.lm.tiers")}
       </div>
 
       {/* llama-server binary status */}
@@ -1199,7 +1224,7 @@ function LocalModelSection() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: binaryAvailable ? "#10B981" : "#f87171" }}>
-              ⚙️ 推理引擎 (llama-server) {binaryAvailable === null ? "检测中…" : binaryAvailable ? "✅ 已安装" : "❌ 未安装"}
+              {t("set.lm.engine")} {binaryAvailable === null ? t("set.lm.checking") : binaryAvailable ? t("set.lm.installed") : t("set.lm.notInstalled")}
             </div>
             {binaryPath && (
               <div style={{ fontSize: 9, color: "var(--text-dim)", marginTop: 2, wordBreak: "break-all" }}>{binaryPath}</div>
@@ -1219,7 +1244,7 @@ function LocalModelSection() {
                 opacity: binaryDownloading ? 0.5 : 1, whiteSpace: "nowrap",
               }}
             >
-              {binaryDownloading ? "下载中…" : "⬇ 一键安装"}
+              {binaryDownloading ? t("set.lm.downloading") : t("set.lm.install")}
             </button>
           )}
         </div>
@@ -1244,7 +1269,7 @@ function LocalModelSection() {
                   <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>{rm.desc}</div>
                 </div>
                 {downloaded ? (
-                  <div style={{ fontSize: 10, color: "var(--tone-success-text)", fontWeight: 600 }}>Active</div>
+                  <div style={{ fontSize: 10, color: "var(--tone-success-text)", fontWeight: 600 }}>{t("set.lm.active")}</div>
                 ) : isDownloading ? (
                   <div style={{ fontSize: 10, color: "var(--tone-info-text)", fontWeight: 600, minWidth: 40, textAlign: "right" }}>
                     {downloadProgress}%
@@ -1284,22 +1309,22 @@ function LocalModelSection() {
       </div>
 
       {downloadMessage && !downloadingId ? (
-        <div style={{ fontSize: 11, color: downloadMessage.includes("失败") ? "#f87171" : "var(--text-dim)", marginTop: 8 }}>
+        <div style={{ fontSize: 11, color: /失败|fail/i.test(downloadMessage) ? "#f87171" : "var(--text-dim)", marginTop: 8 }}>
           {downloadMessage}
         </div>
       ) : null}
 
       {/* Already downloaded models — select & launch */}
       {loading ? (
-        <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "4px 0" }}>Scanning local models…</div>
+        <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "4px 0" }}>{t("set.lm.scanning")}</div>
       ) : models.length > 0 ? (
         <>
           <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>
-            Downloaded Models
+            {t("set.lm.downloaded")}
           </div>
           {sidecarStatus !== "stopped" && (
             <div style={{ fontSize: 11, color: sidecarStatus === "running" ? "#10B981" : sidecarStatus === "error" ? "#f87171" : "#3B82F6", marginBottom: 4 }}>
-              Sidecar: {sidecarStatus}{sidecarStatus === "running" ? " (localhost:8787)" : ""}
+              {fill(t("set.lm.sidecar"), { status: sidecarStatus })}{sidecarStatus === "running" ? " (localhost:8787)" : ""}
             </div>
           )}
           <div style={{ display: "grid", gap: 6 }}>
@@ -1331,7 +1356,7 @@ function LocalModelSection() {
                           fontWeight: 600, cursor: "pointer",
                         }}
                       >
-                        Set Default
+                        {t("set.lm.setDefault")}
                       </button>
                     )}
                     {isDefault && sidecarStatus !== "running" && (
@@ -1341,7 +1366,7 @@ function LocalModelSection() {
                             await sidecarRef.start({ modelPath: m.path, contextSize: 8192, nGpuLayers: 0 });
                           } catch (err: any) {
                             const msg = typeof err === "string" ? err : (err?.message || String(err));
-                            setDownloadMessage(`Sidecar error: ${msg}`);
+                            setDownloadMessage(fill(t("set.lm.sidecarErr"), { reason: msg }));
                           }
                         }}
                         disabled={sidecarStatus === "starting"}
@@ -1352,7 +1377,7 @@ function LocalModelSection() {
                           opacity: sidecarStatus === "starting" ? 0.5 : 1,
                         }}
                       >
-                        {sidecarStatus === "starting" ? "Starting…" : "▶ Start"}
+                        {sidecarStatus === "starting" ? t("set.lm.starting") : t("set.lm.startBtn")}
                       </button>
                     )}
                     {isDefault && sidecarStatus === "running" && (
@@ -1364,7 +1389,7 @@ function LocalModelSection() {
                           fontWeight: 600, cursor: "pointer",
                         }}
                       >
-                        ■ Stop
+                        {t("set.lm.stop")}
                       </button>
                     )}
                   </div>

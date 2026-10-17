@@ -21,8 +21,10 @@ import ComputeNodeSection from "./ComputeNodeSection";
 import NodeAllowlistSection from "./NodeAllowlistSection";
 import RentalRulesSection from "./RentalRulesSection";
 import ByoProvidersSection from "./ByoProvidersSection";
+import { useI18n } from "../i18n/I18nProvider";
 import {
   DESKTOP_ZONES,
+  desktopZoneLabel,
   isDesktopZoneId,
   openDesktopPanel,
   OPEN_ZONE_EVENT,
@@ -74,6 +76,7 @@ export default function DesktopShell({
   /** 与聊天面板相同的关窗逻辑；非伙伴区也能关窗口。 */
   onClose?: () => void | Promise<void>;
 }) {
+  const { t, locale } = useI18n();
   const [zone, setZone] = useState<DesktopZoneId>("companion");
   const [killSwitchEngaged, setKillSwitchEngaged] = useState(() => getKillSwitchState().engaged);
   const compact = useCompactWindow();
@@ -98,7 +101,7 @@ export default function DesktopShell({
 
   return (
     <div style={shell} data-testid="desktop-shell">
-      <nav aria-label="主导航" hidden={compact} style={compact ? { ...rail, display: "none" } : rail}>
+      <nav aria-label={t("shell.nav")} hidden={compact} style={compact ? { ...rail, display: "none" } : rail}>
         <div data-tauri-drag-region style={railDrag} />
         {DESKTOP_ZONES.map((item) => {
           const active = item.id === activeZone;
@@ -115,8 +118,8 @@ export default function DesktopShell({
                 {item.icon}
                 {item.id === "this-computer" && killSwitchEngaged && <span style={alertDot} />}
               </span>
-              <span style={railLabel}>{item.label}</span>
-              {item.id === "this-computer" && killSwitchEngaged && <span style={srOnly}>（急停已拉下）</span>}
+              <span style={railLabel}>{desktopZoneLabel(item, locale)}</span>
+              {item.id === "this-computer" && killSwitchEngaged && <span style={srOnly}>{t("shell.estopOn")}</span>}
             </button>
           );
         })}
@@ -144,32 +147,37 @@ function ZonePage({
   killSwitchEngaged: boolean;
   onClose?: () => void | Promise<void>;
 }) {
+  const { t, locale } = useI18n();
   const meta = DESKTOP_ZONES.find((item) => item.id === zone)!;
   const sections = ZONE_SECTIONS[zone];
   return (
     <section data-testid={`zone-panel-${zone}`} aria-labelledby={`zone-title-${zone}`} style={page}>
       <header data-tauri-drag-region style={pageHeader}>
-        <h1 id={`zone-title-${zone}`} data-tauri-drag-region style={pageTitle}>{meta.label}</h1>
+        <h1 id={`zone-title-${zone}`} data-tauri-drag-region style={pageTitle}>{desktopZoneLabel(meta, locale)}</h1>
         <div style={windowControls}>
-          <button type="button" aria-label="最小化窗口" title="最小化" style={windowButton} onClick={() => void minimizeWindow()}>—</button>
+          <button type="button" aria-label={t("shell.minimizeWindow")} title={t("shell.minimize")} style={windowButton} onClick={() => void minimizeWindow()}>—</button>
           {onClose && (
-            <button type="button" aria-label="关闭窗口" title="关闭" style={windowButton} onClick={() => void onClose()}>✕</button>
+            <button type="button" aria-label={t("shell.closeWindow")} title={t("common.close")} style={windowButton} onClick={() => void onClose()}>✕</button>
           )}
         </div>
       </header>
       {zone === "this-computer" && (
         <>
           {killSwitchEngaged && (
-            <div role="status" style={killBanner}>急停已拉下：AI 在这台电脑上的操作全部暂停。可以在下面解除。</div>
+            <div role="status" style={killBanner}>{t("shell.killBanner")}</div>
           )}
           <ExecutionSafetySection />
           <DeviceBindingSection />
-          <RuntimeSection />
           <ByoProvidersSection />
-          <ComputeNodeSection />
-          <NodeAllowlistSection />
-          <RentalRulesSection />
-          <EntryList entries={[{ label: "工作区文件夹与本机模型", description: "在设置里选择 AI 可以访问的文件夹和本机模型", panel: "settings" }]} />
+          {/* Developer and diagnostic parts stay folded until the owner opens them (T7 r2, 10-16). */}
+          <details style={advancedBox} data-testid="this-computer-advanced">
+            <summary style={advancedSummary}>{t("common.advanced")}</summary>
+            <RuntimeSection />
+            <ComputeNodeSection />
+            <NodeAllowlistSection />
+            <RentalRulesSection />
+          </details>
+          <EntryList entries={[{ key: "workspace", label: "工作区文件夹与本机模型", description: "在设置里选择 AI 可以访问的文件夹和本机模型", panel: "settings" }]} />
         </>
       )}
       {zone === "matters" && <ApprovalInboxSection />}
@@ -177,8 +185,8 @@ function ZonePage({
       {zone === "my-ais" && <AgentGuardSection />}
       {zone === "twin" && <OrderDeskSection />}
       {sections.map((sectionItem) => (
-        <div key={sectionItem.title} style={sectionBox}>
-          <h2 style={sectionTitle}>{sectionItem.title}</h2>
+        <div key={sectionItem.key} style={sectionBox}>
+          <h2 style={sectionTitle}>{t(`zone.section.${sectionItem.key}`)}</h2>
           <EntryList entries={sectionItem.entries} />
         </div>
       ))}
@@ -193,23 +201,24 @@ function ZonePage({
  * and marks them handled.
  */
 function InterruptedActions() {
+  const { t } = useI18n();
   const journal = getExecutionJournal();
   const [items, setItems] = useState<JournalEntry[]>(() => journal.listReconcile());
   useEffect(() => journal.subscribe(() => setItems(journal.listReconcile())), [journal]);
   if (items.length === 0) return null;
   return (
     <div style={sectionBox} data-testid="interrupted-actions">
-      <h2 style={sectionTitle}>中断的操作（结果未知，不会自动重试）</h2>
+      <h2 style={sectionTitle}>{t("shell.interrupted.title")}</h2>
       <ul style={list}>
         {items.map((item) => (
           <li key={item.journalRef} style={{ ...entryButton, cursor: "default" }}>
             <span style={entryLabel}>{item.title || item.kind}</span>
             <span style={entryDescription}>
-              {new Date(item.reservedAt).toLocaleString()} · 来源：{SOURCE_LABELS[item.source] ?? item.source}
+              {new Date(item.reservedAt).toLocaleString()} · {t("shell.interrupted.source")}{t(`shell.interrupted.source.${item.source}`) === `shell.interrupted.source.${item.source}` ? item.source : t(`shell.interrupted.source.${item.source}`)}
               {item.note ? ` · ${item.note}` : ""}
             </span>
             <button type="button" style={ackButton} onClick={() => journal.acknowledge(item.journalRef)}>
-              我看过了，标记已处理
+              {t("shell.interrupted.ack")}
             </button>
           </li>
         ))}
@@ -218,25 +227,20 @@ function InterruptedActions() {
   );
 }
 
-const SOURCE_LABELS: Record<string, string> = {
-  "agent-sync": "手机或云端下发",
-  "remote-control": "手机遥控",
-  "chat-tool": "本机聊天",
-};
-
 function EntryList({ entries }: { entries: ZoneEntry[] }) {
+  const { t } = useI18n();
   return (
     <ul style={list}>
       {entries.map((entry) => {
         const actionable = Boolean(entry.panel || entry.href);
         const body = (
           <>
-            <span style={entryLabel}>{entry.label}</span>
-            {entry.description && <span style={entryDescription}>{entry.description}</span>}
+            <span style={entryLabel}>{t(`zone.entry.${entry.key}.label`)}</span>
+            {entry.description && <span style={entryDescription}>{t(`zone.entry.${entry.key}.desc`)}</span>}
           </>
         );
         return (
-          <li key={entry.label}>
+          <li key={entry.key}>
             {actionable ? (
               <button
                 type="button"
@@ -247,7 +251,7 @@ function EntryList({ entries }: { entries: ZoneEntry[] }) {
                 }}
               >
                 {body}
-                {entry.href && <span style={entryDescription}>在浏览器中打开</span>}
+                {entry.href && <span style={entryDescription}>{t("shell.openInBrowser")}</span>}
               </button>
             ) : (
               <div style={{ ...entryButton, cursor: "default", opacity: 0.7 }} aria-disabled="true">
@@ -314,6 +318,8 @@ const windowButton: CSSProperties = {
   cursor: "pointer",
   fontSize: 13,
 };
+const advancedBox: CSSProperties = { padding: "10px 0", borderBottom: "1px solid var(--border)" };
+const advancedSummary: CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--text-dim)", cursor: "pointer" };
 const sectionBox: CSSProperties = { padding: "10px 0", borderTop: "1px solid var(--border)" };
 const sectionTitle: CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--text-dim)", margin: "0 0 8px" };
 const list: CSSProperties = { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 };

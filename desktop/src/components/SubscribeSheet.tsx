@@ -168,7 +168,7 @@ export default function SubscribeSheet({ onClose, currentTier }: Props) {
 
           <section aria-labelledby={`${titleId}-axp`} style={sectionStyle}>
             <h3 id={`${titleId}-axp`} style={sectionTitle}>
-              AXP
+              AXP 积分
             </h3>
             <p style={noteStyle}>{AXP_NOTE}</p>
           </section>

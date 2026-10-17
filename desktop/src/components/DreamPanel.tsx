@@ -1,6 +1,9 @@
 import { useState, useCallback, useEffect, type CSSProperties } from "react";
 import { apiFetch, API_BASE } from "../services/store";
 import { TOKEN_STORAGE_KEY } from "../services/apiTarget";
+import { classifyDreamingFailure, readDreamingBody, type DreamingProblem } from "../services/dreaming";
+import { useI18n } from "../i18n/I18nProvider";
+import { fill } from "../i18n/strings";
 
 interface DreamInsight {
   type: string;
@@ -24,11 +27,11 @@ interface Props {
   onClose: () => void;
 }
 
-const PHASE_META = {
-  light: { emoji: "🌙", label: "Light" },
-  deep: { emoji: "🌊", label: "Deep" },
-  rem: { emoji: "⚡", label: "REM" },
-};
+const PHASE_EMOJI = {
+  light: "🌙",
+  deep: "🌊",
+  rem: "⚡",
+} as const;
 
 const STATUS_EMOJI: Record<string, string> = {
   pending: "⏳",
@@ -38,14 +41,18 @@ const STATUS_EMOJI: Record<string, string> = {
 };
 
 export default function DreamPanel({ open, onClose }: Props) {
+  const { t } = useI18n();
   const [sessions, setSessions] = useState<DreamSession[]>([]);
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
   const [selectedPhase, setSelectedPhase] = useState<"light" | "deep" | "rem">("light");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>("");
+  // "unavailable": the server says the engine is not switched on yet. "error": anything else that failed.
+  const [problem, setProblem] = useState<DreamingProblem | null>(null);
 
   const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  const phaseLabel = (phase: "light" | "deep" | "rem") => t(`dream.phase.${phase}`);
 
   const fetchSessions = useCallback(async () => {
     if (!token) {
@@ -60,11 +67,14 @@ export default function DreamPanel({ open, onClose }: Props) {
       if (res.ok) {
         const data = await res.json();
         setSessions(Array.isArray(data) ? data : data?.items || []);
+        setProblem(null);
       } else {
         setSessions([]);
+        setProblem(classifyDreamingFailure(res.status, await readDreamingBody(res)));
       }
     } catch {
       setSessions([]);
+      setProblem("error");
     }
     setLoading(false);
   }, [token]);
@@ -99,101 +109,124 @@ export default function DreamPanel({ open, onClose }: Props) {
         body: JSON.stringify({ phase: selectedPhase, triggerType: "manual" }),
       });
       if (response.ok) {
-        setStatusMessage(`${PHASE_META[selectedPhase].label} dream started. Refreshing insights…`);
+        setStatusMessage(fill(t("dream.started"), { phase: phaseLabel(selectedPhase) }));
         await fetchSessions();
+      } else if (classifyDreamingFailure(response.status, await readDreamingBody(response)) === "unavailable") {
+        setProblem("unavailable");
       } else {
-        setStatusMessage("Failed to start dream session.");
+        setStatusMessage(t("dream.startFailed"));
       }
     } catch {
-      setStatusMessage("Failed to start dream session.");
+      setStatusMessage(t("dream.startFailed"));
     }
     setStarting(false);
   };
 
   if (!open) return null;
 
+  const insightLabel = (type: string) => {
+    const key = `dream.insight.${type}`;
+    return t(key) === key ? type : t(key);
+  };
+
   return (
     <div style={overlay} onClick={onClose}>
       <div style={panel} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={header}>
-          <span style={{ fontSize: 14, fontWeight: 700 }}>💤 Dreaming Engine</span>
-          <button onClick={onClose} style={closeBtn}>✕</button>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>💤 {t("dream.title")}</span>
+          <button onClick={onClose} style={closeBtn} aria-label={t("common.close")}>✕</button>
         </div>
 
-        {/* Phase selector */}
-        <div style={phaseBar}>
-          {(["light", "deep", "rem"] as const).map((p) => (
-            <button
-              key={p}
-              onClick={() => setSelectedPhase(p)}
-              style={{ ...phaseBtn, ...(selectedPhase === p ? phaseBtnActive : {}) }}
-            >
-              {PHASE_META[p].emoji} {PHASE_META[p].label}
-            </button>
-          ))}
-        </div>
-
-        {/* Start button */}
-        <div style={{ padding: "0 16px 8px" }}>
-          <button
-            onClick={startDream}
-            disabled={starting}
-            style={{
-              ...startBtn,
-              opacity: starting ? 0.5 : 1,
-            }}
-          >
-            {starting ? "Starting..." : `Start ${PHASE_META[selectedPhase].label} Dream`}
-          </button>
-          {statusMessage ? (
-            <div style={statusCopy}>{statusMessage}</div>
-          ) : null}
-        </div>
-
-        {/* Sessions */}
-        <div style={content}>
-          {loading && <div style={{ color: "var(--text-dim)", textAlign: "center" }}>Loading...</div>}
-          {!loading && sessions.length === 0 && (
-            <div style={{ color: "var(--text-dim)", textAlign: "center", marginTop: 20 }}>
-              No dream sessions yet. Start your first dream!
+        {problem === "unavailable" ? (
+          <div style={content}>
+            <div role="status" data-testid="dream-unavailable" style={{ color: "var(--text-dim)", textAlign: "center", marginTop: 20 }}>
+              {t("dream.unavailable")}
             </div>
-          )}
-          {sessions.map((s) => (
-            <div key={s.id} style={sessionCard} onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ color: "var(--tone-info-text)", fontSize: 12, fontWeight: 700 }}>
-                  {PHASE_META[s.phase]?.emoji} {s.phase.toUpperCase()}
-                </span>
-                <span style={{ color: "var(--text-dim)", fontSize: 11 }}>
-                  {STATUS_EMOJI[s.status]} {s.status}
-                </span>
-              </div>
-              <div style={{ display: "flex", gap: 12, marginTop: 4, fontSize: 11, color: "var(--text-dim)" }}>
-                <span>🧠 {s.memoriesProcessed} memories</span>
-                <span>💡 {s.insightsGenerated} insights</span>
-              </div>
-              {expandedId === s.id && s.insights?.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                  {s.insights.map((ins, i) => (
-                    <div key={i} style={insightCard}>
-                      <div style={{ color: "var(--accent-light)", fontSize: 10, fontWeight: 600 }}>
-                        {ins.type === "pattern" ? "🔍" : ins.type === "consolidation" ? "📦" : "🎨"} {ins.type}
-                      </div>
-                      <div style={{ color: "var(--text)", fontSize: 11, marginTop: 2 }}>{ins.content}</div>
-                      <div style={{ color: "var(--text-dim)", fontSize: 9, marginTop: 2 }}>
-                        Confidence: {Math.round(ins.confidence * 100)}%
-                      </div>
-                    </div>
-                  ))}
+          </div>
+        ) : (
+          <>
+            {/* Phase selector */}
+            <div style={phaseBar}>
+              {(["light", "deep", "rem"] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setSelectedPhase(p)}
+                  style={{ ...phaseBtn, ...(selectedPhase === p ? phaseBtnActive : {}) }}
+                >
+                  {PHASE_EMOJI[p]} {phaseLabel(p)}
+                </button>
+              ))}
+            </div>
+
+            {/* Start button */}
+            <div style={{ padding: "0 16px 8px" }}>
+              <button
+                onClick={startDream}
+                disabled={starting}
+                style={{
+                  ...startBtn,
+                  opacity: starting ? 0.5 : 1,
+                }}
+              >
+                {starting ? t("dream.starting") : fill(t("dream.start"), { phase: phaseLabel(selectedPhase) })}
+              </button>
+              {statusMessage ? (
+                <div style={statusCopy}>{statusMessage}</div>
+              ) : null}
+            </div>
+
+            {/* Sessions */}
+            <div style={content}>
+              {loading && <div style={{ color: "var(--text-dim)", textAlign: "center" }}>{t("common.loading")}</div>}
+              {!loading && problem === "error" && (
+                <div role="status" data-testid="dream-error" style={{ color: "var(--text-dim)", textAlign: "center", marginTop: 20 }}>
+                  {t("dream.error")}
+                  <button type="button" style={retryBtn} onClick={() => void fetchSessions()}>{t("common.retry")}</button>
                 </div>
               )}
-              <div style={{ color: "var(--text-dim)", fontSize: 9, marginTop: 4 }}>
-                {new Date(s.createdAt).toLocaleString()}
-              </div>
+              {!loading && problem === null && sessions.length === 0 && (
+                <div style={{ color: "var(--text-dim)", textAlign: "center", marginTop: 20 }}>
+                  {t("dream.empty")}
+                </div>
+              )}
+              {sessions.map((s) => (
+                <div key={s.id} style={sessionCard} onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "var(--tone-info-text)", fontSize: 12, fontWeight: 700 }}>
+                      {PHASE_EMOJI[s.phase]} {phaseLabel(s.phase)}
+                    </span>
+                    <span style={{ color: "var(--text-dim)", fontSize: 11 }}>
+                      {STATUS_EMOJI[s.status]} {t(`dream.status.${s.status}`)}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 12, marginTop: 4, fontSize: 11, color: "var(--text-dim)" }}>
+                    <span>🧠 {fill(t("dream.memories"), { n: s.memoriesProcessed })}</span>
+                    <span>💡 {fill(t("dream.insights"), { n: s.insightsGenerated })}</span>
+                  </div>
+                  {expandedId === s.id && s.insights?.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      {s.insights.map((ins, i) => (
+                        <div key={i} style={insightCard}>
+                          <div style={{ color: "var(--accent-light)", fontSize: 10, fontWeight: 600 }}>
+                            {ins.type === "pattern" ? "🔍" : ins.type === "consolidation" ? "📦" : "🎨"} {insightLabel(ins.type)}
+                          </div>
+                          <div style={{ color: "var(--text)", fontSize: 11, marginTop: 2 }}>{ins.content}</div>
+                          <div style={{ color: "var(--text-dim)", fontSize: 9, marginTop: 2 }}>
+                            {fill(t("dream.confidence"), { pct: Math.round(ins.confidence * 100) })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ color: "var(--text-dim)", fontSize: 9, marginTop: 4 }}>
+                    {new Date(s.createdAt).toLocaleString()}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -234,6 +267,10 @@ const startBtn: CSSProperties = {
 };
 const content: CSSProperties = {
   flex: 1, overflowY: "auto", padding: 16,
+};
+const retryBtn: CSSProperties = {
+  marginLeft: 8, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border, #2a3a52)",
+  background: "transparent", color: "var(--text, #f0f6ff)", fontSize: 12, cursor: "pointer",
 };
 const statusCopy: CSSProperties = {
   marginTop: 8,
