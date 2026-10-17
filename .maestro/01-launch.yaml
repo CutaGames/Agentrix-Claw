@@ -1,0 +1,17 @@
+appId: app.agentrix.claw
+---
+# Test 01: App launches without crash and shows the current auth entry screen.
+- launchApp:
+    clearState: true
+    clearKeychain: true
+
+- waitForAnimationToEnd:
+    timeout: 30000
+
+- assertVisible:
+    text: "Agentrix Claw"
+
+- assertVisible:
+    text: "Google"
+
+- takeScreenshot: "01-app-launch-success"

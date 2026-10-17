@@ -1,0 +1,41 @@
+# Maestro E2E — World Creation & Feed: 我的世界 + Agent 代付额度 (task 13.1/13.4)
+#
+# spec: 需求 10.4(我的创作管理)、13.4(Agent 预设额度授权)。对照 ui-design §8。
+#
+# 强断言策略(CI 实证):
+#   - deep-link `world/mine` → my-world-scroll(已验证可达)。
+#   - 82 独有价值 = MyWorld 可达 + Agent 额度可设(R13.4);新建创作入口已由 80/81 覆盖,
+#     不在此重复(my-world-new 在此重型屏的可见性判定不稳,改测额度 TextInput——
+#     原生 EditText 在 Fabric 下识别最可靠)。
+#   - scrollUntilVisible 主动滚动触发布局,定位 ScrollView 下方的额度输入区。
+#   - 设额度是服务端动作(e2e-token 会失败),只填入+触发,不断言"已保存"结果。
+appId: app.agentrix.claw
+name: WCF — My World / Agent Budget
+---
+- launchApp
+- assertVisible:
+    id: "tab-world"
+
+# ── deep-link 直达"我的世界"(入口受 hasCreations 门控,deep-link 绕开)──
+- openLink: agentrix://world/mine
+- waitForAnimationToEnd:
+    timeout: 3000
+- extendedWaitUntil:
+    visible:
+      id: "my-world-scroll"
+    timeout: 25000
+
+# ── Agent 预设额度面(R13.4):滚到额度输入区(TextInput,最可靠)──
+- scrollUntilVisible:
+    element:
+      id: "my-world-budget-input"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "my-world-budget-input"
+- inputText: "200"
+- hideKeyboard
+- tapOn:
+    id: "my-world-budget-set"
+- waitForAnimationToEnd
+- takeScreenshot: "82-myworld-budget"

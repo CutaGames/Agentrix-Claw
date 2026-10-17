@@ -1,0 +1,20 @@
+// The phone's device key (src/services/phoneDeviceKey.ts). Android platform APIs only (Keystore); no extra
+// libraries. Autolinked as a local Expo module (modules/, expo-modules-autolinking nativeModulesDir).
+apply plugin: 'com.android.library'
+
+group = 'app.agentrix'
+version = '1.0.0'
+
+def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
+apply from: expoModulesCorePlugin
+applyKotlinExpoModulesCorePlugin()
+useCoreDependencies()
+useDefaultAndroidSdkVersions()
+
+android {
+  namespace "app.agentrix.devicekey"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+}

@@ -1,0 +1,43 @@
+## AI World Creation Platform (v6) — Plot Creator continuum (R3)
+## Covers PlotCreatorScreen: the prompt-drive / co-edit / hand-build creation
+## continuum + generate + publish affordances. Reached via the new
+## `agentrix://world/create/:substrateTier/:plotId` deep link (the acquire→
+## create path needs a live owned plot, which the empty E2E backend has none
+## of, so we deep-link a synthetic Tier_A plot — the screen shell renders
+## regardless of backend data; generation/publish are server actions and are
+## NOT asserted here, only the UI continuum is).
+appId: app.agentrix.claw
+name: World Creation — Plot Creator
+---
+- launchApp
+- assertVisible:
+    id: "tab-world"
+
+# Deep-link straight into the Tier_A creator (continuum host).
+- openLink: agentrix://world/create/A/e2e-plot-1
+
+- extendedWaitUntil:
+    visible:
+      id: "plot-creator-scroll"
+    timeout: 15000
+
+# Creation continuum is present: the three authoring modes + the generate CTA.
+- assertVisible:
+    id: "creator-mode-promptDrive"
+- assertVisible:
+    id: "creator-generate-btn"
+
+# Switch across the continuum (prompt-drive → co-edit → hand-build) — the
+# modes must be interactive and lossless to toggle (R3.4).
+- tapOn:
+    id: "creator-mode-coEdit"
+- tapOn:
+    id: "creator-mode-handBuild"
+- tapOn:
+    id: "creator-mode-promptDrive"
+
+# Publish affordance is mounted in the footer.
+- assertVisible:
+    id: "creator-publish-btn"
+
+- takeScreenshot: "73-plot-creator"

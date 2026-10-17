@@ -1,0 +1,10 @@
+{
+  "name": "agentrix-device-key",
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["AgentrixDeviceKeyModule"]
+  },
+  "android": {
+    "modules": ["app.agentrix.devicekey.AgentrixDeviceKeyModule"]
+  }
+}

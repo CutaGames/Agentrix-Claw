@@ -1,0 +1,88 @@
+package app.agentrix.claw
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.core.content.ContextCompat
+import com.facebook.react.bridge.Promise
+import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.ReactContextBaseJavaModule
+import com.facebook.react.bridge.ReactMethod
+
+class AndroidBackgroundWakeWordModule(
+  reactContext: ReactApplicationContext,
+) : ReactContextBaseJavaModule(reactContext) {
+
+  override fun getName(): String = "AndroidBackgroundWakeWord"
+
+  @ReactMethod
+  fun isOverlayPermissionGranted(promise: Promise) {
+    promise.resolve(Settings.canDrawOverlays(reactApplicationContext))
+  }
+
+  @ReactMethod
+  fun requestOverlayPermission(promise: Promise) {
+    try {
+      val intent = Intent(
+        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+        Uri.parse("package:${reactApplicationContext.packageName}"),
+      ).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      reactApplicationContext.startActivity(intent)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("overlay_permission", error)
+    }
+  }
+
+  @ReactMethod
+  fun syncConfig(configJson: String, promise: Promise) {
+    try {
+      BackgroundWakeWordPreferences.saveConfig(reactApplicationContext, configJson)
+      // A running service re-reads it in this process; a stopped one reads it when it starts. Starting a
+      // foreground service just to sync a setting (every time the app came to the front) raced the
+      // following stop and got the app killed (Claw build 535).
+      AndroidBackgroundWakeWordService.refreshIfRunning()
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("sync_config_failed", error)
+    }
+  }
+
+  @ReactMethod
+  fun startService(promise: Promise) {
+    try {
+      AndroidBackgroundWakeWordService.enqueueStart(reactApplicationContext)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("start_service_failed", error)
+    }
+  }
+
+  @ReactMethod
+  fun stopService(promise: Promise) {
+    try {
+      AndroidBackgroundWakeWordService.enqueueStop(reactApplicationContext)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("stop_service_failed", error)
+    }
+  }
+
+  /** The app came to the front (true) or went to the back (false); resolves whether the service is running. */
+  @ReactMethod
+  fun setAppForeground(foreground: Boolean, promise: Promise) {
+    try {
+      promise.resolve(AndroidBackgroundWakeWordService.setAppInForeground(foreground))
+    } catch (error: Exception) {
+      promise.reject("set_app_foreground_failed", error)
+    }
+  }
+
+  @ReactMethod
+  fun isServiceRunning(promise: Promise) {
+    promise.resolve(AndroidBackgroundWakeWordService.isRunning)
+  }
+}

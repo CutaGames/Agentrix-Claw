@@ -1,0 +1,70 @@
+appId: app.agentrix.claw
+# ─────────────────────────────────────────────────────────────
+# Test 30: V4 Global Inbox + Notifications + Scan
+# Covers: MH-1~2 (铃铛/扫码) + PN notifications
+# Based on: UI_ELEMENT_AUDIT_MOBILE_2026-05.zh-CN.md §2.1 + §9
+# ─────────────────────────────────────────────────────────────
+---
+- launchApp
+
+- tapOn:
+    id: "tab-world"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# ── MH-1: 全局 Inbox (铃铛) ─────────────────────────────
+- tapOn:
+    id: "global-inbox-btn"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "30-global-inbox"
+
+# Verify inbox screen loaded
+- assertVisible:
+    text: "通知"
+    optional: true
+
+- back
+
+# ── MH-2: 全局扫码 ──────────────────────────────────────
+- tapOn:
+    id: "global-scan-btn"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- takeScreenshot: "30-global-scan"
+
+# Camera permission may be requested — handle it
+- tapOn:
+    text: "允许"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "30-global-scan-camera"
+
+- back
+
+# ── MH-3: 宠物切换器 ────────────────────────────────────
+- tapOn:
+    id: "pet-switcher"
+    optional: true
+
+- waitForAnimationToEnd:
+    timeout: 2000
+
+- takeScreenshot: "30-pet-switcher"
+
+# Close switcher
+- tapOn:
+    text: "取消"
+    optional: true
+
+- back

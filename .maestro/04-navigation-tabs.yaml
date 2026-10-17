@@ -1,0 +1,18 @@
+appId: app.agentrix.claw
+---
+# Test 04: Verify the app auth shell remains renderable for navigation/auth entry.
+
+- launchApp:
+    clearState: true
+    clearKeychain: true
+
+- waitForAnimationToEnd:
+    timeout: 30000
+
+- assertVisible:
+    text: "Agentrix Claw"
+
+- assertVisible:
+    text: "Google"
+
+- takeScreenshot: "04-initial-state"
