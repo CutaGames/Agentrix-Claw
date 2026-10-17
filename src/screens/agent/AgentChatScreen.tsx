@@ -144,6 +144,8 @@ function trimHistoryToTokenBudget(
 }
 const MOBILE_AUTO_CONTINUE_LIMIT = 3;
 const MOBILE_STREAM_CHUNK_FLUSH_MS = 50;
+/** 36 px header icons + 4 px on each side = 44 px touch targets (T7 r1). */
+const CHAT_BAR_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 const MOBILE_CONTINUE_PROMPT = 'Continue from exactly where you stopped. Do not repeat completed content. Preserve the same language, structure, and formatting. If you were in the middle of a tool-driven task, resume the unfinished steps first and only summarize after the task is complete.';
 
 function isLocalOnlyModelId(modelId?: string | null) {
@@ -444,6 +446,7 @@ import {
   stripInlineMarkdown as _stripInlineMarkdown,
 } from './chatMessage.utils';
 import { themedStyles } from '../../theme/useTheme';
+import { chatExecutionModeVisible } from '../../services/chatChrome';
 const extractUrlsFromMessage = _extractUrlsFromMessage;
 const getCopyableMessageText = _getCopyableMessageText;
 const buildDisplayMessageText = _buildDisplayMessageText;
@@ -920,6 +923,7 @@ export function AgentChatScreen() {
   const speechRate = useSettingsStore((s) => s.speechRate);
   const setSpeechRate = useSettingsStore((s) => s.setSpeechRate);
   const executionMode = useSettingsStore((s) => s.executionMode);
+  const uiComplexity = useSettingsStore((s) => s.uiComplexity);
   const setExecutionMode = useSettingsStore((s) => s.setExecutionMode);
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
@@ -2162,27 +2166,27 @@ export function AgentChatScreen() {
           const reason = localTurnDecision.reason;
           const blockedMessage = reason === 'projector-required'
             ? t({
-                en: 'This local model cannot see images yet — the vision add-on (≈986 MB) has not been downloaded. Open "Me → Local AI Model" to download it, or switch to Smart / Cloud mode.',
-                zh: '端侧模型暂时看不到图片：尚未下载视觉插件（约 986 MB）。请到「我的 → 本地 AI 模型」下载完整包，或切换到「智能 / 云端」模式。',
+                en: 'This local model cannot see images yet — the vision add-on (≈986 MB) has not been downloaded. Open "Me → Local AI Model" to download it, or switch to Auto / Cloud mode.',
+                zh: '端侧模型暂时看不到图片：尚未下载视觉插件（约 986 MB）。请到「我的 → 本地 AI 模型」下载完整包，或切换到「自动 / 云端」模式。',
               })
             : reason === 'audio-format-unsupported'
             ? t({
-                en: 'This audio format isn\'t supported on-device yet. Record or convert to wav/mp3, or switch to Smart / Cloud mode.',
-                zh: '端侧模型暂时不支持该音频格式，请使用 wav/mp3，或切换到「智能 / 云端」模式。',
+                en: 'This audio format isn\'t supported on-device yet. Record or convert to wav/mp3, or switch to Auto / Cloud mode.',
+                zh: '端侧模型暂时不支持该音频格式，请使用 wav/mp3，或切换到「自动 / 云端」模式。',
               })
             : reason === 'audio-input-unavailable'
             ? t({
-                en: 'On-device audio input is not enabled for this local model. Download the full multimodal package or switch to Smart / Cloud mode.',
-                zh: '当前端侧模型未启用直连音频输入。请下载完整多模态包，或切换到「智能 / 云端」模式。',
+                en: 'On-device audio input is not enabled for this local model. Download the full multimodal package or switch to Auto / Cloud mode.',
+                zh: '当前端侧模型未启用直连音频输入。请下载完整多模态包，或切换到「自动 / 云端」模式。',
               })
             : reason === 'attachment-not-local'
             ? t({
-                en: 'This attachment can\'t be read locally. Pick it from your device library or switch to Smart / Cloud mode.',
-                zh: '该附件无法在本地读取，请从设备相册/文件选择，或切换到「智能 / 云端」模式。',
+                en: 'This attachment can\'t be read locally. Pick it from your device library or switch to Auto / Cloud mode.',
+                zh: '该附件无法在本地读取，请从设备相册/文件选择，或切换到「自动 / 云端」模式。',
               })
             : t({
-                en: 'This local model cannot handle this turn. Switch to Smart / Cloud mode or adjust the request.',
-                zh: '当前端侧模型无法处理此轮。请切换到「智能 / 云端」模式或调整输入。',
+                en: 'This local model cannot handle this turn. Switch to Auto / Cloud mode or adjust the request.',
+                zh: '当前端侧模型无法处理此轮。请切换到「自动 / 云端」模式或调整输入。',
               });
           finishAssistantWithError(blockedMessage);
           return;
@@ -2453,8 +2457,8 @@ export function AgentChatScreen() {
         });
         finishAssistantWithError(
           t({
-            en: 'Local model is unavailable or timed out. Switch to Smart/Cloud mode or try again.',
-            zh: '端侧模型不可用或超时。请切换到「智能 / 云端」模式或稍后重试。',
+            en: 'Local model is unavailable or timed out. Switch to Auto / Cloud mode or try again.',
+            zh: '端侧模型不可用或超时。请切换到「自动 / 云端」模式或稍后重试。',
           })
         );
         return;
@@ -2469,8 +2473,8 @@ export function AgentChatScreen() {
         // timed out" placeholder.
         finishAssistantWithError(
           t({
-            en: 'Local inference did not finish. Please try again, or switch to Smart / Cloud mode. (Check Me → Local AI Model for a full on-device diagnostic.)',
-            zh: '端侧推理未能完成，请重试，或切换到「智能 / 云端」模式。（详情可在「我的 → 本地 AI 模型」查看端侧诊断日志。）',
+            en: 'Local inference did not finish. Please try again, or switch to Auto / Cloud mode. (Check Me → Local AI Model for a full on-device diagnostic.)',
+            zh: '端侧推理未能完成，请重试，或切换到「自动 / 云端」模式。（详情可在「我的 → 本地 AI 模型」查看端侧诊断日志。）',
           })
         );
         return;
@@ -3083,9 +3087,13 @@ export function AgentChatScreen() {
       {/* Simplified Chat toolbar */}
       <SafeAreaView edges={['top']} style={{ backgroundColor: colors.bgCard }}>
         <View style={styles.chatBar}>
+          {/* T7 r1 (10-16): the two 36 px icons get 4 px of touch margin on each side (44 px), and screen readers
+              hear words, not the test ids. */}
           <TouchableOpacity
             testID="agent-chat-drawer-button"
-            accessibilityLabel="agent-chat-drawer-button"
+            accessibilityRole="button"
+            accessibilityLabel={t({ en: 'Open the Agent list', zh: '打开 Agent 列表' })}
+            hitSlop={CHAT_BAR_HIT_SLOP}
             onPress={() => { try { (navigation as any).openDrawer(); } catch {} }}
             style={styles.chatBarBackBtn}
           >
@@ -3094,7 +3102,9 @@ export function AgentChatScreen() {
           <Text style={styles.chatBarTitle} numberOfLines={1}>🤖 {instanceName}</Text>
           <TouchableOpacity
             testID="agent-chat-settings-button"
-            accessibilityLabel="agent-chat-settings-button"
+            accessibilityRole="button"
+            accessibilityLabel={t({ en: 'Chat settings', zh: '对话设置' })}
+            hitSlop={CHAT_BAR_HIT_SLOP}
             onPress={() => setShowSettingsSheet(true)}
             style={styles.chatBarGearBtn}
           >
@@ -3350,17 +3360,19 @@ export function AgentChatScreen() {
         </View>
       )}
 
-      {/* Execution mode selector — tri-tier router (local / auto / cloud). */}
-      <View style={executionModeStyles.row}>
-        <Text style={executionModeStyles.label}>{t({ en: 'Tier', zh: '执行' })}</Text>
+      {/* Execution mode selector — tri-tier router (local / auto / cloud). T7 r1 (10-16): in 入门 (the default interface
+          mode) with the default 自动 tier it stays out of the composer; plain words, no emoji. */}
+      {chatExecutionModeVisible(uiComplexity, executionMode) ? (
+      <View style={executionModeStyles.row} testID="chat-execution-mode">
+        <Text style={executionModeStyles.label}>{t({ en: 'Runs on', zh: '在哪里运行' })}</Text>
         {(['local-only', 'auto', 'cloud-only'] as const).map((mode) => {
           const active = executionMode === mode;
           const label =
             mode === 'local-only'
-              ? t({ en: '🔒 Local', zh: '🔒 端侧' })
+              ? t({ en: 'This phone', zh: '本机' })
               : mode === 'cloud-only'
-              ? t({ en: '☁️ Cloud', zh: '☁️ 云端' })
-              : t({ en: '🤖 Smart', zh: '🤖 智能' });
+              ? t({ en: 'Cloud', zh: '云端' })
+              : t({ en: 'Auto', zh: '自动' });
           return (
             <TouchableOpacity
               key={mode}
@@ -3375,6 +3387,7 @@ export function AgentChatScreen() {
           );
         })}
       </View>
+      ) : null}
 
       <View style={styles.inputRow}>
         {voiceMode ? (

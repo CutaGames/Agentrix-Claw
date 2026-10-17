@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { HttpRequestV1, HttpResponseV1, HttpTransportV1 } from '../../../shared/client/transport';
 import { AUTH_PROVIDER_IDS, splitAuthProvidersV1, type AuthProviderIdV1 } from '../../../shared/types/auth-providers';
-import { LOGIN_METHODS, isLoginCode, isLoginEmail, loginLayout } from '../loginOptions';
+import { LOGIN_LEGAL_URLS, LOGIN_METHODS, isLoginCode, isLoginEmail, loginLayout, loginScreenLayout } from '../loginOptions';
 import { AUTH_PROVIDERS_CACHE_MS, clearAuthProvidersCache, readAuthProviders } from '../authProviders';
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -89,6 +89,51 @@ describe('loginLayout', () => {
   it('every method has a literal test id', () => {
     for (const method of Object.values(LOGIN_METHODS)) expect(method.testId).toBe(`login-${method.id.replace('_', '-')}`);
   });
+
+  it('no sign-in label uses the retired names (T7 r1: 连接私有龙虾实例 / Self-hosted OpenClaw instance)', () => {
+    for (const method of Object.values(LOGIN_METHODS)) {
+      expect(`${method.label.zh} ${method.label.en}`).not.toMatch(/龙虾|OpenClaw|🦀/i);
+    }
+    expect(LOGIN_METHODS.openclaw.label).toEqual({ zh: '连接自己部署的服务器', en: 'Connect your own server' });
+  });
+});
+
+const shown = (layout: ReturnType<typeof loginLayout>) => {
+  const value = loginScreenLayout(layout);
+  return { main: value.main.map((m) => m.id), more: value.more.map((m) => m.id), openMore: value.openMore };
+};
+
+describe('loginScreenLayout (T7 r1: the page always has one clear way in)', () => {
+  it('staging today (only email + password and a wallet): email + password becomes the main button, nothing opens by itself', async () => {
+    const { value } = await read({ status: 200, body: body({ wallet: { available: true }, password: { available: true } }) });
+    expect(ids(loginLayout(value, 'android')).primary).toEqual([]);
+    expect(shown(loginLayout(value, 'android'))).toEqual({ main: ['email_password'], more: ['wallet', 'openclaw'], openMore: false });
+  });
+
+  it('with main methods from the server nothing is promoted and the lists are unchanged', async () => {
+    const { value } = await read({
+      status: 200,
+      body: body({ google: { available: true }, discord: { available: true }, wallet: { available: true }, password: { available: true } }),
+    });
+    const layout = loginLayout(value, 'android');
+    expect(shown(layout)).toEqual({ main: ids(layout).primary, more: ids(layout).more, openMore: false });
+    expect(shown(layout).main).toEqual(['google']);
+  });
+
+  it('the self-hosted server option is never promoted; with nothing else, 更多方式 opens by itself', async () => {
+    const { value } = await read({ status: 200, body: body({}) });
+    const layout = loginLayout(value, 'android');
+    expect(ids(layout)).toEqual({ primary: [], more: ['openclaw'] });
+    expect(shown(layout)).toEqual({ main: [], more: ['openclaw'], openMore: true });
+  });
+
+  it('a list that cannot be read: the contract fallback decides, then the same rule', () => {
+    const layout = loginLayout(null, 'android');
+    const result = shown(layout);
+    expect(result.main.length).toBeGreaterThan(0);
+    expect(result.main).not.toContain('openclaw');
+    expect([...result.main, ...result.more].sort()).toEqual([...ids(layout).primary, ...ids(layout).more].sort());
+  });
 });
 
 describe('readAuthProviders', () => {
@@ -153,13 +198,32 @@ describe('LoginScreen wiring', () => {
     expect(screen).not.toMatch(/apiFetch|[^A-Za-z.]fetch\(/);
   });
 
-  it('draws the buttons from the server list, and opens 更多方式 when there is no main button', () => {
+  it('draws the buttons from the server list: the first main one solid, 更多方式 opens by itself only when nothing can be the main button', () => {
     expect(screen).toContain('readAuthProviders()');
     expect(screen).toContain("const layout = loginLayout(providers.kind === 'ready' ? providers.value : null, Platform.OS);");
-    expect(screen).toContain('layout.primary.map((method) => methodButton(method, true))');
-    expect(screen).toContain('layout.more.map((method) => methodButton(method, false))');
-    expect(screen).toContain("const moreOpen = showMore || (providers.kind === 'ready' && layout.primary.length === 0);");
+    expect(screen).toContain('const shown = loginScreenLayout(layout);');
+    expect(screen).toContain("shown.main.map((method, index) => methodButton(method, index === 0 ? 'solid' : 'outline'))");
+    expect(screen).toContain("shown.more.map((method) => methodButton(method, 'more'))");
+    expect(screen).toContain("const moreOpen = showMore || (providers.kind === 'ready' && shown.openMore);");
+    // No buttons while the list is still being read, so nothing swaps under a finger.
+    expect(screen).toMatch(/providers\.kind === 'ready' \? shown\.main\.map/);
     expect(screen).not.toMatch(/Connect Crypto Wallet|连接加密钱包/);
+  });
+
+  it('says nothing in the retired names, and the legal documents it names can be opened (T7 r1)', () => {
+    expect(screen).not.toMatch(/龙虾|my-openclaw|Self-hosted OpenClaw|OpenClaw URL|OpenClaw 地址/);
+    expect(screen).toContain('Linking.openURL(LOGIN_LEGAL_URLS.terms)');
+    expect(screen).toContain('Linking.openURL(LOGIN_LEGAL_URLS.privacy)');
+    expect(screen).toContain('testID="login-terms"');
+    expect(screen).toContain('testID="login-privacy"');
+    expect(LOGIN_LEGAL_URLS).toEqual({ terms: 'https://agentrix.top/terms', privacy: 'https://agentrix.top/privacy' });
+  });
+
+  it('the wallet page opened from sign-in has a way back (T7 r1)', () => {
+    const root = fs.readFileSync(path.join(ROOT, 'src/navigation/RootNavigator.tsx'), 'utf8');
+    const wallet = root.slice(root.indexOf('name="WalletConnect"'), root.indexOf('</AuthStack.Navigator>'));
+    expect(wallet).toContain('headerShown: true');
+    expect(wallet).toContain('headerTintColor: palette.textPrimary');
   });
 
   it('takes its colours from the theme, not a hard-coded dark page (E83)', () => {

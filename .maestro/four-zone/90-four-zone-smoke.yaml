@@ -71,10 +71,19 @@ appId: app.agentrix.claw
     visible:
       id: "twin-home-screen"
     timeout: 10000
-# Present in both states; the share button is never tapped in a smoke run.
+- takeScreenshot: "90-twin"
+# With no twin yet the other pages are folded under 其他功能 (T7 r1, 10-16); open it when it is there.
+- runFlow:
+    when:
+      visible:
+        id: "twin-home-more"
+    commands:
+      - tapOn:
+          id: "twin-home-more"
+# Present in both states once 其他功能 is open; the share button is never tapped in a smoke run.
 - assertVisible:
     id: "twin-open-status"
-- takeScreenshot: "90-twin"
+- takeScreenshot: "90-twin-entries"
 # ── T5–T7 read-only pages under 分身 (L3). Opened the owner's way, from the
 # 分身 rows. Only reads: no stop, unpublish, narrow, revoke, hide, deliver.
 # 九步进度 (M5-a) is on the card only once a twin exists.

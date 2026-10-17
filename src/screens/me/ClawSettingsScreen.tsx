@@ -34,6 +34,7 @@ import {
 } from '../../services/localWakeWord.service';
 import { isAnalyticsOptedIn, setOptIn as setAnalyticsOptIn } from '../../services/analytics.service';
 import { appUpdateOffer, readAppVersion, type AppUpdateOfferV1 } from '../../services/appVersionCheck';
+import { GLOBAL_PTT_SCROLL_INSET } from '../../services/pushToTalk';
 
 export function ClawSettingsScreen() {
   const navigation = useNavigation();
@@ -379,7 +380,7 @@ export function ClawSettingsScreen() {
   ];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingBottom: 40 + GLOBAL_PTT_SCROLL_INSET }]}>
 
       {/* UI Complexity Selector */}
       <View style={styles.group}>
@@ -415,15 +416,15 @@ export function ClawSettingsScreen() {
           <Text style={styles.modeDesc}>{t({ en: 'Switch the entire app language here', zh: '在这里切换整个 App 的显示语言' })}</Text>
           <View style={styles.modeRow}>
             {([
-              { code: 'en' as Language, icon: '🇺🇸', label: 'English' },
-              { code: 'zh' as Language, icon: '🇨🇳', label: '中文' },
+              { code: 'en' as Language, label: 'English' },
+              { code: 'zh' as Language, label: '中文' },
             ]).map((item) => (
               <TouchableOpacity
                 key={item.code}
                 style={[styles.modeBtn, language === item.code && styles.modeBtnActive]}
                 onPress={() => setLanguage(item.code)}
               >
-                <Text style={styles.modeIcon}>{item.icon}</Text>
+                {/* T7 r1: a language is not a country, so no flags. */}
                 <Text style={[styles.modeLabel, language === item.code && styles.modeLabelActive]}>{item.label}</Text>
               </TouchableOpacity>
             ))}
@@ -440,7 +441,7 @@ export function ClawSettingsScreen() {
         <Text style={styles.groupTitle}>{t({ en: 'Wake Word', zh: '唤醒词' })}</Text>
         <View style={styles.modeCard}>
           <Text style={styles.modeDesc}>
-            {t({ en: 'The mobile app now uses a device-local wake-word model first, with system speech recognition as fallback.', zh: '移动端现在默认优先使用端侧本地唤醒词模型，系统语音识别仅作为兜底。' })}
+            {t({ en: 'When it is on, say the wake word to call your Agent without touching the phone. It listens with the recogniser on this phone first, and the system one when that is not ready.', zh: '开启后，说出唤醒词就能叫它，不用碰手机。先用这台手机上的识别，没准备好时用系统语音识别。' })}
           </Text>
 
           <TouchableOpacity
@@ -742,8 +743,8 @@ export function ClawSettingsScreen() {
                     Alert.alert(
                       t({ en: 'Export My Data', zh: '导出我的数据' }),
                       t({
-                        en: 'We will email a JSON archive of your account, conversations, and AXP history within 30 days, per GDPR Article 20. Send the request to privacy@agentrix.top from your registered email.',
-                        zh: '我们会在 30 天内通过邮件发送一份 JSON 数据归档（账户/对话/AXP 历史），符合 GDPR 第 20 条。请从你注册的邮箱发邮件到 privacy@agentrix.top。',
+                        en: 'We will email a JSON archive of your account, conversations and points history within 30 days, per GDPR Article 20. Send the request to privacy@agentrix.top from your registered email.',
+                        zh: '我们会在 30 天内通过邮件发送一份 JSON 数据归档（账户、对话、积分记录），符合 GDPR 第 20 条。请从你注册的邮箱发邮件到 privacy@agentrix.top。',
                       }),
                       [
                         {
@@ -763,8 +764,8 @@ export function ClawSettingsScreen() {
                     Alert.alert(
                       t({ en: 'Delete Account', zh: '删除账号' }),
                       t({
-                        en: 'Account deletion is permanent. After confirmation we will email you a verification link; once clicked, your account, conversations, and AXP balance will be removed within 7 days. Pending Marketplace listings will be cancelled. This action cannot be undone.',
-                        zh: '删除账号是不可逆操作。确认后我们会发送验证邮件，点击链接后我们将在 7 天内删除你的账号、对话历史和 AXP 余额。挂牌中的 Marketplace 商品会被取消。删除后无法恢复。',
+                        en: 'Account deletion is permanent. After confirmation we will email you a verification link; once clicked, your account, conversations and points balance will be removed within 7 days. Anything you have listed for sale will be taken down. This action cannot be undone.',
+                        zh: '删除账号是不可逆操作。确认后我们会发送验证邮件，点击链接后我们将在 7 天内删除你的账号、对话历史和积分余额，你上架中的商品会被下架。删除后无法恢复。',
                       }),
                       [
                         { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },

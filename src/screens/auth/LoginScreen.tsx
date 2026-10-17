@@ -9,7 +9,7 @@
  * sign-in function as before. Colours come from the theme (light by default, E83).
  */
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useI18n } from '../../stores/i18nStore';
@@ -27,7 +27,16 @@ import {
   registerWithEmail,
   sendEmailCode,
 } from '../../services/auth';
-import { EMAIL_CODE_RESEND_SECONDS, isLoginCode, isLoginEmail, loginLayout, type LoginMethod, type LoginMethodId } from '../../services/loginOptions';
+import {
+  EMAIL_CODE_RESEND_SECONDS,
+  LOGIN_LEGAL_URLS,
+  isLoginCode,
+  isLoginEmail,
+  loginLayout,
+  loginScreenLayout,
+  type LoginMethod,
+  type LoginMethodId,
+} from '../../services/loginOptions';
 import { readAuthProviders } from '../../services/authProviders';
 import type { AuthProvidersResponseV1 } from '../../../shared/types/auth-providers';
 import type { AuthStackParamList } from '../../navigation/types';
@@ -72,8 +81,10 @@ export function LoginScreen() {
   }, []);
 
   const layout = loginLayout(providers.kind === 'ready' ? providers.value : null, Platform.OS);
-  // Nothing to show as a main button (the list could not be read, or nothing is configured): open 更多方式.
-  const moreOpen = showMore || (providers.kind === 'ready' && layout.primary.length === 0);
+  // The first main button is solid; with no main method the first usable 更多方式 one is promoted (T7 r1).
+  const shown = loginScreenLayout(layout);
+  // Nothing at all to show as a main button: open 更多方式.
+  const moreOpen = showMore || (providers.kind === 'ready' && shown.openMore);
 
   useEffect(() => {
     if (cooldown <= 0) return undefined;
@@ -155,7 +166,7 @@ export function LoginScreen() {
   const openClaw = () => {
     const url = instanceUrl.trim();
     if (!url) {
-      Alert.alert(t({ en: 'OpenClaw URL required', zh: '请输入 OpenClaw 地址' }), t({ en: 'Enter your instance URL.', zh: '请输入你的实例地址。' }));
+      Alert.alert(t({ en: 'Server address required', zh: '请输入服务器地址' }), t({ en: 'Enter the address of your server.', zh: '请输入你自己部署的服务器地址。' }));
       return;
     }
     void run(
@@ -165,7 +176,7 @@ export function LoginScreen() {
         if (result?.user && result?.token) await useAuthStore.getState().setAuth(result.user, result.token);
       },
       { en: 'Connection failed', zh: '连接失败' },
-      { en: 'Check the instance URL and try again.', zh: '请检查实例地址后重试。' },
+      { en: 'Check the server address and try again.', zh: '请检查服务器地址后重试。' },
     );
   };
 
@@ -179,21 +190,22 @@ export function LoginScreen() {
     setPassword('');
   };
 
-  const methodButton = (method: LoginMethod, primary: boolean) => (
+  // 'solid' is the one main way in, 'outline' the other main methods, 'more' a row inside 更多方式.
+  const methodButton = (method: LoginMethod, kind: 'solid' | 'outline' | 'more') => (
     <TouchableOpacity
       key={method.id}
-      style={[primary ? styles.primaryMethod : styles.moreMethod, busy === method.id && styles.disabled]}
+      style={[kind === 'solid' ? styles.solidMethod : kind === 'outline' ? styles.primaryMethod : styles.moreMethod, busy === method.id && styles.disabled]}
       onPress={() => choose(method)}
       disabled={busy !== null}
       accessibilityRole="button"
       accessibilityLabel={t(method.label)}
       testID={method.testId}
     >
-      <View style={styles.mark}>
-        <Text style={styles.markText}>{method.mark}</Text>
+      <View style={kind === 'solid' ? styles.solidMark : styles.mark}>
+        <Text style={kind === 'solid' ? styles.solidMarkText : styles.markText}>{method.mark}</Text>
       </View>
-      <Text style={primary ? styles.primaryMethodText : styles.moreMethodText}>{t(method.label)}</Text>
-      {busy === method.id ? <ActivityIndicator style={styles.spinner} /> : null}
+      <Text style={kind === 'solid' ? styles.solidMethodText : kind === 'outline' ? styles.primaryMethodText : styles.moreMethodText}>{t(method.label)}</Text>
+      {busy === method.id ? <ActivityIndicator style={styles.spinner} color={kind === 'solid' ? styles.solidMethodText.color : undefined} /> : null}
     </TouchableOpacity>
   );
 
@@ -210,18 +222,21 @@ export function LoginScreen() {
             {t({ en: 'Sign in or sign up', zh: '登录或注册' })}
           </Text>
           <Text style={styles.sub}>{t({ en: 'New here? Your account is created as you sign in.', zh: '第一次用会直接帮你建好账号。' })}</Text>
+          {/* Buttons only once the server has answered (or the read timed out), so they do not swap under a finger. */}
           {providers.kind === 'loading' ? <ActivityIndicator style={styles.providersLoading} testID="login-providers-loading" /> : null}
-          {layout.primary.map((method) => methodButton(method, true))}
-          <TouchableOpacity
-            style={styles.moreToggle}
-            onPress={() => setShowMore(!moreOpen)}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: moreOpen }}
-            testID="login-more"
-          >
-            <Text style={styles.moreToggleText}>{moreOpen ? t({ en: 'Fewer ways ▴', zh: '收起 ▴' }) : t({ en: 'More ways ▾', zh: '更多方式 ▾' })}</Text>
-          </TouchableOpacity>
-          {moreOpen ? <View style={styles.moreList}>{layout.more.map((method) => methodButton(method, false))}</View> : null}
+          {providers.kind === 'ready' ? shown.main.map((method, index) => methodButton(method, index === 0 ? 'solid' : 'outline')) : null}
+          {providers.kind === 'ready' && shown.more.length > 0 ? (
+            <TouchableOpacity
+              style={styles.moreToggle}
+              onPress={() => setShowMore(!moreOpen)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: moreOpen }}
+              testID="login-more"
+            >
+              <Text style={styles.moreToggleText}>{moreOpen ? t({ en: 'Fewer ways ▴', zh: '收起 ▴' }) : t({ en: 'More ways ▾', zh: '更多方式 ▾' })}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {providers.kind === 'ready' && moreOpen ? <View style={styles.moreList}>{shown.more.map((method) => methodButton(method, 'more'))}</View> : null}
           <TouchableOpacity style={[styles.guest, busy === 'guest' && styles.disabled]} onPress={guest} disabled={busy !== null} accessibilityRole="button" testID="login-guest">
             {busy === 'guest' ? <ActivityIndicator /> : <Text style={styles.guestText}>{t({ en: 'Look around first, sign up later', zh: '先逛逛，之后再注册' })}</Text>}
           </TouchableOpacity>
@@ -338,18 +353,18 @@ export function LoginScreen() {
       {mode === 'openclaw' ? (
         <View style={styles.section} testID="login-openclaw-form">
           <Text style={styles.title} accessibilityRole="header">
-            {t({ en: 'Self-hosted OpenClaw instance', zh: '连接私有龙虾实例' })}
+            {t({ en: 'Connect your own server', zh: '连接自己部署的服务器' })}
           </Text>
-          <Text style={styles.sub}>{t({ en: 'Enter your instance URL to sign in directly.', zh: '输入你的实例地址直接登录。' })}</Text>
+          <Text style={styles.sub}>{t({ en: 'Enter the address of the Agent server you run yourself to sign in directly.', zh: '输入你自己部署的 Agent 服务器地址，直接登录。' })}</Text>
           <TextInput
             style={styles.input}
-            placeholder="https://my-openclaw.xyz"
+            placeholder="https://agent.example.com"
             placeholderTextColor={styles.placeholder.color}
             value={instanceUrl}
             onChangeText={setInstanceUrl}
             autoCapitalize="none"
             keyboardType="url"
-            accessibilityLabel={t({ en: 'Instance URL', zh: '实例地址' })}
+            accessibilityLabel={t({ en: 'Server address', zh: '服务器地址' })}
           />
           <TouchableOpacity style={[styles.cta, busy !== null && styles.disabled]} onPress={openClaw} disabled={busy !== null} accessibilityRole="button">
             {busy === 'openclaw' ? <ActivityIndicator color={styles.ctaText.color} /> : <Text style={styles.ctaText}>{t({ en: 'Connect and sign in', zh: '连接并登录' })}</Text>}
@@ -360,9 +375,20 @@ export function LoginScreen() {
         </View>
       ) : null}
 
-      <Text style={styles.footer}>
-        {t({ en: 'By continuing you agree to the Agentrix Terms of Service and Privacy Policy.', zh: '继续即表示你同意 Agentrix 服务条款和隐私政策。' })}
-      </Text>
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>
+          {t({ en: 'By continuing you agree to the Agentrix Terms of Service and Privacy Policy.', zh: '继续即表示你同意 Agentrix 的服务条款和隐私政策。' })}
+        </Text>
+        {/* T7 r1: the sentence named the two documents but nothing opened them. */}
+        <View style={styles.footerLinks}>
+          <TouchableOpacity style={styles.footerLink} onPress={() => void Linking.openURL(LOGIN_LEGAL_URLS.terms)} accessibilityRole="link" testID="login-terms">
+            <Text style={styles.footerLinkText}>{t({ en: 'Terms of Service', zh: '服务条款' })}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerLink} onPress={() => void Linking.openURL(LOGIN_LEGAL_URLS.privacy)} accessibilityRole="link" testID="login-privacy">
+            <Text style={styles.footerLinkText}>{t({ en: 'Privacy Policy', zh: '隐私政策' })}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     </ScrollView>
   );
 }
@@ -390,6 +416,18 @@ const makeStyles = (c: Palette) =>
       gap: 12,
     },
     primaryMethodText: { color: c.textPrimary, fontSize: 16, fontWeight: '700', flex: 1 },
+    solidMethod: {
+      minHeight: 54,
+      borderRadius: 14,
+      backgroundColor: c.accent,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      gap: 12,
+    },
+    solidMethodText: { color: c.onAccent, fontSize: 16, fontWeight: '800', flex: 1 },
+    solidMark: { width: 28, height: 28, borderRadius: 14, backgroundColor: c.onAccent, alignItems: 'center', justifyContent: 'center' },
+    solidMarkText: { color: c.accent, fontSize: 14, fontWeight: '800' },
     moreMethod: { minHeight: 48, borderRadius: 12, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 12 },
     moreMethodText: { color: c.textPrimary, fontSize: 15, fontWeight: '600', flex: 1 },
     mark: { width: 28, height: 28, borderRadius: 14, backgroundColor: c.bgSecondary, alignItems: 'center', justifyContent: 'center' },
@@ -419,5 +457,9 @@ const makeStyles = (c: Palette) =>
     back: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
     backText: { color: c.textSecondary, fontSize: 14 },
     disabled: { opacity: 0.6 },
-    footer: { color: c.textMuted, fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 24 },
+    footer: { marginTop: 24, alignItems: 'center' },
+    footerText: { color: c.textMuted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
+    footerLinks: { flexDirection: 'row', justifyContent: 'center', gap: 8 },
+    footerLink: { minHeight: 44, minWidth: 44, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
+    footerLinkText: { color: c.accent, fontSize: 13, fontWeight: '700' },
   });

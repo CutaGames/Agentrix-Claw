@@ -22,16 +22,33 @@ import { InboxScreen } from '../screens/inbox/InboxScreen';
 import { GlobalScanScreen } from '../screens/scan/GlobalScanScreen';
 import { ZoneUnavailableScreen } from '../screens/four-zone/ZoneUnavailableScreen';
 import { SoulBirthHost } from '../components/onboarding/SoulBirthHost';
+import { useI18n } from '../stores/i18nStore';
+import { useTheme } from '../theme/useTheme';
 
 const Root = createNativeStackNavigator<RootStackParamList & { Inbox: undefined; Scan: undefined; FirstScan: undefined; Auth: undefined; ZoneUnavailable: { zone?: string; tab?: string } | undefined }>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 
 function AuthNavigator() {
+  const { t } = useI18n();
+  const { colors: palette } = useTheme();
   return (
     <AuthStack.Navigator id={undefined} screenOptions={{ headerShown: false }}>
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="AuthCallback" component={AuthCallbackScreen} />
-      <AuthStack.Screen name="WalletConnect" component={WalletConnectScreen} />
+      {/* T7 r1 (10-16): the wallet page opened from 登录 had no way back but the system gesture. The page draws
+          its own 连接钱包 title, so the bar only carries the back button. */}
+      <AuthStack.Screen
+        name="WalletConnect"
+        component={WalletConnectScreen}
+        options={{
+          headerShown: true,
+          title: '',
+          headerBackTitle: t({ en: 'Sign in', zh: '登录' }),
+          headerStyle: { backgroundColor: palette.bgPrimary },
+          headerTintColor: palette.textPrimary,
+          headerShadowVisible: false,
+        }}
+      />
     </AuthStack.Navigator>
   );
 }

@@ -678,9 +678,13 @@ function decodeDecision(input: unknown): DigitalTwinDecodeResultV1<TwinAnswerDec
 export function decodeTwinAnswerOutputV1(input: unknown): DigitalTwinDecodeResultV1<TwinAnswerOutputV1> {
   if (!isRecord(input) || input.schemaVersion !== DIGITAL_TWIN_SCHEMA_VERSION) return fail('invalid_shape', ['output']);
   const extra = unknownKeys(input, [
-    'schemaVersion', 'decision', 'turnRef', 'text', 'marker', 'sources', 'unsupportedSentences', 'handoff', 'model', 'reviewRef', 'outputDigest',
+    'schemaVersion', 'decision', 'turnRef', 'text', 'marker', 'sources', 'unsupportedSentences', 'handoff', 'model', 'modelUnavailableNote', 'reviewRef', 'outputDigest',
   ]);
   if (extra.length > 0) return fail('unknown_field', extra);
+  // Declared optional on `TwinAnswerOutputV1`: the server adds it when no model could answer.
+  if (input.modelUnavailableNote !== undefined && typeof input.modelUnavailableNote !== 'string') {
+    return fail('invalid_shape', ['modelUnavailableNote']);
+  }
   const decision = decodeDecision(input.decision);
   if (decision.ok === false) return decision as DigitalTwinDecodeResultV1<TwinAnswerOutputV1>;
   if (!isDigitalTwinRefV1(input.turnRef) || input.turnRef.kind !== 'turn') return fail('invalid_ref', ['turnRef']);

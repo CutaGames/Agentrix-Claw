@@ -78,7 +78,8 @@ const PAIRING_STEPS: string[] = [
 
 /** 多端特色介绍(R7.2)。 */
 const MOBILE_FEATURES = '陪伴 · 随时问答 · 管日程/邮件';
-const DESKTOP_FEATURES = 'Computer Use · vibe coding · 专业生产力';
+// T7 r1 (10-16): plain words instead of "Computer Use · vibe coding" on a Chinese screen.
+const DESKTOP_FEATURES = '帮你操作电脑 · 写代码 · 处理文件';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface DesktopBannerProps {

@@ -199,7 +199,9 @@ export function FourZoneTabNavigator() {
   const unread = useNotificationStore((state) => state.unreadCount);
   const compact = width < 360 || fontScale > 1.2;
   const bottomInset = Math.max(insets.bottom, compact ? 6 : 8);
-  const contentHeight = compact ? 50 : 54;
+  // T7 r1 (10-16): at 54 the label row was squeezed to 9 px under the 26 px icon and its lower half was cut;
+  // 4 more px and an explicit line height give an 11 px label its full line.
+  const contentHeight = compact ? 54 : 58;
   const [activeTab, setActiveTab] = React.useState<string>(MOBILE_M0_ENABLED ? 'Matters' : 'Companion');
 
   return (
@@ -222,7 +224,7 @@ export function FourZoneTabNavigator() {
           tabBarItemStyle: { flex: 1, minWidth: 0, paddingHorizontal: 0 },
           tabBarActiveTintColor: c.accent,
           tabBarInactiveTintColor: c.textMuted,
-          tabBarLabelStyle: { fontSize: compact ? 10 : 11, fontWeight: '600', marginTop: compact ? 0 : 2, marginHorizontal: 0 },
+          tabBarLabelStyle: { fontSize: compact ? 10 : 11, lineHeight: compact ? 13 : 14, fontWeight: '600', marginTop: compact ? 0 : 2, marginHorizontal: 0 },
         }}
       >
         <Tab.Screen

@@ -21,6 +21,12 @@ export type ApiErrorForwardedKeyV1 = (typeof API_ERROR_FORWARDED_KEYS)[number];
 export const API_ERROR_ERRORS_MAX = 50;
 export const API_ERROR_RETRY_AFTER_MAX_SECONDS = 86400;
 
+/**
+ * 梦境入口（`/api/dreaming/*`）在服务端没有梦境存储时回 503，错误体 `code` 是这个值（`DreamingService`）。
+ * 手机、电脑按它显示「梦境引擎暂不可用」，不要按 `message` 文字判断。
+ */
+export const DREAMING_UNAVAILABLE_CODE_V1 = 'DREAMING_UNAVAILABLE' as const;
+
 /** 合同写明 409 带当前 `view` 的错误码（`SPEND_BUDGET_SETTINGS_ERROR_CODES_V0.stale`、`SPEND_APPROVAL_ERROR_CODES_V0` 的三个 409）。 */
 export const API_ERROR_VIEW_CODES_V1 = [
   'SPEND_BUDGET_SETTINGS_STALE',

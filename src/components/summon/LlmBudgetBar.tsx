@@ -20,9 +20,12 @@ import { useI18n } from '../../stores/i18nStore';
 import { fetchMyQuota, type TierQuota } from '../../services/subscription.api';
 import { fetchQuotaStatus, type QuotaStatus } from '../../services/token-quota.service';
 import { themedStyles } from '../../theme/useTheme';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { llmBudgetBarVisible } from '../../services/chatChrome';
 
 export function LlmBudgetBar() {
   const { t } = useI18n();
+  const uiComplexity = useSettingsStore((s) => s.uiComplexity);
   const navigation = useNavigation<any>();
 
   const quotaQ = useQuery({
@@ -92,6 +95,11 @@ export function LlmBudgetBar() {
   const budgetCents = quota.llm_budget_cents_monthly;
   const usedCents = Math.round((usage.usagePercent / 100) * budgetCents);
   const pct = Math.min(100, usage.usagePercent);
+  // T7 r1 (10-16): a permanent "LLM 预算 $0.00 / $0.30 FREE 0%" strip sat between the composer and the tab bar for
+  // every chat. It now shows when it matters (80 % used or more, or used up), and always in 专业 mode.
+  if (!llmBudgetBarVisible({ usagePercent: usage.usagePercent, quotaExhausted: !!usage.quotaExhausted, uiComplexity })) {
+    return null;
+  }
   const isExhausted = usage.quotaExhausted;
   const isWarning = pct >= 80;
 
@@ -105,7 +113,7 @@ export function LlmBudgetBar() {
     <Pressable style={styles.container} onPress={handlePress}>
       <View style={styles.row}>
         <Text style={styles.label}>
-          {t({ en: 'LLM Budget', zh: 'LLM 预算' })}
+          {t({ en: 'AI usage this month', zh: '本月 AI 额度' })}
         </Text>
         <Text style={[styles.amount, isExhausted && styles.amountExhausted]}>
           ${(usedCents / 100).toFixed(2)} / ${(budgetCents / 100).toFixed(2)}

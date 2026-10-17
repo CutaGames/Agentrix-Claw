@@ -13,6 +13,7 @@ import { useI18n } from '../../stores/i18nStore';
 import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { themedStyles } from '../../theme/useTheme';
+import { classifyDreamingFailure, readDreamingBody, type DreamingProblem } from '../../services/dreamingFailure';
 
 type DreamPhase = 'light' | 'deep' | 'rem';
 type DreamStatus = 'pending' | 'running' | 'completed' | 'failed';
@@ -54,6 +55,8 @@ export function DreamingDashboardScreen() {
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
   const [activePhase, setActivePhase] = useState<DreamPhase | null>(null);
+  // 'unavailable': the server says the engine is not switched on yet. 'error': anything else that failed.
+  const [problem, setProblem] = useState<DreamingProblem | null>(null);
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
@@ -65,9 +68,14 @@ export function DreamingDashboardScreen() {
       if (res.ok) {
         const data = await res.json();
         setSessions(data);
+        setProblem(null);
+      } else {
+        setSessions([]);
+        setProblem(classifyDreamingFailure(res.status, await readDreamingBody(res)));
       }
     } catch (err: any) {
       console.warn('Dream sessions fetch failed:', err.message);
+      setProblem('error');
     }
     setLoading(false);
   }, [token]);
@@ -92,9 +100,12 @@ export function DreamingDashboardScreen() {
       );
       if (res.ok) {
         await fetchSessions();
+      } else {
+        setProblem(classifyDreamingFailure(res.status, await readDreamingBody(res)));
       }
     } catch (err: any) {
       console.warn('Start dream failed:', err.message);
+      setProblem('error');
     }
     setStarting(false);
   };
@@ -141,6 +152,16 @@ export function DreamingDashboardScreen() {
     </View>
   );
 
+  if (problem === 'unavailable') {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <Text style={styles.emptyText} testID="dream-unavailable">
+          {t({ en: 'Dreaming is not available yet', zh: '梦境引擎暂不可用' })}
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       {/* Phase selector & trigger */}
@@ -180,9 +201,18 @@ export function DreamingDashboardScreen() {
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchSessions} />}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>
-            {t({ en: 'No dream sessions yet. Start your first dream!', zh: '暂无梦境记录，开始你的第一次梦境吧！' })}
-          </Text>
+          problem === 'error' ? (
+            <View style={styles.errorBox} testID="dream-error">
+              <Text style={styles.emptyText}>{t({ en: "Can't be read right now.", zh: '暂时读不到。' })}</Text>
+              <TouchableOpacity style={styles.retryBtn} onPress={fetchSessions} accessibilityRole="button">
+                <Text style={styles.retryText}>{t({ en: 'Retry', zh: '重试' })}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={styles.emptyText}>
+              {t({ en: 'No dream sessions yet. Start your first dream!', zh: '暂无梦境记录，开始你的第一次梦境吧！' })}
+            </Text>
+          )
         }
       />
     </SafeAreaView>
@@ -244,4 +274,16 @@ const styles = themedStyles(() => StyleSheet.create({
   insightConfidence: { color: colors.textMuted, fontSize: 10, marginTop: 2 },
   sessionTime: { color: colors.textMuted, fontSize: 10, marginTop: 4 },
   emptyText: { color: colors.textMuted, textAlign: 'center', marginTop: 40, fontSize: 14 },
+  errorBox: { alignItems: 'center' },
+  retryBtn: {
+    marginTop: 12,
+    minHeight: 44,
+    minWidth: 88,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bgCard,
+  },
+  retryText: { color: colors.text, fontSize: 14, fontWeight: '600' },
 }));

@@ -14,6 +14,7 @@ import { useThemedStyles, type Palette } from '../../theme/useTheme';
 import { NAV_CATALOG } from '../../navigation/navCatalog';
 import { ZONE_UNAVAILABLE_ROUTE, fourZoneTarget } from '../../navigation/four-zone/fourZoneRoutes';
 import { MY_HOME_FEATURED_TABS, myHomeTabOrder } from '../../navigation/four-zone/myHome';
+import { GLOBAL_PTT_SCROLL_INSET } from '../../services/pushToTalk';
 
 export function MyHomeScreen() {
   const { t } = useI18n();
@@ -31,17 +32,23 @@ export function MyHomeScreen() {
     navigation.navigate(target.screen, { tab });
   };
 
+  const featuredIds = MY_HOME_FEATURED_TABS as readonly string[];
+  // The first row after the featured ones starts the "更多" group, so the size change reads as a group (T7 r1).
+  const firstOther = tabs.find((tab) => !featuredIds.includes(tab.id))?.id;
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} testID="my-home-screen">
+    <ScrollView style={styles.screen} contentContainerStyle={[styles.content, { paddingBottom: 20 + GLOBAL_PTT_SCROLL_INSET }]} testID="my-home-screen">
       <Text style={styles.title} accessibilityRole="header">
         {t(NAV_CATALOG.my.label)}
       </Text>
       {user?.email || user?.nickname ? <Text style={styles.meta}>{user?.nickname || user?.email}</Text> : null}
       {tabs.map((tab) => {
-        const featured = (MY_HOME_FEATURED_TABS as readonly string[]).includes(tab.id);
+        const featured = featuredIds.includes(tab.id);
         return (
+          <React.Fragment key={tab.id}>
+          {tab.id === firstOther && firstOther !== tabs[0]?.id ? (
+            <Text style={styles.section} testID="my-home-more-heading">{t({ en: 'More', zh: '更多' })}</Text>
+          ) : null}
           <TouchableOpacity
-            key={tab.id}
             style={[styles.row, featured && styles.rowFeatured]}
             onPress={() => open(tab.id)}
             accessibilityRole="button"
@@ -53,6 +60,7 @@ export function MyHomeScreen() {
               <Text style={styles.chevron}>›</Text>
             </View>
           </TouchableOpacity>
+          </React.Fragment>
         );
       })}
     </ScrollView>
@@ -65,6 +73,7 @@ const makeStyles = (c: Palette) =>
     content: { padding: 20, gap: 10 },
     title: { color: c.textPrimary, fontSize: 26, fontWeight: '800' },
     meta: { color: c.textMuted, fontSize: 13, marginBottom: 6 },
+    section: { color: c.textSecondary, fontSize: 13, fontWeight: '700', marginTop: 10 },
     row: {
       minHeight: 52,
       backgroundColor: c.bgCard,

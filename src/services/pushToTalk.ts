@@ -12,6 +12,15 @@ export function globalPttEnabled(value: unknown): boolean {
 // Read as a literal member expression so the Expo build inlines it.
 export const GLOBAL_PTT_ENABLED = globalPttEnabled(process.env.EXPO_PUBLIC_MOBILE_GLOBAL_PTT);
 
+/**
+ * Extra bottom padding for a scrolling zone screen under the floating mic (T7 r1, 10-16): the 60 pt button sits
+ * 16 pt above the tab bar, so without it the last row's chevron and text stay under the button.
+ */
+export function globalPttScrollInset(enabled: boolean): number {
+  return enabled ? 88 : 0;
+}
+export const GLOBAL_PTT_SCROLL_INSET = globalPttScrollInset(GLOBAL_PTT_ENABLED);
+
 export const PTT_MIN_HOLD_MS = 350;
 export const PTT_MAX_HOLD_MS = 60_000;
 export const PTT_TRANSCRIBE_TIMEOUT_MS = 45_000;

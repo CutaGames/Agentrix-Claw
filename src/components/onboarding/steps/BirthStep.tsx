@@ -359,7 +359,7 @@ export function BirthStep({ onComplete, onSkip }: SoulBirthStepProps) {
           style={styles.chip}
           onPress={handleGoMarket}
           accessibilityRole="button"
-          accessibilityLabel="去皮肤市场选择"
+          accessibilityLabel="去市场选形象"
         >
           <Text style={styles.chipText}>去市场选</Text>
         </Pressable>
@@ -370,7 +370,8 @@ export function BirthStep({ onComplete, onSkip }: SoulBirthStepProps) {
         style={styles.primaryBtn}
         onPress={runProvision}
         accessibilityRole="button"
-        accessibilityLabel="确认并唤醒"
+        accessibilityLabel="赋予它灵魂"
+        accessibilityHint="确认名字和形象，在云端唤醒它"
       >
         <Text style={styles.primaryBtnText}>赋予它灵魂</Text>
       </Pressable>
@@ -421,7 +422,10 @@ const styles = themedStyles(() => StyleSheet.create({
   chip: {
     paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 20,
+    // T7 r1: these were 39 px tall; 44 is the touch-target floor.
+    minHeight: 44,
+    justifyContent: 'center',
+    borderRadius: 22,
     backgroundColor: colors.bgCard,
     borderWidth: 1,
     borderColor: colors.border,

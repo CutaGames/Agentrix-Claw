@@ -34,6 +34,7 @@ import { SPEND_APPROVAL_CARD_ENABLED, isSpendApprovalRef } from '../../services/
 import { SpendApprovalCard } from '../../components/SpendApprovalCard';
 import { NeedsYouSection } from '../../components/NeedsYouSection';
 import { MOBILE_M0_ENABLED, MOBILE_M0_NEEDS_YOU_LABEL } from '../../services/mobileM0';
+import { GLOBAL_PTT_SCROLL_INSET } from '../../services/pushToTalk';
 
 type Lang = 'zh' | 'en';
 
@@ -160,7 +161,7 @@ export function MattersHomeScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: 20 + GLOBAL_PTT_SCROLL_INSET }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
       testID="matters-home-screen"
     >
@@ -291,7 +292,8 @@ export function MattersHomeScreen() {
       <Row
         styles={styles}
         label={t({ en: 'Other approvals', zh: '其他待批准' })}
-        value={String(approvalNotifications)}
+        // A count only when there is something to count; "0" on an empty row read as a result (T7 r1).
+        value={approvalNotifications > 0 ? String(approvalNotifications) : undefined}
         onPress={() => navigation.navigate('Inbox')}
         testID="matters-inbox-approvals"
       />

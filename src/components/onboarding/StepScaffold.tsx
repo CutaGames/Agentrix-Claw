@@ -40,7 +40,9 @@ export function StepScaffold({
           <View style={styles.topBar}>
             <Pressable
               onPress={onSkip}
-              hitSlop={12}
+              hitSlop={8}
+              // T7 r1 (10-16): the button itself was 28×17 (only the slop made it reachable); the box is now 44 px.
+              style={styles.skipButton}
               accessibilityRole="button"
               accessibilityLabel={skipLabel}
             >
@@ -89,8 +91,16 @@ const styles = themedStyles(() => StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    paddingHorizontal: 20,
-    paddingTop: 8,
+    // 20 px less the button's own 8 px side padding keeps the text where it was.
+    paddingHorizontal: 12,
+    paddingTop: 0,
+  },
+  skipButton: {
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   skipText: {
     color: colors.textMuted,

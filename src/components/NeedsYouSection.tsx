@@ -79,11 +79,20 @@ export function NeedsYouSection() {
       lang === 'zh' ? '已更新分档。' : 'Tier updated.',
     );
 
+  // T7 r1 (10-16): with nothing to decide this said so in an inverted near-black banner, right above the 待我处理
+  // list's own empty line. Now an empty answer shows nothing here (the list below says it once), loading is a quiet
+  // line, and a real count is a calm card.
+  const summary = query.isLoading ? null : cards.length > 0 ? needsYouSummary(cards, lang) : null;
   return (
     <View style={styles.wrap} testID="needs-you">
-      <View style={styles.summary}>
-        <Text style={styles.summaryText}>{query.isLoading ? (lang === 'zh' ? '正在看有什么要你管…' : 'Checking what needs you…') : needsYouSummary(cards, lang)}</Text>
-      </View>
+      {query.isLoading ? (
+        <Text style={styles.checking} testID="needs-you-checking">{lang === 'zh' ? '正在看有什么要你管…' : 'Checking what needs you…'}</Text>
+      ) : null}
+      {summary ? (
+        <View style={styles.summary} testID="needs-you-summary">
+          <Text style={styles.summaryText}>{summary}</Text>
+        </View>
+      ) : null}
       {cards.map((card) => {
         if (card.kind === 'spend_approval' && card.spend) {
           return <SpendApprovalCard key={card.key} approvalRef={card.id} initial={card.spend} testID="needs-you-approval" />;
@@ -169,9 +178,10 @@ const KIND_COLOR: Partial<Record<NeedsYouCardV0['kind'], string>> = {
 
 const makeStyles = (p: Palette) =>
   StyleSheet.create({
-    wrap: { gap: 10, marginBottom: 12 },
-    summary: { backgroundColor: p.text, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14 },
-    summaryText: { color: p.card, fontSize: 13, lineHeight: 19 },
+    wrap: { gap: 10, marginBottom: 4 },
+    checking: { color: p.textMuted, fontSize: 13, lineHeight: 19 },
+    summary: { backgroundColor: p.card, borderColor: p.accent, borderWidth: 1, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14 },
+    summaryText: { color: p.text, fontSize: 14, fontWeight: '600', lineHeight: 20 },
     card: { backgroundColor: p.card, borderRadius: 16, padding: 13, gap: 4 },
     kind: { alignSelf: 'flex-start', fontSize: 11, fontWeight: '700', borderRadius: 10, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 2, color: p.accent, backgroundColor: p.border },
     title: { color: p.text, fontSize: 14, fontWeight: '600', lineHeight: 20 },

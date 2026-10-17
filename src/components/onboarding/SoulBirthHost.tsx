@@ -38,6 +38,7 @@ import {
 } from '../../stores/soulBirthStore';
 import { addRouteChangeListener, getCurrentRouteName } from '../../navigation/navigationRef';
 import { fetchExternalFacts } from './externalFacts';
+import { firstRunCompleted } from './m0FirstRun';
 import type { SoulBirthStepProps } from './types';
 import { BirthStep } from './steps/BirthStep';
 import { FirstWordsStep } from './steps/FirstWordsStep';
@@ -95,7 +96,8 @@ export function SoulBirthHost() {
   // 仅对「已登录、非游客、未终止」的用户激活引导(C3 / C9)。
   const active = isAuthenticated && !isGuest && !terminated;
   // 当前应引导的步骤:第一个未完成;全部完成返回 null(Design Correctness Property 4)。
-  const step = active ? resolveCurrentStep(completed) : null;
+  // M0 first run ends after 连接你的电脑 (m0FirstRun.ts, T7 r1); without M0 this is `completed` as is.
+  const step = active ? resolveCurrentStep(firstRunCompleted(completed)) : null;
 
   // 挂载激活时拉取外部事实并回填一次(skip-earlier-if-later-done,R1.2a)。
   // 失败默认 false 且不阻塞(主线必达 Property 1)。仅在本会话内回填一次。

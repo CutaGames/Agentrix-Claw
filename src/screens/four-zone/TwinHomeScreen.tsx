@@ -12,7 +12,7 @@
  * and Agent 护照. Visitors, bookings and income appear only once the backend
  * has them (DT-G2); nothing is invented here.
  */
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Linking, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
@@ -38,6 +38,7 @@ import { AGENT_AUTOMATIONS_ENABLED } from '../../services/agentAutomations';
 import { AGENT_MAILBOX_ENABLED } from '../../services/agentMailbox';
 import { TWIN_VOICE_ENABLED } from '../../services/twinVoice';
 import { MOBILE_M0_ENABLED } from '../../services/mobileM0';
+import { GLOBAL_PTT_SCROLL_INSET } from '../../services/pushToTalk';
 
 type Lang = 'zh' | 'en';
 
@@ -100,6 +101,9 @@ export function TwinHomeScreen() {
   const openWeb = useCallback(() => {
     void Linking.openURL(getTwinWebUrl(agentAccountId || null)).catch(() => undefined);
   }, [agentAccountId]);
+  const [showMore, setShowMore] = useState(false);
+  // Room under the last row for the floating mic (GLOBAL_PTT_SCROLL_INSET, T7 r1).
+  const scrollContent = [styles.content, { paddingBottom: 24 + GLOBAL_PTT_SCROLL_INSET }];
 
   const card = publicCard.data?.kind === 'ready' ? publicCard.data.data : null;
   // T6: the server's shareRoute (external id) once the status is read; the UUID page until then.
@@ -212,7 +216,7 @@ export function TwinHomeScreen() {
     const visibility = status.data?.kind === 'ready' ? status.data.data.visibility : null;
     const openReviews = review.data?.kind === 'ready' ? review.data.data.open.length : null;
     return (
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content} testID="twin-home-screen">
+      <ScrollView style={styles.screen} contentContainerStyle={scrollContent} testID="twin-home-screen">
         <View style={styles.headerRow}>
           <Text style={styles.title} accessibilityRole="header">
             {t({ en: 'Your twin', zh: '分身' })}
@@ -315,42 +319,56 @@ export function TwinHomeScreen() {
     );
   }
 
+  // Still finding out whether a twin exists: no "create" call to action that would flash for an owner who has one.
+  if (canRead && overview.isLoading) {
+    return (
+      <ScrollView style={styles.screen} contentContainerStyle={scrollContent} testID="twin-home-screen">
+        <Text style={styles.title} accessibilityRole="header">
+          {t({ en: 'Your twin', zh: '分身' })}
+        </Text>
+        <ActivityIndicator testID="twin-home-loading" />
+      </ScrollView>
+    );
+  }
+
+  // No twin yet (T7 r1, 10-16; same calm shape as the web 分身 page, 6bb7b7c6): one card with one button, the rules
+  // in one line, and the other twin and Agent pages folded under 其他功能 instead of seven cards before anything exists.
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content} testID="twin-home-screen">
+    <ScrollView style={styles.screen} contentContainerStyle={scrollContent} testID="twin-home-screen">
       <Text style={styles.title} accessibilityRole="header">
         {t({ en: 'Your twin', zh: '分身' })}
       </Text>
-      {overview.isLoading && canRead ? <ActivityIndicator /> : null}
-      <Text style={styles.lead}>
-        {t({
-          en: 'A twin answers for you using what you confirm. It starts private, takes about 10 minutes, and nothing goes public until you check each item.',
-          zh: '分身会用你确认过的内容替你回答。一开始只有你自己能看，大约 10 分钟，公开前每一条都要你确认。',
-        })}
-      </Text>
-      <View style={styles.steps}>
-        {[
-          t({ en: 'Bring in 1–5 things you wrote', zh: '带入 1–5 份你写的内容' }),
-          t({ en: 'Answer 5 questions', zh: '回答 5 个问题' }),
-          t({ en: 'Try one question, then decide', zh: '试问一句，再决定要不要公开' }),
-        ].map((line, index) => (
-          <Text key={line} style={styles.step}>
-            {index + 1}. {line}
-          </Text>
-        ))}
+      <View style={styles.startCard} testID="twin-start-card">
+        <Text style={styles.startTitle}>{t({ en: 'Create your twin', zh: '做一个你的分身' })}</Text>
+        <Text style={styles.lead}>
+          {t({
+            en: 'Teach it with your own words and material. At first it is only for you. About 10 minutes.',
+            zh: '用你的话和资料教它，先只给你自己用。大约 10 分钟。',
+          })}
+        </Text>
+        <Text style={styles.stages} testID="twin-start-stages">
+          {t({ en: 'Give it material · Answer 5 questions · Ask it one thing', zh: '给它一份资料 · 回答 5 个问题 · 私下问它一句' })}
+        </Text>
+        <TouchableOpacity
+          style={styles.primary}
+          onPress={openWeb}
+          accessibilityRole="button"
+          accessibilityLabel={t({ en: 'Start creating', zh: '开始创建' })}
+          testID="twin-start-button"
+        >
+          <Text style={styles.primaryText}>{t({ en: 'Start creating', zh: '开始创建' })}</Text>
+        </TouchableOpacity>
+        <Text style={styles.helper}>
+          {t({
+            en: 'Opens the web for now. The same draft continues on any device.',
+            zh: '会打开网页继续，同一份草稿在任何设备上都能接着做。',
+          })}
+        </Text>
       </View>
-      <TouchableOpacity
-        style={styles.primary}
-        onPress={openWeb}
-        accessibilityRole="button"
-        accessibilityLabel={t({ en: 'Start creating', zh: '开始创建' })}
-        testID="twin-start-button"
-      >
-        <Text style={styles.primaryText}>{t({ en: 'Start creating', zh: '开始创建' })}</Text>
-      </TouchableOpacity>
-      <Text style={styles.helper}>
+      <Text style={styles.rules} testID="twin-start-rules">
         {t({
-          en: 'Opens the web flow for now. The same draft continues on any device.',
-          zh: '目前会打开网页继续。同一份草稿在任何设备上都能接着做。',
+          en: 'Only you can see it. Every answer says it is an AI twin, and it never promises prices, contracts or refunds for you.',
+          zh: '只对你自己可见，回答都标明是 AI 分身，不替你承诺价格、合同或退款。',
         })}
       </Text>
       {overview.data && overview.data.kind !== 'ready' && overview.data.kind !== 'unavailable' ? (
@@ -358,7 +376,16 @@ export function TwinHomeScreen() {
           {t({ en: 'Could not check whether you already have a twin.', zh: '读不到你是否已经有分身。' })}
         </Text>
       ) : null}
-      {entryRows}
+      <TouchableOpacity
+        style={styles.moreToggle}
+        onPress={() => setShowMore((open) => !open)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: showMore }}
+        testID="twin-home-more"
+      >
+        <Text style={styles.moreToggleText}>{showMore ? t({ en: 'Fewer ▴', zh: '收起 ▴' }) : t({ en: 'Other pages ▾', zh: '其他功能 ▾' })}</Text>
+      </TouchableOpacity>
+      {showMore ? entryRows : null}
     </ScrollView>
   );
 }
@@ -382,8 +409,12 @@ const makeStyles = (c: Palette) =>
     },
     section: { color: c.textSecondary, fontSize: 13, fontWeight: '700', marginTop: 4 },
     lead: { color: c.textSecondary, fontSize: 15, lineHeight: 22 },
-    steps: { gap: 6, marginTop: 4 },
-    step: { color: c.textPrimary, fontSize: 15, lineHeight: 22 },
+    startCard: { backgroundColor: c.bgCard, borderColor: c.border, borderWidth: 1, borderRadius: 18, padding: 20, gap: 10 },
+    startTitle: { color: c.textPrimary, fontSize: 20, fontWeight: '800' },
+    stages: { color: c.textPrimary, fontSize: 14, lineHeight: 20, fontWeight: '600' },
+    rules: { color: c.textMuted, fontSize: 13, lineHeight: 19, paddingHorizontal: 4 },
+    moreToggle: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
+    moreToggleText: { color: c.accent, fontSize: 14, fontWeight: '700' },
     primary: {
       marginTop: 12,
       backgroundColor: c.primary,

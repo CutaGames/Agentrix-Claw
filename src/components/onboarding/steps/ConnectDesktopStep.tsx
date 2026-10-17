@@ -67,7 +67,7 @@ export function ConnectDesktopStep({ onComplete, onSkip }: SoulBirthStepProps) {
   return (
     <StepScaffold
       title="连接你的电脑"
-      subtitle="同一个灵魂跨到桌面端:Computer Use、vibe coding,记忆全程同步。"
+      subtitle="电脑上也是同一个它：能帮你操作电脑、写代码，你们聊过的事它都记得。"
       onSkip={onSkip}
     >
       {/* R7.5:内嵌 DesktopBanner 首连引导(embedded:自动展开,直接呈现介绍 + 首连引导;
