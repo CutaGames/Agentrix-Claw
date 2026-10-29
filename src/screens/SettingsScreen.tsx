@@ -11,6 +11,8 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { API_BASE } from '../config/env';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { themedStyles } from '../theme/useTheme';
+import { AccountExportCard } from '../components/AccountExportCard';
+import { ACCOUNT_EXPORT_ENABLED } from '../services/accountExport';
 
 // ─── App Version Check ──────────────────────────────────────────
 interface AppVersionInfo {
@@ -184,7 +186,7 @@ export const SettingsScreen: React.FC = () => {
           </View>
         </Card>
       )}
-
+      {user && ACCOUNT_EXPORT_ENABLED ? <AccountExportCard /> : null}
       <Card>
         <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>{t({ en: 'API Settings', zh: 'API 设置' })}</Text>
         <Text style={{ color: colors.muted, marginTop: 6, fontSize: 12 }}>

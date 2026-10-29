@@ -14,11 +14,19 @@ import ViewShot, { CaptureOptions } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import * as Clipboard from 'expo-clipboard';
 import { useI18n } from '../stores/i18nStore';
+import { TwinAvatar, TwinLabel } from './TwinAvatar';
+import type { TwinAvatarIdentity } from '../utils/twinAvatar';
 
 export interface ShareCardProps {
   shareUrl: string;
   title?: string;
   subtitle?: string;
+  /**
+   * Set when the card shares an AI twin: the twin mark (the owner's photo or initial inside the
+   * twin ring, with the AI 分身 label) takes the place of the emoji icon at the top of the hero.
+   * Leave it out for every other card.
+   */
+  twin?: TwinAvatarIdentity;
   /** Emoji / icon to show in header */
   headerEmoji?: string;
   /** Optional hero/cover image URL — when set the poster shows the real cover art. */
@@ -53,6 +61,7 @@ export function ShareCardView({
   shareUrl,
   title = 'Agentrix-Claw',
   subtitle = 'Your AI Agent, Powered by OpenClaw',
+  twin,
   headerEmoji = '🦀',
   imageUrl,
   userName,
@@ -154,9 +163,19 @@ export function ShareCardView({
           </View>
 
           <View style={styles.heroPanel}>
+            {twin ? (
+              // The card is dark and captured as an image, so the mark is drawn for a dark scheme with a see-through gap.
+              <View style={styles.twinRow}>
+                <TwinAvatar name={twin.name} photoUrl={twin.photoUrl} size={56} scheme="dark" background="transparent" testID="share-card-twin-avatar" />
+                <View style={styles.twinText}>
+                  {twin.name ? <Text style={styles.twinName} numberOfLines={1}>{twin.name}</Text> : null}
+                  <TwinLabel scheme="dark" />
+                </View>
+              </View>
+            ) : null}
             {imageUrl ? (
               <Image source={{ uri: imageUrl }} style={styles.heroImage} resizeMode="cover" />
-            ) : (
+            ) : twin ? null : (
               <View style={styles.heroIconWrap}>
                 <Text style={styles.headerEmoji}>{headerEmoji}</Text>
               </View>
@@ -346,6 +365,9 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
+  twinRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  twinText: { flex: 1, alignItems: 'flex-start', gap: 4 },
+  twinName: { color: '#f8fbff', fontSize: 16, fontWeight: '800' },
   heroCopy: { gap: 6 },
   flagsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 14 },
   flagImg: { width: 56, height: 38, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.18)' },

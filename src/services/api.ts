@@ -34,6 +34,9 @@ export interface UploadedChatAttachment {
   isImage: boolean;
   isAudio: boolean;
   isVideo: boolean;
+  /** L8 1a A1: set when the server recorded an owner; `url` then carries a signed query string (opaque to the app). */
+  attachmentId?: string;
+  expiresAt?: string;
 }
 
 let config: ApiConfig = {
@@ -110,6 +113,22 @@ export const clearToken = async () => {
   }
 };
 
+// L8 1a A1: error codes after which the saved sign-in is dead for good (shared/types/session-revocation.ts):
+// `token_revoked` (signed out of all devices) and `user_inactive` (account frozen). The app registers a handler
+// (authStore does) that signs this device out; an app build without a handler behaves as before.
+const SESSION_ENDED_CODES = ['token_revoked', 'user_inactive'];
+let sessionRevokedHandler: (() => void) | null = null;
+export const setSessionRevokedHandler = (handler: (() => void) | null) => {
+  sessionRevokedHandler = handler;
+};
+const notifySessionRevoked = () => {
+  try {
+    sessionRevokedHandler?.();
+  } catch (e) {
+    console.warn('[api] session-revoked handler failed:', e);
+  }
+};
+
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${config.baseUrl}${path}`;
   const headers: Record<string, string> = {
@@ -135,9 +154,15 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   if (!res.ok) {
     const text = await res.text();
     let errorMessage = `Request failed: ${res.status}`;
+    // Additive (L8-9 item 5): callers can key on status and the server's code (e.g. user_inactive); message unchanged.
+    let errorCode: string | undefined;
     try {
       const json = JSON.parse(text);
       errorMessage = json.message || json.error || errorMessage;
+      if (typeof json?.code === 'string') errorCode = json.code;
+      if (res.status === 401 && typeof json?.code === 'string' && SESSION_ENDED_CODES.includes(json.code)) {
+        notifySessionRevoked();
+      }
     } catch {
       // If it's HTML (like 502 Bad Gateway), provide a friendly message
       if (text.includes('<html') || res.status >= 500) {
@@ -146,7 +171,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
         errorMessage = text || errorMessage;
       }
     }
-    throw new Error(errorMessage);
+    throw Object.assign(new Error(errorMessage), { status: res.status, ...(errorCode ? { code: errorCode } : {}) });
   }
 
   if (res.status === 204) {

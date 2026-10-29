@@ -36,6 +36,117 @@ export function twinMayAnswerInGroupV0(topic: string, authorizedTopics: readonly
   return t.length > 0 && authorizedTopics.some((a) => a.trim().toLowerCase() === t);
 }
 
+// ---------------------------------------------------------------------------
+// L8 B2: topic grants and the shared schedule. The group is a Telegram group bound to one owner's Agent.
+
+export const GROUP_COORDINATION_TIER_PRESETS_V0 = ['client', 'collaborator', 'family', 'community'] as const;
+export type GroupCoordinationTierPresetV0 = (typeof GROUP_COORDINATION_TIER_PRESETS_V0)[number];
+
+export const GROUP_COORDINATION_LIMITS_V0 = {
+  topicsMax: 20,
+  topicMax: 40,
+  questionMax: 1000,
+  /** Other owners' Agents that can join one schedule (the group's own Agent is always in it). */
+  participantsMax: 4,
+  candidatesMax: 10,
+  durationStepMinutes: 15,
+  durationMinMinutes: 15,
+  durationMaxMinutes: 240,
+  scheduleTtlHours: 48,
+} as const;
+
+/**
+ * What the owner starts from when the grant names no topics. Placeholder wording, not a promise about what is safe to
+ * discuss: the owner can replace the list at any time, and an empty list means the twin answers nothing in that group.
+ */
+export const GROUP_TIER_DEFAULT_TOPICS_V0: Record<GroupCoordinationTierPresetV0, readonly string[]> = {
+  client: ['pricing', 'schedule', 'scope'],
+  collaborator: ['schedule', 'scope', 'status'],
+  family: ['schedule'],
+  community: ['faq', 'schedule'],
+};
+
+const TOPIC_PATTERN = /^[\p{L}\p{N}_-]+$/u;
+
+/** One topic as the owner writes it and as a member names it: trimmed, NFKC, lower case, letters / digits / `_` / `-` only. */
+export function normalizeGroupTopicV0(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const topic = value.normalize('NFKC').trim().toLowerCase();
+  if (!topic || topic.length > GROUP_COORDINATION_LIMITS_V0.topicMax || !TOPIC_PATTERN.test(topic)) return null;
+  return topic;
+}
+
+/**
+ * A group message names its topic up front: `#pricing how much for a logo?`. No topic, or a message that only has a
+ * topic and no question, is not a question the twin may answer. Everything after the topic is the question.
+ */
+export function parseGroupTopicQuestionV0(text: unknown): { topic: string; question: string } | null {
+  if (typeof text !== 'string') return null;
+  const match = /^\s*#([^\s#]+)\s+([\s\S]+)$/.exec(text);
+  if (!match) return null;
+  const topic = normalizeGroupTopicV0(match[1]);
+  const question = match[2].trim().slice(0, GROUP_COORDINATION_LIMITS_V0.questionMax);
+  return topic && question ? { topic, question } : null;
+}
+
+export interface GroupTopicGrantCommandV0 {
+  tierPreset: GroupCoordinationTierPresetV0;
+  /** Normalized, unique, in the owner's order. */
+  topics: string[];
+}
+
+/** `PUT` body: `tierPreset` and, optionally, `topics` (omitted: the preset's starting list). Unknown fields are refused. */
+export function decodeGroupTopicGrantCommandV0(value: unknown): GroupTopicGrantCommandV0 | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (Object.keys(raw).some((key) => key !== 'tierPreset' && key !== 'topics')) return null;
+  const preset = raw.tierPreset;
+  if (typeof preset !== 'string' || !(GROUP_COORDINATION_TIER_PRESETS_V0 as readonly string[]).includes(preset)) return null;
+  const tierPreset = preset as GroupCoordinationTierPresetV0;
+  if (raw.topics === undefined) return { tierPreset, topics: [...GROUP_TIER_DEFAULT_TOPICS_V0[tierPreset]] };
+  if (!Array.isArray(raw.topics) || raw.topics.length > GROUP_COORDINATION_LIMITS_V0.topicsMax) return null;
+  const topics: string[] = [];
+  for (const entry of raw.topics) {
+    const topic = normalizeGroupTopicV0(entry);
+    if (!topic) return null;
+    if (!topics.includes(topic)) topics.push(topic);
+  }
+  return { tierPreset, topics };
+}
+
+export interface GroupScheduleCommandV0 {
+  durationMinutes: number;
+  /** Public Agent ids (`agentUniqueId`) of the other owners' Agents; unique. */
+  participantAgentIds: string[];
+}
+
+/** `POST` body of a new schedule proposal. */
+export function decodeGroupScheduleCommandV0(value: unknown): GroupScheduleCommandV0 | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (Object.keys(raw).some((key) => key !== 'durationMinutes' && key !== 'participantAgentIds')) return null;
+  const L = GROUP_COORDINATION_LIMITS_V0;
+  const duration = raw.durationMinutes;
+  if (typeof duration !== 'number' || !Number.isInteger(duration) || duration < L.durationMinMinutes || duration > L.durationMaxMinutes || duration % L.durationStepMinutes !== 0) return null;
+  const ids = raw.participantAgentIds;
+  if (!Array.isArray(ids) || ids.length < 1 || ids.length > L.participantsMax) return null;
+  const participantAgentIds: string[] = [];
+  for (const id of ids) {
+    if (typeof id !== 'string' || !/^[A-Za-z0-9_:.-]{1,120}$/.test(id) || participantAgentIds.includes(id)) return null;
+    participantAgentIds.push(id);
+  }
+  return { durationMinutes: duration, participantAgentIds };
+}
+
+export const GROUP_SCHEDULE_REF_PATTERN_V0 = /^acs_[0-9a-f]{32}$/;
+
+/** `/confirm acs_<32 hex> <n>` in the group; `n` is the 1-based number of the candidate in the announcement. */
+export function parseGroupConfirmCommandV0(text: unknown): { scheduleRef: string; choice: number } | null {
+  if (typeof text !== 'string') return null;
+  const match = /^\/confirm(?:@[A-Za-z0-9_]{5,32})?\s+(acs_[0-9a-f]{32})\s+([1-9]|10)\s*$/.exec(text.trim());
+  return match ? { scheduleRef: match[1], choice: Number(match[2]) } : null;
+}
+
 export function decodeGroupCoordinationMessageV0(value: unknown): GroupCoordinationMessageV0 | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;

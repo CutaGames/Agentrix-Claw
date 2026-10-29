@@ -32,6 +32,7 @@ export function ShareCardScreen() {
     accentTo,
     leftImageUrl,
     rightImageUrl,
+    twin,
   } = route.params;
   const user = useAuthStore((s) => s.user);
 
@@ -58,6 +59,7 @@ export function ShareCardScreen() {
           accentTo={accentTo}
           leftImageUrl={leftImageUrl}
           rightImageUrl={rightImageUrl}
+          twin={twin}
         />
       </ScrollView>
     </SafeAreaView>

@@ -26,6 +26,12 @@ export const PUSH_TYPES = [
   'receipt_ready',
   'device_paired',
   'order_update',
+  // L8 R1 (owner alerts): something new happened that the owner should hear about at once.
+  'twin_lead',
+  'agent_request',
+  'share_reply',
+  'booking_new',
+  'alert_digest',
 ] as const;
 export type PushType = (typeof PUSH_TYPES)[number];
 
@@ -63,6 +69,16 @@ export const PUSH_DESTINATIONS: Readonly<Record<PushType, Omit<PushDestinationV1
    * 已退款）。`ref` 是 `ord_…` 订单 id，落到"事项 → 待我处理"，打开后按调用方显示买方或卖方视图。
    */
   order_update: { zone: 'matters', tab: 'pending', refKind: 'order' },
+  /** L8 R1：分身收到一条访客留言。`ref` 是线索 id，落到"分身 → 访客与线索"。 */
+  twin_lead: { zone: 'twin', tab: 'visitors', refKind: 'lead' },
+  /** L8 R1：别人的 Agent 向主人发来一个请求。`ref` 是请求 id，落到"事项 → 待我处理"。 */
+  agent_request: { zone: 'matters', tab: 'pending', refKind: 'collaboration_request' },
+  /** L8 R1：共享页收到一条回复。`ref` 是共享页 id，落到"分身 → 访客与线索"。 */
+  share_reply: { zone: 'twin', tab: 'visitors', refKind: 'share_page' },
+  /** L8 R1：有人预约了主人的时间。`ref` 是预约号，落到"分身 → 预约"。 */
+  booking_new: { zone: 'twin', tab: 'bookings', refKind: 'booking' },
+  /** L8 R1：每日提醒摘要（只有条数）。`ref` 是摘要通知 id，落到"事项 → 待我处理"。 */
+  alert_digest: { zone: 'matters', tab: 'pending', refKind: 'alert_digest' },
 };
 
 export type PushImportance = 'max' | 'high' | 'default';
@@ -87,6 +103,12 @@ export const PUSH_CHANNELS: Readonly<Record<PushType, PushChannelV1>> = {
   device_paired: { id: 'security', name: { zh: '账号安全', en: 'Account security' }, importance: 'high', lockscreen: 'private' },
   // 涉及钱：锁屏完全不显示。
   order_update: { id: 'orders', name: { zh: '订单', en: 'Orders' }, importance: 'high', lockscreen: 'secret' },
+  // L8 R1：来访和预约涉及对方，锁屏完全不显示。每种一个通道，用户可以在系统设置里单独关（比如只关摘要）。
+  twin_lead: { id: 'leads', name: { zh: '分身新留言', en: 'Twin messages' }, importance: 'high', lockscreen: 'secret' },
+  agent_request: { id: 'requests', name: { zh: '别人的请求', en: 'Requests from other Agents' }, importance: 'high', lockscreen: 'secret' },
+  share_reply: { id: 'replies', name: { zh: '共享页回复', en: 'Share page replies' }, importance: 'high', lockscreen: 'secret' },
+  booking_new: { id: 'bookings', name: { zh: '新预约', en: 'New bookings' }, importance: 'high', lockscreen: 'secret' },
+  alert_digest: { id: 'digest', name: { zh: '每日提醒摘要', en: 'Daily alert digest' }, importance: 'default', lockscreen: 'secret' },
 };
 
 /** 旧通道：现有后端发 `transactions`，保留它，避免旧推送落到系统默认通道。涉及钱，锁屏不显示。 */
@@ -95,6 +117,16 @@ export const PUSH_LEGACY_CHANNELS: readonly PushChannelV1[] = [
 ];
 
 export type PushLocale = 'zh' | 'en';
+
+/**
+ * 登记推送设备时手机带来的语言：只认 `zh` / `en`（含 `en-US`、`zh_CN` 这类带地区的写法，大小写不论），
+ * 其余（缺省、空、别的语言、不是字符串）一律返回 null，发送端按 `'zh'` 处理。
+ */
+export function parsePushLocale(value: unknown): PushLocale | null {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 16) return null;
+  const primary = value.trim().toLowerCase().split(/[-_]/)[0];
+  return primary === 'zh' || primary === 'en' ? primary : null;
+}
 
 /** 通用文案：只说"有什么事"，不说具体内容、金额、来源或对方是谁。 */
 export const PUSH_GENERIC_TEXT: Readonly<Record<PushType, Record<PushLocale, { title: string; body: string }>>> = {
@@ -135,6 +167,27 @@ export const PUSH_GENERIC_TEXT: Readonly<Record<PushType, Record<PushLocale, { t
   order_update: {
     zh: { title: '有一笔订单有新进展', body: '打开 Agentrix 查看。' },
     en: { title: 'An order has an update', body: 'Open Agentrix to view it.' },
+  },
+  // L8 R1：只说"有什么事"，不带访客写的内容、名字、联系方式、金额、对方是哪只 Agent。
+  twin_lead: {
+    zh: { title: '你的分身收到一条新留言', body: '打开 Agentrix 查看。' },
+    en: { title: 'Your twin received a new message', body: 'Open Agentrix to read it.' },
+  },
+  agent_request: {
+    zh: { title: '有别的 Agent 向你发来一个请求', body: '打开 Agentrix 查看并决定。' },
+    en: { title: 'Another Agent sent you a request', body: 'Open Agentrix to review it.' },
+  },
+  share_reply: {
+    zh: { title: '你分享的页面收到一条回复', body: '打开 Agentrix 查看。' },
+    en: { title: 'A page you shared got a reply', body: 'Open Agentrix to read it.' },
+  },
+  booking_new: {
+    zh: { title: '有人预约了你的时间', body: '打开 Agentrix 查看。' },
+    en: { title: 'Someone booked your time', body: 'Open Agentrix to view it.' },
+  },
+  alert_digest: {
+    zh: { title: '过去一天的提醒摘要', body: '打开 Agentrix 查看。' },
+    en: { title: 'Your alerts from the last day', body: 'Open Agentrix to see them.' },
   },
 };
 

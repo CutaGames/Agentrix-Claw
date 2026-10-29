@@ -45,6 +45,12 @@ import { TrustLadderCard } from '../../components/TrustLadderCard';
 import { TRUST_LADDER_ENABLED } from '../../services/trustLadder';
 import { AgentRequestsCard } from '../../components/AgentRequestsCard';
 import { AGENT_COLLABORATION_ENABLED } from '../../services/agentCollaboration';
+import { AgentPassCard } from '../../components/AgentPassCard';
+import { AGENT_PASS_ENABLED } from '../../services/agentPass';
+import { SignInAppsCard } from '../../components/SignInAppsCard';
+import { AGENTRIX_OAUTH_ENABLED } from '../../services/agentrixOauthApps';
+import { StandingGoalsCard } from '../../components/StandingGoalsCard';
+import { STANDING_GOALS_ENABLED } from '../../services/standingGoals';
 import { SharePagesCard } from '../../components/SharePagesCard';
 import { SHARE_PAGES_ENABLED } from '../../services/sharePages';
 import { OwnerGoalsCard } from '../../components/OwnerGoalsCard';
@@ -201,6 +207,9 @@ export function TwinPassportScreen() {
         <Text style={[styles.passportNumber, { color: card.theme.accent }]}>{card.number}</Text>
         <Text style={[styles.passportHero, { color: card.theme.ink }]}>{card.hero[lang]}</Text>
         <Text style={[styles.passportMeta, { color: card.theme.inkMuted }]}>{stampedLine}</Text>
+        {card.endorsements ? (
+          <Text style={[styles.passportMeta, { color: card.theme.accent }]} testID="twin-passport-client-endorsements">{card.endorsements[lang]}</Text>
+        ) : null}
         <Text style={[styles.passportMeta, { color: card.theme.inkMuted }]}>{card.tagline[lang]}</Text>
       </View>
 
@@ -224,6 +233,9 @@ export function TwinPassportScreen() {
       {SEED_INVITES_ENABLED ? <SeedInvitesCard /> : null}
       {OWNER_GOALS_ENABLED ? <OwnerGoalsCard /> : null}
       {AGENT_COLLABORATION_ENABLED ? <AgentRequestsCard /> : null}
+      {AGENT_PASS_ENABLED ? <AgentPassCard /> : null}
+      {AGENTRIX_OAUTH_ENABLED ? <SignInAppsCard /> : null}
+      {STANDING_GOALS_ENABLED ? <StandingGoalsCard /> : null}
       {SHARE_PAGES_ENABLED ? <SharePagesCard /> : null}
 
       <Text style={styles.section}>{t({ en: 'Share links', zh: '分享链接' })}</Text>

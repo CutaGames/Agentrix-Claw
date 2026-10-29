@@ -19,6 +19,17 @@ export const SEED_INVITES_ROUTES_V0 = {
   redeem: '/api/seed-invites/redeem',
   /** v1, POST: the caller replaces one of their open codes (`:code`); answers the updated view. */
   replace: '/api/seed-invites/codes/:code/replace',
+  /**
+   * L8 R3, PUT `{ enabled: boolean }`: a member agrees (or stops agreeing) that their public twin card carries one of
+   * their open invite codes. Answers `{ cardConsent }`. Needs `SEED_INVITES_CARD_V1_ENABLED` too.
+   */
+  cardConsent: '/api/seed-invites/card-consent',
+  /**
+   * L8 R3, GET, no sign-in: the open invite code of the owner of this twin card (`:agentAccountId`), or `{ code: null }`.
+   * Null for every "no" (switch off for the owner, no consent, not a member, no open code, unknown or inactive Agent);
+   * the reason is never told. Not cached.
+   */
+  card: '/api/seed-invites/card/:agentAccountId',
 } as const;
 
 export const SEED_INVITES_DEFAULT_PER_MEMBER_V0 = 3;
@@ -38,6 +49,10 @@ export const SEED_INVITES_ERROR_CODES_V0 = {
   notFound: 'SEED_INVITE_NOT_FOUND',
   alreadyMember: 'SEED_INVITE_ALREADY_MEMBER',
   signInRequired: 'SEED_INVITE_SIGN_IN_REQUIRED',
+  /** L8 R3: only a member has codes to put on a card. */
+  notMember: 'SEED_INVITE_NOT_MEMBER',
+  /** L8 R3: the card-consent body is not `{ enabled: boolean }`. */
+  invalidBody: 'SEED_INVITE_INVALID_BODY',
 } as const;
 
 /** The caller's own codes only. Who redeemed a code is never shown. */
@@ -53,6 +68,23 @@ export interface SeedInvitesViewV0 {
   root: boolean;
   quota: number;
   codes: SeedInviteCodeViewV0[];
+  /**
+   * L8 R3: the member agreed that their twin card carries an open invite code. Only present while the server's card
+   * switch is on and the caller is a member; older clients ignore it.
+   */
+  cardConsent?: boolean;
+}
+
+/** L8 R3: what the public card lookup answers. */
+export interface SeedInviteCardCodeV0 {
+  code: string | null;
+}
+
+export function decodeSeedInviteCardCodeV0(value: unknown): SeedInviteCardCodeV0 | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (raw.code === null) return { code: null };
+  return typeof raw.code === 'string' && SEED_INVITE_CODE_PATTERN_V0.test(raw.code) ? { code: raw.code } : null;
 }
 
 export interface SeedInviteRedeemResultV0 {
@@ -93,5 +125,8 @@ export function decodeSeedInvitesViewV0(value: unknown): SeedInvitesViewV0 | nul
     codes.push(code);
   }
   if (!raw.member && (raw.root || codes.length > 0)) return null;
-  return { member: raw.member, root: raw.root, quota: raw.quota as number, codes };
+  const view: SeedInvitesViewV0 = { member: raw.member, root: raw.root, quota: raw.quota as number, codes };
+  // Only a member can have agreed; anything but a boolean is dropped, never trusted.
+  if (raw.member && typeof raw.cardConsent === 'boolean') view.cardConsent = raw.cardConsent;
+  return view;
 }

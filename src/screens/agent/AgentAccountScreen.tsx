@@ -446,7 +446,8 @@ export function AgentAccountScreen() {
 
     Alert.alert(
       t({ en: 'Open Independent Wallet', zh: '打开独立钱包' }),
-      t({ en: `Create an MPC wallet for "${agent.name}"?\n\nThis generates a self-custody wallet where only this agent can sign transactions within its spending limits.`, zh: `要为“${agent.name}”创建 MPC 钱包吗？\n\n这会生成一个自托管钱包，只有该智能体能在其支出限制内签署交易。` }),
+      // L8 A9: honest wording. The key is kept in shares and combined on the Agentrix server to sign; not self-custody.
+      t({ en: `Create a wallet for "${agent.name}"?\n\nThe key is kept in 3 shares; Agentrix combines two of them on its server to sign, and only within this agent's spending limits.`, zh: `要为“${agent.name}”创建钱包吗？\n\n私钥分成 3 份保管；签名时由 Agentrix 服务器临时合成其中两份，而且只在该智能体的支出限制内签署。` }),
       [
         { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
         {
@@ -748,7 +749,7 @@ export function AgentAccountScreen() {
             <View style={styles.headerCard}>
               <Text style={styles.headerTitle}>{t({ en: 'Agent Accounts', zh: '智能体账户' })}</Text>
               <Text style={styles.headerSub}>
-                {t({ en: 'Each agent account is an autonomous identity with its own spending limits and optional self-custody wallet.', zh: '每个智能体账户都是一个独立身份，拥有自己的支出限制，并可选配自托管钱包。' })}
+                {t({ en: 'Each agent account is an autonomous identity with its own spending limits and an optional wallet of its own.', zh: '每个智能体账户都是一个独立身份，拥有自己的支出限制，并可选配一个自己的钱包。' })}
               </Text>
             </View>
           }

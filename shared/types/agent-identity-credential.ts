@@ -51,6 +51,8 @@ export interface IdentityCredentialStateV1 {
   did: string | null;
   credential: IdentityCredentialV1 | null;
   verified: boolean;
+  /** L8 B7: set (with `verified: false`) once the owner revoked this DID. Older servers omit it. */
+  revoked?: { revokedAt: string } | null;
 }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -106,8 +108,11 @@ export function decodeIdentityCredentialStateV1(body: unknown): IdentityCredenti
   if (!data || typeof data.verified !== 'boolean') return null;
   const did = data.did === null ? null : typeof data.did === 'string' && data.did.startsWith('did:') ? data.did : undefined;
   if (did === undefined) return null;
-  if (data.credential === null) return { did, credential: null, verified: false };
+  const revokedRaw = record(data.revoked);
+  // A revoked DID never reads as verified, whatever else the body says.
+  const revoked = revokedRaw && typeof revokedRaw.revokedAt === 'string' && !Number.isNaN(Date.parse(revokedRaw.revokedAt)) ? { revokedAt: revokedRaw.revokedAt } : null;
+  if (data.credential === null) return { did, credential: null, verified: false, ...(revoked ? { revoked } : {}) };
   const credential = decodeIdentityCredentialV1(data.credential);
   if (!credential || credential.credentialSubject.id !== did) return null;
-  return { did, credential, verified: data.verified };
+  return { did, credential, verified: revoked ? false : data.verified, ...(revoked ? { revoked } : {}) };
 }

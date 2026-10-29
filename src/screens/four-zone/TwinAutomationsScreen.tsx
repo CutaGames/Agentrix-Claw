@@ -25,6 +25,8 @@ import {
   type AutomationAction,
 } from '../../services/agentAutomations';
 import { mobileAgentAutomationsClient } from '../../services/agentAutomationsSession';
+import { skillDraftsEnabled } from '../../services/skillDrafts';
+import { TwinSkillDrafts } from './TwinSkillDrafts';
 
 type Lang = 'zh' | 'en';
 type Styles = ReturnType<typeof makeStyles>;
@@ -228,6 +230,8 @@ export function TwinAutomationsScreen() {
           </View>
         );
       })}
+      {/* L8 C2: skill drafts that grew from these automations; only in builds with EXPO_PUBLIC_SKILL_DISTILL=1. */}
+      {skillDraftsEnabled(process.env.EXPO_PUBLIC_SKILL_DISTILL) ? <TwinSkillDrafts /> : null}
     </ScrollView>
   );
 }

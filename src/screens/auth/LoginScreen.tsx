@@ -30,6 +30,7 @@ import {
 import {
   EMAIL_CODE_RESEND_SECONDS,
   LOGIN_LEGAL_URLS,
+  frozenSignInText,
   isLoginCode,
   isLoginEmail,
   loginLayout,
@@ -55,7 +56,7 @@ const SOCIAL: Partial<Record<LoginMethodId, () => Promise<unknown>>> = {
 
 export function LoginScreen() {
   const navigation = useNavigation<Nav>();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const styles = useThemedStyles(makeStyles);
   const [mode, setMode] = useState<Mode>('choose');
   const [showMore, setShowMore] = useState(false);
@@ -93,6 +94,12 @@ export function LoginScreen() {
   }, [cooldown]);
 
   const fail = (title: { en: string; zh: string }, error: unknown, fallback: { en: string; zh: string }) => {
+    // L8-9 item 5: a frozen account says so in the app language, with the support address.
+    const frozen = frozenSignInText(error, language);
+    if (frozen) {
+      Alert.alert(t({ en: "Can't sign in", zh: '无法登录' }), frozen);
+      return;
+    }
     // E84 C sign-in errors carry their own text in both languages (MobileHandoffSignInError).
     const localized = (error as { localized?: { en: string; zh: string } } | null)?.localized;
     Alert.alert(t(title), (localized && t(localized)) || (error as { message?: string } | null)?.message || t(fallback));

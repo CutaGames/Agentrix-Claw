@@ -44,6 +44,10 @@ import { MOBILE_M0_ENABLED, MOBILE_M0_NEEDS_YOU_LABEL, MOBILE_M0_TAB_ICONS, mobi
 import { GLOBAL_PTT_ENABLED } from '../../services/pushToTalk';
 import { AGENT_MAILBOX_ENABLED } from '../../services/agentMailbox';
 import { TwinMailboxScreen } from '../../screens/four-zone/TwinMailboxScreen';
+import { TwinRelationshipsScreen } from '../../screens/four-zone/TwinRelationshipsScreen';
+import { RELATIONSHIP_BOOK_ENABLED } from '../../services/relationshipBook';
+import { TwinCardExchangeScreen } from '../../screens/four-zone/TwinCardExchangeScreen';
+import { CARD_EXCHANGE_ENABLED } from '../../services/cardExchange';
 import { GlobalPushToTalk } from '../../components/GlobalPushToTalk';
 
 type FourZoneTabParamList = {
@@ -65,6 +69,8 @@ type TwinStackParamList = {
   TwinIncome: { tab?: string; ref?: string } | undefined;
   TwinVoice: undefined;
   TwinMailbox: undefined;
+  TwinRelationships: undefined;
+  TwinCardExchange: undefined;
   TwinQr: TwinQrParams;
   TwinAnswers: undefined;
   BuyerOrders: { ref?: string } | undefined;
@@ -132,12 +138,20 @@ function TwinNavigator() {
       {AGENT_MAILBOX_ENABLED ? (
         <TwinStack.Screen name="TwinMailbox" component={TwinMailboxScreen} options={{ title: t({ en: 'Mailbox', zh: '邮箱' }) }} />
       ) : null}
+      {/* L8 R4 relationship book: registered only in builds with EXPO_PUBLIC_RELATIONSHIP_BOOK=1. */}
+      {RELATIONSHIP_BOOK_ENABLED ? (
+        <TwinStack.Screen name="TwinRelationships" component={TwinRelationshipsScreen} options={{ title: t({ en: 'Relationship book', zh: '关系簿' }) }} />
+      ) : null}
       {/* Twin voice from the owner's own ElevenLabs: registered only in builds with EXPO_PUBLIC_TWIN_VOICE_ELEVENLABS_ENABLED=1. */}
       {TWIN_VOICE_ENABLED ? (
         <TwinStack.Screen name="TwinVoice" component={TwinVoiceScreen} options={{ title: t({ en: 'Twin voice', zh: '分身的声音' }) }} />
       ) : null}
       {/* M0: the card's QR code full screen, opened from 分身. */}
-      {MOBILE_M0_ENABLED ? <TwinStack.Screen name="TwinQr" component={TwinQrScreen} options={{ headerShown: false, presentation: 'fullScreenModal' }} /> : null}
+      {/* L8 R6 card exchange: registered only in builds with EXPO_PUBLIC_CARD_EXCHANGE=1 (and the relationship book on). */}
+      {CARD_EXCHANGE_ENABLED ? (
+        <TwinStack.Screen name="TwinCardExchange" component={TwinCardExchangeScreen} options={{ title: t({ en: 'Swap cards', zh: '交换名片' }) }} />
+      ) : null}
+      {MOBILE_M0_ENABLED || CARD_EXCHANGE_ENABLED ? <TwinStack.Screen name="TwinQr" component={TwinQrScreen} options={{ headerShown: false, presentation: 'fullScreenModal' }} /> : null}
       {/* M0: the answers visitors meet and the card's services, edited natively. */}
       {MOBILE_M0_ENABLED ? <TwinStack.Screen name="TwinAnswers" component={TwinAnswersScreen} options={{ title: t({ en: 'Answers and services', zh: '问答与服务' }) }} /> : null}
       {/* M1: the orders the owner placed, read only, next to the ones the twin took. */}

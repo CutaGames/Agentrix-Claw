@@ -46,8 +46,14 @@ import type { VisibilityActionReceiptV1, VisibilityChangeV1, VisibilityPreviewV1
 
 export const ORDER_ESCROW_SCHEMA_VERSION = 'agentrix.order.v0' as const;
 
-export const ORDER_KINDS = ['paid_question', 'consultation_deposit'] as const;
+export const ORDER_KINDS = ['paid_question', 'consultation_deposit', 'device_rental'] as const;
 export type OrderKindV1 = (typeof ORDER_KINDS)[number];
+/**
+ * L8 DG: the kinds a catalogue offer or a public order request may name. `device_rental` orders are made only by the
+ * device rental service (test-mode escrow for a metered job), never through the public create routes.
+ */
+export const ORDER_PUBLIC_KINDS = ['paid_question', 'consultation_deposit'] as const;
+export type OrderPublicKindV1 = (typeof ORDER_PUBLIC_KINDS)[number];
 
 export const ORDER_STATUSES = [
   'awaiting_payment', // 已下单，等买方付款（有付款期限）
@@ -303,7 +309,7 @@ export const ORDER_RECONCILE_TARGETS: readonly OrderStatusV1[] = ['awaiting_paym
 /** E52 ①：默认期限（服务端可配置）。 */
 export const ORDER_DEFAULT_WINDOWS_SECONDS = {
   payment: 30 * 60,
-  acceptance: { paid_question: 72 * 60 * 60, consultation_deposit: 7 * 24 * 60 * 60 },
+  acceptance: { paid_question: 72 * 60 * 60, consultation_deposit: 7 * 24 * 60 * 60, device_rental: 24 * 60 * 60 },
 } as const;
 /** E52 ④：平台裁决争议的时限。 */
 export const ORDER_DISPUTE_DECISION_SECONDS = 7 * 24 * 60 * 60;
@@ -346,7 +352,7 @@ export interface OrderEventV1 {
 /** `POST /api/order-escrow/orders`：只有目录引用和买方内容，不带金额。 */
 export interface CreateOrderRequestV1 {
   offerRef: string;
-  kind: OrderKindV1;
+  kind: OrderPublicKindV1;
   /** 付费问答的问题，或定金的备注。服务端限长、做内容检查。 */
   buyerNote: string;
   idempotencyKey: string;
@@ -552,7 +558,7 @@ export function orderOfferWithdrawChangeV1(offerRef: string): VisibilityChangeV1
 
 export interface CreateOrderOfferRequestV1 {
   sellerAgentId: string;
-  kind: OrderKindV1;
+  kind: OrderPublicKindV1;
   title: string;
   description: string | null;
   price: Money;
@@ -573,14 +579,19 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 function isText(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && [...value].length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
 }
-function checkOfferPrice(value: unknown, errors: string[]): void {
+/** L8 D7: with market expansion on, the server also accepts these currencies (default: none, USD and SGD only). */
+export interface OrderOfferValidationOptionsV1 {
+  extraCurrencies?: readonly string[];
+}
+
+function checkOfferPrice(value: unknown, errors: string[], options?: OrderOfferValidationOptionsV1): void {
   const m = value as Money | undefined;
   if (
     !isPlainRecord(m) ||
     Object.keys(m).some((key) => key !== 'amountMinor' && key !== 'currency' && key !== 'decimals') ||
     typeof m.amountMinor !== 'string' ||
     !/^[1-9][0-9]{0,9}$/.test(m.amountMinor) ||
-    !(ORDER_OFFER_CURRENCIES as readonly string[]).includes(m.currency as string) ||
+    !([...ORDER_OFFER_CURRENCIES, ...(options?.extraCurrencies ?? [])] as readonly string[]).includes(m.currency as string) ||
     m.decimals !== ORDER_OFFER_PRICE_LIMITS_MINOR.decimals ||
     Number(m.amountMinor) < ORDER_OFFER_PRICE_LIMITS_MINOR.min ||
     Number(m.amountMinor) > ORDER_OFFER_PRICE_LIMITS_MINOR.max
@@ -589,23 +600,23 @@ function checkOfferPrice(value: unknown, errors: string[]): void {
   }
 }
 
-export function validateCreateOrderOfferRequestV1(value: unknown): OrderValidationV1 {
+export function validateCreateOrderOfferRequestV1(value: unknown, options?: OrderOfferValidationOptionsV1): OrderValidationV1 {
   if (!isPlainRecord(value)) return { valid: false, errors: ['body: expected object'] };
   const errors: string[] = [];
   for (const key of Object.keys(value)) {
     if (!['sellerAgentId', 'kind', 'title', 'description', 'price'].includes(key)) errors.push(`${key}: unexpected field`);
   }
   if (typeof value.sellerAgentId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(value.sellerAgentId)) errors.push('sellerAgentId: invalid');
-  if (!(ORDER_KINDS as readonly string[]).includes(value.kind as string)) errors.push('kind: invalid');
+  if (!(ORDER_PUBLIC_KINDS as readonly string[]).includes(value.kind as string)) errors.push('kind: invalid');
   if (!isText(value.title, ORDER_OFFER_TITLE_MAX_CHARS)) errors.push(`title: 1-${ORDER_OFFER_TITLE_MAX_CHARS} characters`);
   if (value.description !== null && !isText(value.description, ORDER_OFFER_DESCRIPTION_MAX_CHARS)) {
     errors.push(`description: null or 1-${ORDER_OFFER_DESCRIPTION_MAX_CHARS} characters`);
   }
-  checkOfferPrice(value.price, errors);
+  checkOfferPrice(value.price, errors, options);
   return { valid: errors.length === 0, errors };
 }
 
-export function validateUpdateOrderOfferRequestV1(value: unknown): OrderValidationV1 {
+export function validateUpdateOrderOfferRequestV1(value: unknown, options?: OrderOfferValidationOptionsV1): OrderValidationV1 {
   if (!isPlainRecord(value)) return { valid: false, errors: ['body: expected object'] };
   const errors: string[] = [];
   for (const key of Object.keys(value)) {
@@ -616,7 +627,7 @@ export function validateUpdateOrderOfferRequestV1(value: unknown): OrderValidati
   if (value.description !== undefined && value.description !== null && !isText(value.description, ORDER_OFFER_DESCRIPTION_MAX_CHARS)) {
     errors.push(`description: null or 1-${ORDER_OFFER_DESCRIPTION_MAX_CHARS} characters`);
   }
-  if (value.price !== undefined) checkOfferPrice(value.price, errors);
+  if (value.price !== undefined) checkOfferPrice(value.price, errors, options);
   if (value.title === undefined && value.description === undefined && value.price === undefined) errors.push('body: nothing to change');
   return { valid: errors.length === 0, errors };
 }
@@ -628,7 +639,7 @@ export function validateCreateOrderRequestV1(value: unknown): OrderValidationV1 
     if (!['offerRef', 'kind', 'buyerNote', 'idempotencyKey'].includes(key)) errors.push(`${key}: unexpected field`);
   }
   if (typeof value.offerRef !== 'string' || !ORDER_OFFER_REF_PATTERN.test(value.offerRef)) errors.push('offerRef: invalid');
-  if (!(ORDER_KINDS as readonly string[]).includes(value.kind as string)) errors.push('kind: invalid');
+  if (!(ORDER_PUBLIC_KINDS as readonly string[]).includes(value.kind as string)) errors.push('kind: invalid');
   if (!isText(value.buyerNote, ORDER_BUYER_NOTE_MAX_CHARS)) errors.push(`buyerNote: 1-${ORDER_BUYER_NOTE_MAX_CHARS} characters`);
   if (typeof value.idempotencyKey !== 'string' || !ORDER_IDEMPOTENCY_KEY_PATTERN.test(value.idempotencyKey)) errors.push('idempotencyKey: invalid');
   return { valid: errors.length === 0, errors };
@@ -903,6 +914,8 @@ export function orderPlatformFeeV1(total: Money, feeBps: number): Money {
 export const ORDER_DELIVERY_WINDOW_SECONDS_V13: Readonly<Record<OrderKindV1, number>> = {
   paid_question: 72 * 60 * 60,
   consultation_deposit: 14 * 24 * 60 * 60,
+  // L8 DG: a backstop only; the rental service times a running job out much sooner (DEVICE_RENTAL_RUN_LIMIT_SECONDS).
+  device_rental: 24 * 60 * 60,
 };
 
 /** 交付期限：付款时间 + 交付窗口。没付款返回 null。 */

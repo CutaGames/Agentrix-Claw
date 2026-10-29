@@ -174,6 +174,7 @@ export function createMobileChannelInboxClient(deps: {
 export const CHANNEL_PLATFORM_COPY: Readonly<Record<AgentChannelPlatformV0, Copy>> = {
   telegram: { zh: 'Telegram', en: 'Telegram' },
   whatsapp: { zh: 'WhatsApp', en: 'WhatsApp' },
+  line: { zh: 'LINE', en: 'LINE' },
 };
 
 /** Same words as the contract's group notice (`agentChannelGroupNoticeV0`). */

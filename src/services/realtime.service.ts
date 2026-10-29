@@ -417,7 +417,7 @@ export async function directClaudeChat(opts: DirectClaudeOptions): Promise<{ con
  * Fake-stream a directClaudeChat response word-by-word so the UI shows streaming effect.
  */
 export function streamDirectClaude(
-  opts: DirectClaudeOptions & { onChunk: ChunkCallback; onDone: DoneCallback; onError: ErrorCallback; onEvent?: (event: StreamEvent) => void }
+  opts: DirectClaudeOptions & { onChunk: ChunkCallback; onDone: DoneCallback; onError: ErrorCallback; onEvent?: (event: StreamEvent) => void; onMeta?: (meta: unknown) => void }
 ): AbortController {
   const ac = new AbortController();
   (async () => {
@@ -432,6 +432,7 @@ export function streamDirectClaude(
           onDone: opts.onDone,
           onError: opts.onError,
           onEvent: opts.onEvent,
+          onMeta: opts.onMeta,
         },
       });
     } catch (err: any) {

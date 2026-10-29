@@ -18,6 +18,7 @@ import {
   type AuthProviderIdV1,
   type AuthProvidersResponseV1,
 } from '../../shared/types/auth-providers';
+import { SESSION_USER_INACTIVE_SIGN_IN_TEXT_V1, isUserInactiveErrorV1 } from '../../shared/types/session-revocation';
 
 export type LoginMethodId = 'google' | 'apple' | 'email_code' | 'email_password' | 'wallet' | 'x' | 'discord' | 'telegram' | 'openclaw';
 
@@ -119,3 +120,11 @@ export function isLoginCode(value: string): boolean {
 }
 
 export const EMAIL_CODE_RESEND_SECONDS = 60;
+
+/**
+ * L8-9 item 5: a frozen account (server code `user_inactive`) gets one sentence in the app language with the support
+ * address instead of the server's mixed text; null for any other error.
+ */
+export function frozenSignInText(error: unknown, language: 'zh' | 'en'): string | null {
+  return isUserInactiveErrorV1(error) ? SESSION_USER_INACTIVE_SIGN_IN_TEXT_V1[language] : null;
+}

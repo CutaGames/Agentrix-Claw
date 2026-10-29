@@ -108,7 +108,16 @@ export function identityCredentialView(read: IdentityCredentialRead | 'loading')
   if (read.kind === 'unreadable') {
     return { headline: { zh: '身份凭证暂时读不到，请稍后再看。', en: 'The identity credential cannot be read right now.' }, signature: null, did: null, notes: [] };
   }
-  const { did, credential, verified } = read.state;
+  const { did, credential, verified, revoked } = read.state;
+  if (did !== null && revoked) {
+    // L8 B7: the owner revoked this DID; the credential no longer counts.
+    return {
+      headline: { zh: `已吊销 · ${revoked.revokedAt.slice(0, 10)}`, en: `Revoked · ${revoked.revokedAt.slice(0, 10)}` },
+      signature: null,
+      did,
+      notes: [{ zh: '这个 DID 不再有效，身份凭证也不再通过验证。', en: 'This DID is no longer valid and its identity credential no longer verifies.' }],
+    };
+  }
   if (did === null) {
     return {
       headline: { zh: '这只 Agent 还没有钱包，所以没有 DID，也没有身份凭证。', en: 'This Agent has no wallet yet, so it has no DID and no identity credential.' },

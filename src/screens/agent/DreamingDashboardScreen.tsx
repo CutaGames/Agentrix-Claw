@@ -14,6 +14,8 @@ import { colors } from '../../theme/colors';
 import { useAuthStore } from '../../stores/authStore';
 import { themedStyles } from '../../theme/useTheme';
 import { classifyDreamingFailure, readDreamingBody, type DreamingProblem } from '../../services/dreamingFailure';
+import { MemoryInboxCard } from '../../components/MemoryInboxCard';
+import { MEMORY_PROPOSALS_ENABLED } from '../../services/memoryProposals';
 
 type DreamPhase = 'light' | 'deep' | 'rem';
 type DreamStatus = 'pending' | 'running' | 'completed' | 'failed';
@@ -155,6 +157,7 @@ export function DreamingDashboardScreen() {
   if (problem === 'unavailable') {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
+        {MEMORY_PROPOSALS_ENABLED ? <MemoryInboxCard /> : null}
         <Text style={styles.emptyText} testID="dream-unavailable">
           {t({ en: 'Dreaming is not available yet', zh: '梦境引擎暂不可用' })}
         </Text>
@@ -199,6 +202,7 @@ export function DreamingDashboardScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderSession}
         contentContainerStyle={styles.list}
+        ListHeaderComponent={MEMORY_PROPOSALS_ENABLED ? <MemoryInboxCard /> : null}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchSessions} />}
         ListEmptyComponent={
           problem === 'error' ? (

@@ -12,20 +12,50 @@
  * - `retryAfterSeconds`：429 时多少秒以后再试（整数，0–86400），和响应头 `Retry-After` 一致（E84 B 的二次确认）。
  * - `view`：只给 `API_ERROR_VIEW_CODES_V1` 里的错误码转发，是那条记录现在的样子（`spend-budget.ts` 的 409 合同）；
  *   别的错误码带了 `view` 也丢掉。
+ * - `field`: the request field or path the error is about (e.g. `passId`, `boundary.tools`, `items[3].dataClass`);
+ *   only a string matching `API_ERROR_FIELD_PATTERN_V1`.
+ * - `detail`: a lower-case machine sub-code under `code` (e.g. `pass_revoked`); only a string matching `API_ERROR_DETAIL_PATTERN_V1`.
+ * - `messageZh`: the Chinese user-facing text; only a non-empty string of at most `API_ERROR_MESSAGE_MAX_V1` characters.
+ * - `messageEn`: the English user-facing text; same shape as `messageZh`.
+ * `error`, `reason`, `details` and `stack` are never forwarded (they can carry internal class names or traces).
  *
  * 客户端解析要宽松：只认自己需要的键，未知键忽略；`message` 只用于显示，不要按文字做分支。
  */
 
-export const API_ERROR_FORWARDED_KEYS = ['reasonCode', 'blockedBy', 'capability', 'errors', 'current', 'retryAfterSeconds', 'view'] as const;
+export const API_ERROR_FORWARDED_KEYS = [
+  'reasonCode',
+  'blockedBy',
+  'capability',
+  'errors',
+  'current',
+  'retryAfterSeconds',
+  'view',
+  'field',
+  'detail',
+  'messageZh',
+  'messageEn',
+] as const;
 export type ApiErrorForwardedKeyV1 = (typeof API_ERROR_FORWARDED_KEYS)[number];
 export const API_ERROR_ERRORS_MAX = 50;
 export const API_ERROR_RETRY_AFTER_MAX_SECONDS = 86400;
+/** A field name or path such as `passId`, `boundary.tools`, `items[3].dataClass` or `$`; at most 128 characters, no spaces. */
+export const API_ERROR_FIELD_PATTERN_V1 = /^[A-Za-z0-9_$][A-Za-z0-9_$.\[\]:-]{0,127}$/;
+/** A lower-case machine sub-code such as `pass_revoked`; at most 64 characters. */
+export const API_ERROR_DETAIL_PATTERN_V1 = /^[a-z][a-z0-9_]{0,63}$/;
+/** Longest `messageZh` / `messageEn` the filter forwards. */
+export const API_ERROR_MESSAGE_MAX_V1 = 500;
 
 /**
  * 梦境入口（`/api/dreaming/*`）在服务端没有梦境存储时回 503，错误体 `code` 是这个值（`DreamingService`）。
  * 手机、电脑按它显示「梦境引擎暂不可用」，不要按 `message` 文字判断。
  */
 export const DREAMING_UNAVAILABLE_CODE_V1 = 'DREAMING_UNAVAILABLE' as const;
+
+/**
+ * 梦境每人每天次数用完（`POST /api/dreaming/start`），回 429，错误体 `code` 是这个值，`retryAfterSeconds` 是离次日 UTC 零点的秒数。
+ * 上限按 `dreaming_session` 当天（UTC）的行数算，环境变量 `DREAMING_DAILY_LIMIT`，默认 3。
+ */
+export const DREAMING_DAILY_LIMIT_CODE_V1 = 'DREAMING_DAILY_LIMIT_REACHED' as const;
 
 /** 合同写明 409 带当前 `view` 的错误码（`SPEND_BUDGET_SETTINGS_ERROR_CODES_V0.stale`、`SPEND_APPROVAL_ERROR_CODES_V0` 的三个 409）。 */
 export const API_ERROR_VIEW_CODES_V1 = [
@@ -48,6 +78,14 @@ export interface ApiErrorBodyV1 {
   current?: Record<string, unknown>;
   retryAfterSeconds?: number;
   view?: Record<string, unknown>;
+  field?: string;
+  detail?: string;
+  messageZh?: string;
+  messageEn?: string;
+}
+
+function isForwardedMessage(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= API_ERROR_MESSAGE_MAX_V1;
 }
 
 function isRetryAfterSeconds(value: unknown): value is number {
@@ -67,6 +105,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * - `current` 必须是纯对象。
  * - `retryAfterSeconds` 必须是 0–86400 的整数。
  * - `view` 必须是纯对象，而且 `code` 在 `API_ERROR_VIEW_CODES_V1` 里。
+ * - `field` / `detail` must match their patterns; `messageZh` / `messageEn` must be 1-500 character strings.
+ *   Anything else is dropped silently.
  */
 export function pickForwardedApiErrorFieldsV1(body: Record<string, unknown>): Partial<Pick<ApiErrorBodyV1, ApiErrorForwardedKeyV1>> {
   const picked: Partial<Pick<ApiErrorBodyV1, ApiErrorForwardedKeyV1>> = {};
@@ -81,6 +121,10 @@ export function pickForwardedApiErrorFieldsV1(body: Record<string, unknown>): Pa
   if (isPlainObject(body.current)) picked.current = body.current;
   if (isRetryAfterSeconds(body.retryAfterSeconds)) picked.retryAfterSeconds = body.retryAfterSeconds;
   if (isPlainObject(body.view) && (API_ERROR_VIEW_CODES_V1 as readonly unknown[]).includes(body.code)) picked.view = body.view;
+  if (typeof body.field === 'string' && API_ERROR_FIELD_PATTERN_V1.test(body.field)) picked.field = body.field;
+  if (typeof body.detail === 'string' && API_ERROR_DETAIL_PATTERN_V1.test(body.detail)) picked.detail = body.detail;
+  if (isForwardedMessage(body.messageZh)) picked.messageZh = body.messageZh;
+  if (isForwardedMessage(body.messageEn)) picked.messageEn = body.messageEn;
   return picked;
 }
 

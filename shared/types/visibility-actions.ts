@@ -38,7 +38,7 @@ export const VISIBILITY_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 export const VISIBILITY_TIERS = ['tighten', 'loosen', 'content_edit'] as const;
 export type VisibilityTierV1 = (typeof VISIBILITY_TIERS)[number];
 
-export const VISIBILITY_OBJECT_KINDS = ['passport_share', 'passport_persona', 'twin_public', 'representation_mandate', 'twin_indexing', 'order_offer'] as const;
+export const VISIBILITY_OBJECT_KINDS = ['passport_share', 'passport_persona', 'twin_public', 'representation_mandate', 'twin_indexing', 'order_offer', 'agent_pass', 'directed_disclosure'] as const;
 export type VisibilityObjectKindV1 = (typeof VISIBILITY_OBJECT_KINDS)[number];
 
 export const PASSPORT_SHARE_OPERATIONS = [
@@ -63,13 +63,21 @@ export type TwinIndexingOperationV1 = (typeof TWIN_INDEXING_OPERATIONS)[number];
 /** 服务目录条目（`order-escrow.ts` v0.5，T7）：上架（开始公开收钱）是放宽，下架是收紧。 */
 export const ORDER_OFFER_OPERATIONS = ['offer_publish', 'offer_withdraw'] as const;
 export type OrderOfferOperationV1 = (typeof ORDER_OFFER_OPERATIONS)[number];
+/** 统一 Pass（`agent-pass.ts`，L8 1b A5）：签发和放宽是放宽，收紧和撤销是收紧。 */
+export const AGENT_PASS_OPERATIONS = ['pass_issue', 'pass_widen', 'pass_narrow', 'pass_revoke'] as const;
+export type AgentPassOperationV1 = (typeof AGENT_PASS_OPERATIONS)[number];
+/** 定向披露（`directed-disclosure.ts`，L8 3B E2）：批准把一组个人字段送给一个指定地址，是放宽；只有批准这一个操作，拒绝不需要确认。 */
+export const DIRECTED_DISCLOSURE_OPERATIONS = ['disclosure_approve'] as const;
+export type DirectedDisclosureOperationV1 = (typeof DIRECTED_DISCLOSURE_OPERATIONS)[number];
 export type VisibilityOperationV1 =
   | PassportShareOperationV1
   | PassportPersonaOperationV1
   | TwinPublicOperationV1
   | RepresentationMandateOperationV1
   | TwinIndexingOperationV1
-  | OrderOfferOperationV1;
+  | OrderOfferOperationV1
+  | AgentPassOperationV1
+  | DirectedDisclosureOperationV1;
 
 /** 每个操作的级别。操作名在各对象之间不重复。 */
 export const VISIBILITY_OPERATION_TIER: Readonly<Record<VisibilityOperationV1, VisibilityTierV1>> = {
@@ -90,6 +98,11 @@ export const VISIBILITY_OPERATION_TIER: Readonly<Record<VisibilityOperationV1, V
   index_off: 'tighten',
   offer_publish: 'loosen',
   offer_withdraw: 'tighten',
+  pass_issue: 'loosen',
+  pass_widen: 'loosen',
+  pass_narrow: 'tighten',
+  pass_revoke: 'tighten',
+  disclosure_approve: 'loosen',
 };
 
 const OPERATION_ORDER: readonly VisibilityOperationV1[] = [
@@ -99,6 +112,8 @@ const OPERATION_ORDER: readonly VisibilityOperationV1[] = [
   ...REPRESENTATION_MANDATE_OPERATIONS,
   ...TWIN_INDEXING_OPERATIONS,
   ...ORDER_OFFER_OPERATIONS,
+  ...AGENT_PASS_OPERATIONS,
+  ...DIRECTED_DISCLOSURE_OPERATIONS,
 ];
 
 /** 一次改动里只要有一项放宽，整次就按放宽算；有内容编辑按内容编辑算；空改动算收紧（什么也不放开）。 */
@@ -258,6 +273,21 @@ export function twinIndexingChangeV1(agentId: string, indexing: 'index' | 'noind
     objectRef: agentId,
     operations: [indexing === 'index' ? 'index_on' : 'index_off'],
     change: { indexing },
+  };
+}
+/**
+ * 定向披露的批准：objectRef 是披露句柄（`disc_…`）。摘要绑定字段名集合、目的地和目的，主人在批准卡上看到的就是这三样；
+ * 请求被改（多一个字段、换了地址）摘要就对不上。字段值不在里面，也不会出现在预览里。
+ */
+export function directedDisclosureApproveChangeV1(
+  disclosureRef: string,
+  request: { fields: readonly string[]; destination: string; purpose: string },
+): VisibilityChangeV1 {
+  return {
+    objectKind: 'directed_disclosure',
+    objectRef: disclosureRef,
+    operations: ['disclosure_approve'],
+    change: { fields: [...request.fields], destination: request.destination, purpose: request.purpose },
   };
 }
 function orderedShareFields(audience: PassportAudience, fields: readonly PassportShareField[]): PassportShareField[] {

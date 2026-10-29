@@ -10,13 +10,13 @@ import { parseApiErrorBodyV1 } from '../../shared/types/api-error';
 import {
   AGENT_COLLABORATION_KINDS_V0,
   decodeAgentCollaborationVerificationV1,
-  isAgentCollaborationTierV0,
+  isAgentCollaborationTierV1,
   normalizeAgentCollaborationIdentityV0,
   type AgentCollaborationIdentityV0,
   type AgentCollaborationKindV0,
   type AgentCollaborationRelationshipViewV0,
   type AgentCollaborationRequestViewV0,
-  type AgentCollaborationTierV0,
+  type AgentCollaborationTierV1,
 } from '../../shared/types/agent-collaboration';
 
 type Copy = { zh: string; en: string };
@@ -27,6 +27,8 @@ export function agentCollaborationEnabled(value: unknown): boolean {
 
 // Read as a literal member expression so the Expo build inlines it.
 export const AGENT_COLLABORATION_ENABLED = agentCollaborationEnabled(process.env.EXPO_PUBLIC_AGENT_COLLABORATION);
+/** L8 1b R2: EXPO_PUBLIC_AGENT_COLLABORATION_PASS_PRESETS=1 adds the community tier and the preset preview. */
+export const AGENT_COLLABORATION_PASS_PRESETS_ENABLED = agentCollaborationEnabled(process.env.EXPO_PUBLIC_AGENT_COLLABORATION_PASS_PRESETS);
 
 export type AgentCollaborationFailureV0 = 'closed' | 'invalid' | 'no_session' | 'unreadable' | 'unavailable';
 
@@ -39,7 +41,7 @@ export class AgentCollaborationError extends Error {
   }
 }
 
-const AUDIENCES = ['stranger', 'client', 'collaborator', 'family'];
+const AUDIENCES = ['stranger', 'client', 'collaborator', 'family', 'community'];
 const isIso = (v: unknown): v is string => typeof v === 'string' && v.length <= 40 && !Number.isNaN(Date.parse(v));
 const isTextOrNull = (v: unknown, max: number): v is string | null => v === null || (typeof v === 'string' && v.length <= max);
 
@@ -75,7 +77,7 @@ function decodeRelationship(value: unknown): AgentCollaborationRelationshipViewV
   if (!value || typeof value !== 'object') return null;
   const r = value as Record<string, unknown>;
   const identity = normalizeAgentCollaborationIdentityV0(r.identity);
-  return identity && isAgentCollaborationTierV0(r.tier) && isIso(r.updatedAt) ? { identity, tier: r.tier, updatedAt: r.updatedAt } : null;
+  return identity && isAgentCollaborationTierV1(r.tier) && isIso(r.updatedAt) ? { identity, tier: r.tier, updatedAt: r.updatedAt } : null;
 }
 
 function listOf<T>(body: unknown, decode: (v: unknown) => T | null): T[] | null {
@@ -100,7 +102,7 @@ export interface MobileAgentCollaborationClientV0 {
   requests(): Promise<AgentCollaborationRequestViewV0[]>;
   relationships(): Promise<AgentCollaborationRelationshipViewV0[]>;
   /** null puts the counterpart back to stranger. */
-  setTier(identity: AgentCollaborationIdentityV0, tier: AgentCollaborationTierV0 | null): Promise<void>;
+  setTier(identity: AgentCollaborationIdentityV0, tier: AgentCollaborationTierV1 | null): Promise<void>;
 }
 
 export function createMobileAgentCollaborationClient(deps: {
@@ -136,7 +138,7 @@ export function createMobileAgentCollaborationClient(deps: {
     relationships: () => list('/agent-collaboration/relationships', decodeRelationship),
     setTier: async (identity, tier) => {
       const checked = normalizeAgentCollaborationIdentityV0(identity);
-      if (!checked || !(tier === null || isAgentCollaborationTierV0(tier))) throw new AgentCollaborationError('invalid');
+      if (!checked || !(tier === null || isAgentCollaborationTierV1(tier))) throw new AgentCollaborationError('invalid');
       await send('PUT', '/agent-collaboration/relationships', { identity: checked, tier });
     },
   };
@@ -146,7 +148,7 @@ export function createMobileAgentCollaborationClient(deps: {
 export function counterpartTier(
   relationships: readonly AgentCollaborationRelationshipViewV0[],
   identity: AgentCollaborationIdentityV0,
-): AgentCollaborationTierV0 | 'stranger' {
+): AgentCollaborationTierV1 | 'stranger' {
   return relationships.find((r) => r.identity.kind === identity.kind && r.identity.value === identity.value)?.tier ?? 'stranger';
 }
 
@@ -163,11 +165,12 @@ export function agentCollaborationVerificationCopy(request: Pick<AgentCollaborat
   return request.verifiedBy === 'dns' ? { zh: '已核实 · 域名', en: 'Verified · domain' } : { zh: '已核实 · 护照签名', en: 'Verified · passport signature' };
 }
 
-export const AGENT_COLLABORATION_TIER_COPY: Readonly<Record<AgentCollaborationTierV0 | 'stranger', Copy>> = {
+export const AGENT_COLLABORATION_TIER_COPY: Readonly<Record<AgentCollaborationTierV1 | 'stranger', Copy>> = {
   stranger: { zh: '陌生人', en: 'Stranger' },
   client: { zh: '客户', en: 'Client' },
   collaborator: { zh: '合作者', en: 'Collaborator' },
   family: { zh: '家人', en: 'Family' },
+  community: { zh: '学员 / 社群', en: 'Students / community' },
 };
 
 export const AGENT_COLLABORATION_FAILURE_COPY: Readonly<Record<AgentCollaborationFailureV0, Copy>> = {

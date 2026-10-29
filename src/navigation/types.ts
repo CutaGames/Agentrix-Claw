@@ -93,6 +93,8 @@ export type ShareCardRouteParams = {
   /** Optional pair of small images (e.g. home/away team flags) shown as a VS strip. */
   leftImageUrl?: string;
   rightImageUrl?: string;
+  /** Set when the card shares an AI twin: draws the twin mark (owner photo or initial, ring, AI 分身 label) at the top. */
+  twin?: { name?: string | null; photoUrl?: string | null };
 };
 
 export type MarketStackParamList = {

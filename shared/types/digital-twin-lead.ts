@@ -102,6 +102,12 @@ export interface DigitalTwinLeadReceiptV1 {
   retentionExpiresAt: string;
   consentCopyVersion: number;
   createdAt: string;
+  /**
+   * L8 R4: only while the relationship book is on. A random secret made for this one lead and shown to the Visitor once;
+   * the Visitor's browser keeps it to see and take back what they left. The owner never sees it (it is not in the lead
+   * record, the list or the export); the book stores only its hash.
+   */
+  withdrawToken?: string;
 }
 
 /** Query-string command for the owner export: `format` only. */

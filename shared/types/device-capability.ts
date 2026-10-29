@@ -538,8 +538,11 @@ export interface DeviceRentalOfferV0 {
   priceCentsPerUnit: number;
   /** 单个任务的上限，取自设备声明的 `limits`。 */
   limits: Record<string, number>;
-  /** 证明活真的干了：先只有"重复执行比对 / 抽样核验"。 */
-  verification: 'replay_sample';
+  /**
+   * 证明活真的干了：先只有"重复执行比对 / 抽样核验"。`none` = 这个平台现在不抽查（`DEVICE_RENTAL_SAMPLE_PERMILLE` 为 0）；
+   * `replay_sample` = 买方下单时同意的话，输入可能被送到另一个主人的设备上比对（评审 M4）。
+   */
+  verification: 'replay_sample' | 'none';
   /** 设备证明的强度。 */
   assurance: 'device_key' | 'hardware_attested';
   /** 卖方的完成数、完成率（万分比，没有记录时为 null）和争议数，来自护照。 */
@@ -573,7 +576,7 @@ export function decodeDeviceRentalOfferV0(value: unknown): DeviceRentalOfferV0 |
   if (!isOneOf(value.unit, DEVICE_RENTAL_UNITS_V0)) return null;
   if (!Number.isInteger(value.priceCentsPerUnit) || (value.priceCentsPerUnit as number) < 1) return null;
   if (!isRecord(value.limits) || Object.values(value.limits).some((n) => !Number.isInteger(n) || (n as number) < 0)) return null;
-  if (value.verification !== 'replay_sample' || !isOneOf(value.assurance, ['device_key', 'hardware_attested'] as const)) return null;
+  if (!isOneOf(value.verification, ['replay_sample', 'none'] as const) || !isOneOf(value.assurance, ['device_key', 'hardware_attested'] as const)) return null;
   const rep = value.reputation;
   if (!isRecord(rep) || !Number.isInteger(rep.completedJobs) || (rep.completedJobs as number) < 0) return null;
   if (!Number.isInteger(rep.disputes) || (rep.disputes as number) < 0) return null;
@@ -761,4 +764,112 @@ export function decodeDeviceRentalJobViewV0(value: unknown): DeviceRentalJobView
   if (value.output !== null && (typeof value.output !== 'string' || value.role !== 'buyer')) return null;
   if (!isIso(value.createdAt) || (value.finishedAt !== null && !isIso(value.finishedAt))) return null;
   return value as unknown as DeviceRentalJobViewV0;
+}
+
+// ── 8. 规则存取（L8 第 3 批第 0 步，coord 10-20；只加不改） ─────────────────────────────────────
+
+/**
+ * 主人规则（第 3 节的 `DeviceCapabilityRuleV0`）怎么存、怎么读。表 `device_capability_rules` 和读写服务由线 3C（D3）做；
+ * 线 4A（DG 第 4 关的出租规则，`other_agents`）只经端口 `DeviceCapabilityRuleStorePortV1`
+ * （`backend/src/common/ports/l8-3.ports.ts`）调用。没有注册实现时一律拒绝，不抛异常。
+ *
+ * - 一条规则由 `(主人, deviceId, capabilityType)` 定位；属主是端口的第一个参数，由调用方从登录态取，不从请求体取。
+ * - 乐观并发：写的时候 `rule.revision` 是调用方读到的版本（新规则写 0）；和库里的当前版本一致才写，写完版本加 1 并返回；
+ *   不一致回 `revision_conflict`。
+ * - 调用方（路由、出租闸门）把任何 `found: false` 都当作「没有规则」，也就是不放行、不可出租，包括 `port_unavailable`。
+ * - 写之前要过 `validateDeviceCapabilityRuleV0`；过不了回 `invalid_rule` 并带 `errors`。
+ */
+export const DEVICE_CAPABILITY_RULE_STORE_SCHEMA_VERSION_V0 = 0 as const;
+
+export const DEVICE_CAPABILITY_RULE_STORE_REASON_CODES_V0 = [
+  /** 这台设备的这项能力没有规则（或者设备不是这个主人的，不区分）。 */
+  'rule_not_found',
+  'revision_conflict',
+  'invalid_rule',
+  /** 设备不存在，或者不是这个主人的（不区分，不给探测）。 */
+  'device_not_found',
+  /** 没有注册实现：默认拒绝。 */
+  'port_unavailable',
+] as const;
+export type DeviceCapabilityRuleStoreReasonCodeV0 = (typeof DEVICE_CAPABILITY_RULE_STORE_REASON_CODES_V0)[number];
+
+/** 定位一条规则。 */
+export interface DeviceCapabilityRuleRefV0 {
+  deviceId: string;
+  capabilityType: string;
+}
+
+export type DeviceCapabilityRuleReadOutcomeV0 =
+  | { found: true; rule: DeviceCapabilityRuleV0 }
+  | { found: false; reasonCode: DeviceCapabilityRuleStoreReasonCodeV0 };
+
+export type DeviceCapabilityRuleListOutcomeV0 =
+  | { listed: true; rules: DeviceCapabilityRuleV0[] }
+  | { listed: false; reasonCode: DeviceCapabilityRuleStoreReasonCodeV0 };
+
+export type DeviceCapabilityRuleWriteOutcomeV0 =
+  | { stored: true; rule: DeviceCapabilityRuleV0 }
+  | { stored: false; reasonCode: DeviceCapabilityRuleStoreReasonCodeV0; errors?: string[] };
+
+/** 写一条规则的请求体（设置页 → 服务端）。 */
+export interface DeviceCapabilityRulePutV0 {
+  schemaVersion: typeof DEVICE_CAPABILITY_RULE_STORE_SCHEMA_VERSION_V0;
+  rule: DeviceCapabilityRuleV0;
+}
+
+/** 规则里认的字段；多出来的不收。 */
+export const DEVICE_CAPABILITY_RULE_KEYS_V0 = [
+  'deviceId',
+  'capabilityType',
+  'audience',
+  'familyUserIds',
+  'windows',
+  'timezone',
+  'requireIdle',
+  'requireOnPower',
+  'approval',
+  'minPriceCentsPerJob',
+  'maxJobsPerDay',
+  'maxMinutesPerDay',
+  'revision',
+] as const;
+
+/** 路由的查询参数或端口的入参：设备编号加能力类型。 */
+export function decodeDeviceCapabilityRuleRefV0(value: unknown): { ok: true; value: DeviceCapabilityRuleRefV0 } | { ok: false; errors: string[] } {
+  if (!isRecord(value)) return { ok: false, errors: ['ref: expected object'] };
+  const errors: string[] = [];
+  for (const key of Object.keys(value)) if (key !== 'deviceId' && key !== 'capabilityType') errors.push(`${key}: unknown field`);
+  if (typeof value.deviceId !== 'string' || !OPAQUE.test(value.deviceId)) errors.push('deviceId: invalid');
+  if (typeof value.capabilityType !== 'string' || !DEVICE_CAPABILITY_TYPE_PATTERN_V0.test(value.capabilityType)) errors.push('capabilityType: invalid');
+  if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, value: { deviceId: value.deviceId as string, capabilityType: value.capabilityType as string } };
+}
+
+/**
+ * 服务端收到写规则的请求体时用。拒收未知字段（规则里也一样），再过 `validateDeviceCapabilityRuleV0`；
+ * `declaredCategory` 是这台设备声明里这项能力的类别（目录里的类型以目录为准）。返回的规则是只含认识字段的新对象。
+ */
+export function decodeDeviceCapabilityRulePutV0(
+  value: unknown,
+  declaredCategory: DeviceCapabilityCategoryV0,
+): { ok: true; value: DeviceCapabilityRulePutV0 } | { ok: false; errors: string[] } {
+  if (!isRecord(value)) return { ok: false, errors: ['put: expected object'] };
+  const errors: string[] = [];
+  for (const key of Object.keys(value)) if (key !== 'schemaVersion' && key !== 'rule') errors.push(`${key}: unknown field`);
+  if (value.schemaVersion !== DEVICE_CAPABILITY_RULE_STORE_SCHEMA_VERSION_V0) errors.push('schemaVersion: unsupported');
+  const rule = value.rule;
+  if (!isRecord(rule)) {
+    errors.push('rule: expected object');
+    return { ok: false, errors };
+  }
+  for (const key of Object.keys(rule)) if (!(DEVICE_CAPABILITY_RULE_KEYS_V0 as readonly string[]).includes(key)) errors.push(`rule.${key}: unknown field`);
+  const checked = validateDeviceCapabilityRuleV0(rule, declaredCategory);
+  if (!checked.valid) errors.push(...checked.errors.map((error) => `rule.${error}`));
+  if (errors.length > 0) return { ok: false, errors };
+  const clean: Record<string, unknown> = {};
+  for (const key of DEVICE_CAPABILITY_RULE_KEYS_V0) if (rule[key] !== undefined) clean[key] = rule[key];
+  return {
+    ok: true,
+    value: { schemaVersion: DEVICE_CAPABILITY_RULE_STORE_SCHEMA_VERSION_V0, rule: JSON.parse(JSON.stringify(clean)) as DeviceCapabilityRuleV0 },
+  };
 }

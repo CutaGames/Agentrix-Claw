@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { HttpRequestV1, HttpResponseV1, HttpTransportV1 } from '../../../shared/client/transport';
 import { AUTH_PROVIDER_IDS, splitAuthProvidersV1, type AuthProviderIdV1 } from '../../../shared/types/auth-providers';
-import { LOGIN_LEGAL_URLS, LOGIN_METHODS, isLoginCode, isLoginEmail, loginLayout, loginScreenLayout } from '../loginOptions';
+import { LOGIN_LEGAL_URLS, LOGIN_METHODS, frozenSignInText, isLoginCode, isLoginEmail, loginLayout, loginScreenLayout } from '../loginOptions';
 import { AUTH_PROVIDERS_CACHE_MS, clearAuthProvidersCache, readAuthProviders } from '../authProviders';
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -233,5 +233,24 @@ describe('LoginScreen wiring', () => {
 
   it('the old unused login screen is gone', () => {
     expect(fs.existsSync(path.join(ROOT, 'src/screens/LoginScreen.tsx'))).toBe(false);
+  });
+});
+
+describe('frozenSignInText (user_inactive, L8-9 item 5)', () => {
+  const frozen = Object.assign(new Error('账号当前不可用 / This account is not active.'), { status: 403, code: 'user_inactive' });
+  it('gives the exact sentence in the app language', () => {
+    expect(frozenSignInText(frozen, 'zh')).toBe('这个账号已停用，暂时不能登录。如有疑问，请联系我们：support@agentrix.top');
+    expect(frozenSignInText(frozen, 'en')).toBe("This account is suspended, so you can't sign in right now. If you have questions, contact us at support@agentrix.top.");
+  });
+  it('is null for any other error', () => {
+    for (const error of [new Error('Invalid verification code'), { code: 'token_revoked' }, Object.assign(new Error('x'), { status: 403 }), null, 'user_inactive']) {
+      expect(frozenSignInText(error, 'zh')).toBeNull();
+      expect(frozenSignInText(error, 'en')).toBeNull();
+    }
+  });
+  it('the screen checks it first in fail()', () => {
+    const fail = screen.slice(screen.indexOf('const fail = '), screen.indexOf('const run = '));
+    expect(fail).toContain('frozenSignInText(error, language)');
+    expect(fail.indexOf('frozenSignInText')).toBeLessThan(fail.indexOf('localized'));
   });
 });

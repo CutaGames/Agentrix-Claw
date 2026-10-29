@@ -6,8 +6,11 @@
  * - Mobile: `resolvePalette(scheme, accent)` returns plain hex values.
  * - Every surface: `normalizeAppearance()` for stored or synced choices, and
  *   `auditPaletteContrast()` to test its own colour mapping.
+ * - Every surface that draws an AI twin avatar: `twinMarkGeometry(diameter)`
+ *   and `twinMarkColors()` / `twinMarkCssColors()` (twin-mark.ts).
  */
 export * from "./tokens";
 export * from "./appearance";
 export * from "./contrast";
+export * from "./twin-mark";
 export { buildDesignTokensCss } from "./css";

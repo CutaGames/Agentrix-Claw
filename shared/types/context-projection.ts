@@ -28,6 +28,8 @@ export const CONTEXT_DATA_CATEGORIES_V1 = [
   'relationship_graph',
   'financial_summary',
   'credential_metadata',
+  // L8 1b A6 (v1.1, `context-memory.ts`): the owner's memory. Opt-in per client; never in the default-deny list below.
+  'agent_memory',
 ] as const;
 export type ContextDataCategoryV1 = (typeof CONTEXT_DATA_CATEGORIES_V1)[number];
 

@@ -14,11 +14,57 @@
 export const AGENT_INCOME_SOURCES_V0 = ['order', 'device_rental', 'referral_share', 'withdrawal', 'withdrawal_reversal'] as const;
 export type AgentIncomeSourceV0 = (typeof AGENT_INCOME_SOURCES_V0)[number];
 
+/**
+ * L8 D9 / D2: two more income sources. `skill_share` = the developer's share of one use of a listed skill by someone
+ * else; `maker_share` = a Maker's share of one rented job on a certified device. Both are test-mode only in this release,
+ * each source has its own cap per entry and per day (`agentIncomeCapsV1`), and both sit behind their own switches
+ * (`MARKET_UNIFIED_V1_ENABLED`, `MAKER_PROGRAM_V1_ENABLED`) on top of `AGENT_INCOME_V0_ENABLED`. The V0 list above is
+ * what migration 2017 created; the V1 list is the superset migration 2084 allows.
+ */
+export const AGENT_INCOME_SOURCES_V1 = [...AGENT_INCOME_SOURCES_V0, 'skill_share', 'maker_share'] as const;
+export type AgentIncomeSourceV1 = (typeof AGENT_INCOME_SOURCES_V1)[number];
+
+/** The D9 switch: books the developer's skill share and opens the unified market list (`shared/types/unified-market.ts`). */
+export const MARKET_UNIFIED_V1_FLAG = 'MARKET_UNIFIED_V1_ENABLED';
+
+export const AGENT_INCOME_CAPPED_SOURCES_V1 = ['skill_share', 'maker_share'] as const;
+export type AgentIncomeCappedSourceV1 = (typeof AGENT_INCOME_CAPPED_SOURCES_V1)[number];
+
+/** USD minor units (cents). One entry may not exceed `perEntryMinor`; one Agent's credits of one source per UTC day may not exceed `perDayMinor`. */
+export const AGENT_INCOME_CAP_DEFAULTS_V1: Readonly<Record<AgentIncomeCappedSourceV1, { perEntryMinor: bigint; perDayMinor: bigint }>> = {
+  skill_share: { perEntryMinor: BigInt(5_000), perDayMinor: BigInt(50_000) },
+  maker_share: { perEntryMinor: BigInt(20_000), perDayMinor: BigInt(200_000) },
+};
+
+function capFromEnv(raw: string | undefined, fallback: bigint): bigint {
+  if (raw === undefined || !/^[1-9][0-9]{0,9}$/.test(raw)) return fallback;
+  return BigInt(raw);
+}
+
+/**
+ * The caps of a capped source: `AGENT_INCOME_CAP_<SOURCE>_ENTRY_MINOR` and `AGENT_INCOME_CAP_<SOURCE>_DAY_MINOR` (decimal,
+ * 1 to 9999999999); a missing or malformed value is the default, never "no cap". The per-day cap is never below the per-entry cap.
+ */
+export function agentIncomeCapsV1(
+  source: AgentIncomeCappedSourceV1,
+  env: Readonly<Record<string, string | undefined>>,
+): { perEntryMinor: bigint; perDayMinor: bigint } {
+  const defaults = AGENT_INCOME_CAP_DEFAULTS_V1[source];
+  const name = source.toUpperCase();
+  const perEntryMinor = capFromEnv(env[`AGENT_INCOME_CAP_${name}_ENTRY_MINOR`], defaults.perEntryMinor);
+  const perDay = capFromEnv(env[`AGENT_INCOME_CAP_${name}_DAY_MINOR`], defaults.perDayMinor);
+  return { perEntryMinor, perDayMinor: perDay < perEntryMinor ? perEntryMinor : perDay };
+}
+
 export const AGENT_WITHDRAWAL_STATES_V0 = ['pending', 'paid', 'failed', 'not_configured'] as const;
 export type AgentWithdrawalStateV0 = (typeof AGENT_WITHDRAWAL_STATES_V0)[number];
 
-export const AGENT_INCOME_CURRENCIES_V0 = ['USD', 'SGD'] as const;
+/** L8 D7 widened this with MYR and THB so a settled order in them is booked (migration 2095 widens the table's CHECK). */
+export const AGENT_INCOME_CURRENCIES_V0 = ['USD', 'SGD', 'MYR', 'THB'] as const;
 export type AgentIncomeCurrencyV0 = (typeof AGENT_INCOME_CURRENCIES_V0)[number];
+/** 提现只认付款端口能出款的币种；MYR / THB 只记账，不能提现（端口还不认它们）。 */
+export const AGENT_WITHDRAWAL_CURRENCIES_V0 = ['USD', 'SGD'] as const;
+export type AgentWithdrawalCurrencyV0 = (typeof AGENT_WITHDRAWAL_CURRENCIES_V0)[number];
 
 /** 引荐分成的比例上限（基点）：10%。 */
 export const REFERRAL_SHARE_MAX_BPS_V0 = 1000;
@@ -33,7 +79,7 @@ export const AGENT_INCOME_ROUTES_V0 = {
 
 export interface AgentIncomeEntryViewV0 {
   entryRef: string;
-  source: AgentIncomeSourceV0;
+  source: AgentIncomeSourceV1;
   /** 订单号、出租任务号、提现号；不含买方或推荐人的账号。 */
   sourceRef: string;
   direction: 'credit' | 'debit';
@@ -74,7 +120,7 @@ export interface AgentWithdrawalViewV0 {
 
 export interface AgentWithdrawRequestV0 {
   amountMinor: string;
-  currency: AgentIncomeCurrencyV0;
+  currency: AgentWithdrawalCurrencyV0;
   idempotencyKey: string;
 }
 
@@ -99,7 +145,7 @@ export function validateAgentWithdrawRequestV0(value: unknown): { valid: boolean
   if (typeof value.amountMinor !== 'string' || !MINOR.test(value.amountMinor) || BigInt(value.amountMinor) < BigInt(AGENT_WITHDRAWAL_MIN_MINOR_V0)) {
     errors.push(`amountMinor: decimal string, at least ${AGENT_WITHDRAWAL_MIN_MINOR_V0}`);
   }
-  if (!isOneOf(value.currency, AGENT_INCOME_CURRENCIES_V0)) errors.push(`currency: one of ${AGENT_INCOME_CURRENCIES_V0.join(', ')}`);
+  if (!isOneOf(value.currency, AGENT_WITHDRAWAL_CURRENCIES_V0)) errors.push(`currency: one of ${AGENT_WITHDRAWAL_CURRENCIES_V0.join(', ')}`);
   if (typeof value.idempotencyKey !== 'string' || !IDEMPOTENCY_KEY.test(value.idempotencyKey)) errors.push('idempotencyKey: invalid');
   return { valid: errors.length === 0, errors };
 }
@@ -107,7 +153,7 @@ export function validateAgentWithdrawRequestV0(value: unknown): { valid: boolean
 function decodeEntry(value: unknown): AgentIncomeEntryViewV0 | null {
   if (!isRecord(value)) return null;
   if (typeof value.entryRef !== 'string' || !AGENT_INCOME_ENTRY_REF_PATTERN_V0.test(value.entryRef)) return null;
-  if (!isOneOf(value.source, AGENT_INCOME_SOURCES_V0) || typeof value.sourceRef !== 'string' || value.sourceRef.length === 0 || value.sourceRef.length > 64) return null;
+  if (!isOneOf(value.source, AGENT_INCOME_SOURCES_V1) || typeof value.sourceRef !== 'string' || value.sourceRef.length === 0 || value.sourceRef.length > 64) return null;
   if (value.direction !== 'credit' && value.direction !== 'debit') return null;
   if (typeof value.amountMinor !== 'string' || !MINOR.test(value.amountMinor)) return null;
   if (!isOneOf(value.currency, AGENT_INCOME_CURRENCIES_V0) || (value.environment !== 'test' && value.environment !== 'live')) return null;

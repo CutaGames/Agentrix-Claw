@@ -7,6 +7,7 @@ import {
 } from "../../shared/types/agent-passport-card";
 import {
   readPassportIdentityCredentialState,
+  readPassportClientEndorsements,
   type AgentPassportCredentialsV1,
   type AgentPassportProjectionV1,
 } from "../../shared/types/agent-passport";
@@ -141,6 +142,8 @@ export function normalizeAgentPassportProjection(
       ? (record.credentials as unknown as AgentPassportCredentialsV1)
       : unavailablePassportCredentialsOwner(),
     identityCredential: readPassportIdentityCredentialState(record.identityCredential),
+    // L8 R5: only when the server sent it (the switch is on there).
+    ...(isRecord(record.clientEndorsements) ? { clientEndorsements: readPassportClientEndorsements(record.clientEndorsements) } : {}),
   };
   return projection;
 }

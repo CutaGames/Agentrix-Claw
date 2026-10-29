@@ -57,7 +57,32 @@ describe('push types and destinations', () => {
       'receipt_ready',
       'device_paired',
       'order_update',
+      'twin_lead',
+      'agent_request',
+      'share_reply',
+      'booking_new',
+      'alert_digest',
     ]);
+  });
+
+  it('owner alerts (L8 R1) open the matching zone + tab with the business ref, each on its own secret channel', () => {
+    expect(MOBILE_PUSH_DESTINATIONS.twin_lead).toEqual({ zone: 'twin', tab: 'visitors', refKind: 'lead' });
+    expect(MOBILE_PUSH_DESTINATIONS.agent_request).toEqual({ zone: 'matters', tab: 'pending', refKind: 'collaboration_request' });
+    expect(MOBILE_PUSH_DESTINATIONS.share_reply).toEqual({ zone: 'twin', tab: 'visitors', refKind: 'share_page' });
+    expect(MOBILE_PUSH_DESTINATIONS.booking_new).toEqual({ zone: 'twin', tab: 'bookings', refKind: 'booking' });
+    expect(MOBILE_PUSH_DESTINATIONS.alert_digest).toEqual({ zone: 'matters', tab: 'pending', refKind: 'alert_digest' });
+    for (const type of ['twin_lead', 'agent_request', 'share_reply', 'booking_new', 'alert_digest'] as const) {
+      expect(MOBILE_PUSH_CHANNELS[type].lockscreen).toBe('secret');
+      expect(mobilePushChannelList().map((channel) => channel.id)).toContain(MOBILE_PUSH_CHANNELS[type].id);
+      const parsed = parseMobilePushData({ v: 'agentrix.push.v1', type, ref: 'ref-1' });
+      expect(parsed).toMatchObject({ ok: true, kind: 'typed', payload: { type, ref: 'ref-1' } });
+    }
+  });
+
+  it('a type this build does not know (a newer backend) opens the inbox and carries nothing from the payload', () => {
+    const parsed = parseMobilePushData({ v: 'agentrix.push.v1', type: 'future_alert_kind', ref: 'ref-1', text: 'secret' });
+    expect(parsed).toMatchObject({ ok: false, reason: 'unknown_type' });
+    expect(resolveMobilePushNavigation(parsed, { fourZone: true })).toEqual({ name: 'Inbox', params: { source: 'push' } });
   });
 
   it('order_update opens 事项 → 待我处理 with the order ref, on its own orders channel, never on the lock screen', () => {

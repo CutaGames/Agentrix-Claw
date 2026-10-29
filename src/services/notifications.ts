@@ -4,6 +4,8 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { apiFetch } from './api';
 import { mobileM0RetiresNotification } from './mobileM0';
+import { buildPushRegistrationBody } from './pushRegistration';
+import { getCurrentLanguage } from '../stores/i18nStore';
 
 // Actual EAS project ID (from app.json extra.eas.projectId)
 const EAS_PROJECT_ID =
@@ -132,11 +134,16 @@ class NotificationService {
     try {
       await apiFetch('/notifications/register', {
         method: 'POST',
-        body: JSON.stringify({
-          token,
-          platform: Platform.OS,
-          deviceId: Device.modelId || 'unknown',
-        }),
+        // `locale` is the interface language (zh | en): the server writes each push to this device in it.
+        // Registered at app start, so a language changed later reaches the server at the next launch.
+        body: JSON.stringify(
+          buildPushRegistrationBody({
+            token,
+            platform: Platform.OS,
+            deviceId: Device.modelId || 'unknown',
+            language: getCurrentLanguage(),
+          }),
+        ),
       });
       console.log('Push token registered with backend');
     } catch (error) {

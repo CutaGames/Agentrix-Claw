@@ -38,8 +38,12 @@ export const DESKTOP_MEMORY_ALLOWED_CATEGORIES_V1: readonly ContextDataCategoryV
   ...DESKTOP_MEMORY_DEFAULT_CATEGORIES_V1,
   ...CONTEXT_OWNER_OPT_IN_CATEGORIES_V1_1,
 ];
-/** 本机 MCP 服务替哪个客户端读。由桌面程序断言（服务端无法核验），主人按客户端分别打开 `agent_memory`。 */
-export const DESKTOP_MEMORY_CLIENT_IDS_V1 = ['cursor', 'claude_code', 'kiro'] as const;
+/**
+ * 本机 MCP 服务替哪个客户端读。由桌面程序断言（服务端无法核验），主人按客户端分别打开 `agent_memory`。
+ * `openclaw`、`hermes` 是 C3 开放接入包（`packages/agent-connect`）用的：凭据按设备（`device_ref`）签发，所以主人要在
+ * OpenClaw / Hermes 所在的那台机器的桌面端签发；`client_id` 列没有 CHECK，不需要迁移。
+ */
+export const DESKTOP_MEMORY_CLIENT_IDS_V1 = ['cursor', 'claude_code', 'kiro', 'openclaw', 'hermes'] as const;
 export type DesktopMemoryClientIdV1 = (typeof DESKTOP_MEMORY_CLIENT_IDS_V1)[number];
 
 // ── 2. D4 凭据（audience `context_gateway`） ──────────────────────────────────────────
@@ -229,6 +233,36 @@ export function validateContextGatewayCredentialIssueCommandV1(value: unknown): 
   if (typeof value.signature !== 'string' || !/^[A-Za-z0-9_-]{86}$/.test(value.signature)) errors.push('signature: 64-byte P1363 signature in base64url required');
   return { valid: errors.length === 0, errors, categoryNotAllowed };
 }
+const REFRESH_KEYS = new Set(['schemaVersion', 'requestId', 'bindingRef', 'signedAt', 'signature']);
+/** 刷新请求体的校验（实现时补，只加不改）。刷新不能改客户端和类别，所以体里没有这两项。 */
+export function validateContextGatewayCredentialRefreshCommandV1(value: unknown): { valid: boolean; errors: string[] } {
+  if (!isRecord(value)) return { valid: false, errors: ['command: expected object'] };
+  const errors: string[] = [];
+  for (const key of Object.keys(value)) if (!REFRESH_KEYS.has(key)) errors.push(`${key}: unknown field`);
+  if (value.schemaVersion !== CONTEXT_GATEWAY_CREDENTIAL_SCHEMA_VERSION) errors.push('schemaVersion: unsupported');
+  if (typeof value.requestId !== 'string' || !OPAQUE.test(value.requestId)) errors.push('requestId: invalid');
+  if (!isBindingRef(value.bindingRef)) errors.push('bindingRef: invalid');
+  if (typeof value.signedAt !== 'string' || !Number.isFinite(Date.parse(value.signedAt))) errors.push('signedAt: invalid timestamp');
+  if (typeof value.signature !== 'string' || !/^[A-Za-z0-9_-]{86}$/.test(value.signature)) errors.push('signature: 64-byte P1363 signature in base64url required');
+  return { valid: errors.length === 0, errors };
+}
+
+const REVOKE_KEYS = new Set(['schemaVersion', 'credentialRef', 'clientId']);
+/** 吊销请求体的校验（空体当作省略全部）。 */
+export function validateContextGatewayCredentialRevokeCommandV1(value: unknown): { valid: boolean; errors: string[] } {
+  if (!isRecord(value)) return { valid: false, errors: ['command: expected object'] };
+  const errors: string[] = [];
+  for (const key of Object.keys(value)) if (!REVOKE_KEYS.has(key)) errors.push(`${key}: unknown field`);
+  if (value.schemaVersion !== CONTEXT_GATEWAY_CREDENTIAL_SCHEMA_VERSION) errors.push('schemaVersion: unsupported');
+  if (value.credentialRef !== undefined && (typeof value.credentialRef !== 'string' || !CONTEXT_GATEWAY_CREDENTIAL_REF_PATTERN.test(value.credentialRef))) {
+    errors.push('credentialRef: invalid');
+  }
+  if (value.clientId !== undefined && (typeof value.clientId !== 'string' || !(DESKTOP_MEMORY_CLIENT_IDS_V1 as readonly string[]).includes(value.clientId))) {
+    errors.push('clientId: unknown client');
+  }
+  return { valid: errors.length === 0, errors };
+}
+
 /** 请求的类别是不是凭据类别的子集（gateway 每次都查，不是子集就 `category_denied`）。 */
 export function contextCategoriesWithinCredentialV1(requested: readonly string[], credential: readonly string[]): boolean {
   const allowed = new Set(credential);

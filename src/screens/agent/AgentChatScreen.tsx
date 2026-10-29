@@ -73,6 +73,8 @@ import type { SpendApprovalSummaryV0 } from '../../../shared/types/spend-budget'
 // E1 / E2 第 4 片：Agent 在对话里提议的自动化确认卡。和自动化列表同一个开关，只在 EXPO_PUBLIC_AGENT_AUTOMATIONS=1 的构建里出现。
 import { AutomationProposalCard } from '../../components/AutomationProposalCard';
 import { collectAutomationProposal } from '../../services/automationProposal';
+import { readChatRiskLabels, type ChatRiskLabels as ChatRiskLabelsData } from '../../services/chatRiskLabels';
+import { ChatRiskLabels } from '../../components/ChatRiskLabels';
 import { GLOBAL_PTT_ENABLED } from '../../services/pushToTalk';
 import type { AutomationProposalV0 } from '../../../shared/types/agent-automation';
 import {
@@ -244,6 +246,8 @@ interface Message {
   spendApprovals?: Array<{ approvalRef: string; spend: SpendApprovalSummaryV0; expiresAt: string }>;
   /** E1 / E2 第 4 片：这一轮里 Agent 提议的自动化（按 proposalRef 去重），主人确认了才建。 */
   automationProposals?: AutomationProposalV0[];
+  /** L8 1b A3 / A4：服务端 meta 里的「已隐去 N 条」和「已锁定 / 已收紧」。 */
+  riskLabels?: ChatRiskLabelsData;
 }
 
 function formatAttachmentSize(size?: number | null) {
@@ -1502,6 +1506,21 @@ export function AgentChatScreen() {
     pendingAutoContinueSessionIdRef.current = sessionIdRef.current;
   }, []);
 
+  // L8 1b A3 / A4：流里的 meta 若是「已隐去 N 条」或风险标签，挂到最近的助手气泡下面；认不出的不显示。
+  const handleChatRiskMeta = useCallback((meta: unknown) => {
+    const labels = readChatRiskLabels(meta);
+    if (!labels) return;
+    setMessages((prev) => {
+      for (let i = prev.length - 1; i >= 0; i--) {
+        if (prev[i].role === 'assistant') {
+          const next = [...prev];
+          next[i] = { ...prev[i], riskLabels: { ...(prev[i].riskLabels ?? {}), ...labels } };
+          return next;
+        }
+      }
+      return prev;
+    });
+  }, []);
   const handleStructuredStreamEvent = useCallback((event: StreamEvent) => {
     // M0（D22）：竞猜类（LSM）已下线。lsm_* 工具结果不再渲染成可下单卡片，直接忽略。
     if (event.type === 'tool_result' && typeof (event as any).toolName === 'string'
@@ -2500,6 +2519,7 @@ export function AgentChatScreen() {
             context: buildCompanionChatContext('mobile'),
             onEvent: handleStructuredStreamEvent,
             onMeta: (meta) => {
+              handleChatRiskMeta(meta);
               if (meta.resolvedModelLabel) setResolvedModelLabel(meta.resolvedModelLabel);
             },
             onChunk: (chunk) => {
@@ -2573,6 +2593,7 @@ export function AgentChatScreen() {
               sessionId: sessionIdRef.current,
               context: buildCompanionChatContext('mobile'),
               onEvent: handleStructuredStreamEvent,
+              onMeta: handleChatRiskMeta,
               onChunk: (chunk) => {
                 streamSucceeded = true;
                 resetVoicePhaseAfterResponse();
@@ -2974,6 +2995,7 @@ export function AgentChatScreen() {
             />
           </View>
         ) : null}
+        {item.riskLabels ? <ChatRiskLabels labels={item.riskLabels} testID={`chat-risk-labels-${item.id}`} /> : null}
         {item.spendApprovals && item.spendApprovals.length > 0 ? (
           <View style={{ paddingHorizontal: 12, paddingBottom: 6, gap: 8 }}>
             {item.spendApprovals.map((approval) => (

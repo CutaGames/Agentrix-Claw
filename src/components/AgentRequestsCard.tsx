@@ -6,11 +6,18 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AGENT_COLLABORATION_TIERS_V0, type AgentCollaborationRequestViewV0 } from '../../shared/types/agent-collaboration';
+import {
+  AGENT_COLLABORATION_TIERS_V0,
+  AGENT_COLLABORATION_TIERS_V1,
+  agentCollaborationPresetPreviewV1,
+  type AgentCollaborationRequestViewV0,
+  type AgentCollaborationTierV1,
+} from '../../shared/types/agent-collaboration';
 import {
   AGENT_COLLABORATION_FAILURE_COPY,
   AGENT_COLLABORATION_KIND_COPY,
   AGENT_COLLABORATION_TIER_COPY,
+  AGENT_COLLABORATION_PASS_PRESETS_ENABLED,
   AgentCollaborationError,
   agentCollaborationVerificationCopy,
   counterpartTier,
@@ -23,7 +30,11 @@ import { useAuthStore } from '../stores/authStore';
 import { useI18n } from '../stores/i18nStore';
 import { useThemedStyles, type Palette } from '../theme/useTheme';
 
-const TIER_CHOICES = ['stranger', ...AGENT_COLLABORATION_TIERS_V0] as const;
+// L8 1b R2: with the preset build switch on, the community tier is offered and each tier shows what its default Pass allows.
+const TIER_CHOICES: readonly (AgentCollaborationTierV1 | 'stranger')[] = [
+  'stranger',
+  ...(AGENT_COLLABORATION_PASS_PRESETS_ENABLED ? AGENT_COLLABORATION_TIERS_V1 : AGENT_COLLABORATION_TIERS_V0),
+];
 
 function mobileAgentCollaborationClient(): MobileAgentCollaborationClientV0 {
   return createMobileAgentCollaborationClient({
@@ -101,6 +112,9 @@ export function AgentRequestsCard() {
                     </TouchableOpacity>
                   ))}
                 </View>
+                {AGENT_COLLABORATION_PASS_PRESETS_ENABLED && current !== 'stranger' ? (
+                  <Text style={styles.muted}>{agentCollaborationPresetPreviewV1(current)[lang]}</Text>
+                ) : null}
               </View>
             );
           })

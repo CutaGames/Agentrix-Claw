@@ -127,10 +127,20 @@
     "components/TrustLadderCard.tsx",
     "services/agentCollaboration.ts",
     "components/AgentRequestsCard.tsx",
+    "services/agentPass.ts",
+    "components/AgentPassCard.tsx",
+    "services/agentrixOauthApps.ts",
+    "components/SignInAppsCard.tsx",
+    "services/standingGoals.ts",
+    "components/StandingGoalsCard.tsx",
     "services/sharePages.ts",
     "components/SharePagesCard.tsx",
     "services/ownerGoals.ts",
     "components/OwnerGoalsCard.tsx",
-    "services/__tests__/l6OwnerEntries.test.ts"
+    "services/__tests__/l6OwnerEntries.test.ts",
+    "utils/twinAvatar.ts",
+    "utils/__tests__/twinAvatar.test.ts",
+    "components/TwinAvatar.tsx",
+    "screens/four-zone/TwinQrScreen.tsx"
   ]
 }

@@ -139,7 +139,7 @@ export interface AgentPassportCredentialsPublicV1 {
  * yes / no reaches the passport; the DID itself stays on the owner's side. `unavailable` = the
  * identity credential feature is off, the store is not wired, or it could not be read.
  */
-export type PassportIdentityCredentialState = 'verified' | 'none' | 'unavailable';
+export type PassportIdentityCredentialState = 'verified' | 'none' | 'unavailable' | 'revoked';
 
 export interface AgentPassportProjectionV1 {
   schemaVersion: 1;
@@ -159,6 +159,26 @@ export interface AgentPassportProjectionV1 {
   credentials: AgentPassportCredentialsV1;
   /** L5 backend 9 B. Older servers omit it; readers treat a missing value as `unavailable`. */
   identityCredential?: PassportIdentityCredentialState;
+  /** L8 R5. Absent while `CLIENT_ENDORSEMENTS_V1_ENABLED` is off and on older servers. */
+  clientEndorsements?: PassportClientEndorsementsV1;
+}
+
+/**
+ * L8 R5: how many distinct verified clients (real, live bookings the owner approved) recommend this Agent.
+ * `unavailable` = the count could not be read; clients show nothing for 0 or unavailable.
+ */
+export interface PassportClientEndorsementsV1 {
+  state: 'available' | 'unavailable';
+  verifiedClients: number;
+}
+
+export function readPassportClientEndorsements(value: unknown): PassportClientEndorsementsV1 {
+  const row = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  const count = row?.verifiedClients;
+  if (row?.state === 'available' && typeof count === 'number' && Number.isInteger(count) && count >= 0 && count <= 1_000_000) {
+    return { state: 'available', verifiedClients: count };
+  }
+  return { state: 'unavailable', verifiedClients: 0 };
 }
 
 /** What leaves the owner's side: confirmed persona, buckets, skill names, authority boundary. */
@@ -179,6 +199,8 @@ export interface AgentPassportPublicV1 {
   credentials: AgentPassportCredentialsPublicV1;
   /** L5 backend 9 B: the yes / no only, never the DID. Older servers omit it → `unavailable`. */
   identityCredential?: PassportIdentityCredentialState;
+  /** L8 R5: the number of verified clients who recommend, never who they are. Absent while the switch is off. */
+  clientEndorsements?: PassportClientEndorsementsV1;
 }
 
 /**
@@ -199,6 +221,8 @@ export interface AgentPassportCardExtensionV1 {
   credentials: AgentPassportCredentialsPublicV1;
   /** L5 backend 9 B: whether an Agentrix-signed identity credential verifies; never the DID. */
   identityCredential?: PassportIdentityCredentialState;
+  /** L8 R5: how many verified clients recommend; never who. Absent while the switch is off. */
+  clientEndorsements?: PassportClientEndorsementsV1;
   issuedOn: string | null;
   /** The human-readable passport page for this Agent (`/share/agent/<agentRef>`). */
   passportUrl: string;
@@ -252,9 +276,12 @@ export function readPassportCredentialsPublic(value: unknown): AgentPassportCred
   };
 }
 
-/** Identity credential yes / no out of untrusted JSON; anything but `verified` / `none` is `unavailable`. */
+/**
+ * Identity credential state out of untrusted JSON; anything but `verified` / `none` / `revoked` is `unavailable`.
+ * `revoked` (L8 B7): the owner revoked the Agent's DID; it is never counted as verified.
+ */
 export function readPassportIdentityCredentialState(value: unknown): PassportIdentityCredentialState {
-  return value === 'verified' || value === 'none' ? value : 'unavailable';
+  return value === 'verified' || value === 'none' || value === 'revoked' ? value : 'unavailable';
 }
 
 // ---------------------------------------------------------------------------

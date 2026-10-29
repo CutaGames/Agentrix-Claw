@@ -16,8 +16,14 @@
  * 消费方：web（渠道绑定设置）、mobile（渠道收件箱、草稿批准）。
  */
 
-export const AGENT_CHANNEL_PLATFORMS_V0 = ['telegram', 'whatsapp'] as const;
+export const AGENT_CHANNEL_PLATFORMS_V0 = ['telegram', 'whatsapp', 'line'] as const;
 export type AgentChannelPlatformV0 = (typeof AGENT_CHANNEL_PLATFORMS_V0)[number];
+/**
+ * How a binding was proven. Telegram: the owner's linked account sent the one-time code. LINE (L8 D7): the one-time
+ * code the owner made in the app, sent from the LINE chat that is being connected (a visitor's chat, twin mode only).
+ */
+export const AGENT_CHANNEL_PROOF_METHODS_V0 = ['telegram_bind_code', 'line_bind_code'] as const;
+export type AgentChannelProofMethodV0 = (typeof AGENT_CHANNEL_PROOF_METHODS_V0)[number];
 export const AGENT_CHANNEL_MODES_V0 = ['twin', 'agent'] as const;
 export type AgentChannelModeV0 = (typeof AGENT_CHANNEL_MODES_V0)[number];
 export const AGENT_CHANNEL_TIERS_V0 = ['observe', 'assist', 'represent'] as const;
@@ -86,7 +92,8 @@ export const AGENT_CHANNEL_BIND_ATTEMPTS_PER_HOUR_V0 = 10;
 
 export interface AgentChannelBindCodeCommandV0 {
   agentAccountId: string;
-  platform: 'telegram';
+  /** `line` (L8 D7, behind `AGENT_CHANNEL_LINE_ENABLED`) is only ever `twin` mode: a stranger's chat never reaches the owner's own Agent. */
+  platform: 'telegram' | 'line';
   mode: AgentChannelModeV0;
   tier: AgentChannelTierV0;
 }
@@ -111,13 +118,17 @@ function isIso(value: unknown): value is string {
   return typeof value === 'string' && ISO.test(value) && Number.isFinite(Date.parse(value));
 }
 
-/** 服务端用：解码要绑定码的请求；v0 只有 Telegram 能绑（WhatsApp v0 只给分身访客）。多出来的键丢掉。 */
+/**
+ * 服务端用：解码要绑定码的请求；Telegram 能绑，LINE（L8 D7）也能绑但只能是分身模式（WhatsApp v0 只给分身访客）。
+ * 多出来的键丢掉。LINE 的开关在服务端另外查，这里只管形状。
+ */
 export function decodeAgentChannelBindCodeCommandV0(value: unknown): AgentChannelBindCodeCommandV0 | null {
   if (!isRecord(value)) return null;
   if (typeof value.agentAccountId !== 'string' || !UUID.test(value.agentAccountId)) return null;
-  if (value.platform !== 'telegram') return null;
+  if (value.platform !== 'telegram' && value.platform !== 'line') return null;
   if (!isOneOf(value.mode, AGENT_CHANNEL_MODES_V0) || !isOneOf(value.tier, AGENT_CHANNEL_TIERS_V0)) return null;
-  return { agentAccountId: value.agentAccountId, platform: 'telegram', mode: value.mode, tier: value.tier };
+  if (value.platform === 'line' && value.mode !== 'twin') return null;
+  return { agentAccountId: value.agentAccountId, platform: value.platform, mode: value.mode, tier: value.tier };
 }
 
 /** 服务端用：从聊天里的一行读出 `/bind <码>`（也认 `/bind@机器人名 <码>`、码的小写）。不是就返回 null。 */
@@ -146,7 +157,7 @@ export interface AgentChannelBindingViewV0 {
   /** 实际执行的档位（`agentChannelEffectiveTierV0`）。 */
   effectiveTier: AgentChannelTierV0;
   effectiveReason: AgentChannelEffectiveReasonV0;
-  proof: { method: 'telegram_bind_code'; at: string };
+  proof: { method: AgentChannelProofMethodV0; at: string };
   status: AgentChannelBindingStatusV0;
   boundAt: string;
 }
@@ -163,7 +174,10 @@ export function decodeAgentChannelBindingViewV0(value: unknown): AgentChannelBin
   // The effective tier can only be the chosen one or a step down from represent to assist, never wider.
   if (value.effectiveTier !== value.tier && !(value.tier === 'represent' && value.effectiveTier === 'assist' && value.effectiveReason === 'agent_represent_disabled')) return null;
   const proof = value.proof;
-  if (!isRecord(proof) || proof.method !== 'telegram_bind_code' || !isIso(proof.at)) return null;
+  if (!isRecord(proof) || !isOneOf(proof.method, AGENT_CHANNEL_PROOF_METHODS_V0) || !isIso(proof.at)) return null;
+  // The proof has to fit the platform: a LINE binding is never shown as proven by a Telegram account, and the other way round.
+  if ((value.platform === 'line') !== (proof.method === 'line_bind_code')) return null;
+  if (value.platform === 'line' && (value.mode !== 'twin' || value.chatKind !== 'private')) return null;
   if (!isOneOf(value.status, AGENT_CHANNEL_BINDING_STATUSES_V0) || !isIso(value.boundAt)) return null;
   return value as unknown as AgentChannelBindingViewV0;
 }

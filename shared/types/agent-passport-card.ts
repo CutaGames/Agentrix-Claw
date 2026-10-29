@@ -20,6 +20,7 @@ import {
   readPassportCredentialsPublic,
   readPassportExactCountsV1,
   readPassportIdentityCredentialState,
+  readPassportClientEndorsements,
   PASSPORT_CREDENTIAL_KINDS,
   type AgentPassportAuthorityV1,
   type AgentPassportCredentialsPublicV1,
@@ -32,6 +33,7 @@ import {
   type PassportCredentialsMaterialV1,
   type PassportPersonaStatus,
 } from './agent-passport';
+import { clientEndorsementsLabelV1 } from './client-endorsement';
 
 export type PassportFactTone = 'ready' | 'todo' | 'unknown';
 
@@ -1092,6 +1094,21 @@ export interface AgentPassportCardModel {
   facts: AgentPassportFact[];
   visas: PassportVisa[];
   share: PublicPassportShare;
+  /**
+   * L8 R5: "N verified clients recommend". Present only when the server sent a readable count above zero (the switch
+   * is on); absent otherwise. Not part of the encoded share link: it is read from the live passport each time.
+   */
+  endorsements?: LocalizedLine;
+}
+
+/** The "N verified clients recommend" line, or `null` for zero, unavailable, absent or an older server. */
+export function passportEndorsementsLine(value: unknown): LocalizedLine | null {
+  if (value === undefined || value === null) return null;
+  const read = readPassportClientEndorsements(value);
+  if (read.state !== 'available') return null;
+  const zh = clientEndorsementsLabelV1(read.verifiedClients, 'zh');
+  const en = clientEndorsementsLabelV1(read.verifiedClients, 'en');
+  return zh && en ? { zh, en } : null;
 }
 
 /**
@@ -1280,7 +1297,8 @@ export function buildAgentPassportCard(input: AgentPassportCardInput): AgentPass
     e: evidenceToShare(evidence),
     ...partnerFactsToShare(evidence),
   };
-  return { ...card, share };
+  const endorsements = passportEndorsementsLine(input.passport?.clientEndorsements);
+  return { ...card, share, ...(endorsements ? { endorsements } : {}) };
 }
 
 /** Rebuilds a card for the public page from a decoded share payload only. */
@@ -1391,7 +1409,9 @@ export function shareFromPublicPassport(passport: AgentPassportPublicV1): Public
 
 /** The card another Agent's owner sees at `/share/agent/<agentRef>` — same words, same number, same seal. */
 export function cardFromPublicPassport(passport: AgentPassportPublicV1): AgentPassportCardModel {
-  return cardFromPassportShare(shareFromPublicPassport(passport));
+  const card = cardFromPassportShare(shareFromPublicPassport(passport));
+  const endorsements = passportEndorsementsLine(passport.clientEndorsements);
+  return endorsements ? { ...card, endorsements } : card;
 }
 
 function positiveAmount(value: unknown): number | undefined {
@@ -1469,6 +1489,7 @@ export function publicPassportFromAgentCard(value: unknown): AgentPassportPublic
     // Cards from a backend before slice 3.1 have no block → unavailable, never zero.
     credentials: readPassportCredentialsPublic(extension.credentials),
     identityCredential: readPassportIdentityCredentialState(extension.identityCredential),
+    ...(isRecord(extension.clientEndorsements) ? { clientEndorsements: readPassportClientEndorsements(extension.clientEndorsements) } : {}),
   };
 }
 
@@ -1518,6 +1539,7 @@ export function passportViewFromJson(value: unknown): AgentPassportViewV1 | null
     authority: authorityFromCard(record.authority),
     credentials: readPassportCredentialsPublic(record.credentials),
     identityCredential: readPassportIdentityCredentialState(record.identityCredential),
+    ...(isRecord(record.clientEndorsements) ? { clientEndorsements: readPassportClientEndorsements(record.clientEndorsements) } : {}),
     audience: record.audience,
     fields,
   };

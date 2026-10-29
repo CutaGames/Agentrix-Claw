@@ -42,6 +42,44 @@ export type AgentCollaborationAudienceV0 = AgentCollaborationTierV0 | 'stranger'
 export const AGENT_COLLABORATION_KINDS_V0 = ['ask', 'book', 'deposit_intent', 'file_offer'] as const;
 export type AgentCollaborationKindV0 = (typeof AGENT_COLLABORATION_KINDS_V0)[number];
 
+/**
+ * L8 1b R2 (tiers are Pass presets). A fourth tier, `community` (students / community), exists only while
+ * `AGENT_COLLABORATION_PASS_PRESETS_V1_ENABLED` is on (it also needs `AGENT_PASS_V1_ENABLED`); v0 above is unchanged and
+ * is what the server uses while that switch is off. Each tier's default Pass allows exactly these request kinds; the
+ * four v0-era tiers match `AGENT_COLLABORATION_SCOPES_V0`, so turning the switch on changes nothing until the owner edits
+ * a preset. `community` may ask and book, never announce a deposit or offer a file.
+ */
+export const AGENT_COLLABORATION_TIERS_V1 = [...AGENT_COLLABORATION_TIERS_V0, 'community'] as const;
+export type AgentCollaborationTierV1 = (typeof AGENT_COLLABORATION_TIERS_V1)[number];
+export type AgentCollaborationAudienceV1 = AgentCollaborationTierV1 | 'stranger';
+
+export const AGENT_COLLABORATION_PRESET_KINDS_V1: Readonly<Record<AgentCollaborationTierV1, readonly AgentCollaborationKindV0[]>> = {
+  client: ['ask', 'book', 'deposit_intent'],
+  collaborator: ['ask', 'book', 'file_offer'],
+  family: ['ask', 'book', 'file_offer'],
+  community: ['ask', 'book'],
+};
+
+export function isAgentCollaborationTierV1(value: unknown): value is AgentCollaborationTierV1 {
+  return typeof value === 'string' && (AGENT_COLLABORATION_TIERS_V1 as readonly string[]).includes(value);
+}
+
+const PRESET_KIND_WORDS_V1: Readonly<Record<AgentCollaborationKindV0, { zh: string; en: string }>> = {
+  ask: { zh: '提问', en: 'questions' },
+  book: { zh: '约时间', en: 'bookings' },
+  deposit_intent: { zh: '定金意向', en: 'deposit intents' },
+  file_offer: { zh: '发文件', en: 'file offers' },
+};
+
+/** The preview of a tier's default Pass, in words, for the three owner entries. An owner's edits to the Pass show in the Pass list. */
+export function agentCollaborationPresetPreviewV1(tier: AgentCollaborationTierV1): { zh: string; en: string } {
+  const kinds = AGENT_COLLABORATION_PRESET_KINDS_V1[tier];
+  return {
+    zh: `这一档默认可以：${kinds.map((kind) => PRESET_KIND_WORDS_V1[kind].zh).join('、')}`,
+    en: `By default this tier may send: ${kinds.map((kind) => PRESET_KIND_WORDS_V1[kind].en).join(', ')}`,
+  };
+}
+
 export const AGENT_COLLABORATION_SCOPES_V0: Readonly<Record<AgentCollaborationAudienceV0, readonly AgentCollaborationKindV0[]>> = {
   stranger: ['ask'],
   client: ['ask', 'book', 'deposit_intent'],
@@ -107,7 +145,8 @@ export interface AgentCollaborationInboundV0 {
 export interface AgentCollaborationReceiptV0 {
   receiptId: string;
   kind: AgentCollaborationKindV0;
-  audience: AgentCollaborationAudienceV0;
+  /** `community` only while the R2 preset switch is on. */
+  audience: AgentCollaborationAudienceV1;
   status: 'pending_owner';
   verification: AgentCollaborationVerificationV1;
   /** v1: set only when `verification` is `verified`. */
@@ -128,7 +167,8 @@ export interface AgentCollaborationRequestViewV0 extends AgentCollaborationRecei
 
 export interface AgentCollaborationRelationshipViewV0 {
   identity: AgentCollaborationIdentityV0;
-  tier: AgentCollaborationTierV0;
+  /** `community` only while the R2 preset switch is on. */
+  tier: AgentCollaborationTierV1;
   updatedAt: string;
 }
 

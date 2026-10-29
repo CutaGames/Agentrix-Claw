@@ -4,7 +4,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { mmkvStorage } from './mmkvStorage';
 import * as SecureStore from 'expo-secure-store';
 import { CURRENT_TOKEN_ENV, TOKEN_ENV_STORE_KEY, tokenEnvMatches } from '../config/stagingMode';
-import { setApiConfig } from '../services/api';
+import { setApiConfig, setSessionRevokedHandler } from '../services/api';
 import { resolveAgentDisplayName } from '../utils/agentDisplayName';
 
 export type AuthProvider = 'google' | 'apple' | 'x' | 'telegram' | 'discord' | 'wallet' | 'email' | 'openclaw';
@@ -288,3 +288,12 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+// L8 1a A1: the server says this sign-in was ended on purpose (signed out of all devices, or the account was frozen):
+// drop the saved sign-in and the token the API client still holds, so the app goes back to the sign-in screen.
+// (An app build from before this release has no such handler: it keeps showing "signed in" and every request fails
+// with the server's message until the user signs out and in by hand.)
+setSessionRevokedHandler(() => {
+  setApiConfig({ token: undefined });
+  void useAuthStore.getState().clearAuth();
+});

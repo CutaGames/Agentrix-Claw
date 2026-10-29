@@ -16,7 +16,7 @@ describe('M0 of the phone redesign', () => {
     const nav = read('navigation/four-zone/FourZoneTabNavigator.tsx');
     expect(nav).toMatch(/initialRouteName=\{MOBILE_M0_ENABLED \? 'Matters' : 'Companion'\}/);
     expect(nav).toMatch(/title: MOBILE_M0_ENABLED \? t\(MOBILE_M0_NEEDS_YOU_LABEL\) : t\(NAV_CATALOG\.matters\.label\)/);
-    expect(nav).toMatch(/\{MOBILE_M0_ENABLED \? <TwinStack\.Screen name="TwinQr"/);
+    expect(nav).toMatch(/\{MOBILE_M0_ENABLED(?: \|\| CARD_EXCHANGE_ENABLED)? \? <TwinStack\.Screen name="TwinQr"/);
     const matters = read('screens/four-zone/MattersHomeScreen.tsx');
     expect(matters).toMatch(/\{MOBILE_M0_ENABLED \? <NeedsYouSection \/> : null\}/);
     const twin = read('screens/four-zone/TwinHomeScreen.tsx');

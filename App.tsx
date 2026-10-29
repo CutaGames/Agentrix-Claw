@@ -11,6 +11,8 @@ import * as Notifications from 'expo-notifications';
 import { useAuthStore } from './src/stores/authStore';
 import { useSoulBirthStore } from './src/stores/soulBirthStore';
 import { setApiConfig, loadTokenFromStorage, apiFetch } from './src/services/api';
+import { buildPushRegistrationBody } from './src/services/pushRegistration';
+import { getCurrentLanguage } from './src/stores/i18nStore';
 import { fetchCurrentUser } from './src/services/auth';
 import { getMyInstances } from './src/services/openclaw.service';
 import { resolveAgentDisplayName } from './src/utils/agentDisplayName';
@@ -685,12 +687,17 @@ function AppNavigator() {
         // Register push token with backend so server can send push notifications
         if (pushToken) {
           try {
+            // `locale` is the interface language (zh | en): the server writes each push to this phone in it.
+            // It is sent at sign-in / app start, so a language changed later reaches the server at the next start.
             await apiFetch('/notifications/register', {
               method: 'POST',
-              body: JSON.stringify({
-                token: pushToken,
-                platform: Platform.OS,
-              }),
+              body: JSON.stringify(
+                buildPushRegistrationBody({
+                  token: pushToken,
+                  platform: Platform.OS,
+                  language: getCurrentLanguage(),
+                }),
+              ),
             });
           } catch (e) {
             console.warn('Failed to register push token with backend:', e);

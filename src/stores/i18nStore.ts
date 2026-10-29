@@ -74,6 +74,14 @@ const useI18nStore = create<I18nStoreState>()(
 );
 
 /**
+ * The interface language right now, for code outside React (the push registration sends it to the server so a push
+ * is written in this language). Screens keep using `useI18n`.
+ */
+export function getCurrentLanguage(): Language {
+  return useI18nStore.getState().language;
+}
+
+/**
  * Derived hook: returns language, setLanguage, and a render-bound `t()` function.
  * The `t` function creates a fresh closure on every language change, which guarantees
  * component re-renders show the correct translation (without relying on store `get()`).
