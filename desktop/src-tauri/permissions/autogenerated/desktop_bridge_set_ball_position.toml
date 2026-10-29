@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-bridge-set-ball-position"
+description = "Enables the desktop_bridge_set_ball_position command without any pre-configured scope."
+commands.allow = ["desktop_bridge_set_ball_position"]
+
+[[permission]]
+identifier = "deny-desktop-bridge-set-ball-position"
+description = "Denies the desktop_bridge_set_ball_position command without any pre-configured scope."
+commands.deny = ["desktop_bridge_set_ball_position"]
