@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<!--__OFFLINE_RECOVERY_CSP__-->
+<title>Agentrix 离线恢复工具</title>
+<style id="offline-recovery-style">
+body { font: 15px/1.5 -apple-system, "Segoe UI", sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; color: #111827; }
+h1 { font-size: 22px; }
+h2 { font-size: 17px; margin-top: 28px; }
+section { border-top: 1px solid #e5e7eb; padding-top: 8px; }
+label { display: block; margin: 10px 0 2px; font-weight: 600; }
+input[type="text"], select, textarea { width: 100%; box-sizing: border-box; padding: 6px 8px; font: 14px ui-monospace, Menlo, monospace; }
+textarea { min-height: 72px; }
+button { margin: 10px 8px 0 0; padding: 8px 14px; font-size: 15px; cursor: pointer; }
+pre { white-space: pre-wrap; word-break: break-all; background: #f3f4f6; padding: 10px; min-height: 1.5em; font: 13px ui-monospace, Menlo, monospace; }
+.note { background: #fffbeb; border: 1px solid #fcd34d; padding: 8px 12px; }
+.warn { background: #fef2f2; border: 1px solid #fca5a5; padding: 8px 12px; }
+code { font: 13px ui-monospace, Menlo, monospace; word-break: break-all; }
+</style>
+</head>
+<body>
+<h1>Agentrix 离线恢复工具</h1>
+<p class="note">这个文件是单个自包含的页面：不请求 Agentrix 的任何网址，不加载任何外部文件。它只连你在下面填的区块链节点。把它和你的恢复码放在一起保存；Agentrix 停服或网址失效以后，它仍然能用。</p>
+<p>它能做的事：用你的<strong>恢复码</strong>（和需要的话再加几位守护人的签名），给钱包加一把只存在于这个页面里的临时钥匙，再用这把钥匙把钱包里的余额转到你填的地址。恢复码对应的地址要先有一点<strong>原生币</strong>来付交易的 gas；钱包本身不用付。</p>
+<p class="warn">只在你信任的电脑上用，用完关掉页面。恢复码只在这个页面的内存里用，不会发出去，也不会保存。任何人拿到恢复码都能接管钱包。</p>
+
+<h2>这个页面是不是原版</h2>
+<p><span id="script-hash-label">这个页面正在执行的脚本段 SHA-256：</span><code id="script-hash"></code></p>
+<p>和发布说明里写的「脚本段 SHA-256」比对；整个文件的 SHA-256 可以用 <code>shasum -a 256 offline-recovery.html</code> 核。对不上就不要输入恢复码。</p>
+
+<section>
+<h2>第 1 步：读取链上状态</h2>
+<label for="chain">链</label>
+<select id="chain"></select>
+<label for="rpc">你的节点地址（https://…）</label>
+<input id="rpc" type="text" autocomplete="off" spellcheck="false" placeholder="例如你自己选的公共节点或自己的节点">
+<label for="account">钱包地址</label>
+<input id="account" type="text" autocomplete="off" spellcheck="false" placeholder="0x…">
+<button id="read" type="button">读取链上状态</button>
+<pre id="facts"></pre>
+<p>第 3 步能转出的资产（每条链各一种钉住的代币，加上原生币）：</p>
+<pre id="token-list"></pre>
+</section>
+
+<section>
+<h2>第 2 步：把临时钥匙加进钱包</h2>
+<label for="phrase">恢复码（12 个词，空格隔开）</label>
+<textarea id="phrase" autocomplete="off" spellcheck="false"></textarea>
+<button id="prepare" type="button">先生成临时钥和要签的哈希</button>
+<p>钱包要的签名数大于 1 时，把其他守护人对上面哈希做 personal_sign 得到的签名贴在这里，一行一条：</p>
+<label for="extra-sigs">其他守护人的签名（可空）</label>
+<textarea id="extra-sigs" autocomplete="off" spellcheck="false" placeholder="0x…"></textarea>
+<button id="add-key" type="button">签名并提交</button>
+<pre id="add-key-out"></pre>
+</section>
+
+<section>
+<h2>第 3 步：转出</h2>
+<label for="to">转到哪个地址</label>
+<input id="to" type="text" autocomplete="off" spellcheck="false" placeholder="0x…">
+<label><input id="move-native" type="checkbox" checked> 转出全部原生币</label>
+<label><input id="move-token" type="checkbox" checked> 转出全部钉住的代币（上面列出的那一种）</label>
+<button id="transfer" type="button">转出</button>
+<pre id="transfer-out"></pre>
+</section>
+
+<script id="offline-recovery-script">/*__OFFLINE_RECOVERY_SCRIPT__*/</script>
+</body>
+</html>
