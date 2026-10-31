@@ -1,0 +1,22 @@
+{
+  "network": "bscTestnet",
+  "chainId": 97,
+  "deployer": "0x5a419E65A027f1e23E4f0118198d7FF814aFeAaB",
+  "relayer": "0x5a419E65A027f1e23E4f0118198d7FF814aFeAaB",
+  "deployedAt": "2026-06-29T19:53:36.411Z",
+  "unitScale": "10000",
+  "contracts": {
+    "USDC": {
+      "address": "0x7103995D9f0B87c16964ed34Fe29AdDff8cCd5a0",
+      "decimals": 6,
+      "mock": true
+    },
+    "CollateralVault": {
+      "address": "0x75b7CaE3ec28b2F5aA0dD275E83Ac96Cd60cfa93"
+    }
+  },
+  "publicVault": {
+    "id": "0xb0968f03ede6ff5711015ad41a315b713e38d53e630713beb966f1aa1d8d3ce7",
+    "profitShareBps": 1000
+  }
+}

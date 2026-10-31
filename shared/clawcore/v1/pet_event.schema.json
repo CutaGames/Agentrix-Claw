@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentrix.top/schemas/clawcore/v1/pet_event.json",
+  "title": "ClawCore PetEvent Frame",
+  "description": "Server → device discrete event notification. Phase 5 HW-10.1.",
+  "type": "object",
+  "required": ["type", "seq", "pet_skin_id", "kind", "ts"],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "const": "pet_event" },
+    "seq": { "type": "integer", "minimum": 0 },
+    "pet_skin_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "kind": {
+      "type": "string",
+      "enum": ["task_completed", "task_failed", "reward_earned", "risk_paused", "energy_restored", "interaction"]
+    },
+    "amount_cents": { "type": "integer" },
+    "message": { "type": "string", "maxLength": 256 },
+    "ts": { "type": "integer", "minimum": 0 }
+  }
+}
