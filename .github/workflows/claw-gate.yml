@@ -1,0 +1,124 @@
+name: claw-gate
+# CI-only code gates for CutaGames/Agentrix that need GitHub-hosted runners. Every gate/** branch is an orphan
+# commit that holds only the paths the selected gates read plus this one workflow. Nothing is uploaded, released or
+# deployed, no secret is used, and the token is read-only.
+# Source: CutaGames/Agentrix @ fdbb3f6dfcfc4dfd88513d6d3f928bffe612f3de; gates: contract-hardhat,wallet-origin-build.
+on:
+  push:
+    branches: ['gate/**']
+permissions:
+  contents: read
+concurrency:
+  group: claw-gate-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CI: '1'
+  NO_COLOR: '1'
+  FORCE_COLOR: '0'
+  npm_config_update_notifier: 'false'
+  npm_config_fund: 'false'
+  npm_config_audit: 'false'
+  NEXT_TELEMETRY_DISABLED: '1'
+  GATE_SOURCE_REPO: 'CutaGames/Agentrix'
+  GATE_SOURCE_SHA: 'fdbb3f6dfcfc4dfd88513d6d3f928bffe612f3de'
+  GATE_SELECTED: 'contract-hardhat,wallet-origin-build'
+jobs:
+  # Solidity on hardhat's built-in local network only: no private key, no RPC URL, no secret.
+  contract-hardhat:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: deps
+        id: deps
+        working-directory: contract
+        run: |
+          npm ci
+      - name: check
+        id: check
+        working-directory: contract
+        run: |
+          set +e; mkdir -p $GITHUB_WORKSPACE/out; S=$GITHUB_WORKSPACE/out/contract-hardhat.md; O=$GITHUB_WORKSPACE/out
+          rc=0; npx hardhat compile > $O/hc.log 2>&1; c=$?
+          echo "hardhat-compile rc=$c" >> $S
+          [ $c = 0 ] || { echo '```'; tail -n 30 $O/hc.log; echo '```'; } >> $S
+          [ $c = 0 ] || rc=1
+          timeout 25m npx hardhat test --network hardhat > $O/ht.log 2>&1; t=$?
+          { echo "hardhat-test rc=$t"; grep -E '^ +[0-9]+ (passing|failing|pending)' $O/ht.log | sed 's/^ */  /'; } >> $S
+          [ $t = 0 ] || { echo '```'; grep -A12 -E '^ +[0-9]+\) ' $O/ht.log | head -80; tail -n 15 $O/ht.log; echo '```'; } >> $S
+          [ $t = 0 ] || rc=1
+          cat $S; exit $rc
+      - name: step summary
+        if: always()
+        env:
+          DEPS: ${{ steps.deps.outcome }}
+          CHECK: ${{ steps.check.outcome }}
+        run: |
+          S=$GITHUB_WORKSPACE/out/contract-hardhat.md
+          {
+            echo '## contract-hardhat'
+            echo "source: $GATE_SOURCE_REPO@$GATE_SOURCE_SHA; mirror commit $GITHUB_SHA; run $GITHUB_RUN_ID"
+            echo 'commands (cwd `contract/`): `npm ci`; `npx hardhat compile`; `timeout 25m npx hardhat test --network hardhat`'
+            echo "steps: deps=$DEPS check=$CHECK"
+            echo
+            if [ -f "$S" ]; then cat "$S"; else echo 'no result file: the check step did not run (see deps above and the job log)'; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$CHECK" = success ]; then lvl=notice; else lvl=error; fi
+          msg=$( { echo "deps=$DEPS check=$CHECK"; [ -f "$S" ] && head -c 3500 "$S"; } | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}')
+          echo "::$lvl title=contract-hardhat result::$msg"
+  # The wallet origin static export (frontend/wallet-origin, Next output: 'export') and its post-build checks
+  # (SRI, response headers, file manifest; fails on .well-known/, dynamic import( or a third-party source).
+  # The NEXT_PUBLIC_* values below are gate-only build constants (public host names, not secrets); nothing from
+  # this build is uploaded or deployed.
+  wallet-origin-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      NEXT_PUBLIC_AGENT_WALLET_ORIGIN: 'https://wallet.agentrix.top'
+      NEXT_PUBLIC_AGENT_WALLET_RP_ID: 'wallet.agentrix.top'
+      NEXT_PUBLIC_AGENT_MAIN_ORIGIN: 'https://agentrix.top'
+      NEXT_PUBLIC_AGENT_OWN_WALLET_API_ORIGIN: 'https://api.agentrix.top'
+      NEXT_PUBLIC_AGENT_OWN_WALLET_CHAIN_ID: '97'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: deps
+        id: deps
+        working-directory: frontend
+        run: |
+          npm ci --legacy-peer-deps --ignore-scripts
+      - name: check
+        id: check
+        working-directory: frontend
+        run: |
+          set +e; mkdir -p $GITHUB_WORKSPACE/out; S=$GITHUB_WORKSPACE/out/wallet-origin-build.md; O=$GITHUB_WORKSPACE/out
+          rc=0; timeout 30m node node_modules/next/dist/bin/next build wallet-origin > $O/wb.log 2>&1; b=$?
+          echo "wallet-origin next build rc=$b" >> $S
+          [ $b = 0 ] || { echo '```'; grep -E -A6 '(Type error|Failed to compile|Module not found|error TS|Error:)' $O/wb.log | head -80 | cut -c1-300; tail -n 40 $O/wb.log | cut -c1-300; echo '```'; rc=1; } >> $S
+          if [ $b = 0 ]; then echo "  pages: $(cd wallet-origin/out && find . -name index.html | sort | tr '\n' ' ')" >> $S; node wallet-origin/scripts/postbuild.mjs > $O/pb.log 2>&1; p=$?; { echo "wallet-origin postbuild rc=$p"; head -n 60 $O/pb.log | cut -c1-300 | sed 's/^/  /'; } >> $S; [ $p = 0 ] || rc=1; else echo 'wallet-origin postbuild: not run (the build failed)' >> $S; fi
+          cat $S; exit $rc
+      - name: step summary
+        if: always()
+        env:
+          DEPS: ${{ steps.deps.outcome }}
+          CHECK: ${{ steps.check.outcome }}
+        run: |
+          S=$GITHUB_WORKSPACE/out/wallet-origin-build.md
+          {
+            echo '## wallet-origin-build'
+            echo "source: $GATE_SOURCE_REPO@$GATE_SOURCE_SHA; mirror commit $GITHUB_SHA; run $GITHUB_RUN_ID"
+            echo 'commands (cwd `frontend/`): `npm ci --legacy-peer-deps --ignore-scripts`; `timeout 30m node node_modules/next/dist/bin/next build wallet-origin`; `node wallet-origin/scripts/postbuild.mjs`'
+            echo "steps: deps=$DEPS check=$CHECK"
+            echo
+            if [ -f "$S" ]; then cat "$S"; else echo 'no result file: the check step did not run (see deps above and the job log)'; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$CHECK" = success ]; then lvl=notice; else lvl=error; fi
+          msg=$( { echo "deps=$DEPS check=$CHECK"; [ -f "$S" ] && head -c 3500 "$S"; } | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}')
+          echo "::$lvl title=wallet-origin-build result::$msg"

@@ -1,0 +1,11 @@
+# Secrets — never commit
+.env
+.env.*
+
+# Build / deps
+node_modules/
+artifacts/
+cache/
+typechain-types/
+coverage/
+coverage.json
