@@ -1,0 +1,72 @@
+name: claw-gate
+# CI-only code gates for CutaGames/Agentrix that need GitHub-hosted runners. Every gate/** branch is an orphan
+# commit that holds only the paths the selected gates read plus this one workflow. Nothing is uploaded, released or
+# deployed, no secret is used, and the token is read-only.
+# Source: CutaGames/Agentrix @ ad2222f2d39ecc3dc9c6e9568c4f9e36d987b50d; gates: desktop-cargo.
+on:
+  push:
+    branches: ['gate/**']
+permissions:
+  contents: read
+concurrency:
+  group: claw-gate-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CI: '1'
+  NO_COLOR: '1'
+  FORCE_COLOR: '0'
+  npm_config_update_notifier: 'false'
+  npm_config_fund: 'false'
+  npm_config_audit: 'false'
+  NEXT_TELEMETRY_DISABLED: '1'
+  GATE_SOURCE_REPO: 'CutaGames/Agentrix'
+  GATE_SOURCE_SHA: 'ad2222f2d39ecc3dc9c6e9568c4f9e36d987b50d'
+  GATE_SELECTED: 'desktop-cargo'
+jobs:
+  # Desktop Rust library tests (Linux), then the standalone device-simulator and rental-trials crates when the
+  # mirrored tree has them. No Node: the Tauri build only needs a ../dist directory, the check step writes a stub.
+  desktop-cargo:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux system packages (build-desktop.yml list, minus libappindicator3-dev, plus libxdo-dev)
+        id: deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev libayatana-appindicator3-dev libxdo-dev
+      - name: check
+        id: check
+        working-directory: desktop/src-tauri
+        run: |
+          set +e; mkdir -p $GITHUB_WORKSPACE/out; S=$GITHUB_WORKSPACE/out/desktop-cargo.md; O=$GITHUB_WORKSPACE/out
+          mkdir -p ../dist; [ -f ../dist/index.html ] || echo '<!doctype html><title>stub</title>' > ../dist/index.html
+          timeout 60m cargo test --lib > $O/c.log 2>&1; rc=$?
+          { echo "desktop-cargo rc=$rc"; grep -E '^test result:' $O/c.log | sed 's/^/  /'; grep -E '^test .* FAILED$' $O/c.log | sort -u | head -40 | sed 's/^/  /'; } > $S
+          [ $rc = 0 ] || { echo '```'; grep -E -A8 '^error' $O/c.log | head -80 | cut -c1-300; tail -n 30 $O/c.log | cut -c1-300; echo '```'; } >> $S
+          D=$GITHUB_WORKSPACE/packages/device-simulator
+          if [ -f $D/Cargo.toml ]; then (cd $D && timeout 30m cargo test > $O/sim.log 2>&1); s=$?; { echo "device-simulator rc=$s"; grep -E '^test result:' $O/sim.log | sed 's/^/  /'; grep -E '^test .* FAILED$' $O/sim.log | sort -u | head -40 | sed 's/^/  /'; } >> $S; [ $s = 0 ] || { echo '```'; grep -E -A8 '^error' $O/sim.log | head -60 | cut -c1-300; tail -n 20 $O/sim.log | cut -c1-300; echo '```'; } >> $S; [ -f $D/Cargo.lock ] && [ "$(git -C $GITHUB_WORKSPACE ls-files packages/device-simulator/Cargo.lock)" = '' ] && { echo 'device-simulator Cargo.lock (not committed yet; commit this exact file):'; echo '```toml'; cat $D/Cargo.lock; echo '```'; } >> $S; [ $s = 0 ] || rc=1; else echo 'device-simulator: not in this tree' >> $S; fi
+          D2=$GITHUB_WORKSPACE/packages/rental-trials
+          if [ -f $D2/Cargo.toml ]; then echo "/dev/kvm: $(ls -l /dev/kvm 2>/dev/null || echo 'no /dev/kvm')" >> $S; (cd $D2 && timeout 40m cargo test -- --nocapture > $O/trial.log 2>&1); t=$?; { echo "rental-trials rc=$t"; grep -E '^(TRIAL:|test result:)' $O/trial.log | sed 's/^/  /'; grep -E '^test .* FAILED$' $O/trial.log | sort -u | head -40 | sed 's/^/  /'; } >> $S; [ $t = 0 ] || { echo '```'; grep -E -A8 '^error' $O/trial.log | head -60 | cut -c1-300; tail -n 20 $O/trial.log | cut -c1-300; echo '```'; } >> $S; [ $t = 0 ] || rc=1; else echo 'rental-trials: not in this tree' >> $S; fi
+          cat $S; exit $rc
+      - name: step summary
+        if: always()
+        env:
+          DEPS: ${{ steps.deps.outcome }}
+          CHECK: ${{ steps.check.outcome }}
+        run: |
+          S=$GITHUB_WORKSPACE/out/desktop-cargo.md
+          {
+            echo '## desktop-cargo'
+            echo "source: $GATE_SOURCE_REPO@$GATE_SOURCE_SHA; mirror commit $GITHUB_SHA; run $GITHUB_RUN_ID"
+            echo 'commands: apt-get install (build-desktop.yml list); cwd `desktop/src-tauri/`: `timeout 60m cargo test --lib`; cwd `packages/device-simulator/`: `timeout 30m cargo test`; cwd `packages/rental-trials/`: `timeout 40m cargo test -- --nocapture` (the last two only when the crate is in the tree)'
+            echo "steps: deps=$DEPS check=$CHECK"
+            echo
+            if [ -f "$S" ]; then cat "$S"; else echo 'no result file: the check step did not run (see deps above and the job log)'; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$CHECK" = success ]; then lvl=notice; else lvl=error; fi
+          msg=$( { echo "deps=$DEPS check=$CHECK"; [ -f "$S" ] && head -c 3500 "$S"; } | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}')
+          echo "::$lvl title=desktop-cargo result::$msg"
