@@ -75,6 +75,14 @@ jobs:
       EXPO_PUBLIC_DEVICE_MESH_ENABLED: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-staging-') && '1' || '' }}
       EXPO_PUBLIC_DEVICE_MARKET_ENABLED: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-staging-') && '1' || '' }}
       EXPO_PUBLIC_SOUL_CORE_IDENTITY_VC_ENABLED: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-staging-') && '1' || '' }}
+      # L9 package 3 (backlog 3.3): the L9 owner-facing screens whose server switches are on in production.
+      # Only build/mobile-signing-check-* sets them (formal signing, no download-server deploy, no Release);
+      # every other ref, including build/mobile-release-*, leaves them empty. The business export card needs
+      # the full export switch on as well (src/services/businessExport.ts).
+      EXPO_PUBLIC_TWIN_FAST_PATH_V1_ENABLED: ${{ startsWith(github.ref_name, 'build/mobile-signing-check-') && '1' || '' }}
+      EXPO_PUBLIC_ACCOUNT_EXPORT: ${{ startsWith(github.ref_name, 'build/mobile-signing-check-') && '1' || '' }}
+      EXPO_PUBLIC_ACCOUNT_EXPORT_BUSINESS_V1: ${{ startsWith(github.ref_name, 'build/mobile-signing-check-') && '1' || '' }}
+      EXPO_PUBLIC_DEVICE_ASSETS_ENABLED: ${{ startsWith(github.ref_name, 'build/mobile-signing-check-') && '1' || '' }}
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       release-apk: ${{ steps.paths.outputs.release }}
@@ -112,6 +120,7 @@ jobs:
       - name: Staging switch guard
         run: |
           echo "[ci] ref=$GITHUB_REF_NAME RELEASE_SIGNING=$RELEASE_SIGNING EXPO_PUBLIC_STAGING_SWITCH='${EXPO_PUBLIC_STAGING_SWITCH:-}' EXPO_PUBLIC_PHONE_DEVICE_KEY='${EXPO_PUBLIC_PHONE_DEVICE_KEY:-}'"
+          echo "[ci] L9 switches: TWIN_FAST_PATH_V1_ENABLED='${EXPO_PUBLIC_TWIN_FAST_PATH_V1_ENABLED:-}' ACCOUNT_EXPORT='${EXPO_PUBLIC_ACCOUNT_EXPORT:-}' ACCOUNT_EXPORT_BUSINESS_V1='${EXPO_PUBLIC_ACCOUNT_EXPORT_BUSINESS_V1:-}' DEVICE_ASSETS_ENABLED='${EXPO_PUBLIC_DEVICE_ASSETS_ENABLED:-}'"
           files=$(ls -1a .env* 2>/dev/null | xargs -r grep -lE '^[[:space:]]*(export[[:space:]]+)?EXPO_PUBLIC_(STAGING_SWITCH|PHONE_DEVICE_KEY)=' 2>/dev/null || true)
           if [ "$RELEASE_SIGNING" = "true" ]; then
             if [ -n "${EXPO_PUBLIC_STAGING_SWITCH:-}" ] || [ -n "${EXPO_PUBLIC_PHONE_DEVICE_KEY:-}" ] || [ -n "$files" ]; then

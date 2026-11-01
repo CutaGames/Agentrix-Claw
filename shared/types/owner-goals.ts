@@ -9,6 +9,8 @@
  * Web: `NEXT_PUBLIC_OWNER_GOALS_ENABLED` exactly `1`.
  */
 
+import { INTRODUCTION_FOLLOW_UP_KINDS_V1, type IntroductionFollowUpKindV1 } from './introduction';
+
 export const OWNER_GOALS_ROUTES_V0 = {
   list: 'GET /api/owner-goals',
   create: 'POST /api/owner-goals',
@@ -112,8 +114,21 @@ export const OWNER_FOLLOW_UPS_ROUTES_V1 = {
   list: 'GET /api/owner-goals/follow-ups',
 } as const;
 
-export const OWNER_FOLLOW_UP_KINDS_V1 = ['lead_no_reply', 'booking_soon', 'deposit_unpaid'] as const;
+/**
+ * L9 包③：转介的两类跟进（`b_no_reply`、`client_no_booking`，定义在 `introduction.ts`）并进来，手机、网页、桌面的穷举
+ * 分支都已补上。后端 `followUpCardsV1` 现在仍只出前三类；转介跟进卡的出卡另起一片。
+ */
+export const OWNER_FOLLOW_UP_KINDS_V1 = ['lead_no_reply', 'booking_soon', 'deposit_unpaid', ...INTRODUCTION_FOLLOW_UP_KINDS_V1] as const;
 export type OwnerFollowUpKindV1 = (typeof OWNER_FOLLOW_UP_KINDS_V1)[number];
+/** 转介跟进卡的通用说法（不带对方名字），手机、网页、桌面共用，各端不各写一份。 */
+export function ownerFollowUpIntroductionWordsV1(kind: IntroductionFollowUpKindV1): { zh: string; en: string } {
+  return kind === 'b_no_reply'
+    ? { zh: '你转介出去的客户，对方一天还没回复，要不要问一句？', en: 'The person you referred a client to has not replied in a day. Want to check in?' }
+    : { zh: '你转介出去的客户两天还没约，要不要问一句？', en: 'A client you referred has not booked in two days. Want to check in?' };
+}
+export function isIntroductionFollowUpKindV1(kind: OwnerFollowUpKindV1): kind is IntroductionFollowUpKindV1 {
+  return (INTRODUCTION_FOLLOW_UP_KINDS_V1 as readonly string[]).includes(kind);
+}
 
 export const OWNER_FOLLOW_UP_RULES_V1 = {
   leadNoReplyHours: 48,

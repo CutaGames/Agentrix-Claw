@@ -155,6 +155,44 @@ export const STEP_UP_COPY = {
   },
 } as const;
 
+/**
+ * L8-13 item 11: what the sheet says for each action, the same title and sentence the web dialog uses
+ * (frontend/lib/auth/step-up-reasons.ts: approvePayment, raiseBudget), so the owner sees the same words on every surface.
+ * `confirmAutomation` is phone-only (no web dialog for it); L8-14 item 8 words it with 批准 / Approve (coord 10-31) so the one
+ * screen no longer says 确认 three times, and gives it its own second sentence (`then`).
+ */
+export type StepUpReasonCopyV0 = {
+  title: { zh: string; en: string };
+  why: { zh: string; en: string };
+  /** The sentence after `why`. Without it the sheet says the one the web dialog says (STEP_UP_REASON_THEN_V0). */
+  then?: { zh: string; en: string };
+};
+
+/** What follows `why` in the web dialog (`StepUpDialog.tsx`): payments and budgets keep it word for word. */
+export const STEP_UP_REASON_THEN_V0 = { zh: '要先确认一下是你本人。', en: 'First, please confirm it is you.' } as const;
+
+/** The whole body line under the sheet title: `why`, then the second sentence. Chinese joins with no space (as on the web), English with one. */
+export function stepUpReasonBodyV0(reason: StepUpReasonCopyV0): { zh: string; en: string } {
+  const then = reason.then ?? STEP_UP_REASON_THEN_V0;
+  return { zh: `${reason.why.zh}${then.zh}`, en: `${reason.why.en} ${then.en}` };
+}
+
+export const STEP_UP_REASONS_V0: Readonly<Record<'approvePayment' | 'raiseBudget' | 'confirmAutomation', StepUpReasonCopyV0>> = {
+  approvePayment: {
+    title: { zh: '确认付款', en: 'Confirm this payment' },
+    why: { zh: '批准以后，这笔钱会付出去。', en: 'Once approved, this money is paid out.' },
+  },
+  raiseBudget: {
+    title: { zh: '确认提高预算', en: 'Confirm the higher budget' },
+    why: { zh: '提高以后，Agent 自己能花的钱会变多。', en: 'With a higher budget your Agent can spend more on its own.' },
+  },
+  confirmAutomation: {
+    title: { zh: '批准这个自动任务', en: 'Approve this automation' },
+    why: { zh: '批准以后，它会照设定自己跑。', en: 'Once approved, it runs on its own as set.' },
+    then: { zh: '先确认一下是你本人。', en: "First, let's check it's you." },
+  },
+};
+
 export const STEP_UP_FAILURE_COPY: Readonly<Record<StepUpFailureV1, { zh: string; en: string }>> = {
   invalid: { zh: '验证码不对或已过期，请重新输入。', en: 'The code is wrong or expired. Try again.' },
   method_unavailable: { zh: '这个账户没有可用的邮箱。', en: 'This account has no usable e-mail.' },

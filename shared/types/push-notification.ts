@@ -32,8 +32,15 @@ export const PUSH_TYPES = [
   'share_reply',
   'booking_new',
   'alert_digest',
+  // L9 M4b: something new about a used thing the user sells, asked about or is looking for.
+  'resale_update',
+  // L9 包③：转介有新动静（等你批准、转出的客户对方已回复、有人把客户转给你）。
+  'introduction_update',
 ] as const;
 export type PushType = (typeof PUSH_TYPES)[number];
+
+/** 转介推送的 `ref` 前缀：转介记录编号是裸 UUID，加前缀后手机“事项”页能和订单（`ord_`）、付款批准（`spa_`）区分开。 */
+export const PUSH_INTRODUCTION_REF_PREFIX = 'int_' as const;
 
 export const PUSH_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$/;
 
@@ -79,6 +86,16 @@ export const PUSH_DESTINATIONS: Readonly<Record<PushType, Omit<PushDestinationV1
   booking_new: { zone: 'twin', tab: 'bookings', refKind: 'booking' },
   /** L8 R1：每日提醒摘要（只有条数）。`ref` 是摘要通知 id，落到"事项 → 待我处理"。 */
   alert_digest: { zone: 'matters', tab: 'pending', refKind: 'alert_digest' },
+  /**
+   * L9 M4b：卖的、问过的或在找的二手东西有新动静。`ref` 是挂牌号（`rsl_…`）、批准卡号（`rsd_…`）或在找号（`rsw_…`），
+   * 落到"事项 → 待我处理"（手机端的专门落点随 L1）。
+   */
+  resale_update: { zone: 'matters', tab: 'pending', refKind: 'resale' },
+  /**
+   * L9 包③：转介有新动静。`ref` 是 `int_<转介记录编号>`，落到"事项 → 待我处理"；手机不做原生批准卡，
+   * 只提示并带用户去网页的分身状态页处理。
+   */
+  introduction_update: { zone: 'matters', tab: 'pending', refKind: 'introduction' },
 };
 
 export type PushImportance = 'max' | 'high' | 'default';
@@ -109,6 +126,10 @@ export const PUSH_CHANNELS: Readonly<Record<PushType, PushChannelV1>> = {
   share_reply: { id: 'replies', name: { zh: '共享页回复', en: 'Share page replies' }, importance: 'high', lockscreen: 'secret' },
   booking_new: { id: 'bookings', name: { zh: '新预约', en: 'New bookings' }, importance: 'high', lockscreen: 'secret' },
   alert_digest: { id: 'digest', name: { zh: '每日提醒摘要', en: 'Daily alert digest' }, importance: 'default', lockscreen: 'secret' },
+  // L9 M4b：涉及对方，锁屏完全不显示。
+  resale_update: { id: 'resale', name: { zh: '二手买卖', en: 'Buying and selling used items' }, importance: 'high', lockscreen: 'secret' },
+  // L9 包③：涉及客户和对方，锁屏完全不显示。
+  introduction_update: { id: 'introductions', name: { zh: '转介', en: 'Referrals' }, importance: 'high', lockscreen: 'secret' },
 };
 
 /** 旧通道：现有后端发 `transactions`，保留它，避免旧推送落到系统默认通道。涉及钱，锁屏不显示。 */
@@ -188,6 +209,16 @@ export const PUSH_GENERIC_TEXT: Readonly<Record<PushType, Record<PushLocale, { t
   alert_digest: {
     zh: { title: '过去一天的提醒摘要', body: '打开 Agentrix 查看。' },
     en: { title: 'Your alerts from the last day', body: 'Open Agentrix to see them.' },
+  },
+  // L9 M4b：不带对方写的话、东西的名字、金额、地点和对方是谁。
+  resale_update: {
+    zh: { title: '你卖的、问过的或在找的东西有新动静', body: '打开 Agentrix 查看。' },
+    en: { title: "Something new about an item you're selling, asked about, or want", body: 'Open Agentrix to view it.' },
+  },
+  // L9 包③：不带客户姓名、联系方式、需求、对方是谁，也不说是哪一类转介提醒。
+  introduction_update: {
+    zh: { title: '你的转介有新动静', body: '打开 Agentrix 查看。' },
+    en: { title: 'There is news about a referral', body: 'Open Agentrix to view it.' },
   },
 };
 

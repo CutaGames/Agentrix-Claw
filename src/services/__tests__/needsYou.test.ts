@@ -24,6 +24,26 @@ const request = (id: string, receivedMinAgo: number) => ({
 }) as never;
 
 describe('needs you (M0 home)', () => {
+  it('L9 package 3: the two referral follow-up kinds sort after the other three, count as follow-ups and keep their own kind', () => {
+    const cards = buildNeedsYou({
+      approvals: null,
+      requests: null,
+      followUps: {
+        quietNow: false,
+        cards: [
+          { cardId: 'client_no_booking:i2', kind: 'client_no_booking', refId: 'i2', agentAccountId: AGENT, dueAt: iso(-30) },
+          { cardId: 'b_no_reply:i1', kind: 'b_no_reply', refId: 'i1', agentAccountId: AGENT, dueAt: iso(-60) },
+          { cardId: 'booking_soon:b1', kind: 'booking_soon', refId: 'b1', agentAccountId: AGENT, dueAt: iso(600), startsAt: iso(600) },
+        ],
+      } as never,
+      goals: null,
+      matters: null,
+    }, NOW);
+    expect(cards.map((c) => c.key)).toEqual(['booking_soon:b1', 'b_no_reply:i1', 'client_no_booking:i2']);
+    expect(cards.map((c) => c.kind)).toEqual(['booking_soon', 'b_no_reply', 'client_no_booking']);
+    expect(needsYouSummary(cards, 'en')).toBe('3 things need you: 3 follow-ups.');
+    expect(needsYouSummary(cards, 'zh')).toBe('3 件事要你拍板：3 件跟进。');
+  });
   it('puts payments first by expiry, then requests newest first, follow-ups, goal check-ins and 事项 items', () => {
     const cards = buildNeedsYou({
       approvals: [approval('apr_late', 30), approval('apr_soon', 5), approval('apr_done', 30, 'approved'), approval('apr_gone', -1)],

@@ -24,9 +24,11 @@ import type { DigitalTwinPublicFacetRecordV1, DigitalTwinPublishReadinessV1 } fr
 import {
   isTwinCreationStepId,
   resolveTwinCreation,
+  resolveTwinFastPath,
   twinCreationInputFrom,
   type TwinCreationProjection,
   type TwinCreationStepId,
+  type TwinFastPathProjection,
 } from '../../shared/types/digital-twin-creation';
 import { APP_URL } from '../config/env';
 import type { MobileReadState } from './mobileReadState';
@@ -49,6 +51,22 @@ export type TwinCreationReadState = MobileReadState<MobileTwinCreation>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * L9 P2-1 on the phone: the same three stages as the web (`NEXT_PUBLIC_TWIN_FAST_PATH_V1_ENABLED`), the nine steps under
+ * "专业设置". Off unless EXPO_PUBLIC_TWIN_FAST_PATH_V1_ENABLED is exactly '1'; off, the screen is the nine-step list of today.
+ */
+export function twinFastPathEnabled(value: unknown): boolean {
+  return value === '1';
+}
+
+// Read as a literal member expression so the Expo build inlines it.
+export const TWIN_FAST_PATH_ENABLED = twinFastPathEnabled(process.env.EXPO_PUBLIC_TWIN_FAST_PATH_V1_ENABLED);
+
+/** The three stages around the step the phone points at next (the shared grouping); null once nothing is left. */
+export function twinCreationFastPath(view: Pick<TwinCreationProjection, 'steps' | 'current'>): TwinFastPathProjection | null {
+  return view.current ? resolveTwinFastPath(view, view.current) : null;
 }
 
 function twinPath(agentAccountId: string, suffix = ''): string {

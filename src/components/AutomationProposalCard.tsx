@@ -12,6 +12,7 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { useI18n } from '../stores/i18nStore';
 import { useThemedStyles, type Palette } from '../theme/useTheme';
 import { StepUpSheet } from './StepUpSheet';
+import { STEP_UP_REASONS_V0 } from '../services/stepUp';
 import {
   AUTOMATION_PROPOSAL_COPY as COPY,
   automationProposalDelivery,
@@ -137,7 +138,7 @@ export function AutomationProposalCard({ proposal, client, testID }: AutomationP
           {busy ? <ActivityIndicator /> : null}
         </View>
       ) : null}
-      <StepUpSheet visible={stepUpVisible} onConfirmed={() => closeStepUp(true)} onCancel={() => closeStepUp(false)} />
+      <StepUpSheet visible={stepUpVisible} onConfirmed={() => closeStepUp(true)} onCancel={() => closeStepUp(false)} reason={STEP_UP_REASONS_V0.confirmAutomation} />
     </View>
   );
 }

@@ -46,14 +46,36 @@ import type { VisibilityActionReceiptV1, VisibilityChangeV1, VisibilityPreviewV1
 
 export const ORDER_ESCROW_SCHEMA_VERSION = 'agentrix.order.v0' as const;
 
-export const ORDER_KINDS = ['paid_question', 'consultation_deposit', 'device_rental'] as const;
+export const ORDER_KINDS_LEGACY = ['paid_question', 'consultation_deposit', 'device_rental'] as const;
+/**
+ * L9 G line: bookkeeping-only kinds. Their orders are always `environment: 'test'` (the database refuses a live row of these
+ * kinds, migration 2252), are never reachable through the public create routes, and never touch a payment rail: the escrow
+ * is held and released as ledger entries only, like `device_rental`. `project_deposit`: the deposit of a project quote
+ * (P3-2); `booking_deposit`: the deposit of a visitor booking (P3-3); `item_purchase`: a second-hand item paid into escrow and
+ * released after an in-person handover (P3-8, migration 2254; the device-assets resale line's escrow, S24, uses this same kind).
+ */
+export const ORDER_KINDS_L9_TEST_ONLY = ['project_deposit', 'booking_deposit', 'item_purchase'] as const;
+/** Kinds whose settled orders never pay an introducer's share (second-hand sales pay no referral share, target-l9 3.4). */
+export const ORDER_KINDS_NO_REFERRAL_SHARE = ['item_purchase'] as const;
+export function orderKindPaysReferralShareV1(kind: unknown): boolean {
+  return !(typeof kind === 'string' && (ORDER_KINDS_NO_REFERRAL_SHARE as readonly string[]).includes(kind));
+}
+export const ORDER_KINDS = [...ORDER_KINDS_LEGACY, ...ORDER_KINDS_L9_TEST_ONLY] as const;
 export type OrderKindV1 = (typeof ORDER_KINDS)[number];
+/** Whether this kind is one of the bookkeeping-only, test-mode-only kinds. */
+export function isL9TestOnlyOrderKindV1(kind: unknown): boolean {
+  return typeof kind === 'string' && (ORDER_KINDS_L9_TEST_ONLY as readonly string[]).includes(kind);
+}
 /**
  * L8 DG: the kinds a catalogue offer or a public order request may name. `device_rental` orders are made only by the
  * device rental service (test-mode escrow for a metered job), never through the public create routes.
  */
 export const ORDER_PUBLIC_KINDS = ['paid_question', 'consultation_deposit'] as const;
 export type OrderPublicKindV1 = (typeof ORDER_PUBLIC_KINDS)[number];
+/** The same check as `ORDER_PUBLIC_KINDS.includes`, typed so a caller holding any order kind gets a public kind out of it. */
+export function isOrderPublicKindV1(kind: unknown): kind is OrderPublicKindV1 {
+  return typeof kind === 'string' && (ORDER_PUBLIC_KINDS as readonly string[]).includes(kind);
+}
 
 export const ORDER_STATUSES = [
   'awaiting_payment', // 已下单，等买方付款（有付款期限）
@@ -309,7 +331,15 @@ export const ORDER_RECONCILE_TARGETS: readonly OrderStatusV1[] = ['awaiting_paym
 /** E52 ①：默认期限（服务端可配置）。 */
 export const ORDER_DEFAULT_WINDOWS_SECONDS = {
   payment: 30 * 60,
-  acceptance: { paid_question: 72 * 60 * 60, consultation_deposit: 7 * 24 * 60 * 60, device_rental: 24 * 60 * 60 },
+  acceptance: {
+    paid_question: 72 * 60 * 60,
+    consultation_deposit: 7 * 24 * 60 * 60,
+    device_rental: 24 * 60 * 60,
+    project_deposit: 7 * 24 * 60 * 60,
+    booking_deposit: 7 * 24 * 60 * 60,
+    // D2 (device-assets decisions): the buyer has 48 hours after the in-person handover to tap "received", or it is accepted.
+    item_purchase: 48 * 60 * 60,
+  },
 } as const;
 /** E52 ④：平台裁决争议的时限。 */
 export const ORDER_DISPUTE_DECISION_SECONDS = 7 * 24 * 60 * 60;
@@ -916,6 +946,11 @@ export const ORDER_DELIVERY_WINDOW_SECONDS_V13: Readonly<Record<OrderKindV1, num
   consultation_deposit: 14 * 24 * 60 * 60,
   // L8 DG: a backstop only; the rental service times a running job out much sooner (DEVICE_RENTAL_RUN_LIMIT_SECONDS).
   device_rental: 24 * 60 * 60,
+  // L9 G: a project deposit is for work that starts later; a booking deposit is delivered by the appointment itself.
+  project_deposit: 14 * 24 * 60 * 60,
+  booking_deposit: 14 * 24 * 60 * 60,
+  // An item is handed over in person: the seller has a week from the held payment, then it is refunded in full.
+  item_purchase: 7 * 24 * 60 * 60,
 };
 
 /** 交付期限：付款时间 + 交付窗口。没付款返回 null。 */

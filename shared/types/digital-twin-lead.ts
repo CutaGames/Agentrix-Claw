@@ -17,6 +17,7 @@ import {
   type DigitalTwinDecodeResultV1,
   type DigitalTwinRefV1,
 } from './digital-twin';
+import { INQUIRY_FITS_V1, type InquiryFitV1 } from './inquiry-fit';
 
 const { isRecord, isNonEmptyString, isMember, isIsoTimestamp, unknownKeys, fail } = DIGITAL_TWIN_DECODE_HELPERS_V1;
 
@@ -60,6 +61,16 @@ export interface DigitalTwinLeadRecordV1 {
   consent: { copyVersion: number; language: 'zh-CN' | 'en'; acceptedAt: string };
   retention: { expiresAt: string };
   state: DigitalTwinLeadRecordStateV1;
+  /**
+   * L9 P1-5a: the owner's mark "I can't take this" (`inquiry-fit.ts`). Only present once the owner has marked the lead;
+   * a record without it reads as `ok`. It is not part of the state machine above and not a CSV export column (the JSON
+   * export is the owner's own records, so a marked lead carries it there).
+   */
+  inquiryFit?: InquiryFitV1;
+  /** True while the mark is one of `full`, `off_topic`, `out_of_scope`. */
+  ownerMarkedUnable?: boolean;
+  /** When the owner last changed the mark (P1-5b: the "can't take it" time point). */
+  ownerMarkedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -85,6 +96,12 @@ export interface DigitalTwinLeadSubmitCommandV1 {
 export interface DigitalTwinLeadDecisionCommandV1 {
   schemaVersion: typeof DIGITAL_TWIN_SCHEMA_VERSION;
   action: DigitalTwinLeadActionV1;
+}
+
+/** L9 P1-5a: the owner marks (or un-marks, with `ok`) a lead as one they cannot take. */
+export interface DigitalTwinLeadFitCommandV1 {
+  schemaVersion: typeof DIGITAL_TWIN_SCHEMA_VERSION;
+  inquiryFit: InquiryFitV1;
 }
 
 /** Owner-facing lead as listed; identical to the record (the owner is the recipient). */
@@ -184,6 +201,16 @@ export function decodeDigitalTwinLeadDecisionCommandV1(input: unknown): DigitalT
   if (input.schemaVersion !== DIGITAL_TWIN_SCHEMA_VERSION) return fail('unknown_schema_version', ['schemaVersion']);
   if (!isMember(DIGITAL_TWIN_LEAD_ACTIONS_V1, input.action)) return fail('invalid_enum', ['action']);
   return { ok: true, value: { schemaVersion: DIGITAL_TWIN_SCHEMA_VERSION, action: input.action } };
+}
+
+/** Exactly `{ schemaVersion, inquiryFit }`; an unknown value or an extra key is refused, nothing is guessed. */
+export function decodeDigitalTwinLeadFitCommandV1(input: unknown): DigitalTwinDecodeResultV1<DigitalTwinLeadFitCommandV1> {
+  if (!isRecord(input)) return fail('invalid_shape', ['root']);
+  const extra = unknownKeys(input, ['schemaVersion', 'inquiryFit']);
+  if (extra.length > 0) return fail('unknown_field', extra);
+  if (input.schemaVersion !== DIGITAL_TWIN_SCHEMA_VERSION) return fail('unknown_schema_version', ['schemaVersion']);
+  if (!isMember(INQUIRY_FITS_V1, input.inquiryFit)) return fail('invalid_enum', ['inquiryFit']);
+  return { ok: true, value: { schemaVersion: DIGITAL_TWIN_SCHEMA_VERSION, inquiryFit: input.inquiryFit } };
 }
 
 /** `format` absent → json; anything outside the enum → invalid_enum; nothing extra. */

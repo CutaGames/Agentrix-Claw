@@ -22,6 +22,8 @@ export type NeedsYouKindV0 =
   | 'lead_no_reply'
   | 'deposit_unpaid'
   | 'booking_soon'
+  | 'b_no_reply'
+  | 'client_no_booking'
   | 'goal_check_in'
   | 'computer_approval'
   | 'twin_review';
@@ -86,7 +88,7 @@ export function buildNeedsYou(src: NeedsYouSourcesV0, nowMs: number): NeedsYouCa
       request: r,
     }));
 
-  const followUpOrder: Record<string, number> = { lead_no_reply: 0, deposit_unpaid: 1, booking_soon: 2 };
+  const followUpOrder: Record<string, number> = { lead_no_reply: 0, deposit_unpaid: 1, booking_soon: 2, b_no_reply: 3, client_no_booking: 4 };
   const followUps: NeedsYouCardV0[] = [...(src.followUps?.cards ?? [])]
     .sort((a, b) => followUpOrder[a.kind] - followUpOrder[b.kind] || time(a.dueAt) - time(b.dueAt))
     .map((c) => ({
@@ -129,7 +131,8 @@ export function needsYouSummary(cards: readonly NeedsYouCardV0[], lang: Lang): s
   const add = (count: number | undefined, zh: string, en: string) => { if (count) parts.push(lang === 'zh' ? `${count} ${zh}` : `${count} ${en}`); };
   add(n.spend_approval, '笔付款等批准', count1(n.spend_approval, 'payment to approve', 'payments to approve'));
   add(n.agent_request, '条别人 Agent 的请求', count1(n.agent_request, 'request from another Agent', 'requests from other Agents'));
-  add((n.lead_no_reply ?? 0) + (n.deposit_unpaid ?? 0) + (n.booking_soon ?? 0) || undefined, '件跟进', count1((n.lead_no_reply ?? 0) + (n.deposit_unpaid ?? 0) + (n.booking_soon ?? 0), 'follow-up', 'follow-ups'));
+  const followUpCount = (n.lead_no_reply ?? 0) + (n.deposit_unpaid ?? 0) + (n.booking_soon ?? 0) + (n.b_no_reply ?? 0) + (n.client_no_booking ?? 0);
+  add(followUpCount || undefined, '件跟进', count1(followUpCount, 'follow-up', 'follow-ups'));
   add(n.goal_check_in, '个目标该复盘', count1(n.goal_check_in, 'goal to check in on', 'goals to check in on'));
   add((n.computer_approval ?? 0) + (n.twin_review ?? 0) || undefined, '件电脑审批或分身复核', count1((n.computer_approval ?? 0) + (n.twin_review ?? 0), 'computer approval or twin review', 'computer approvals or twin reviews'));
   return lang === 'zh' ? `${cards.length} 件事要你拍板：${parts.join('，')}。` : `${cards.length} ${cards.length === 1 ? 'thing needs' : 'things need'} you: ${parts.join(', ')}.`;

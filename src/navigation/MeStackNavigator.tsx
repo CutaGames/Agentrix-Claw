@@ -51,6 +51,12 @@ import { useI18n } from '../stores/i18nStore';
 import { MyHomeScreen } from '../screens/four-zone/MyHomeScreen';
 import { AppearanceScreen } from '../screens/four-zone/AppearanceScreen';
 import { MyDevicesScreen } from '../screens/four-zone/MyDevicesScreen';
+import { MyThingsScreen } from '../screens/four-zone/MyThingsScreen';
+import { AddThingScreen } from '../screens/four-zone/AddThingScreen';
+import { ThingDetailScreen } from '../screens/four-zone/ThingDetailScreen';
+import { DisclosureCardsScreen } from '../screens/four-zone/DisclosureCardsScreen';
+import { WantedScreen } from '../screens/four-zone/WantedScreen';
+import { DEVICE_ASSETS_MOBILE_ENABLED } from '../services/deviceAssets';
 
 const Stack = createNativeStackNavigator<MeStackParamList>();
 
@@ -76,6 +82,16 @@ export function MeStackNavigator({ initialRouteName }: { initialRouteName?: keyo
       <Stack.Screen name="MyHome" component={MyHomeScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Appearance" component={AppearanceScreen} options={{ title: t({ en: 'Appearance', zh: '外观' }) }} />
       <Stack.Screen name="MyDevices" component={MyDevicesScreen} options={{ title: t({ en: 'Devices', zh: '设备' }) }} />
+      {/* L9 S16 "My things": registered only in builds with EXPO_PUBLIC_DEVICE_ASSETS_ENABLED=1 (deviceAssets.ts). */}
+      {DEVICE_ASSETS_MOBILE_ENABLED ? (
+        <>
+          <Stack.Screen name="MyThings" component={MyThingsScreen} options={{ title: t({ en: 'My things', zh: '我的东西' }) }} />
+          <Stack.Screen name="AddThing" component={AddThingScreen} options={{ title: t({ en: 'Add a thing', zh: '加一件' }) }} />
+          <Stack.Screen name="ThingDetail" component={ThingDetailScreen} options={{ title: t({ en: 'Thing', zh: '这件东西' }) }} />
+          <Stack.Screen name="DisclosureCards" component={DisclosureCardsScreen} options={{ title: t({ en: 'Places and times', zh: '地点和时间' }) }} />
+          <Stack.Screen name="Wanted" component={WantedScreen} options={{ title: t({ en: "I'm looking for", zh: '我在找' }) }} />
+        </>
+      ) : null}
       {COMPOSIO_CONNECT_MOBILE_ENABLED ? (
         <Stack.Screen name="MyConnections" component={MyConnectionsScreen} options={{ title: t({ en: 'Connected apps', zh: '连接的应用' }) }} />
       ) : null}

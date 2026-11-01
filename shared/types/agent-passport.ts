@@ -237,6 +237,11 @@ export interface AgentPassportCardExtensionV1 {
    * recording shipped; optional so older cards still read.
    */
   visitorNotice?: PassportVisitorNoticeV1;
+  /**
+   * L9 F1 (`onchain-name.ts`): the owner's ENS name, only on the bare card, only while `ONCHAIN_NAME_V1_ENABLED=1` and only
+   * when wallet, name and X agree. Absent otherwise (never an "unverified" value).
+   */
+  onchainName?: { name: string; checkUrl: string };
 }
 
 // ---------------------------------------------------------------------------

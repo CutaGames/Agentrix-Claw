@@ -45,5 +45,6 @@ export function describeRiskLabel(label: OwnerLockdownRiskLabelMetaV1): string {
 }
 
 export function describeContextWithheld(meta: ContextWithheldMetaV1): string {
-  return `已隐去 ${meta.count} 条：它们的数据级别不允许交给这次用的模型`;
+  // L8-13 item 3: one item is 「它的」, more are 「它们的」 (same as the web).
+  return `已隐去 ${meta.count} 条：${meta.count === 1 ? '它的' : '它们的'}数据级别不允许交给这次用的模型`;
 }

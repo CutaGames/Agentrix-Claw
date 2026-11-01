@@ -2,14 +2,23 @@
  * TwinCreationProgress — 分身 → 创建进度 (product doc 1.9; T5, REQ-mobile-047). Read-only:
  * the nine steps from the shared step model, the one to do next, and "到网页上继续" for it.
  * Nothing here writes; every step is done on the web.
+ *
+ * L9 P2-1 (EXPO_PUBLIC_TWIN_FAST_PATH_V1_ENABLED=1): the same three stages as the web, the nine steps folded under
+ * "专业设置". Off, the screen is exactly the nine-step list of today.
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { ActivityIndicator, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { fetchTwinCreation, twinCreationWebUrl } from '../../services/twinCreation';
+import { TWIN_FAST_PATH_ENABLED, fetchTwinCreation, twinCreationFastPath, twinCreationWebUrl } from '../../services/twinCreation';
 import { useI18n } from '../../stores/i18nStore';
 import { useThemedStyles, type Palette } from '../../theme/useTheme';
-import type { TwinCreationLockReason, TwinCreationStepId, TwinCreationStepStatus } from '../../../shared/types/digital-twin-creation';
+import type {
+  TwinCreationLockReason,
+  TwinCreationStepId,
+  TwinCreationStepStatus,
+  TwinFastPathStageId,
+  TwinFastPathStageState,
+} from '../../../shared/types/digital-twin-creation';
 
 type Lang = 'zh' | 'en';
 type Copy = { zh: string; en: string };
@@ -43,10 +52,27 @@ const STATUS_TEXT: Record<TwinCreationStepStatus, Copy> = {
   blocked: { zh: '未开放', en: 'Not open' },
 };
 
+/** Same wording as the Web flow (`TWIN_FAST_PATH_STAGE_COPY`, `TWIN_FAST_PATH_STAGE_HINT`, the "专业设置" fold). */
+const STAGE_TITLE: Record<TwinFastPathStageId, Copy> = {
+  material: { zh: '带入资料，或回答 5 个问题', en: 'Bring material, or answer 5 questions' },
+  demo: { zh: '检查条目，亲自问它', en: 'Check the entries and ask it' },
+  public: { zh: '公开', en: 'Go public' },
+};
+const STAGE_HINT: Partial<Record<TwinFastPathStageId, Copy>> = {
+  material: { zh: '带入资料，看它怎么答 5 个问题', en: 'Bring your material in and see how it answers 5 questions' },
+};
+const STAGE_STATE_TEXT: Record<TwinFastPathStageState, Copy> = {
+  done: { zh: '已完成', en: 'Done' },
+  now: { zh: '当前', en: 'Now' },
+  todo: { zh: '未开始', en: 'To do' },
+};
+const ADVANCED_TEXT: Copy = { zh: '专业设置：查看全部 9 步', en: 'Advanced settings: see all 9 steps' };
+
 export function TwinCreationProgress({ agentAccountId }: { agentAccountId: string }) {
   const { t, language } = useI18n();
   const lang: Lang = language === 'zh' ? 'zh' : 'en';
   const styles = useThemedStyles(makeStyles);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const query = useQuery({
     queryKey: ['four-zone', 'twin-creation', agentAccountId],
     queryFn: () => fetchTwinCreation(agentAccountId),
@@ -68,6 +94,94 @@ export function TwinCreationProgress({ agentAccountId }: { agentAccountId: strin
   const current = view.steps.find((step) => step.id === view.current)!;
   const url = twinCreationWebUrl(agentAccountId, view.current);
   const doneCount = view.steps.filter((step) => step.status === 'done').length;
+  const fastPath = TWIN_FAST_PATH_ENABLED ? twinCreationFastPath(view) : null;
+  const stepList = (
+    <View style={styles.list}>
+      {view.steps.map((step) => (
+        <View
+          key={step.id}
+          style={styles.row}
+          accessible
+          accessibilityLabel={`${step.index}. ${STEP_TITLE[step.id][lang]}: ${STATUS_TEXT[step.status][lang]}`}
+          testID={`twin-creation-step-${step.id}-${step.status}`}
+        >
+          <Text style={styles.stepTitle}>{`${step.index}. ${STEP_TITLE[step.id][lang]}`}</Text>
+          <Text style={step.status === 'done' ? styles.toneDone : step.status === 'available' ? styles.toneReady : styles.toneMuted}>
+            {STATUS_TEXT[step.status][lang]}
+          </Text>
+          {step.status === 'locked' && step.lockReason ? <Text style={styles.hint}>{LOCK_TEXT[step.lockReason][lang]}</Text> : null}
+        </View>
+      ))}
+    </View>
+  );
+  if (fastPath) {
+    const stageIndex = fastPath.stages.findIndex((stage) => stage.id === fastPath.current) + 1;
+    return (
+      <View style={styles.block} testID="twin-creation-progress-fast">
+        <Text style={styles.section} accessibilityRole="header">
+          {t({ en: 'Creating your twin', zh: '创建进度' })}
+        </Text>
+        <Text style={styles.next} testID={`twin-creation-stage-current-${fastPath.current}`}>
+          {lang === 'zh'
+            ? `下一步：第 ${stageIndex} / 3 步 · ${STAGE_TITLE[fastPath.current].zh}`
+            : `Next: step ${stageIndex} of 3 · ${STAGE_TITLE[fastPath.current].en}`}
+        </Text>
+        <Text style={styles.muted} testID={`twin-creation-current-${current.id}`}>
+          {lang === 'zh' ? `先做：${STEP_TITLE[current.id].zh}` : `First: ${STEP_TITLE[current.id].en}`}
+        </Text>
+        <View style={styles.list} testID="twin-creation-stages">
+          {fastPath.stages.map((stage, index) => {
+            const hint = STAGE_HINT[stage.id];
+            return (
+              <View
+                key={stage.id}
+                style={styles.row}
+                accessible
+                accessibilityLabel={`${index + 1}. ${STAGE_TITLE[stage.id][lang]}: ${STAGE_STATE_TEXT[stage.state][lang]}`}
+                testID={`twin-creation-stage-${stage.id}-${stage.state}`}
+              >
+                <Text style={stage.state === 'now' ? styles.stageNow : styles.stepTitle}>{`${index + 1}. ${STAGE_TITLE[stage.id][lang]}`}</Text>
+                <Text style={stage.state === 'done' ? styles.toneDone : stage.state === 'now' ? styles.toneReady : styles.toneMuted}>
+                  {STAGE_STATE_TEXT[stage.state][lang]}
+                </Text>
+                {hint ? <Text style={styles.hint}>{hint[lang]}</Text> : null}
+              </View>
+            );
+          })}
+        </View>
+        <TouchableOpacity
+          style={styles.fold}
+          onPress={() => setAdvancedOpen((open) => !open)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: advancedOpen }}
+          testID="twin-creation-advanced"
+        >
+          <Text style={styles.foldText}>{ADVANCED_TEXT[lang]}</Text>
+        </TouchableOpacity>
+        {advancedOpen ? (
+          <>
+            <Text style={styles.muted}>{lang === 'zh' ? `已完成 ${doneCount} 步` : `${doneCount} done`}</Text>
+            {stepList}
+          </>
+        ) : null}
+        {view.partial ? (
+          <Text style={styles.muted} testID="twin-creation-partial">
+            {t({ en: 'Part of the progress could not be read; some steps may show as waiting.', zh: '有一部分进度暂时读不到，个别步骤可能显示为"等前一步"。' })}
+          </Text>
+        ) : null}
+        {url ? (
+          <TouchableOpacity
+            style={styles.primary}
+            onPress={() => void Linking.openURL(url).catch(() => undefined)}
+            accessibilityRole="button"
+            testID="twin-creation-open-web"
+          >
+            <Text style={styles.primaryText}>{t({ en: 'Continue on the web', zh: '到网页上继续' })}</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  }
   return (
     <View style={styles.block} testID="twin-creation-progress">
       <Text style={styles.section} accessibilityRole="header">
@@ -79,23 +193,7 @@ export function TwinCreationProgress({ agentAccountId }: { agentAccountId: strin
           : `Next: step ${current.index} of 9 · ${STEP_TITLE[current.id].en}`}
       </Text>
       <Text style={styles.muted}>{lang === 'zh' ? `已完成 ${doneCount} 步` : `${doneCount} done`}</Text>
-      <View style={styles.list}>
-        {view.steps.map((step) => (
-          <View
-            key={step.id}
-            style={styles.row}
-            accessible
-            accessibilityLabel={`${step.index}. ${STEP_TITLE[step.id][lang]}: ${STATUS_TEXT[step.status][lang]}`}
-            testID={`twin-creation-step-${step.id}-${step.status}`}
-          >
-            <Text style={styles.stepTitle}>{`${step.index}. ${STEP_TITLE[step.id][lang]}`}</Text>
-            <Text style={step.status === 'done' ? styles.toneDone : step.status === 'available' ? styles.toneReady : styles.toneMuted}>
-              {STATUS_TEXT[step.status][lang]}
-            </Text>
-            {step.status === 'locked' && step.lockReason ? <Text style={styles.hint}>{LOCK_TEXT[step.lockReason][lang]}</Text> : null}
-          </View>
-        ))}
-      </View>
+      {stepList}
       {view.partial ? (
         <Text style={styles.muted} testID="twin-creation-partial">
           {t({ en: 'Part of the progress could not be read; some steps may show as waiting.', zh: '有一部分进度暂时读不到，个别步骤可能显示为"等前一步"。' })}
@@ -128,6 +226,9 @@ const makeStyles = (c: Palette) =>
     toneDone: { color: c.success, fontSize: 12, fontWeight: '800' },
     toneReady: { color: c.accent, fontSize: 12, fontWeight: '800' },
     toneMuted: { color: c.textMuted, fontSize: 12, fontWeight: '700' },
+    stageNow: { color: c.accent, fontSize: 14, fontWeight: '800', flexShrink: 1 },
+    fold: { minHeight: 44, justifyContent: 'center' },
+    foldText: { color: c.accent, fontSize: 14, fontWeight: '700' },
     primary: { minHeight: 48, borderRadius: 14, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
     primaryText: { color: c.onAccent, fontSize: 15, fontWeight: '800' },
   });

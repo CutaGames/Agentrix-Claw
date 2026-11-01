@@ -7,7 +7,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { HttpRequestV1, HttpResponseV1, HttpTransportV1 } from '../../../shared/client/transport';
 import { DIGITAL_TWIN_CAPABILITIES_V1 } from '../../../shared/types/digital-twin';
-import { fetchTwinCreation, twinCreationWebUrl } from '../twinCreation';
+import { TWIN_FAST_PATH_STAGE_STEPS } from '../../../shared/types/digital-twin-creation';
+import { fetchTwinCreation, twinCreationFastPath, twinCreationWebUrl, twinFastPathEnabled } from '../twinCreation';
 
 const AGENT = '75e5c531-4c1e-4d6a-9b0a-3f2e1d0c9b8a';
 const BASE = 'https://api.example.test/api';
@@ -138,5 +139,78 @@ describe('source guard', () => {
     const src = fs.readFileSync(path.resolve(__dirname, '..', 'twinCreation.ts'), 'utf8');
     expect(src).toMatch(/from '\.\.\/\.\.\/shared\/types\/digital-twin-creation'/);
     expect(src).not.toMatch(/function resolveTwinCreation/);
+    expect(src).not.toMatch(/function resolveTwinFastPath/);
+  });
+});
+
+// L9 P2-1 on the phone (review D-R6): the three stages of the web, the nine steps folded under "专业设置".
+describe('EXPO_PUBLIC_TWIN_FAST_PATH_V1_ENABLED', () => {
+  const screen = () => fs.readFileSync(path.resolve(__dirname, '..', '..', 'screens', 'four-zone', 'TwinCreationProgress.tsx'), 'utf8');
+
+  it('is on only for an exact 1 ("true" and the rest keep today\'s nine-step list)', () => {
+    expect(twinFastPathEnabled('1')).toBe(true);
+    for (const value of [undefined, null, '', '0', 'true', ' 1', '1 ', 1, true]) expect(twinFastPathEnabled(value)).toBe(false);
+  });
+
+  it('is read as a literal member expression so the Expo build inlines it', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '..', 'twinCreation.ts'), 'utf8');
+    expect(src).toContain('twinFastPathEnabled(process.env.EXPO_PUBLIC_TWIN_FAST_PATH_V1_ENABLED)');
+  });
+
+  it('groups the nine phone steps into the three shared stages around the next step', async () => {
+    const state = await read({
+      [`GET ${P}`]: { status: 200, body: projection({ profile }) },
+      [`GET ${P}/interview`]: { status: 200, body: { success: true, data: { interim: null } } },
+      [`GET ${P}/private/thread`]: { status: 200, body: { success: true, data: null } },
+      [`GET ${P}/public`]: { status: 503, body: {} },
+    });
+    expect(state.kind).toBe('ready');
+    if (state.kind !== 'ready') return;
+    const fast = twinCreationFastPath(state.data)!;
+    expect(fast.current).toBe('material');
+    expect(fast.stages.map((stage) => [stage.id, stage.state])).toEqual([
+      ['material', 'now'],
+      ['demo', 'todo'],
+      ['public', 'todo'],
+    ]);
+    // Every one of the nine steps sits in exactly one stage; nothing is dropped or added.
+    const grouped = fast.stages.flatMap((stage) => [...stage.stepIds]).sort();
+    expect(grouped).toEqual(state.data.steps.map((step) => step.id).sort());
+    expect(fast.stages.map((stage) => stage.stepIds)).toEqual([TWIN_FAST_PATH_STAGE_STEPS.material, TWIN_FAST_PATH_STAGE_STEPS.demo, TWIN_FAST_PATH_STAGE_STEPS.public]);
+  });
+
+  it('nothing left to do: no stages (the twin card takes over, as today)', () => {
+    expect(twinCreationFastPath({ steps: [], current: null })).toBeNull();
+  });
+
+  it('the screen draws the stages and the fold only behind the switch; the nine-step list is still there for both', () => {
+    const src = screen();
+    expect(src).toContain('const fastPath = TWIN_FAST_PATH_ENABLED ? twinCreationFastPath(view) : null;');
+    expect(src).toContain('if (fastPath) {');
+    // Off: today's header line and the full list.
+    expect(src).toContain('`下一步：第 ${current.index} / 9 步 · ${STEP_TITLE[current.id].zh}`');
+    expect(src).toContain('{stepList}');
+    // On: the list sits behind the "专业设置" fold.
+    expect(src).toContain('{advancedOpen ? (');
+    expect(src).toContain('testID="twin-creation-advanced"');
+  });
+
+  it('the stage names, the stage 1 hint and the fold label are the web\'s own words, in both languages', () => {
+    const web = fs.readFileSync(path.resolve(__dirname, '..', '..', '..', 'frontend', 'components', 'digital-twin', 'TwinCreationFlow.tsx'), 'utf8');
+    const src = screen();
+    for (const words of [
+      "material: { zh: '带入资料，或回答 5 个问题', en: 'Bring material, or answer 5 questions' }",
+      "demo: { zh: '检查条目，亲自问它', en: 'Check the entries and ask it' }",
+      "public: { zh: '公开', en: 'Go public' }",
+      "material: { zh: '带入资料，看它怎么答 5 个问题', en: 'Bring your material in and see how it answers 5 questions' }",
+      "zh: '专业设置：查看全部 9 步', en: 'Advanced settings: see all 9 steps'",
+    ]) {
+      expect(web).toContain(words);
+      expect(src).toContain(words);
+    }
+  });
+
+  it('one language per screen: no Chinese written straight into the markup', () => {
+    expect(screen()).not.toMatch(/>[^<{]*[\u4e00-\u9fff][^<{]*</);
   });
 });

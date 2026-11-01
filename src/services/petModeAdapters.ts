@@ -107,7 +107,8 @@ export function bootPetModeAdapters(opts: PetModeAdaptersOpts): () => void {
     token: opts.token,
     deviceId: opts.deviceId,
     deviceName: opts.deviceName || 'Agentrix Mobile',
-    appVersion: opts.appVersion || '1.0.0',
+    // L8-14 item 10 (A30): no invented version; left out when the caller has none.
+    ...(opts.appVersion ? { appVersion: opts.appVersion } : {}),
     handlers: {
       // Existing — pet emotion → ambient sprite mode
       'presence:pet.state': (payload) => {

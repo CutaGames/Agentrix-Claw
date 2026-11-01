@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { agentrixOauthClientLabelV1, agentrixOauthScopeLinesV1, type AgentrixOauthConnectedAppV1 } from '../../shared/types/agentrix-oauth';
+import { agentrixOauthClientLabelV1, agentrixOauthLastUsedTextV1, agentrixOauthScopeLinesV1, type AgentrixOauthConnectedAppV1 } from '../../shared/types/agentrix-oauth';
 import {
   AGENTRIX_OAUTH_APPS_FAILURE_COPY,
   AgentrixOauthAppsError,
@@ -53,7 +53,7 @@ export function SignInAppsCard() {
 
   return (
     <View style={styles.card} testID="agentrix-oauth-apps-card">
-      <Text style={styles.title}>{lang === 'zh' ? '用 Yowo 登录的应用' : 'Apps you signed in to with Yowo'}</Text>
+      <Text style={styles.title}>{lang === 'zh' ? '用 Agentrix 登录的应用' : 'Apps you signed in to with Agentrix'}</Text>
       <Text style={styles.muted}>
         {lang === 'zh' ? '每个应用只能读你留给它的那几项。断开马上生效。' : 'Each app can read only what you left for it. Disconnecting takes effect at once.'}
       </Text>
@@ -64,7 +64,7 @@ export function SignInAppsCard() {
             <View key={app.passId} style={styles.item}>
               <Text style={styles.text}>
                 <Text style={styles.strong}>{agentrixOauthClientLabelV1(app.clientId, app.clientName)}</Text>
-                {` · ${app.lastUsedAt ? (lang === 'zh' ? '最近用过 ' : 'Last used ') + new Date(app.lastUsedAt).toLocaleString() : lang === 'zh' ? '还没用过' : 'Not used yet'}`}
+                {` · ${agentrixOauthLastUsedTextV1(app.lastUsedAt, lang)}`}
               </Text>
               <View style={styles.actions}>
                 <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: open === app.passId }} onPress={() => setOpen(open === app.passId ? null : app.passId)}>

@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from '@jest/globals';
 import { OWNER_LOCKDOWN_SCHEMA_VERSION_V1, type OwnerLockdownRiskLabelMetaV1 } from '../../../shared/types/owner-lockdown';
-import { describeRiskLabel } from '../chatRiskLabels';
+import { describeContextWithheld, describeRiskLabel } from '../chatRiskLabels';
 
 const label = (level: OwnerLockdownRiskLabelMetaV1['level'], reasons: OwnerLockdownRiskLabelMetaV1['reasons']): OwnerLockdownRiskLabelMetaV1 => ({
   schemaVersion: OWNER_LOCKDOWN_SCHEMA_VERSION_V1,
@@ -26,5 +26,13 @@ describe('describeRiskLabel (mobile)', () => {
     expect(describeRiskLabel(label('locked', ['owner_lockdown']))).toBe('已锁定：对外动作（联网、发消息、付款、操作电脑）本轮不会执行（你开了锁定模式）');
     expect(describeRiskLabel(label('locked', ['owner_lockdown', 'external_content']))).toContain('联网');
     expect(describeRiskLabel(label('tightened', ['restricted_data', 'external_content']))).toContain('联网');
+  });
+});
+describe('describeContextWithheld (mobile, L8-13 item 3)', () => {
+  const meta = (count: number) => ({ schemaVersion: 1, type: 'meta', kind: 'context_withheld', count }) as never;
+  it('one item says 它的, more say 它们的', () => {
+    expect(describeContextWithheld(meta(1))).toBe('已隐去 1 条：它的数据级别不允许交给这次用的模型');
+    expect(describeContextWithheld(meta(2))).toBe('已隐去 2 条：它们的数据级别不允许交给这次用的模型');
+    expect(describeContextWithheld(meta(7))).toBe('已隐去 7 条：它们的数据级别不允许交给这次用的模型');
   });
 });

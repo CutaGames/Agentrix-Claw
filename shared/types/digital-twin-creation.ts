@@ -31,7 +31,7 @@ import type {
 } from './digital-twin';
 import type { DigitalTwinInterimStateV1 } from './digital-twin-interview';
 import type { TwinPrivateThreadV1 } from './digital-twin-answer';
-import type { DigitalTwinPublishReadinessV1, DigitalTwinPublicFacetRecordV1 } from './digital-twin-public';
+import { DIGITAL_TWIN_PUBLIC_PRESET_TOPICS_V1, type DigitalTwinPublishReadinessV1, type DigitalTwinPublicFacetRecordV1 } from './digital-twin-public';
 
 export const TWIN_CREATION_STEP_IDS = [
   'entry',
@@ -194,6 +194,58 @@ export function firstTwinAnswerAt(thread: TwinPrivateThreadV1 | null | undefined
   return turn?.createdAt ?? null;
 }
 
+/**
+ * L9 P1-5b / P2-1 · the A1 end point, one implementation (coord 10-31, review L-1; l9-plan P2-1).
+ * Start: the profile was created. End: the PUBLIC card has given one labelled answer (confirmed, inferred or no-answer)
+ * to each of the five preset questions. The preset questions are the five topics of the bring demo
+ * (`BRING_DEMO_TOPICS_V1`: what you do, experience, area, availability, price). Private answers (the owner trying the
+ * twin in the private thread) never count; an answer without a label or with no preset topic does not count.
+ * `TwinCreationProjection` and `twinCreationInputFrom` keep their shape.
+ */
+export const TWIN_ACTIVATION_PRESET_TOPICS_V1 = DIGITAL_TWIN_PUBLIC_PRESET_TOPICS_V1;
+export type TwinActivationPresetTopicV1 = (typeof TWIN_ACTIVATION_PRESET_TOPICS_V1)[number];
+export const TWIN_ACTIVATION_LABELED_ANSWERS_V1 = TWIN_ACTIVATION_PRESET_TOPICS_V1.length;
+const TWIN_ACTIVATION_LABELS_V1: readonly string[] = ['confirmed', 'inferred', 'no_answer'];
+
+/** One answer the twin gave, as the activation clock reads it. */
+export interface TwinActivationAnswerV1 {
+  facet: string;
+  answerClass?: string | null;
+  /** Which preset question it answered; absent or `null` for any other question. */
+  presetTopic?: string | null;
+  createdAt: string;
+}
+
+/** The first labelled public answer to each preset question, by topic. */
+export function publicPresetAnswerTimes(answers: readonly TwinActivationAnswerV1[] | null | undefined): Partial<Record<TwinActivationPresetTopicV1, string>> {
+  const first: Partial<Record<TwinActivationPresetTopicV1, string>> = {};
+  for (const answer of answers ?? []) {
+    if (answer?.facet !== 'public') continue;
+    if (typeof answer.answerClass !== 'string' || !TWIN_ACTIVATION_LABELS_V1.includes(answer.answerClass)) continue;
+    const topic = answer.presetTopic as TwinActivationPresetTopicV1;
+    if (!(TWIN_ACTIVATION_PRESET_TOPICS_V1 as readonly unknown[]).includes(topic)) continue;
+    if (!Number.isFinite(Date.parse(answer.createdAt))) continue;
+    const seen = first[topic];
+    if (!seen || Date.parse(answer.createdAt) < Date.parse(seen)) first[topic] = answer.createdAt;
+  }
+  return first;
+}
+
+/**
+ * Milliseconds from creating the profile to the moment the last of the five preset questions got its first labelled
+ * public answer; `null` when the start is unknown, any preset question is still unanswered, or the clock runs backwards.
+ */
+export function elapsedToPublicFiveAnswersMs(input: {
+  profileCreatedAt: string | null;
+  answers: readonly TwinActivationAnswerV1[] | null | undefined;
+}): number | null {
+  const first = publicPresetAnswerTimes(input.answers);
+  const times = TWIN_ACTIVATION_PRESET_TOPICS_V1.map((topic) => first[topic]);
+  if (times.some((at) => at === undefined)) return null;
+  const end = (times as string[]).reduce((latest, at) => (Date.parse(at) > Date.parse(latest) ? at : latest));
+  return elapsed(input.profileCreatedAt, end);
+}
+
 export interface TwinCreationReads {
   projection: DigitalTwinProjectionV1;
   interim?: DigitalTwinInterimStateV1 | null;
@@ -225,3 +277,53 @@ export function twinCreationInputFrom(reads: TwinCreationReads): TwinCreationInp
 export function isTwinCreationStepId(value: unknown): value is TwinCreationStepId {
   return typeof value === 'string' && (TWIN_CREATION_STEP_IDS as readonly string[]).includes(value);
 }
+
+/**
+ * L9 P2-1 · the fast path: three stages on top of the same nine server steps.
+ * Bring material or answer the five questions → see the five-question demo and edit → go public.
+ * The nine steps, their locks and their order are untouched; the full list moves under "专业设置" /
+ * "Advanced". Pure grouping, so the phone and the web read the same thing.
+ */
+export const TWIN_FAST_PATH_STAGE_IDS = ['material', 'demo', 'public'] as const;
+export type TwinFastPathStageId = (typeof TWIN_FAST_PATH_STAGE_IDS)[number];
+
+export const TWIN_FAST_PATH_STAGE_STEPS: Readonly<Record<TwinFastPathStageId, readonly TwinCreationStepId[]>> = {
+  material: ['entry', 'bring', 'rights', 'interview'],
+  demo: ['confirm', 'ask'],
+  public: ['services', 'check', 'publish'],
+};
+
+export type TwinFastPathStageState = 'done' | 'now' | 'todo';
+
+export interface TwinFastPathStageView {
+  id: TwinFastPathStageId;
+  state: TwinFastPathStageState;
+  stepIds: readonly TwinCreationStepId[];
+}
+
+export interface TwinFastPathProjection {
+  stages: TwinFastPathStageView[];
+  /** The stage the shown step belongs to. */
+  current: TwinFastPathStageId;
+}
+
+/** Which fast-path stage a server step belongs to. */
+export function twinFastPathStageOf(step: TwinCreationStepId): TwinFastPathStageId {
+  return TWIN_FAST_PATH_STAGE_IDS.find((id) => TWIN_FAST_PATH_STAGE_STEPS[id].includes(step)) ?? 'material';
+}
+
+/**
+ * A stage is done when every step in it that the owner has to do is done (the optional rights step does not
+ * hold a stage back), `now` while the shown step is inside it, otherwise `todo`.
+ */
+export function resolveTwinFastPath(model: Pick<TwinCreationProjection, 'steps'>, shown: TwinCreationStepId): TwinFastPathProjection {
+  const current = twinFastPathStageOf(shown);
+  const stages = TWIN_FAST_PATH_STAGE_IDS.map((id): TwinFastPathStageView => {
+    const stepIds = TWIN_FAST_PATH_STAGE_STEPS[id];
+    const required = model.steps.filter((step) => stepIds.includes(step.id) && !step.optional);
+    const done = required.length > 0 && required.every((step) => step.status === 'done');
+    return { id, stepIds, state: id === current ? 'now' : done ? 'done' : 'todo' };
+  });
+  return { stages, current };
+}
+

@@ -604,7 +604,7 @@ const AUDIENCE_KIND_COPY: Readonly<Record<AgentPassAudienceKindV1, AgentPassCopy
   external_agent: { zh: '别人的 Agent', en: "Someone else's Agent" },
   local_client: { zh: '本机 AI 客户端', en: 'AI app on this computer' },
   tier_preset: { zh: '关系档位', en: 'Relationship tier' },
-  oauth_client: { zh: '用 Yowo 登录的应用', en: 'App signed in with Yowo' },
+  oauth_client: { zh: '用 Agentrix 登录的应用', en: 'App signed in with Agentrix' },
 };
 
 const TIER_COPY: Readonly<Record<AgentPassTierPresetV1, AgentPassCopyV1>> = {

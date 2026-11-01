@@ -29,7 +29,8 @@
         "attachments": { "$ref": "#/$defs/sectionOf_attachment" },
         "receipts": { "$ref": "#/$defs/sectionOf_receipt" },
         "relationshipBook": { "$ref": "#/$defs/sectionOf_relationship" },
-        "partnerWorkspace": { "$ref": "#/$defs/sectionOf_relationship" }
+        "partnerWorkspace": { "$ref": "#/$defs/sectionOf_relationship" },
+        "deviceAssets": { "$ref": "#/$defs/sectionOf_deviceAsset" }
       }
     },
     "receiptsChain": {
@@ -78,7 +79,7 @@
         "additionalProperties": false,
         "required": ["section", "reasonCode", "count"],
         "properties": {
-          "section": { "enum": ["conversations", "autoMemories", "agents", "attachments", "receipts", "relationshipBook", "partnerWorkspace"] },
+          "section": { "enum": ["conversations", "autoMemories", "agents", "attachments", "receipts", "relationshipBook", "partnerWorkspace", "deviceAssets"] },
           "reasonCode": {
             "enum": [
               "section_limit",
@@ -159,6 +160,251 @@
         "status": { "$ref": "#/$defs/sectionStatus" },
         "count": { "type": "integer", "minimum": 0 },
         "items": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "sectionOf_deviceAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "count", "items"],
+      "properties": {
+        "status": { "$ref": "#/$defs/sectionStatus" },
+        "count": { "type": "integer", "minimum": 0 },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/deviceAsset" } }
+      }
+    },
+    "money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amountMinor", "currency"],
+      "properties": { "amountMinor": { "type": "integer", "minimum": 0 }, "currency": { "type": "string" } }
+    },
+    "moneyOrNull": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/money" }] },
+    "isoOrNull": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/iso" }] },
+    "deviceAsset": {
+      "oneOf": [
+        { "$ref": "#/$defs/deviceAsset_asset" },
+        { "$ref": "#/$defs/deviceAsset_listing" },
+        { "$ref": "#/$defs/deviceAsset_ownMessage" },
+        { "$ref": "#/$defs/deviceAsset_disclosure" },
+        { "$ref": "#/$defs/deviceAsset_wanted" }
+      ]
+    },
+    "deviceAsset_asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "assetRef",
+        "name",
+        "category",
+        "brand",
+        "model",
+        "condition",
+        "status",
+        "purchasedOn",
+        "purchasePrice",
+        "warrantyUntil",
+        "estimate",
+        "linkedDeviceRef",
+        "privateReadable",
+        "private",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "kind": { "const": "asset" },
+        "assetRef": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "brand": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "condition": { "type": "string" },
+        "status": { "type": "string" },
+        "purchasedOn": { "type": ["string", "null"] },
+        "purchasePrice": { "$ref": "#/$defs/moneyOrNull" },
+        "warrantyUntil": { "type": ["string", "null"] },
+        "estimate": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["amountMinor", "currency", "source", "destinationId", "at"],
+              "properties": {
+                "amountMinor": { "type": "integer", "minimum": 0 },
+                "currency": { "type": "string" },
+                "source": { "enum": ["owner", "recycle_quote"] },
+                "destinationId": { "type": ["string", "null"] },
+                "at": { "$ref": "#/$defs/iso" }
+              }
+            }
+          ]
+        },
+        "linkedDeviceRef": { "type": ["string", "null"] },
+        "privateReadable": { "type": "boolean" },
+        "private": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["serialNumber", "imei", "receiptRef", "notes"],
+              "properties": {
+                "serialNumber": { "type": ["string", "null"] },
+                "imei": { "type": ["string", "null"] },
+                "receiptRef": { "type": ["string", "null"] },
+                "notes": { "type": ["string", "null"] }
+              }
+            }
+          ]
+        },
+        "createdAt": { "$ref": "#/$defs/iso" },
+        "updatedAt": { "$ref": "#/$defs/iso" },
+        "deviceRecord": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["deviceRef", "signerRef", "readAt", "receivedAt", "digest", "signature"],
+          "properties": {
+            "deviceRef": { "type": "string" },
+            "signerRef": { "type": "string" },
+            "readAt": { "$ref": "#/$defs/iso" },
+            "receivedAt": { "$ref": "#/$defs/iso" },
+            "digest": { "type": "string" },
+            "signature": { "type": "string" }
+          }
+        }
+      }
+    },
+    "deviceAsset_listing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "listingRef",
+        "assetRef",
+        "status",
+        "title",
+        "description",
+        "category",
+        "condition",
+        "asking",
+        "floor",
+        "sold",
+        "area",
+        "handover",
+        "faq",
+        "twinReplies",
+        "pickupPoint",
+        "publishedAt",
+        "expiresAt",
+        "closedAt",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "kind": { "const": "listing" },
+        "listingRef": { "type": "string" },
+        "assetRef": { "type": ["string", "null"] },
+        "status": { "type": "string" },
+        "title": { "type": ["string", "null"] },
+        "description": { "type": ["string", "null"] },
+        "category": { "type": "string" },
+        "condition": { "type": "string" },
+        "asking": { "$ref": "#/$defs/moneyOrNull" },
+        "floor": { "$ref": "#/$defs/moneyOrNull" },
+        "sold": { "$ref": "#/$defs/moneyOrNull" },
+        "area": { "type": ["string", "null"] },
+        "handover": { "type": ["string", "null"] },
+        "faq": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["q", "a"],
+            "properties": { "q": { "type": "string" }, "a": { "type": "string" } }
+          }
+        },
+        "twinReplies": { "type": "boolean" },
+        "pickupPoint": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["readable", "value"],
+              "properties": { "readable": { "type": "boolean" }, "value": { "type": ["string", "null"] } }
+            }
+          ]
+        },
+        "publishedAt": { "$ref": "#/$defs/isoOrNull" },
+        "expiresAt": { "$ref": "#/$defs/isoOrNull" },
+        "closedAt": { "$ref": "#/$defs/isoOrNull" },
+        "createdAt": { "$ref": "#/$defs/iso" },
+        "updatedAt": { "$ref": "#/$defs/iso" },
+        "saleReceipt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["receiptRef", "status", "requestedAt", "confirmedAt", "token"],
+          "properties": {
+            "receiptRef": { "type": "string" },
+            "status": { "type": "string" },
+            "requestedAt": { "$ref": "#/$defs/iso" },
+            "confirmedAt": { "$ref": "#/$defs/isoOrNull" },
+            "token": { "type": ["string", "null"] }
+          }
+        },
+        "onCard": { "const": true }
+      }
+    },
+    "deviceAsset_ownMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "listingRef", "threadRef", "messages"],
+      "properties": {
+        "kind": { "const": "ownMessage" },
+        "listingRef": { "type": "string" },
+        "threadRef": { "type": "string" },
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["at", "readable", "text"],
+            "properties": { "at": { "$ref": "#/$defs/iso" }, "readable": { "type": "boolean" }, "text": { "type": ["string", "null"] } }
+          }
+        }
+      }
+    },
+    "deviceAsset_disclosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "cardRef", "listingRef", "threadRef", "field", "status", "requestedAt", "decidedAt", "readable", "value"],
+      "properties": {
+        "kind": { "const": "disclosure" },
+        "cardRef": { "type": "string" },
+        "listingRef": { "type": "string" },
+        "threadRef": { "type": "string" },
+        "field": { "type": "string" },
+        "status": { "type": "string" },
+        "requestedAt": { "$ref": "#/$defs/iso" },
+        "decidedAt": { "$ref": "#/$defs/isoOrNull" },
+        "readable": { "type": "boolean" },
+        "value": { "type": ["string", "null"] }
+      }
+    },
+    "deviceAsset_wanted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "wantedRef", "category", "maxPrice", "area", "status", "expiresAt", "createdAt"],
+      "properties": {
+        "kind": { "const": "wanted" },
+        "wantedRef": { "type": "string" },
+        "category": { "type": "string" },
+        "maxPrice": { "$ref": "#/$defs/moneyOrNull" },
+        "area": { "type": ["string", "null"] },
+        "status": { "type": "string" },
+        "expiresAt": { "$ref": "#/$defs/iso" },
+        "createdAt": { "$ref": "#/$defs/iso" }
       }
     },
     "message": {

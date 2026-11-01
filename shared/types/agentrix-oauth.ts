@@ -935,6 +935,13 @@ export function agentrixOauthClientLabelV1(clientId: string, clientName: string 
   return match ? match[1] : clientId;
 }
 
+/** 「最近用过」那一句，三端的登录应用列表共用：日期时间格式跟界面语言走（中文 `zh-CN`、英文 `en-US`），不跟系统或浏览器的语言走。 */
+export function agentrixOauthLastUsedTextV1(lastUsedAt: string | null, language: 'zh' | 'en'): string {
+  if (!lastUsedAt) return language === 'zh' ? '还没用过' : 'Not used yet';
+  const when = new Date(lastUsedAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US');
+  return language === 'zh' ? `最近用过 ${when}` : `Last used ${when}`;
+}
+
 /** 一串「类别 × 目的」讲成人话，一对一行，三端的同意页和列表共用：借 Pass 预览的措辞，不另写一套。 */
 export function agentrixOauthScopeLinesV1(scopes: readonly AgentPassScopeV1[]): Array<{ zh: string; en: string }> {
   return agentPassPreviewV1({

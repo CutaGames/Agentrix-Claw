@@ -15,6 +15,7 @@ import {
 import * as SecureStore from 'expo-secure-store';
 
 import { API_BASE } from '../config/env';
+import { appInstallHeadersForV1 } from './appInstallHeaders';
 import { CURRENT_TOKEN_ENV, TOKEN_ENV_STORE_KEY, tokenEnvMatches } from '../config/stagingMode';
 
 export interface ApiConfig {
@@ -131,7 +132,11 @@ const notifySessionRevoked = () => {
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${config.baseUrl}${path}`;
+  // L8-14 item 10 (A30): App version, platform and install id, so the backend can count installs by version. Empty when any
+  // of them is unavailable; never throws.
+  const installHeaders = await appInstallHeadersForV1(url, config.baseUrl);
   const headers: Record<string, string> = {
+    ...installHeaders,
     ...(options.headers as Record<string, string>),
   };
 

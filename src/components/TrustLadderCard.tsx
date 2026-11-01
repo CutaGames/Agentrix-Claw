@@ -22,6 +22,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useI18n } from '../stores/i18nStore';
 import { useThemedStyles, type Palette } from '../theme/useTheme';
 import { StepUpSheet } from './StepUpSheet';
+import { STEP_UP_REASONS_V0 } from '../services/stepUp';
 
 type Copy = { zh: string; en: string };
 
@@ -170,7 +171,7 @@ export function TrustLadderCard({ agentAccountId }: { agentAccountId: string }) 
         </TouchableOpacity>
       ) : null}
       {message ? <Text style={message.ok ? styles.ok : styles.muted}>{message.copy[lang]}</Text> : null}
-      <StepUpSheet visible={stepUpVisible} onConfirmed={() => closeStepUp(true)} onCancel={() => closeStepUp(false)} />
+      <StepUpSheet visible={stepUpVisible} onConfirmed={() => closeStepUp(true)} onCancel={() => closeStepUp(false)} reason={STEP_UP_REASONS_V0.raiseBudget} />
     </View>
   );
 }

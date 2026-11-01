@@ -24,6 +24,8 @@ import {
   planStepUp,
   stepUpFallsBackToWeb,
   type StepUpFailureV1,
+  stepUpReasonBodyV0,
+  type StepUpReasonCopyV0,
 } from '../services/stepUp';
 import { applyStepUpToken, mobileStepUpClient } from '../services/stepUpSession';
 import { MOBILE_M0_ENABLED } from '../services/mobileM0';
@@ -54,11 +56,13 @@ export interface StepUpSheetProps {
   onCancel: () => void;
   /** Where 到网页上确认 opens (the page of the action); the web home otherwise. Only https agentrix.top. */
   webUrl?: string;
+  /** L8-13 item 11: the action being confirmed, as a title and one sentence. Without it the sheet keeps the generic title. */
+  reason?: StepUpReasonCopyV0;
 }
 
 const failureOf = (error: unknown): StepUpFailureV1 => (error instanceof StepUpError ? error.failure : 'unavailable');
 
-export function StepUpSheet({ visible, onConfirmed, onCancel, webUrl }: StepUpSheetProps) {
+export function StepUpSheet({ visible, onConfirmed, onCancel, webUrl, reason }: StepUpSheetProps) {
   const { t } = useI18n();
   const styles = useThemedStyles(makeStyles);
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
@@ -178,8 +182,9 @@ export function StepUpSheet({ visible, onConfirmed, onCancel, webUrl }: StepUpSh
       <View style={styles.backdrop}>
         <View style={styles.sheet} accessibilityViewIsModal testID="step-up-sheet">
           <Text style={styles.title} accessibilityRole="header">
-            {t(STEP_UP_COPY.title)}
+            {t(reason ? reason.title : STEP_UP_COPY.title)}
           </Text>
+          {reason ? <Text style={styles.body} testID="step-up-why">{t(stepUpReasonBodyV0(reason))}</Text> : null}
           {phase.kind === 'loading' ? <ActivityIndicator testID="step-up-loading" /> : null}
           {phase.kind === 'device' ? (
             <>

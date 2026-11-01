@@ -44,6 +44,12 @@ export interface CardExchangeCreateInputV1 {
   metNote?: string | null;
   /** An optional event label. */
   eventTag?: string | null;
+  /**
+   * L9 P1-9: a "join the circle" code, shown by a circle member when meeting a new member in person. Only an owner in
+   * the L9 cohort may make one (anyone else gets the 404 a switched-off route gives). It changes nothing in what is
+   * exchanged or written; the server only counts how many such codes were scanned and confirmed on the spot.
+   */
+  circle?: boolean;
 }
 
 export interface CardExchangeClaimInputV1 {
@@ -74,6 +80,8 @@ export interface CardExchangeViewV1 {
   /** True once both books carry the entry. */
   recorded: boolean;
   expiresAt: string;
+  /** L9 P1-9: present (and true) only for a "join the circle" code; an ordinary exchange reads exactly as before. */
+  circle?: true;
 }
 
 export function cardExchangeLinkV1(origin: string, code: string): string {
@@ -114,8 +122,10 @@ function optionalText(raw: unknown, max: number): { ok: true; value: string | nu
 export function decodeCardExchangeCreateInputV1(value: unknown): CardExchangeDecodeResultV1<CardExchangeCreateInputV1> {
   if (value === undefined || value === null) return { ok: true, value: {} };
   if (!isRecord(value)) return { ok: false, field: '$' };
-  for (const key of Object.keys(value)) if (key !== 'displayName' && key !== 'metNote' && key !== 'eventTag') return { ok: false, field: key };
+  for (const key of Object.keys(value)) if (key !== 'displayName' && key !== 'metNote' && key !== 'eventTag' && key !== 'circle') return { ok: false, field: key };
   const out: CardExchangeCreateInputV1 = {};
+  if (value.circle !== undefined && typeof value.circle !== 'boolean') return { ok: false, field: 'circle' };
+  if (value.circle === true) out.circle = true;
   const name = optionalText(value.displayName, RELATIONSHIP_LIMITS_V1.displayNameMax);
   if (!name.ok) return { ok: false, field: 'displayName' };
   if (name.value !== undefined) out.displayName = name.value;
@@ -163,6 +173,7 @@ export function decodeCardExchangeViewV1(body: unknown): CardExchangeViewV1 | nu
   for (const key of ['counterpartName', 'metNote', 'eventTag'] as const) if (value[key] !== null && typeof value[key] !== 'string') return null;
   for (const key of ['counterpartPresent', 'youConfirmed', 'theyConfirmed', 'recorded'] as const) if (typeof value[key] !== 'boolean') return null;
   if (!isIso(value.expiresAt)) return null;
+  if (value.circle !== undefined && value.circle !== true) return null;
   return {
     exchangeRef: value.exchangeRef,
     role: value.role,
@@ -175,7 +186,19 @@ export function decodeCardExchangeViewV1(body: unknown): CardExchangeViewV1 | nu
     theyConfirmed: value.theyConfirmed as boolean,
     recorded: value.recorded as boolean,
     expiresAt: value.expiresAt,
+    ...(value.circle === true ? { circle: true as const } : {}),
   };
+}
+
+/**
+ * L9 P1-9: the "joined on the spot" ratio of circle codes: confirmed by both ÷ scanned, as a whole percent, or `null`
+ * when nothing was scanned (no ratio to report). Counts only.
+ */
+export function cardExchangeCircleOnSpotPercentV1(counts: { scanned: number; confirmed: number }): number | null {
+  const scanned = Number.isFinite(counts.scanned) ? Math.max(0, Math.floor(counts.scanned)) : 0;
+  const confirmed = Number.isFinite(counts.confirmed) ? Math.max(0, Math.floor(counts.confirmed)) : 0;
+  if (scanned === 0) return null;
+  return Math.round((Math.min(confirmed, scanned) / scanned) * 100);
 }
 
 // ── words for the screens ─────────────────────────────────────────────────────────────────────

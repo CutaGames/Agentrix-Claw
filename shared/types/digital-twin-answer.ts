@@ -228,10 +228,131 @@ export const DIGITAL_TWIN_HARD_CEILING_V1: Readonly<Record<DigitalTwinCeilingRea
   ],
 };
 
-export function classifyDigitalTwinHardCeilingV1(question: string): DigitalTwinCeilingReasonV1 | null {
+/**
+ * L9 P2-3 (`DIGITAL_TWIN_ANSWER_QUALITY_V1_ENABLED`): synonyms the base lists above miss, found with the
+ * gold set (price, discount, contract, refund, medical, legal, and the coin / project / return wording of
+ * investment questions). Used only when the caller passes `{ extended: true }`; with the flag off the base
+ * lists above are the only rule, byte for byte as before. The base lists are always checked first, so the
+ * extension can only add hits, never change or remove one.
+ *
+ * Matching: an entry with a Chinese character is a substring. Any other entry is an English word or phrase
+ * matched on word boundaries (so `eth` does not hit "method", `ico` does not hit "basic"); a trailing `*`
+ * means "any ending". Entries are deliberately plain so the rule stays auditable. A hit hands the question
+ * to the owner, so an entry that is too broad costs coverage, never a wrong promise.
+ */
+export const DIGITAL_TWIN_HARD_CEILING_EXTENSION_V1: Readonly<
+  Partial<Record<DigitalTwinCeilingReasonV1, readonly string[]>>
+> = {
+  price_or_contract_commitment: [
+    // price
+    '价格', '价钱', '定价', '多少钱', '几多钱', '什么价', '报价', '收费', '费用', '开价', '要价', '底价', '成本价', '一口价', '包干价',
+    'price', 'prices', 'pricing', 'how much', 'quote', 'quotes', 'quotation', 'fee', 'fees', 'cost', 'costs', 'what do you charge',
+    'how much do you charge', 'hourly rate', 'day rate', 'your rate', 'rate card', 'price list', 'ballpark',
+    // discount
+    '打个折', '打几折', '折一折', '折扣价', '折让', '让利', '让价', '让点', '少算', '少收', '便宜一点', '便宜些', '便宜一些', '算便宜',
+    '优惠价', '特价', '友情价', '内部价', '老客户价', '议价', '还价', '降价', '减价', '砍一刀', '抹零', '免单', '减免', '买一送',
+    '优惠码', '折扣码', '优惠券',
+    'discounts', 'a deal', 'any deal', 'special deal', 'better deal', 'good deal', 'package deal', 'cut me a deal', 'give me a deal',
+    'knock off', 'take off', 'lower the price', 'reduce the price', 'cut the price', 'better price', 'best price', 'special price',
+    'friends and family', 'mates rates', 'negotiable', 'negotiate', 'haggle', 'bargain', 'coupon', 'promo code', 'promo', 'half price',
+    '% off', 'percent off', 'waive', 'waived', 'free of charge', 'for free', 'complimentary', 'on the house',
+    // contract and other commitments
+    '合约', '合同书', '协议书', '服务协议', '合作协议', '保密协议', '签协议', '签个协议', '签署', '签字', '盖章', '条款', '违约金',
+    '书面承诺', '书面确认', '书面保证', '白纸黑字', '担保', '保证', '包退', '包换', '兜底', '一定能',
+    'contracts', 'agreement', 'agreements', 'nda', 'terms and conditions', 'sign off', 'sign the', 'sign a', 'sign it', 'signed',
+    'signature', 'in writing', 'put it in writing', 'binding', 'legally binding', 'commit to', 'commitment', 'commitments', 'guarantee',
+    'guarantees', 'guaranteed', 'warranty', 'promise', 'promises', 'assure', 'liability', 'penalty', 'penalties', 'invoice', 'retainer',
+    'deposit', 'payment terms',
+    // refund
+    '退货', '退订', '退课', '退还', '退回', '返还', '返款', '返现', '赔偿', '赔付', '索赔', '补偿', '取消订单', '取消并退', '先付后退', '拒付',
+    'refunds', 'refunded', 'reimburse*', 'reimbursement', 'compensat*', 'chargeback', 'cancellation fee', 'cancellation policy',
+    'return policy', 'return my money', 'get my money back', 'give me my money',
+  ],
+  professional_advice_restricted: [
+    // medical
+    '医疗', '就医', '看病', '看医生', '医生', '医院', '治疗', '疗法', '手术', '吃药', '服药', '药物', '药量', '剂量', '副作用', '过敏',
+    '孕期', '怀孕', '发烧', '头痛', '头疼', '疼痛', '失眠', '抑郁症', '焦虑症', '确诊', '体检报告', '化验', '什么病', '生病', '病症',
+    '病因', '病历', '患者', '肿瘤', '癌', '糖尿病', '高血压', '心脏病', '偏方', '中药',
+    'medical', 'medicine', 'medication', 'medications', 'medical advice', 'medical condition', 'dosage', 'dose', 'doses', 'symptom',
+    'symptoms', 'side effect', 'side effects', 'doctor', 'prescribe', 'prescribed', 'cure', 'surgery', 'pregnant', 'pregnancy', 'allergic',
+    'allergy', 'cancer', 'diabetes', 'blood pressure', 'chest pain', 'headache', 'infection', 'treatment', 'treatments', 'can i take',
+    'should i take', 'is it safe to take',
+    // legal and tax
+    '法律', '律师', '合法', '违法', '犯法', '侵权', '版权', '商标', '专利', '仲裁', '维权', '追责', '法律责任', '判刑', '坐牢', '刑事',
+    '民事', '遗嘱', '离婚', '抚养权', '税务', '报税', '避税', '节税', '逃税', '合规', '监管', '牌照',
+    'legal', 'lawyer', 'lawyers', 'attorney', 'attorneys', 'sue', 'sued', 'suing', 'liable', 'illegal', 'lawful', 'copyright',
+    'trademark', 'patent', 'infringe', 'infringement', 'court', 'arbitration', 'tax advice', 'tax', 'taxes', 'compliance', 'regulation',
+    'regulations', 'regulatory',
+    // investment: stocks, funds, coins, projects, returns
+    '投资', '理财', '炒股', '股票', '股价', '股市', '基金', '债券', '期货', '期权', '外汇', '杠杆', '做多', '做空', '爆仓', '抄底', '追高',
+    '止损', '止盈', '加仓', '减仓', '建仓', '买入', '卖出', '买币', '卖币', '囤币', '炒币', '币价', '币圈',
+    '比特币', '以太坊', '以太币', '狗狗币', '莱特币', '瑞波币', '稳定币', '山寨币', '加密货币', '虚拟货币', '数字货币', '数字资产',
+    '虚拟资产', '加密资产', '代币', '挖矿', '矿机', '空投', '公链', '交易所', '链上', '跑路', '割韭菜', '归零', '暴涨', '暴跌', '翻倍',
+    '百倍', '涨幅', '收益', '年化', '回报率', '稳赚', '保本', '保收益', '分红', '回本', '靠不靠谱', '靠谱吗', '是不是骗局', '骗局',
+    '资金盘', '庞氏', '传销', '割肉', '套牢', '解套', '牛市', '熊市', '看涨', '看跌', '涨不涨', '会涨', '会跌', '目标价', '估值', '融资',
+    '私募', '认购', '申购', '质押', '流动性', '永续合约', '币安', '欧易', '火币',
+    'invest', 'invests', 'investing', 'investment', 'investments', 'investor', 'investors', 'investment portfolio', 'stocks',
+    'stock market', 'stock price', 'stock tip', 'buy stock', 'buy shares', 'sell stock', 'etf', 'index fund', 'mutual fund', 'bonds',
+    'bond market', 'forex', 'futures', 'margin trading', 'margin call', 'leverage trading', 'leveraged', 'short selling', 'bitcoin',
+    'btc', 'ethereum', 'eth', 'solana', 'dogecoin', 'doge', 'xrp', 'bnb', 'usdt', 'usdc', 'stablecoin', 'stablecoins', 'altcoin',
+    'altcoins', 'memecoin', 'memecoins', 'meme coin', 'meme coins', 'crypto', 'cryptocurrency', 'cryptocurrencies', 'token sale',
+    'token price', 'buy the token', 'this token', 'the token', 'tokenomics', 'token launch', 'token project', 'airdrop', 'airdrops',
+    'ico', 'ido', 'ieo', 'ipo', 'presale', 'pre-sale', 'rug pull', 'rugpull', 'pump and dump', 'defi', 'nft', 'nfts', 'staking', 'staked',
+    'yield farming', 'high yield', 'apy', 'roi', 'high returns', 'guaranteed returns', 'expected returns', 'annual return', 'annualized',
+    'return on investment', 'passive income', 'get rich', 'hodl', 'bullish', 'bearish', 'bull run', 'bear market', 'buy the dip',
+    'should i buy', 'should i sell', 'worth buying', 'worth investing', 'good investment', 'is this project legit', 'legit', 'scam',
+    'ponzi', 'pyramid scheme', 'financial advice', 'wealth management', 'price target', 'price prediction', 'will it pump',
+    'will it moon', 'double my money', '10x', '100x',
+  ],
+};
+
+interface CeilingTermMatcherV1 {
+  reason: DigitalTwinCeilingReasonV1;
+  test: (lower: string) => boolean;
+}
+
+const ASCII_WORD_CHAR = /[a-z0-9]/;
+
+function compileCeilingTermV1(term: string): (lower: string) => boolean {
+  if (CJK.test(term)) return (lower) => lower.includes(term);
+  const prefix = term.endsWith('*');
+  const body = (prefix ? term.slice(0, -1) : term).toLowerCase();
+  const escaped = body.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+');
+  const start = ASCII_WORD_CHAR.test(body[0]) ? '(?<![a-z0-9])' : '';
+  const end = prefix || !ASCII_WORD_CHAR.test(body[body.length - 1]) ? '' : '(?![a-z0-9])';
+  const pattern = new RegExp(`${start}${escaped}${end}`);
+  return (lower) => pattern.test(lower);
+}
+
+let extensionMatchersV1: CeilingTermMatcherV1[] | null = null;
+
+function ceilingExtensionMatchersV1(): CeilingTermMatcherV1[] {
+  if (extensionMatchersV1) return extensionMatchersV1;
+  const compiled: CeilingTermMatcherV1[] = [];
+  // Advice (medical, legal, investment) is checked before price / contract, so a question that mentions both
+  // ("the price prediction for Solana") is explained to the owner as advice, the heavier of the two.
+  const order: DigitalTwinCeilingReasonV1[] = ['professional_advice_restricted', 'price_or_contract_commitment', 'privacy_or_third_party'];
+  for (const reason of order) {
+    for (const term of DIGITAL_TWIN_HARD_CEILING_EXTENSION_V1[reason] ?? []) {
+      compiled.push({ reason, test: compileCeilingTermV1(term) });
+    }
+  }
+  extensionMatchersV1 = compiled;
+  return compiled;
+}
+
+export function classifyDigitalTwinHardCeilingV1(
+  question: string,
+  /** `extended: true` adds the L9 P2-3 synonym lists; omitted or `false` is the base rule only. */
+  options?: { extended?: boolean },
+): DigitalTwinCeilingReasonV1 | null {
   const lower = question.toLowerCase();
   for (const reason of Object.keys(DIGITAL_TWIN_HARD_CEILING_V1) as DigitalTwinCeilingReasonV1[]) {
     if (DIGITAL_TWIN_HARD_CEILING_V1[reason].some((keyword) => lower.includes(keyword))) return reason;
+  }
+  if (options?.extended === true) {
+    const normalized = lower.replace(/[\u2018\u2019]/g, "'");
+    for (const matcher of ceilingExtensionMatchersV1()) if (matcher.test(normalized)) return matcher.reason;
   }
   return null;
 }

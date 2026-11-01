@@ -16,6 +16,7 @@ import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { mmkv } from '../stores/mmkvStorage';
+import { scrubInstallIdFromSentryEventV1 } from './appInstallHeaders';
 
 const OPT_IN_KEY = 'agentrix_telemetry_opt_in';
 
@@ -111,7 +112,12 @@ export function initCrashReport(): void {
             // remove email / username / ip
           };
         }
-        return event;
+        // L8-14 item 10 (A30): the install id (X-Agentrix-Install-Id) never goes to Sentry: not in request headers, not in
+        // breadcrumb data, not written out in a message or an exception text.
+        return scrubInstallIdFromSentryEventV1(event);
+      },
+      beforeBreadcrumb(breadcrumb) {
+        return scrubInstallIdFromSentryEventV1(breadcrumb);
       },
       ignoreErrors: [
         'Network request failed', // RN noise

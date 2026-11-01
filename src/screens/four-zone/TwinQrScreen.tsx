@@ -53,7 +53,7 @@ export function TwinQrScreen() {
           <Text style={styles.buttonText}>{lang === 'zh' ? '分享链接' : 'Share link'}</Text>
         </TouchableOpacity>
       ) : null}
-      <Text style={styles.foot}>Yowo by Agentrix</Text>
+      <Text style={styles.foot}>Agentrix</Text>
     </View>
   );
 }

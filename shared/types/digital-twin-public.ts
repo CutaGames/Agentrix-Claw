@@ -27,6 +27,7 @@ import {
   type DigitalTwinRefV1,
 } from './digital-twin';
 import type { DigestRef } from './trust-loop-primitives';
+import type { TwinReferralOfferV1 } from './twin-referral';
 
 const { isRecord, isNonEmptyString, isIsoTimestamp, isMember, fail } = DIGITAL_TWIN_DECODE_HELPERS_V1;
 
@@ -152,6 +153,49 @@ export interface DigitalTwinPublicAskCommandV1 {
   language?: 'zh-CN' | 'en';
   /** Opaque, Visitor-generated session id (per-session rate limit key); never a principal. */
   visitorSessionId: string;
+  /**
+   * L9 P1-5b: set only when the Visitor tapped one of the five preset questions on the card (never for typed text).
+   * Only an id from `DIGITAL_TWIN_PUBLIC_PRESET_TOPICS_V1` is kept; any other value is dropped, not an error. The server
+   * stores it only when `question` is that preset's own text (`digitalTwinPublicPresetTopicForV1`).
+   */
+  presetTopic?: DigitalTwinPublicPresetTopicV1;
+}
+
+/**
+ * L9 P1-5b / P2-1 · the five preset questions of the public card (the five topics of the P2-2 bring demo, in the same
+ * order). The A1 clock stops when the public card has given a labelled answer to each of them.
+ */
+export const DIGITAL_TWIN_PUBLIC_PRESET_TOPICS_V1 = ['services', 'experience', 'area', 'hours', 'price'] as const;
+export type DigitalTwinPublicPresetTopicV1 = (typeof DIGITAL_TWIN_PUBLIC_PRESET_TOPICS_V1)[number];
+
+/** What the Visitor sees on the preset buttons (and what is asked). One language per page. */
+export const DIGITAL_TWIN_PUBLIC_PRESET_QUESTIONS_V1: Readonly<Record<DigitalTwinPublicPresetTopicV1, { zh: string; en: string }>> = {
+  services: { zh: '你具体能帮客户做什么？', en: 'What exactly can you do for a client?' },
+  experience: { zh: '你做这行多久了？有什么资历？', en: 'How long have you done this, and what are your credentials?' },
+  area: { zh: '你在哪里服务？线上还是上门？', en: 'Where do you work, online or in person?' },
+  hours: { zh: '我想约你，什么时候有空？怎么预约？', en: 'When are you free, and how do I book you?' },
+  price: { zh: '你怎么收费？能不能给我个折扣？', en: 'How much do you charge, and can I get a discount?' },
+};
+
+export function isDigitalTwinPublicPresetTopicV1(value: unknown): value is DigitalTwinPublicPresetTopicV1 {
+  return typeof value === 'string' && (DIGITAL_TWIN_PUBLIC_PRESET_TOPICS_V1 as readonly string[]).includes(value);
+}
+
+/** Trim and fold full-width forms to half-width (NFKC: `？` → `?`, `，` → `,`, a full-width space → a space). */
+function presetComparableV1(text: string): string {
+  return text.normalize('NFKC').trim();
+}
+
+/**
+ * The preset id to store with a public answer: only when the question is that preset's own text in either language
+ * (after trimming, full-width and half-width folded together). Any other words with a preset id count as a typed
+ * question, so the A1 clock and M1 cannot be filled with arbitrary text (review D-R5).
+ */
+export function digitalTwinPublicPresetTopicForV1(topic: unknown, question: string): DigitalTwinPublicPresetTopicV1 | undefined {
+  if (!isDigitalTwinPublicPresetTopicV1(topic)) return undefined;
+  const text = typeof question === 'string' ? presetComparableV1(question) : '';
+  const preset = DIGITAL_TWIN_PUBLIC_PRESET_QUESTIONS_V1[topic];
+  return text === presetComparableV1(preset.zh) || text === presetComparableV1(preset.en) ? topic : undefined;
 }
 
 export interface DigitalTwinPublicAnswerV1 {
@@ -168,6 +212,8 @@ export interface DigitalTwinPublicAnswerV1 {
   askHuman: string[];
   aiDisclosure: string;
   decisionDigest: DigestRef;
+  /** L9 P1-3b: only present while the referral offer is on and the rules say to offer (`TWIN_REFERRAL_OFFER_V1_ENABLED`). Absent otherwise. */
+  referralOffer?: TwinReferralOfferV1;
   createdAt: string;
 }
 
@@ -208,6 +254,9 @@ export function decodeDigitalTwinPublicAskCommandV1(input: unknown): DigitalTwin
     language = input.language;
   }
   if (!isNonEmptyString(input.visitorSessionId) || !DIGITAL_TWIN_VISITOR_SESSION_RE.test(input.visitorSessionId)) return fail('invalid_shape', ['visitorSessionId']);
+  // L9 P1-5b: a preset id is kept; anything else (unknown id, wrong type) is dropped silently, so old clients and
+  // typed questions decode exactly as before.
+  const presetTopic = isDigitalTwinPublicPresetTopicV1(input.presetTopic) ? input.presetTopic : undefined;
   return {
     ok: true,
     value: {
@@ -215,6 +264,7 @@ export function decodeDigitalTwinPublicAskCommandV1(input: unknown): DigitalTwin
       question: input.question.trim(),
       ...(language ? { language } : {}),
       visitorSessionId: input.visitorSessionId,
+      ...(presetTopic ? { presetTopic } : {}),
     },
   };
 }

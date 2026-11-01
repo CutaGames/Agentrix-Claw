@@ -60,7 +60,9 @@ export function connectPetPresence(opts: ConnectPetPresenceMobileOpts): PetPrese
     deviceType: 'mobile',
     platform: 'react-native',
     deviceName: opts.deviceName || 'Agentrix Mobile',
-    appVersion: opts.appVersion || '1.0.0',
+    // L8-14 item 10 (A30): no invented version. Without one from the caller the field is left out, so the server never
+    // stores a made-up "1.0.0" as this phone's version.
+    ...(opts.appVersion ? { appVersion: opts.appVersion } : {}),
     capabilities: ['chat', 'pet'],
   };
 

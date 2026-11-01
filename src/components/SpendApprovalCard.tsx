@@ -15,6 +15,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useI18n } from '../stores/i18nStore';
 import { useThemedStyles, type Palette } from '../theme/useTheme';
 import { StepUpSheet } from './StepUpSheet';
+import { STEP_UP_REASONS_V0 } from '../services/stepUp';
 import {
   SPEND_APPROVAL_COPY,
   SPEND_APPROVAL_PHONE_COPY,
@@ -209,7 +210,7 @@ export function SpendApprovalCard({ approvalRef, initial, testID }: SpendApprova
           {busy ? <ActivityIndicator /> : null}
         </View>
       ) : null}
-      <StepUpSheet visible={stepUpVisible} onConfirmed={() => closeStepUp(true)} onCancel={() => closeStepUp(false)} />
+      <StepUpSheet visible={stepUpVisible} onConfirmed={() => closeStepUp(true)} onCancel={() => closeStepUp(false)} reason={STEP_UP_REASONS_V0.approvePayment} />
     </View>
   );
 }

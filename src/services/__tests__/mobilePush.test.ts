@@ -62,7 +62,26 @@ describe('push types and destinations', () => {
       'share_reply',
       'booking_new',
       'alert_digest',
+      'resale_update',
+      'introduction_update',
     ]);
+  });
+
+  it('L9 introduction_update opens 事项 → 待我处理 with its int_ ref, on its own referrals channel, never on the lock screen', () => {
+    expect(MOBILE_PUSH_DESTINATIONS.introduction_update).toEqual({ zone: 'matters', tab: 'pending', refKind: 'introduction' });
+    expect(MOBILE_PUSH_CHANNELS.introduction_update).toEqual({ id: 'introductions', name: { zh: '转介', en: 'Referrals' }, importance: 'high', lockscreen: 'secret' });
+    expect(mobilePushChannelList().find((channel) => channel.id === 'introductions')).toMatchObject({ lockscreen: 'secret', importance: 'high' });
+    const parsed = parseMobilePushData({ v: 'agentrix.push.v1', type: 'introduction_update', ref: 'int_0123456789abcdef0123456789abcdef' });
+    expect(parsed).toMatchObject({ ok: true, kind: 'typed', payload: { type: 'introduction_update', ref: 'int_0123456789abcdef0123456789abcdef' } });
+  });
+
+  it('L9 resale_update opens 事项 → 待我处理 with its ref, on its own resale channel, never on the lock screen (D24 ②)', () => {
+    expect(MOBILE_PUSH_DESTINATIONS.resale_update).toEqual({ zone: 'matters', tab: 'pending', refKind: 'resale' });
+    expect(MOBILE_PUSH_CHANNELS.resale_update).toEqual({ id: 'resale', name: { zh: '二手买卖', en: 'Buying and selling used items' }, importance: 'high', lockscreen: 'secret' });
+    const resale = mobilePushChannelList().find((channel) => channel.id === 'resale');
+    expect(resale).toMatchObject({ lockscreen: 'secret', importance: 'high' });
+    const parsed = parseMobilePushData({ v: 'agentrix.push.v1', type: 'resale_update', ref: 'rsl_0123456789abcdef0123456789abcdef' });
+    expect(parsed).toMatchObject({ ok: true, kind: 'typed', payload: { type: 'resale_update', ref: 'rsl_0123456789abcdef0123456789abcdef' } });
   });
 
   it('owner alerts (L8 R1) open the matching zone + tab with the business ref, each on its own secret channel', () => {

@@ -6,7 +6,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { HttpRequestV1, HttpResponseV1 } from '../../../shared/client/transport';
-import type { AgentrixOauthConnectedAppV1 } from '../../../shared/types/agentrix-oauth';
+import { agentrixOauthLastUsedTextV1, type AgentrixOauthConnectedAppV1 } from '../../../shared/types/agentrix-oauth';
 import { AgentrixOauthAppsError, agentrixOauthEnabled, createMobileAgentrixOauthAppsClient } from '../agentrixOauthApps';
 
 const PASS = `pass_${'b'.repeat(32)}`;
@@ -49,6 +49,16 @@ describe('mobile apps signed in with Agentrix (L8 3A E1)', () => {
     expect(screen).toContain('{AGENTRIX_OAUTH_ENABLED ? <SignInAppsCard /> : null}');
   });
 
+  it('the last-used time follows the app language (zh-CN / en-US), not the system language', () => {
+    const WHEN = '2026-10-28T12:00:00.000Z'; // noon UTC: the same calendar day on every machine from UTC-12 to UTC+11
+    expect(agentrixOauthLastUsedTextV1(WHEN, 'zh')).toBe(`最近用过 ${new Date(WHEN).toLocaleString('zh-CN')}`);
+    expect(agentrixOauthLastUsedTextV1(WHEN, 'en')).toBe(`Last used ${new Date(WHEN).toLocaleString('en-US')}`);
+    expect(agentrixOauthLastUsedTextV1(null, 'zh')).toBe('还没用过');
+    expect(agentrixOauthLastUsedTextV1(null, 'en')).toBe('Not used yet');
+    const card = fs.readFileSync(path.resolve(__dirname, '../../components/SignInAppsCard.tsx'), 'utf8');
+    expect(card).toContain('agentrixOauthLastUsedTextV1(app.lastUsedAt, lang)');
+    expect(card).not.toMatch(/toLocale(Date|Time)?String\(\)/);
+  });
   it('lists with the bearer token through the shared decoder', async () => {
     const c = client(200, { items: [app] });
     await expect(c.api.list()).resolves.toEqual([app]);

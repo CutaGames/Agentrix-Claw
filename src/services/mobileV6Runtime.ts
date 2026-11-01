@@ -1,5 +1,6 @@
 import type { HttpRequestV1, HttpResponseV1, HttpTransportV1 } from '../../shared/client';
 import { getApiConfig } from './api';
+import { appInstallHeadersForV1 } from './appInstallHeaders';
 import { createMobileV6SharedClientSet, MobileV6QueryFacade } from './mobileV6Client';
 
 function responseHeaders(headers: Headers): Record<string, string> {
@@ -22,7 +23,9 @@ async function responseBody(response: Response): Promise<unknown> {
 /** Mobile fetch adapter for the shared transport seam. Non-2xx stays a response. */
 export const mobileV6HttpTransport: HttpTransportV1 = {
   async request(request: HttpRequestV1): Promise<HttpResponseV1> {
-    const headers: Record<string, string> = { ...(request.headers ?? {}) };
+    // L8-14 item 10 (A30): App version, platform and install id, only on a request to our own API.
+    const installHeaders = await appInstallHeadersForV1(request.path, getApiConfig().baseUrl);
+    const headers: Record<string, string> = { ...installHeaders, ...(request.headers ?? {}) };
     let body: BodyInit | undefined;
     if (request.body !== undefined) {
       headers['Content-Type'] = headers['Content-Type'] ?? 'application/json';

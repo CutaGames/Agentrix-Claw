@@ -138,6 +138,12 @@ export type MeStackParamList = {
   /** M1-e 外观 (D11). */
   Appearance: { tab?: string; ref?: string } | undefined;
   MyDevices: { tab?: string; ref?: string } | undefined;
+  /** L9 S16 "My things", behind EXPO_PUBLIC_DEVICE_ASSETS_ENABLED (not registered with it off). */
+  MyThings: undefined;
+  AddThing: undefined;
+  ThingDetail: { assetRef: string };
+  DisclosureCards: undefined;
+  Wanted: undefined;
   /** A9 / M1: connected apps (Composio), behind EXPO_PUBLIC_COMPOSIO_CONNECT. */
   MyConnections: { tab?: string; ref?: string } | undefined;
   Scan: undefined;

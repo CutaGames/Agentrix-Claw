@@ -141,6 +141,13 @@
     "utils/twinAvatar.ts",
     "utils/__tests__/twinAvatar.test.ts",
     "components/TwinAvatar.tsx",
-    "screens/four-zone/TwinQrScreen.tsx"
+    "screens/four-zone/TwinQrScreen.tsx",
+    "services/deviceAssets.ts",
+    "services/deviceAssetsRuntime.ts",
+    "screens/four-zone/MyThingsScreen.tsx",
+    "screens/four-zone/AddThingScreen.tsx",
+    "screens/four-zone/ThingDetailScreen.tsx",
+    "screens/four-zone/DisclosureCardsScreen.tsx",
+    "screens/four-zone/WantedScreen.tsx"
   ]
 }

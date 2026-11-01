@@ -18,7 +18,7 @@ import {
   type AuthProviderIdV1,
   type AuthProvidersResponseV1,
 } from '../../shared/types/auth-providers';
-import { SESSION_USER_INACTIVE_SIGN_IN_TEXT_V1, isUserInactiveErrorV1 } from '../../shared/types/session-revocation';
+import { SESSION_USER_INACTIVE_SIGN_IN_TEXT_V1, isUserInactiveErrorV1, isUserInactiveMessageV1 } from '../../shared/types/session-revocation';
 
 export type LoginMethodId = 'google' | 'apple' | 'email_code' | 'email_password' | 'wallet' | 'x' | 'discord' | 'telegram' | 'openclaw';
 
@@ -126,5 +126,8 @@ export const EMAIL_CODE_RESEND_SECONDS = 60;
  * address instead of the server's mixed text; null for any other error.
  */
 export function frozenSignInText(error: unknown, language: 'zh' | 'en'): string | null {
-  return isUserInactiveErrorV1(error) ? SESSION_USER_INACTIVE_SIGN_IN_TEXT_V1[language] : null;
+  if (isUserInactiveErrorV1(error)) return SESSION_USER_INACTIVE_SIGN_IN_TEXT_V1[language];
+  // L8-13 item 10: after Google / Apple / Discord / X in the browser the redirect carries only the server's message, which
+  // `parseCallbackUrl` throws as a plain Error without a code.
+  return error instanceof Error && isUserInactiveMessageV1(error.message) ? SESSION_USER_INACTIVE_SIGN_IN_TEXT_V1[language] : null;
 }

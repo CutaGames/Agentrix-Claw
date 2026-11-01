@@ -18,6 +18,8 @@
  *
  * L5 B2 phone: once registered, and with `EXPO_PUBLIC_DEVICE_MESH_ENABLED=1`, 这台手机 can tell the active Agent
  * what it can do (shell binding + signed capability declaration, phoneCapabilityDeclaration.ts).
+ *
+ * L9 S16: with the "My things" build switch on, one more row opens 我的东西 (deviceAssets.ts); without it nothing changes.
  */
 import React from 'react';
 import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -41,6 +43,7 @@ import {
 import { declareThisPhone, enrollThisPhone, readThisPhone } from '../../services/phoneDeviceEnrollment';
 import { isDeviceMeshReadonlyEnabled, readMyDevices, readRentalEarnings } from '../../services/deviceMeshReadonly';
 import { devicePassportJobsText, devicePassportServicesText, isDevicePassportsEnabled, readDevicePassports } from '../../services/devicePassports';
+import { myDevicesThingsEntry } from '../../services/deviceAssets';
 import { getApiConfig } from '../../services/api';
 import { mobileV6HttpTransport } from '../../services/mobileV6Runtime';
 import {
@@ -117,6 +120,8 @@ export function MyDevicesScreen() {
     retry: 0,
     staleTime: 60_000,
   });
+  // L9 S16: one more row (我的东西) only in builds with the "My things" switch on; null otherwise.
+  const thingsEntry = myDevicesThingsEntry();
   const activeInstance = useAuthStore((state) => state.activeInstance);
   const agentAccountId: string | null = activeInstance?.agentAccountId ?? activeInstance?.metadata?.agentAccountId ?? null;
   const pushReachable = useNotificationStore((state) => !!state.pushToken);
@@ -391,6 +396,21 @@ export function MyDevicesScreen() {
         })}
       </View>
 
+      {thingsEntry ? (
+        <TouchableOpacity
+          style={styles.row}
+          onPress={() => navigation.navigate(thingsEntry.route)}
+          accessibilityRole="button"
+          accessibilityLabel={t(thingsEntry.label)}
+          testID="my-devices-my-things"
+        >
+          <View style={styles.hardwareText}>
+            <Text style={styles.rowLabel}>{t(thingsEntry.label)}</Text>
+            <Text style={styles.itemHint}>{t(thingsEntry.hint)}</Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </TouchableOpacity>
+      ) : null}
       <TouchableOpacity
         style={styles.row}
         onPress={() => navigation.navigate('ToyBinding')}

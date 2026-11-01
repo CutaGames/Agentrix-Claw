@@ -9,6 +9,8 @@ import {
   OWNER_GOAL_STATUSES_V0,
   decodeOwnerFollowUpsV1,
   decodeOwnerGoalInputV0,
+  isIntroductionFollowUpKindV1,
+  ownerFollowUpIntroductionWordsV1,
   type OwnerFollowUpCardV1,
   type OwnerFollowUpsV1,
   type OwnerGoalInputV0,
@@ -134,6 +136,7 @@ export function ownerFollowUpCopy(card: OwnerFollowUpCardV1, time: (iso: string)
     const at = time(card.startsAt ?? card.dueAt);
     return { zh: `24 小时内有预约：${at}`, en: `Booking within 24 hours: ${at}` };
   }
+  if (isIntroductionFollowUpKindV1(card.kind)) return ownerFollowUpIntroductionWordsV1(card.kind);
   return { zh: `定金还没付，期限 ${time(card.dueAt)}`, en: `Deposit not paid yet, due ${time(card.dueAt)}` };
 }
 

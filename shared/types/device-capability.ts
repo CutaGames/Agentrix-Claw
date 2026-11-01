@@ -873,3 +873,106 @@ export function decodeDeviceCapabilityRulePutV0(
     value: { schemaVersion: DEVICE_CAPABILITY_RULE_STORE_SCHEMA_VERSION_V0, rule: JSON.parse(JSON.stringify(clean)) as DeviceCapabilityRuleV0 },
   };
 }
+
+// ── 9. 出租网页（L9 S22 / R4；只加不改） ─────────────────────────────────────────────────
+
+/**
+ * 设备主人在网页上看自己的报价、读和写自己设备的出租规则。和第 7 节的路由一样，设备网和出租两个开关都要是 `1`；
+ * 关着时这三条路由和不存在的路由一样回 404（带不带 token 都一样）。主人只从登录态取，请求体里写别人也没用。
+ * 规则只限出租白名单里的能力类型（`deviceRentalTypesV0`），写的时候服务端再过一遍 `decodeDeviceCapabilityRulePutV0`。
+ */
+export const DEVICE_RENTAL_OWNER_ROUTES_V1 = {
+  myOffers: 'GET /api/device-rental/my-offers',
+  rules: 'GET /api/device-rental/rules?deviceId=',
+  putRule: 'PUT /api/device-rental/rules',
+} as const;
+
+/** 报价为什么暂停：只有抽查对不上（L9 S19，迁移 2176）。 */
+export const DEVICE_RENTAL_OFFER_PAUSE_REASONS_V1 = ['spot_check_mismatch'] as const;
+export type DeviceRentalOfferPauseReasonV1 = (typeof DEVICE_RENTAL_OFFER_PAUSE_REASONS_V1)[number];
+
+export const DEVICE_RENTAL_OWN_OFFER_LIST_MAX_V1 = 50;
+export const DEVICE_RENTAL_RULE_LIST_MAX_V1 = 32;
+
+/** 主人自己的一条在架报价（不是市场视图：设备是主人自己的，所以带设备编号和每日上限，不带信誉）。 */
+export interface DeviceRentalOwnOfferViewV1 {
+  schemaVersion: 1;
+  offerRef: string;
+  deviceId: string;
+  capabilityType: string;
+  unit: DeviceRentalUnitV0;
+  priceCentsPerUnit: number;
+  maxJobsPerDay: number;
+  /** 抽查对不上以后暂停的时间；暂停期间不列出、不接新单，等平台处理。 */
+  pausedAt: string | null;
+  pauseReason: DeviceRentalOfferPauseReasonV1 | null;
+  updatedAt: string;
+}
+
+export interface DeviceRentalOwnOfferListV1 {
+  items: DeviceRentalOwnOfferViewV1[];
+}
+
+export interface DeviceRentalRuleListV1 {
+  items: DeviceCapabilityRuleV0[];
+}
+
+const OWN_OFFER_KEYS = ['schemaVersion', 'offerRef', 'deviceId', 'capabilityType', 'unit', 'priceCentsPerUnit', 'maxJobsPerDay', 'pausedAt', 'pauseReason', 'updatedAt'];
+
+/** 三端共用：解码主人自己的一条报价。键要正好这几个，暂停时间和原因要么都有要么都没有。 */
+export function decodeDeviceRentalOwnOfferViewV1(value: unknown): DeviceRentalOwnOfferViewV1 | null {
+  if (!isRecord(value) || value.schemaVersion !== 1) return null;
+  if (Object.keys(value).length !== OWN_OFFER_KEYS.length || !OWN_OFFER_KEYS.every((key) => key in value)) return null;
+  if (typeof value.offerRef !== 'string' || !DEVICE_RENTAL_OFFER_REF_PATTERN_V0.test(value.offerRef)) return null;
+  if (typeof value.deviceId !== 'string' || !OPAQUE.test(value.deviceId)) return null;
+  if (typeof value.capabilityType !== 'string' || !DEVICE_CAPABILITY_TYPE_PATTERN_V0.test(value.capabilityType)) return null;
+  if (!isOneOf(value.unit, DEVICE_RENTAL_UNITS_V0)) return null;
+  if (!Number.isInteger(value.priceCentsPerUnit) || (value.priceCentsPerUnit as number) < 1 || (value.priceCentsPerUnit as number) > 100_000_000) return null;
+  if (!Number.isInteger(value.maxJobsPerDay) || (value.maxJobsPerDay as number) < 1 || (value.maxJobsPerDay as number) > 10_000) return null;
+  if (value.pausedAt === null) {
+    if (value.pauseReason !== null) return null;
+  } else if (!isIso(value.pausedAt) || !isOneOf(value.pauseReason, DEVICE_RENTAL_OFFER_PAUSE_REASONS_V1)) {
+    return null;
+  }
+  if (!isIso(value.updatedAt)) return null;
+  return {
+    schemaVersion: 1,
+    offerRef: value.offerRef,
+    deviceId: value.deviceId,
+    capabilityType: value.capabilityType,
+    unit: value.unit as DeviceRentalUnitV0,
+    priceCentsPerUnit: value.priceCentsPerUnit as number,
+    maxJobsPerDay: value.maxJobsPerDay as number,
+    pausedAt: value.pausedAt as string | null,
+    pauseReason: value.pauseReason as DeviceRentalOfferPauseReasonV1 | null,
+    updatedAt: value.updatedAt,
+  };
+}
+
+/** `{ items: [...] }`；有一条解不出来，整份都当读不出。 */
+export function decodeDeviceRentalOwnOfferListV1(value: unknown): DeviceRentalOwnOfferListV1 | null {
+  if (!isRecord(value) || !Array.isArray(value.items) || value.items.length > DEVICE_RENTAL_OWN_OFFER_LIST_MAX_V1) return null;
+  const items = value.items.map(decodeDeviceRentalOwnOfferViewV1);
+  return items.every((item): item is DeviceRentalOwnOfferViewV1 => item !== null) ? { items } : null;
+}
+
+/**
+ * 三端共用：解码服务端回的一条规则（存过的，版本至少 1）。只认规则里的字段，形状按目录里的类别过
+ * `validateDeviceCapabilityRuleV0`（目录外的类型按 `compute` 查形状；服务端只回出租白名单里的类型）。
+ */
+export function decodeDeviceRentalRuleV1(value: unknown): DeviceCapabilityRuleV0 | null {
+  if (!isRecord(value)) return null;
+  if (Object.keys(value).some((key) => !(DEVICE_CAPABILITY_RULE_KEYS_V0 as readonly string[]).includes(key))) return null;
+  if (!Number.isInteger(value.revision) || (value.revision as number) < 1) return null;
+  const category: DeviceCapabilityCategoryV0 =
+    typeof value.capabilityType === 'string' ? deviceCapabilityCatalogEntryV0(value.capabilityType)?.category ?? 'compute' : 'compute';
+  if (!validateDeviceCapabilityRuleV0(value, category).valid) return null;
+  return JSON.parse(JSON.stringify(value)) as DeviceCapabilityRuleV0;
+}
+
+/** `{ items: [...] }`；有一条解不出来，整份都当读不出。 */
+export function decodeDeviceRentalRuleListV1(value: unknown): DeviceRentalRuleListV1 | null {
+  if (!isRecord(value) || !Array.isArray(value.items) || value.items.length > DEVICE_RENTAL_RULE_LIST_MAX_V1) return null;
+  const items = value.items.map(decodeDeviceRentalRuleV1);
+  return items.every((item): item is DeviceCapabilityRuleV0 => item !== null) ? { items } : null;
+}

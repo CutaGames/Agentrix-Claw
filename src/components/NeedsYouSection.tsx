@@ -9,6 +9,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AGENT_COLLABORATION_TIERS_V0, type AgentCollaborationTierV0 } from '../../shared/types/agent-collaboration';
+import { ownerFollowUpIntroductionWordsV1 } from '../../shared/types/owner-goals';
 import { getApiConfig } from '../services/api';
 import { mobileV6HttpTransport } from '../services/mobileV6Runtime';
 import {
@@ -153,6 +154,7 @@ export function NeedsYouSection() {
 }
 
 function followUpLine(card: NeedsYouCardV0, lang: 'zh' | 'en'): string {
+  if (card.kind === 'b_no_reply' || card.kind === 'client_no_booking') return ownerFollowUpIntroductionWordsV1(card.kind)[lang];
   if (card.kind !== 'booking_soon' && card.kind !== 'deposit_unpaid') return card.title;
   const at = card.at ?? card.title;
   return ownerFollowUpCopy({ cardId: card.key, kind: card.kind, refId: card.id, agentAccountId: '', dueAt: at, startsAt: at }, (iso) => new Date(iso).toLocaleString())[lang];
@@ -164,6 +166,8 @@ const KIND_LABEL: Record<NeedsYouCardV0['kind'], { zh: string; en: string }> = {
   lead_no_reply: { zh: '线索两天没回', en: 'Lead waiting two days' },
   deposit_unpaid: { zh: '定金没付', en: 'Deposit not paid' },
   booking_soon: { zh: '24 小时内的预约', en: 'Booking within 24 hours' },
+  b_no_reply: { zh: '转介的对方没回复', en: 'Referral not answered' },
+  client_no_booking: { zh: '转介的客户还没约', en: 'Referred client has not booked' },
   goal_check_in: { zh: '该复盘了', en: 'Time to check in' },
   computer_approval: { zh: '电脑发来的审批', en: 'From your computer' },
   twin_review: { zh: '分身复核', en: 'Twin review' },
@@ -174,6 +178,8 @@ const KIND_COLOR: Partial<Record<NeedsYouCardV0['kind'], string>> = {
   lead_no_reply: '#b45309',
   deposit_unpaid: '#b45309',
   booking_soon: '#15803d',
+  b_no_reply: '#b45309',
+  client_no_booking: '#b45309',
 };
 
 const makeStyles = (p: Palette) =>

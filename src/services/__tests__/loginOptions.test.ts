@@ -248,6 +248,14 @@ describe('frozenSignInText (user_inactive, L8-9 item 5)', () => {
       expect(frozenSignInText(error, 'en')).toBeNull();
     }
   });
+  it('L8-13 item 10: the browser redirect error (a plain Error with only the server message) gets the sentence too', () => {
+    const fromRedirect = new Error('账号当前不可用 / This account is not active.');
+    expect(frozenSignInText(fromRedirect, 'en')).toBe("This account is suspended, so you can't sign in right now. If you have questions, contact us at support@agentrix.top.");
+    expect(frozenSignInText(fromRedirect, 'zh')).toBe('这个账号已停用，暂时不能登录。如有疑问，请联系我们：support@agentrix.top');
+    // Only an Error: a bare string, or another message, is not it.
+    expect(frozenSignInText('账号当前不可用 / This account is not active.', 'en')).toBeNull();
+    expect(frozenSignInText(new Error('Google login failed'), 'en')).toBeNull();
+  });
   it('the screen checks it first in fail()', () => {
     const fail = screen.slice(screen.indexOf('const fail = '), screen.indexOf('const run = '));
     expect(fail).toContain('frozenSignInText(error, language)');

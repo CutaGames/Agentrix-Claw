@@ -22,6 +22,13 @@ export const ACCOUNT_EXPORT_ROUTE_V2 = 'POST /api/account-export/v2' as const;
 
 export const ACCOUNT_EXPORT_SECTIONS_V2 = ['conversations', 'autoMemories', 'agents', 'attachments', 'receipts', 'relationshipBook', 'partnerWorkspace'] as const;
 export type AccountExportSectionKeyV2 = (typeof ACCOUNT_EXPORT_SECTIONS_V2)[number];
+/**
+ * 可选分区（L9 设备和资产，D16）：功能开关关着时这一节根本不出现，导出文件、`omissions` 和 `sectionsDigest` 和没有它时逐键相同。
+ * 不进 `ACCOUNT_EXPORT_SECTIONS_V2`：共享客户端要求必有的每一节都在，放进去会把旧后端的导出判成读不懂。
+ */
+export const ACCOUNT_EXPORT_OPTIONAL_SECTIONS_V2 = ['deviceAssets'] as const;
+export type AccountExportOptionalSectionKeyV2 = (typeof ACCOUNT_EXPORT_OPTIONAL_SECTIONS_V2)[number];
+export type AccountExportAnySectionKeyV2 = AccountExportSectionKeyV2 | AccountExportOptionalSectionKeyV2;
 
 /**
  * - `complete`：该分区全部在里面；
@@ -170,8 +177,128 @@ export type AccountExportRelationshipV2 = Record<string, unknown>;
 /** 合作方工作区（L8 3A E3）：用 Agentrix 登录的应用写进主人账号里它自己那一角的条目，带正文。还没上线时分区是空的。 */
 export type AccountExportPartnerWorkspaceV2 = Record<string, unknown>;
 
+/**
+ * 设备和资产（L9，`shared/types/device-assets.ts`、`resale.ts`）：一个带 `kind` 的联合，五种条目一次定全。
+ * 条目里没有任何属主字段（`ownerId` / `ownerUserId` / `userId`），也没有买家的账号 id 和买家写的话。
+ * 要解密的字段打不开时（钥匙关着、钥匙已粉碎）标读不出、不带内容。
+ */
+export const ACCOUNT_EXPORT_DEVICE_ASSET_KINDS_V2 = ['asset', 'listing', 'ownMessage', 'disclosure', 'wanted'] as const;
+export type AccountExportDeviceAssetKindV2 = (typeof ACCOUNT_EXPORT_DEVICE_ASSET_KINDS_V2)[number];
+export interface AccountExportMoneyV2 {
+  amountMinor: number;
+  currency: string;
+}
+/** 「我的东西」里的一条记录。私密字段已解开；`privateReadable` 为 false 时 `private` 是 null。 */
+export interface AccountExportDeviceAssetRecordV2 {
+  kind: 'asset';
+  assetRef: string;
+  name: string;
+  category: string;
+  brand: string | null;
+  model: string | null;
+  condition: string;
+  status: string;
+  purchasedOn: string | null;
+  purchasePrice: AccountExportMoneyV2 | null;
+  warrantyUntil: string | null;
+  estimate: { amountMinor: number; currency: string; source: 'owner' | 'recycle_quote'; destinationId: string | null; at: string } | null;
+  linkedDeviceRef: string | null;
+  privateReadable: boolean;
+  private: { serialNumber: string | null; imei: string | null; receiptRef: string | null; notes: string | null } | null;
+  createdAt: string;
+  updatedAt: string;
+  /**
+   * L2（S17）：电脑读到并签名的履历，服务器存的全部内容（哪台设备、哪把签名凭据、读取和交来的时间、字段摘要、签名）。
+   * 序列号和电池数服务器不存，所以这里也没有。没有履历时不出现这个键。
+   */
+  deviceRecord?: AccountExportDeviceAssetRecordSummaryV2;
+}
+export interface AccountExportDeviceAssetRecordSummaryV2 {
+  deviceRef: string;
+  signerRef: string;
+  readAt: string;
+  receivedAt: string;
+  digest: string;
+  signature: string;
+}
+/** 一个挂牌，含底价和已解开的预设取货点（没设是 null；设了打不开是 `readable: false`）。 */
+export interface AccountExportDeviceAssetListingV2 {
+  kind: 'listing';
+  listingRef: string;
+  assetRef: string | null;
+  status: string;
+  title: string | null;
+  description: string | null;
+  category: string;
+  condition: string;
+  asking: AccountExportMoneyV2 | null;
+  floor: AccountExportMoneyV2 | null;
+  sold: AccountExportMoneyV2 | null;
+  area: string | null;
+  handover: string | null;
+  faq: Array<{ q: string; a: string }>;
+  twinReplies: boolean;
+  pickupPoint: { readable: boolean; value: string | null } | null;
+  publishedAt: string | null;
+  expiresAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /**
+   * L3（S18）：这件东西的成交回执（卖家发起的时间、买家确认的时间和平台签的回执），没有回执时不出现这个键。
+   * 回执里本来就没有买家和价格，这里也没有。
+   */
+  saleReceipt?: AccountExportDeviceAssetSaleReceiptV2;
+  /** L3（S18）：卖家选了把这件挂在名片上时是 `true`，没选时不出现这个键。 */
+  onCard?: true;
+}
+export interface AccountExportDeviceAssetSaleReceiptV2 {
+  receiptRef: string;
+  status: string;
+  requestedAt: string;
+  confirmedAt: string | null;
+  token: string | null;
+}
+/** 本人作为卖家在一个对话里自己写的话，按对话分组。不带买家的账号 id，也不带买家写的话。 */
+export interface AccountExportDeviceAssetOwnMessagesV2 {
+  kind: 'ownMessage';
+  listingRef: string;
+  threadRef: string;
+  messages: Array<{ at: string; readable: boolean; text: string | null }>;
+}
+/** 本人在批准卡上批准给出的值。 */
+export interface AccountExportDeviceAssetDisclosureV2 {
+  kind: 'disclosure';
+  cardRef: string;
+  listingRef: string;
+  threadRef: string;
+  field: string;
+  status: string;
+  requestedAt: string;
+  decidedAt: string | null;
+  readable: boolean;
+  value: string | null;
+}
+/** 「我在找」。 */
+export interface AccountExportDeviceAssetWantedV2 {
+  kind: 'wanted';
+  wantedRef: string;
+  category: string;
+  maxPrice: AccountExportMoneyV2 | null;
+  area: string | null;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+}
+export type AccountExportDeviceAssetV2 =
+  | AccountExportDeviceAssetRecordV2
+  | AccountExportDeviceAssetListingV2
+  | AccountExportDeviceAssetOwnMessagesV2
+  | AccountExportDeviceAssetDisclosureV2
+  | AccountExportDeviceAssetWantedV2;
+
 export interface AccountExportOmissionV2 {
-  section: AccountExportSectionKeyV2;
+  section: AccountExportAnySectionKeyV2;
   reasonCode: AccountExportOmissionReasonV2;
   count: number;
 }
@@ -192,6 +319,8 @@ export interface AccountExportV2 {
     receipts: AccountExportSectionV2<AccountExportReceiptV2>;
     relationshipBook: AccountExportSectionV2<AccountExportRelationshipV2>;
     partnerWorkspace: AccountExportSectionV2<AccountExportPartnerWorkspaceV2>;
+    /** 可选分区（`ACCOUNT_EXPORT_OPTIONAL_SECTIONS_V2`）：账本开关关着时没有这个键。 */
+    deviceAssets?: AccountExportSectionV2<AccountExportDeviceAssetV2>;
   };
   /** 回执账本链头和平台签名（拿给别人验证用）；账本没开或没有回执时是 null。 */
   receiptsChain: {

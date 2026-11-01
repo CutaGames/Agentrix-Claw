@@ -457,6 +457,16 @@ export interface TwinReviewItemV1 {
   state: DigitalTwinReviewStateV1;
   /** Redacted question (≤160 chars) when the question has no Creator thread turn, e.g. a Visitor question on the public Facet. */
   questionSample?: string;
+  /**
+   * L9 P2-3 (`DIGITAL_TWIN_ANSWER_QUALITY_V1_ENABLED`): the last action the Creator took on this item.
+   * Written only while that flag is on; absent otherwise.
+   */
+  decidedAction?: DigitalTwinReviewActionV1;
+  /**
+   * L9 P2-3: the Creator's "可直接用" mark. `true` = usable as it stands, `false` = not usable, absent = not marked.
+   * Written only while the flag above is on.
+   */
+  directlyUsable?: boolean;
   createdAt: string;
 }
 

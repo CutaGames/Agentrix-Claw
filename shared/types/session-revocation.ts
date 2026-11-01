@@ -60,6 +60,19 @@ export const SESSION_USER_INACTIVE_SIGN_IN_TEXT_V1: Readonly<{ zh: string; en: s
   en: `This account is suspended, so you can't sign in right now. If you have questions, contact us at ${ACCOUNT_SUPPORT_EMAIL_V1}.`,
 });
 
+/**
+ * The mixed-language `message` the server puts on a `user_inactive` refusal (session-revocation.service.ts and
+ * jwt.strategy.ts; D8: it stays as it is for older app builds). A browser redirect after Google / Apple / Discord / X
+ * sign-in carries only this text in `error`, not the code, so the callback pages recognise the account being frozen by it
+ * (L8-13 item 10) and show `SESSION_USER_INACTIVE_SIGN_IN_TEXT_V1` instead.
+ */
+export const SESSION_USER_INACTIVE_SERVER_MESSAGE_V1 = '账号当前不可用 / This account is not active.';
+
+/** True when `text` is (or contains) the server's `user_inactive` message. Anything that is not a string is false. */
+export function isUserInactiveMessageV1(text: unknown): boolean {
+  return typeof text === 'string' && text.includes(SESSION_USER_INACTIVE_SERVER_MESSAGE_V1);
+}
+
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const proto = Object.getPrototypeOf(value);

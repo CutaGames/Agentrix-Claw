@@ -40,6 +40,11 @@ const STATUS_TEXT: Record<OrderStatusV1, Copy> = {
 const KIND_TEXT: Record<OrderKindV1, Copy> = {
   paid_question: { zh: '付费问答', en: 'Paid question' },
   consultation_deposit: { zh: '咨询定金', en: 'Consultation deposit' },
+  device_rental: { zh: '设备租用', en: 'Device rental' },
+  // L9 G (test mode only).
+  project_deposit: { zh: '项目定金', en: 'Project deposit' },
+  booking_deposit: { zh: '预约定金', en: 'Booking deposit' },
+  item_purchase: { zh: '二手物品', en: 'Second-hand item' },
 };
 
 const NEXT_ON_WEB: Record<BuyerOrderNextOnWeb, Copy> = {
