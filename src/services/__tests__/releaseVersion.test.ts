@@ -1,10 +1,11 @@
 /**
  * Release version guard (I-014 / E36, REQ-mobile-014, REQ-release-025).
  *
- * The next phone release is 1.4.4 / versionCode 9 (L9 package 3 preview build,
+ * The next phone release is 1.4.5 / versionCode 10 (L9 package 3 C3 build,
  * not on the download page). Earlier numbers taken: 1.4.1 / 6 (preview), 1.4.2 / 7
  * (formal-signing check build 545), 1.4.3 / 8 (owner test build 546, not on the
- * download page). versionCode only goes up: builds
+ * download page), 1.4.4 / 9 (L9 package 3 preview already handed to the owner).
+ * versionCode only goes up: builds
  * already on phones are 1.1.0 / 1 (download page before 上线 2), 1.2.0 / 2
  * (factory APK), the 1.3.0 / 3 four-zone preview (CI build 528, debug-signed),
  * 1.3.0 / 4 (上线 2, on the download page since 09-29, L2 §11 B8) and
@@ -23,7 +24,7 @@ const ROOT = path.resolve(__dirname, '..', '..', '..');
 const expo = JSON.parse(fs.readFileSync(path.join(ROOT, 'app.json'), 'utf8')).expo;
 const gradle = fs.readFileSync(path.join(ROOT, 'android', 'app', 'build.gradle'), 'utf8');
 
-const SHIPPED_VERSION_CODES = [1, 2, 3, 4, 5, 6, 7, 8];
+const SHIPPED_VERSION_CODES = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
 describe('release version', () => {
   it('我的 → 设置与隐私 shows the app\'s own version, not a fixed string (owner checklist step 1)', () => {
@@ -51,11 +52,11 @@ describe('release version', () => {
 
   it('versionCode is above every shipped build and the version is plain semver', () => {
     expect(expo.android.versionCode).toBeGreaterThan(Math.max(...SHIPPED_VERSION_CODES));
-    expect(expo.android.versionCode).toBeGreaterThanOrEqual(9);
+    expect(expo.android.versionCode).toBeGreaterThanOrEqual(10);
     expect(expo.version).toMatch(/^\d+\.\d+\.\d+$/);
     const [major, minor] = expo.version.split('.').map(Number);
     // 1.4.0 is on phones with runtimeVersion 1.4.0; a new binary needs a new runtimeVersion so no
     // 1.4.0 OTA can land on it (and the reverse). runtimeVersion equals the version (test above).
-    expect(major * 10000 + minor * 100 + Number(expo.version.split('.')[2])).toBeGreaterThanOrEqual(10404);
+    expect(major * 10000 + minor * 100 + Number(expo.version.split('.')[2])).toBeGreaterThanOrEqual(10405);
   });
 });

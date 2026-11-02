@@ -27,7 +27,10 @@ import {
   type MobilePushNavigator,
 } from '../mobilePush';
 import { isNavTab, isNavZoneId } from '../../navigation/navCatalog';
+import type { FourZoneNavigation } from '../../navigation/four-zone/fourZoneRoutes';
+import { isIntroductionRef } from '../webHandoff';
 import * as contract from '../../../shared/types/push-notification';
+import { OWNER_ALERT_INTRODUCTION_KINDS, ownerAlertAnyPushType, ownerAlertPushRef } from '../../../shared/types/owner-alert-copy';
 
 function fakeNavigator(ready = true) {
   const calls: Array<{ name: string; params?: object }> = [];
@@ -276,6 +279,120 @@ describe('tap handling', () => {
     handleMobilePushResponse(input);
     expect(handleMobilePushResponse(input)).toBeNull();
     expect(calls).toHaveLength(1);
+  });
+});
+
+/**
+ * L9 package 3 C3: the three referral alerts (approval / replied / received) all ride the
+ * `introduction_update` push with an `int_` ref. Tapping it opens 事项 → 待我处理, where
+ * `MattersHomeScreen` shows the referral hint (`introductionLanding.test.ts`). Routing is unchanged.
+ */
+describe('referral pushes (introduction_update)', () => {
+  const INTRO_ID = '0123abcd-0123-4abc-8abc-0123456789ab';
+  const INTRO_REF = `int_${INTRO_ID}`;
+  const mattersPending = (ref: string) => ({
+    name: 'Main',
+    params: { screen: 'Matters', params: { screen: 'MattersHome', params: { tab: 'pending', ref } } },
+  });
+  const mainParams = (target: ReturnType<typeof resolveMobilePushNavigation>) => {
+    expect(target.name).toBe('Main');
+    return (target as Extract<FourZoneNavigation, { name: 'Main' }>).params.params.params;
+  };
+  const pushFor = (kind: (typeof OWNER_ALERT_INTRODUCTION_KINDS)[number], agentId?: string) =>
+    contract.buildPushMessageV1({ type: ownerAlertAnyPushType(kind), ref: ownerAlertPushRef(kind, INTRO_ID), ...(agentId ? { agentId } : {}) });
+
+  it.each([...OWNER_ALERT_INTRODUCTION_KINDS])('%s opens 事项 → 待我处理 with its int_ ref', (kind) => {
+    const message = pushFor(kind, 'agent-own-1');
+    expect(message.data.type).toBe('introduction_update');
+    const parsed = parseMobilePushData(message.data);
+    expect(parsed).toMatchObject({ ok: true, kind: 'typed', payload: { type: 'introduction_update', ref: INTRO_REF } });
+    expect(resolveMobilePushNavigation(parsed, { fourZone: true })).toEqual(mattersPending(INTRO_REF));
+    expect(isIntroductionRef(INTRO_REF)).toBe(true);
+  });
+
+  it('the three kinds land on exactly the same place', () => {
+    const targets = OWNER_ALERT_INTRODUCTION_KINDS.map((kind) => resolveMobilePushNavigation(parseMobilePushData(pushFor(kind).data), { fourZone: true }));
+    expect(targets).toHaveLength(3);
+    expect(targets[1]).toEqual(targets[0]);
+    expect(targets[2]).toEqual(targets[0]);
+  });
+
+  it('a tap goes to the navigator now when ready and signed in', () => {
+    const { nav, calls } = fakeNavigator(true);
+    handleMobilePushResponse({ notificationId: 'n-int-1', data: pushFor('introduction_approval').data, navigator: nav, canNavigate: true, fourZone: true });
+    expect(calls).toEqual([{ name: 'Main', params: mattersPending(INTRO_REF).params }]);
+  });
+
+  it('a cold-start tap is queued, then delivered once after sign-in', () => {
+    const { nav, calls } = fakeNavigator(false);
+    handleMobilePushResponse({ notificationId: 'n-int-2', data: pushFor('introduction_received').data, navigator: nav, canNavigate: false, fourZone: true });
+    expect(calls).toHaveLength(0);
+    nav.ready = true;
+    expect(flushPendingMobilePush(nav, true)).toEqual(mattersPending(INTRO_REF));
+    expect(calls).toEqual([{ name: 'Main', params: mattersPending(INTRO_REF).params }]);
+    expect(flushPendingMobilePush(nav, true)).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it('an Agent id, name, contact or text in the payload never reaches the route params', () => {
+    const data = {
+      ...pushFor('introduction_replied', 'agent-of-another-user').data,
+      name: 'Alice Chen',
+      email: 'alice@example.test',
+      phone: '+15550100',
+      title: 'Alice asked for a quote',
+      body: 'Call me back',
+      url: 'https://evil.example/phish',
+    };
+    const parsed = parseMobilePushData(data);
+    expect(parsed).toMatchObject({ ok: true, kind: 'typed', ignoredKeys: ['body', 'email', 'name', 'phone', 'title', 'url'] });
+    const target = resolveMobilePushNavigation(parsed, { fourZone: true });
+    expect(mainParams(target)).toEqual({ tab: 'pending', ref: INTRO_REF });
+    expect(Object.keys(mainParams(target)).sort()).toEqual(['ref', 'tab']);
+    for (const leaked of ['agent-of-another-user', 'Alice', 'alice@example.test', '+15550100', 'Call me back', 'evil.example']) {
+      expect(JSON.stringify(target)).not.toContain(leaked);
+    }
+  });
+
+  it('builds without the zone navigator keep today\'s route (Inbox with the push\'s zone, tab, kind and ref)', () => {
+    const parsed = parseMobilePushData(pushFor('introduction_approval').data);
+    expect(resolveMobilePushNavigation(parsed)).toEqual({
+      name: MOBILE_PUSH_FALLBACK_ROUTE,
+      params: { source: 'push', pushType: 'introduction_update', zone: 'matters', tab: 'pending', refKind: 'introduction', ref: INTRO_REF },
+    });
+  });
+
+  it('a referral push whose ref has no int_ prefix still opens the same page, but is not a referral ref', () => {
+    const target = resolveMobilePushNavigation(parseMobilePushData({ v: 'agentrix.push.v1', type: 'introduction_update', ref: INTRO_ID }), { fourZone: true });
+    expect(target).toEqual(mattersPending(INTRO_ID));
+    expect(isIntroductionRef(INTRO_ID)).toBe(false);
+  });
+
+  it.each(['future_alert_kind', 'introduction_updated', 'introduction', 'introductions', 'Introduction_Update', 'introduction_approval'])(
+    'the unknown type %s opens the inbox and carries nothing from the payload',
+    (type) => {
+      const parsed = parseMobilePushData({ v: 'agentrix.push.v1', type, ref: INTRO_REF, agentId: 'agent-of-another-user', name: 'Alice Chen' });
+      expect(parsed).toMatchObject({ ok: false, reason: 'unknown_type' });
+      expect(resolveMobilePushNavigation(parsed, { fourZone: true })).toEqual({ name: 'Inbox', params: { source: 'push' } });
+      expect(resolveMobilePushNavigation(parsed)).toEqual({ name: 'Inbox', params: { source: 'push' } });
+    },
+  );
+
+  it('the old backend shape opens the inbox with its notification id and no ref, even when it says introduction_update', () => {
+    const parsed = parseMobilePushData({ notificationId: 'n-1', type: 'introduction_update', ref: INTRO_REF });
+    expect(parsed).toMatchObject({ ok: true, kind: 'legacy', notificationId: 'n-1' });
+    expect(resolveMobilePushNavigation(parsed, { fourZone: true })).toEqual({ name: 'Inbox', params: { source: 'push', notificationId: 'n-1' } });
+  });
+
+  it('a typed payload without a version, or with an unusable ref or Agent id, opens the inbox with nothing', () => {
+    for (const data of [
+      { type: 'introduction_update', ref: INTRO_REF },
+      { v: 'agentrix.push.v1', type: 'introduction_update', ref: 'int_../x' },
+      { v: 'agentrix.push.v1', type: 'introduction_update', ref: INTRO_REF, agentId: 'https://evil' },
+      { v: 'agentrix.push.v1', type: 'introduction_update' },
+    ]) {
+      expect(resolveMobilePushNavigation(parseMobilePushData(data), { fourZone: true })).toEqual({ name: 'Inbox', params: { source: 'push' } });
+    }
   });
 });
 

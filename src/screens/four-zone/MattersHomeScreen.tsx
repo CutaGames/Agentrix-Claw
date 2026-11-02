@@ -10,6 +10,8 @@
  *   - open 分身复核 items: opened on Web (content decisions are Web-only, D16).
  *   - D2 payment approval: when a push ref is `spa_…`, that one card on top (SpendApprovalCard; only in builds
  *     with `EXPO_PUBLIC_SPEND_APPROVAL_CARD=1`). There is no pending list route yet (REQ-backend-096.re-mobile 2).
+ *   - L9 referral push: when a push ref is `int_…`, a fixed hint and a "View on web" button on top
+ *     (`introductionLanding.ts`). No read of its own; the button uses the signed-in user's Agent id only.
  * 电脑上 appears only when a computer is paired (5.5); 目标 / 日程 / 灵感 are
  * not built yet and open the honest notice.
  */
@@ -27,6 +29,7 @@ import { buildMattersPending, mattersDueLabel, type MattersPendingItem } from '.
 import { fetchTwinReviewQueue } from '../../services/twinReviewQueue';
 import { isSafeTwinAgentId } from '../../services/twinStatus';
 import { getBuyerOrderWebUrl, getSellerOrderWebUrl, getTwinWebUrl, isOrderRef } from '../../services/webHandoff';
+import { INTRODUCTION_LANDING_COPY, resolveIntroductionLanding } from '../../services/introductionLanding';
 import { NAV_CATALOG, visibleNavTabs } from '../../navigation/navCatalog';
 import { resolveFourZoneNavigation, ZONE_UNAVAILABLE_ROUTE } from '../../navigation/four-zone/fourZoneRoutes';
 import { listedComputers } from '../../services/desktopDevicesView';
@@ -84,6 +87,8 @@ export function MattersHomeScreen() {
   const spendRef: string | null = SPEND_APPROVAL_CARD_ENABLED && isSpendApprovalRef(route.params?.ref) ? route.params.ref : null;
   const sellerOrderUrl = orderRef ? getSellerOrderWebUrl(agentAccountId, orderRef) : null;
   const buyerOrderUrl = orderRef ? getBuyerOrderWebUrl(orderRef) : null;
+  // L9 referral push (`int_…`): the address uses the signed-in user's own Agent id, never one from the push.
+  const introLanding = resolveIntroductionLanding({ routeRef: route.params?.ref, sessionAgentAccountId: agentAccountId });
   const approvalNotifications = useNotificationStore((state) => state.approvalCount);
   const desktop = useQuery({
     queryKey: DESKTOP_STATE_KEY,
@@ -208,6 +213,27 @@ export function MattersHomeScreen() {
           </View>
         </View>
       ) : null}
+      {introLanding ? (
+        // L9 referral push. Fixed text only; the phone has no referral page, so it offers the web.
+        <View style={styles.orderNotice} testID="matters-intro-notice">
+          <Text style={styles.orderTitle}>{t(INTRODUCTION_LANDING_COPY.title)}</Text>
+          <Text style={styles.muted}>{t(INTRODUCTION_LANDING_COPY.body)}</Text>
+          {introLanding.webUrl ? (
+            <TouchableOpacity
+              onPress={() => void Linking.openURL(introLanding.webUrl as string).catch(() => undefined)}
+              accessibilityRole="link"
+              accessibilityLabel={t(INTRODUCTION_LANDING_COPY.openWeb)}
+              testID="matters-intro-open-web"
+            >
+              <Text style={styles.link}>{t(INTRODUCTION_LANDING_COPY.openWeb)}</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.muted} testID="matters-intro-no-twin">
+              {t(INTRODUCTION_LANDING_COPY.noTwin)}
+            </Text>
+          )}
+        </View>
+      ) : null}
       <View style={styles.list} testID="matters-pending-list">
         {loading ? <ActivityIndicator /> : null}
         {desktop.isError ? (
@@ -220,7 +246,7 @@ export function MattersHomeScreen() {
             {t({ en: 'Could not load twin review items. Pull to retry.', zh: '分身复核加载失败，下拉重试。' })}
           </Text>
         ) : null}
-        {!loading && !desktop.isError && items.length === 0 && !spendRef ? (
+        {!loading && !desktop.isError && items.length === 0 && !spendRef && !introLanding ? (
           <Text style={styles.muted} testID="matters-pending-empty">
             {t({ en: 'Nothing is waiting for you.', zh: '没有要你处理的事。' })}
           </Text>

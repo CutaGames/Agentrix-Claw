@@ -92,3 +92,29 @@ export function getSellerOrderWebUrl(agentAccountId: string | null | undefined, 
 export function getBuyerOrderWebUrl(orderId: string, baseUrl: string = APP_URL): string | null {
   return isOrderRef(orderId) ? joinWebUrl(baseUrl, `/orders/${encodeURIComponent(orderId)}`) : null;
 }
+
+/**
+ * L9 package 3 C3 (referral alerts): the three referral alerts ride one push type,
+ * `introduction_update`, whose ref is `int_<referral id>` (`PUSH_INTRODUCTION_REF_PREFIX`).
+ * The phone has no referral page, so the landing offers the web twin status page, the same
+ * path the web notification uses for all three kinds (`frontend/lib/notification/owner-alert-display.ts`,
+ * `ownerAlertWebHref`): `/agents/:agentId/twin/status`. The Agent id is the signed-in user's own,
+ * never one taken from a push payload.
+ */
+export const INTRODUCTION_REF_PATTERN = /^int_[A-Za-z0-9_-]{1,120}$/;
+
+export function isIntroductionRef(value: unknown): value is string {
+  return typeof value === 'string' && INTRODUCTION_REF_PATTERN.test(value);
+}
+
+export function getTwinStatusWebPath(agentAccountId?: string | null): string | null {
+  if (typeof agentAccountId === 'string' && SAFE_AGENT_ID.test(agentAccountId)) {
+    return `/agents/${encodeURIComponent(agentAccountId)}/twin/status`;
+  }
+  return null;
+}
+
+export function getTwinStatusWebUrl(agentAccountId?: string | null, baseUrl: string = APP_URL): string | null {
+  const path = getTwinStatusWebPath(agentAccountId);
+  return path ? joinWebUrl(baseUrl, path) : null;
+}
