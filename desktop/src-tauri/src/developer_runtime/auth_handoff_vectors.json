@@ -1,0 +1,39 @@
+{
+  "comment": "E84 C parity vectors. Rust (auth_handoff.rs) and shared/types/auth-handoff-code.ts must agree on every line (desktop/src/test/authHandoff.parity.test.ts).",
+  "pkce": [
+    { "verifier": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk", "challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" },
+    { "verifier": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "challenge": "ZtNPunH49FD35FWYhT5Tv8I7vRKQJ8uxMaL0_9eHjNA" },
+    {
+      "verifier": "Az09._~-Az09._~-Az09._~-Az09._~-Az09._~-Az09._~-Az09._~-Az09._~-Az09._~-Az09._~-Az09._~-Az09._~-Az09._~-Az09._~-Az09._~-Az09._~-",
+      "challenge": "pUOnB5RwqurJff0bL8A8CIIxx11Z3kbgOSagQgHM_no"
+    }
+  ],
+  "state": "sssssssssssssssssssssssssssssssssssssssssss",
+  "code": "ahc_ccccccccccccccccccccccccccccccccccccccccccc",
+  "callback": [
+    { "name": "code", "url": "http://127.0.0.1:5000/auth-callback?code={code}&state={state}", "result": { "kind": "code", "code": "{code}" } },
+    { "name": "state first", "url": "http://127.0.0.1:5000/auth-callback?state={state}&code={code}", "result": { "kind": "code", "code": "{code}" } },
+    { "name": "known error", "url": "http://127.0.0.1:5000/auth-callback?error=login_cancelled&state={state}", "result": { "kind": "error", "error": "login_cancelled" } },
+    { "name": "unknown error", "url": "http://127.0.0.1:5000/auth-callback?error=access_denied&state={state}", "result": { "kind": "error", "error": "login_failed" } },
+    { "name": "empty error", "url": "http://127.0.0.1:5000/auth-callback?error=&state={state}", "result": { "kind": "error", "error": "login_failed" } },
+    { "name": "error wins over code", "url": "http://127.0.0.1:5000/auth-callback?code={code}&error=provider_unavailable&state={state}", "result": { "kind": "error", "error": "provider_unavailable" } },
+    { "name": "wrong state", "url": "http://127.0.0.1:5000/auth-callback?code={code}&state=tttttttttttttttttttttttttttttttttttttttttttt", "result": { "kind": "invalid" } },
+    { "name": "no state", "url": "http://127.0.0.1:5000/auth-callback?code={code}", "result": { "kind": "invalid" } },
+    { "name": "token in the URL", "url": "http://127.0.0.1:5000/auth-callback?code={code}&state={state}&token=x.y.z", "result": { "kind": "invalid" } },
+    { "name": "access_token in the URL", "url": "http://127.0.0.1:5000/auth-callback?access_token=x&code={code}&state={state}", "result": { "kind": "invalid" } },
+    { "name": "token as a bare key", "url": "http://127.0.0.1:5000/auth-callback?code={code}&state={state}&token", "result": { "kind": "invalid" } },
+    { "name": "duplicate state", "url": "http://127.0.0.1:5000/auth-callback?code={code}&state={state}&state={state}", "result": { "kind": "invalid" } },
+    { "name": "duplicate code", "url": "http://127.0.0.1:5000/auth-callback?code={code}&code={code}&state={state}", "result": { "kind": "invalid" } },
+    { "name": "broken percent escape", "url": "http://127.0.0.1:5000/auth-callback?code={code}&state={state}&x=%E0%A4%A", "result": { "kind": "invalid" } },
+    { "name": "percent escape that is not UTF-8", "url": "http://127.0.0.1:5000/auth-callback?code={code}&state={state}&x=%C3", "result": { "kind": "invalid" } },
+    { "name": "percent-encoded state", "url": "http://127.0.0.1:5000/auth-callback?code={code}&state=%73ssssssssssssssssssssssssssssssssssssssssss", "result": { "kind": "code", "code": "{code}" } },
+    { "name": "plus and extra keys are fine", "url": "http://127.0.0.1:5000/auth-callback?code={code}&state={state}&note=a+b&=x&flag", "result": { "kind": "code", "code": "{code}" } },
+    { "name": "code in the fragment only", "url": "http://127.0.0.1:5000/auth-callback#code={code}&state={state}", "result": { "kind": "code", "code": "{code}" } },
+    { "name": "query wins, fragment ignored", "url": "http://127.0.0.1:5000/auth-callback?code={code}&state={state}#token=x", "result": { "kind": "code", "code": "{code}" } },
+    { "name": "code of the wrong shape", "url": "http://127.0.0.1:5000/auth-callback?code=ahc_short&state={state}", "result": { "kind": "invalid" } },
+    { "name": "code without prefix", "url": "http://127.0.0.1:5000/auth-callback?code=ccccccccccccccccccccccccccccccccccccccccccccccc&state={state}", "result": { "kind": "invalid" } },
+    { "name": "no scheme", "url": "/auth-callback?code={code}&state={state}", "result": { "kind": "invalid" } },
+    { "name": "nothing at all", "url": "http://127.0.0.1:5000/auth-callback", "result": { "kind": "invalid" } },
+    { "name": "expected state of the wrong shape", "url": "http://127.0.0.1:5000/auth-callback?code={code}&state=short", "expectedState": "short", "result": { "kind": "invalid" } }
+  ]
+}

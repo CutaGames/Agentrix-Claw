@@ -1,0 +1,588 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentrix.top/schemas/account-export-v2.schema.json",
+  "title": "Agentrix account export v2",
+  "description": "One JSON file with everything an account holds in Agentrix: conversations, auto memories, agents, attachments, use receipts and the relationship book. Encrypted content is decrypted by the server before it is exported. Contains no keys, tokens or wallet secrets.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "format", "exportId", "generatedAt", "account", "sections", "receiptsChain", "omissions", "sectionsDigest"],
+  "properties": {
+    "$schema": { "const": "https://agentrix.top/schemas/account-export-v2.schema.json" },
+    "schemaVersion": { "const": 2 },
+    "format": { "const": "agentrix.account-export" },
+    "exportId": { "type": "string", "format": "uuid" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "account": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownerId"],
+      "properties": { "ownerId": { "type": "string", "minLength": 1, "maxLength": 80 } }
+    },
+    "sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conversations", "autoMemories", "agents", "attachments", "receipts", "relationshipBook", "partnerWorkspace"],
+      "properties": {
+        "conversations": { "$ref": "#/$defs/sectionOf_conversation" },
+        "autoMemories": { "$ref": "#/$defs/sectionOf_memory" },
+        "agents": { "$ref": "#/$defs/sectionOf_agent" },
+        "attachments": { "$ref": "#/$defs/sectionOf_attachment" },
+        "receipts": { "$ref": "#/$defs/sectionOf_receipt" },
+        "relationshipBook": { "$ref": "#/$defs/sectionOf_relationship" },
+        "partnerWorkspace": { "$ref": "#/$defs/sectionOf_relationship" },
+        "deviceAssets": { "$ref": "#/$defs/sectionOf_deviceAsset" }
+      }
+    },
+    "receiptsChain": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["head", "headSignature"],
+          "properties": {
+            "head": {
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["sequence", "digest"],
+                  "properties": { "sequence": { "type": "integer", "minimum": 1 }, "digest": { "type": "string" } }
+                }
+              ]
+            },
+            "headSignature": {
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["message", "signature", "address", "keyVersion"],
+                  "properties": {
+                    "message": { "type": "string" },
+                    "signature": { "type": "string" },
+                    "address": { "type": "string" },
+                    "keyVersion": { "type": "string" }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "omissions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["section", "reasonCode", "count"],
+        "properties": {
+          "section": { "enum": ["conversations", "autoMemories", "agents", "attachments", "receipts", "relationshipBook", "partnerWorkspace", "deviceAssets"] },
+          "reasonCode": {
+            "enum": [
+              "section_limit",
+              "message_limit",
+              "attachment_too_large",
+              "attachment_budget",
+              "attachment_missing",
+              "memory_unreadable",
+              "agent_unreadable",
+              "read_failed",
+              "not_enabled"
+            ]
+          },
+          "count": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "sectionsDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  },
+  "$defs": {
+    "sectionStatus": { "enum": ["complete", "truncated", "unavailable", "not_enabled"] },
+    "iso": { "type": "string", "format": "date-time" },
+    "sectionOf_conversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "count", "items"],
+      "properties": {
+        "status": { "$ref": "#/$defs/sectionStatus" },
+        "count": { "type": "integer", "minimum": 0 },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/conversation" } }
+      }
+    },
+    "sectionOf_memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "count", "items"],
+      "properties": {
+        "status": { "$ref": "#/$defs/sectionStatus" },
+        "count": { "type": "integer", "minimum": 0 },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/memory" } }
+      }
+    },
+    "sectionOf_agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "count", "items"],
+      "properties": {
+        "status": { "$ref": "#/$defs/sectionStatus" },
+        "count": { "type": "integer", "minimum": 0 },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/agent" } }
+      }
+    },
+    "sectionOf_attachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "count", "items"],
+      "properties": {
+        "status": { "$ref": "#/$defs/sectionStatus" },
+        "count": { "type": "integer", "minimum": 0 },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/attachment" } }
+      }
+    },
+    "sectionOf_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "count", "items"],
+      "properties": {
+        "status": { "$ref": "#/$defs/sectionStatus" },
+        "count": { "type": "integer", "minimum": 0 },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/receipt" } }
+      }
+    },
+    "sectionOf_relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "count", "items"],
+      "properties": {
+        "status": { "$ref": "#/$defs/sectionStatus" },
+        "count": { "type": "integer", "minimum": 0 },
+        "items": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "sectionOf_deviceAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "count", "items"],
+      "properties": {
+        "status": { "$ref": "#/$defs/sectionStatus" },
+        "count": { "type": "integer", "minimum": 0 },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/deviceAsset" } }
+      }
+    },
+    "money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amountMinor", "currency"],
+      "properties": { "amountMinor": { "type": "integer", "minimum": 0 }, "currency": { "type": "string" } }
+    },
+    "moneyOrNull": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/money" }] },
+    "isoOrNull": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/iso" }] },
+    "deviceAsset": {
+      "oneOf": [
+        { "$ref": "#/$defs/deviceAsset_asset" },
+        { "$ref": "#/$defs/deviceAsset_listing" },
+        { "$ref": "#/$defs/deviceAsset_ownMessage" },
+        { "$ref": "#/$defs/deviceAsset_disclosure" },
+        { "$ref": "#/$defs/deviceAsset_wanted" }
+      ]
+    },
+    "deviceAsset_asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "assetRef",
+        "name",
+        "category",
+        "brand",
+        "model",
+        "condition",
+        "status",
+        "purchasedOn",
+        "purchasePrice",
+        "warrantyUntil",
+        "estimate",
+        "linkedDeviceRef",
+        "privateReadable",
+        "private",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "kind": { "const": "asset" },
+        "assetRef": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "brand": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "condition": { "type": "string" },
+        "status": { "type": "string" },
+        "purchasedOn": { "type": ["string", "null"] },
+        "purchasePrice": { "$ref": "#/$defs/moneyOrNull" },
+        "warrantyUntil": { "type": ["string", "null"] },
+        "estimate": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["amountMinor", "currency", "source", "destinationId", "at"],
+              "properties": {
+                "amountMinor": { "type": "integer", "minimum": 0 },
+                "currency": { "type": "string" },
+                "source": { "enum": ["owner", "recycle_quote"] },
+                "destinationId": { "type": ["string", "null"] },
+                "at": { "$ref": "#/$defs/iso" }
+              }
+            }
+          ]
+        },
+        "linkedDeviceRef": { "type": ["string", "null"] },
+        "privateReadable": { "type": "boolean" },
+        "private": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["serialNumber", "imei", "receiptRef", "notes"],
+              "properties": {
+                "serialNumber": { "type": ["string", "null"] },
+                "imei": { "type": ["string", "null"] },
+                "receiptRef": { "type": ["string", "null"] },
+                "notes": { "type": ["string", "null"] }
+              }
+            }
+          ]
+        },
+        "createdAt": { "$ref": "#/$defs/iso" },
+        "updatedAt": { "$ref": "#/$defs/iso" },
+        "deviceRecord": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["deviceRef", "signerRef", "readAt", "receivedAt", "digest", "signature"],
+          "properties": {
+            "deviceRef": { "type": "string" },
+            "signerRef": { "type": "string" },
+            "readAt": { "$ref": "#/$defs/iso" },
+            "receivedAt": { "$ref": "#/$defs/iso" },
+            "digest": { "type": "string" },
+            "signature": { "type": "string" }
+          }
+        }
+      }
+    },
+    "deviceAsset_listing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "listingRef",
+        "assetRef",
+        "status",
+        "title",
+        "description",
+        "category",
+        "condition",
+        "asking",
+        "floor",
+        "sold",
+        "area",
+        "handover",
+        "faq",
+        "twinReplies",
+        "pickupPoint",
+        "publishedAt",
+        "expiresAt",
+        "closedAt",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "kind": { "const": "listing" },
+        "listingRef": { "type": "string" },
+        "assetRef": { "type": ["string", "null"] },
+        "status": { "type": "string" },
+        "title": { "type": ["string", "null"] },
+        "description": { "type": ["string", "null"] },
+        "category": { "type": "string" },
+        "condition": { "type": "string" },
+        "asking": { "$ref": "#/$defs/moneyOrNull" },
+        "floor": { "$ref": "#/$defs/moneyOrNull" },
+        "sold": { "$ref": "#/$defs/moneyOrNull" },
+        "area": { "type": ["string", "null"] },
+        "handover": { "type": ["string", "null"] },
+        "faq": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["q", "a"],
+            "properties": { "q": { "type": "string" }, "a": { "type": "string" } }
+          }
+        },
+        "twinReplies": { "type": "boolean" },
+        "pickupPoint": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["readable", "value"],
+              "properties": { "readable": { "type": "boolean" }, "value": { "type": ["string", "null"] } }
+            }
+          ]
+        },
+        "publishedAt": { "$ref": "#/$defs/isoOrNull" },
+        "expiresAt": { "$ref": "#/$defs/isoOrNull" },
+        "closedAt": { "$ref": "#/$defs/isoOrNull" },
+        "createdAt": { "$ref": "#/$defs/iso" },
+        "updatedAt": { "$ref": "#/$defs/iso" },
+        "saleReceipt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["receiptRef", "status", "requestedAt", "confirmedAt", "token"],
+          "properties": {
+            "receiptRef": { "type": "string" },
+            "status": { "type": "string" },
+            "requestedAt": { "$ref": "#/$defs/iso" },
+            "confirmedAt": { "$ref": "#/$defs/isoOrNull" },
+            "token": { "type": ["string", "null"] }
+          }
+        },
+        "onCard": { "const": true }
+      }
+    },
+    "deviceAsset_ownMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "listingRef", "threadRef", "messages"],
+      "properties": {
+        "kind": { "const": "ownMessage" },
+        "listingRef": { "type": "string" },
+        "threadRef": { "type": "string" },
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["at", "readable", "text"],
+            "properties": { "at": { "$ref": "#/$defs/iso" }, "readable": { "type": "boolean" }, "text": { "type": ["string", "null"] } }
+          }
+        }
+      }
+    },
+    "deviceAsset_disclosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "cardRef", "listingRef", "threadRef", "field", "status", "requestedAt", "decidedAt", "readable", "value"],
+      "properties": {
+        "kind": { "const": "disclosure" },
+        "cardRef": { "type": "string" },
+        "listingRef": { "type": "string" },
+        "threadRef": { "type": "string" },
+        "field": { "type": "string" },
+        "status": { "type": "string" },
+        "requestedAt": { "$ref": "#/$defs/iso" },
+        "decidedAt": { "$ref": "#/$defs/isoOrNull" },
+        "readable": { "type": "boolean" },
+        "value": { "type": ["string", "null"] }
+      }
+    },
+    "deviceAsset_wanted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "wantedRef", "category", "maxPrice", "area", "status", "expiresAt", "createdAt"],
+      "properties": {
+        "kind": { "const": "wanted" },
+        "wantedRef": { "type": "string" },
+        "category": { "type": "string" },
+        "maxPrice": { "$ref": "#/$defs/moneyOrNull" },
+        "area": { "type": ["string", "null"] },
+        "status": { "type": "string" },
+        "expiresAt": { "$ref": "#/$defs/iso" },
+        "createdAt": { "$ref": "#/$defs/iso" }
+      }
+    },
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "type", "content", "sequence", "createdAt", "toolNames"],
+      "properties": {
+        "id": { "type": "string" },
+        "role": { "enum": ["user", "assistant", "system"] },
+        "type": { "type": "string" },
+        "content": { "type": "string" },
+        "sequence": { "type": ["integer", "null"] },
+        "createdAt": { "$ref": "#/$defs/iso" },
+        "toolNames": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "conversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "agentId", "status", "createdAt", "updatedAt", "lastMessageAt", "messages", "messagesTruncated"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": ["string", "null"] },
+        "agentId": { "type": ["string", "null"] },
+        "status": { "type": "string" },
+        "createdAt": { "$ref": "#/$defs/iso" },
+        "updatedAt": { "$ref": "#/$defs/iso" },
+        "lastMessageAt": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/iso" }] },
+        "messages": { "type": "array", "items": { "$ref": "#/$defs/message" } },
+        "messagesTruncated": { "type": "boolean" }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "key", "scope", "type", "agentId", "sessionId", "value", "readable", "importance", "tags", "dataClass", "createdAt", "updatedAt"],
+      "properties": {
+        "id": { "type": "string" },
+        "key": { "type": "string" },
+        "scope": { "type": "string" },
+        "type": { "type": "string" },
+        "agentId": { "type": ["string", "null"] },
+        "sessionId": { "type": ["string", "null"] },
+        "value": {},
+        "readable": { "type": "boolean" },
+        "importance": { "type": ["number", "null"] },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "dataClass": { "type": ["string", "null"] },
+        "createdAt": { "$ref": "#/$defs/iso" },
+        "updatedAt": { "$ref": "#/$defs/iso" }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "source",
+        "name",
+        "description",
+        "personality",
+        "systemPrompt",
+        "defaultModel",
+        "capabilities",
+        "delegationLevel",
+        "channels",
+        "avatarUrl",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "source": { "enum": ["agent_account", "openclaw_instance", "user_agent"] },
+        "name": { "type": "string" },
+        "description": { "type": ["string", "null"] },
+        "personality": { "type": ["string", "null"] },
+        "systemPrompt": { "type": ["string", "null"] },
+        "defaultModel": { "type": ["string", "null"] },
+        "capabilities": { "type": "array", "items": { "type": "string" } },
+        "delegationLevel": { "type": ["string", "null"] },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["platform", "channelName"],
+            "properties": { "platform": { "type": "string" }, "channelName": { "type": ["string", "null"] } }
+          }
+        },
+        "avatarUrl": { "type": ["string", "null"] },
+        "createdAt": { "$ref": "#/$defs/iso" },
+        "updatedAt": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/iso" }] }
+      }
+    },
+    "attachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "fileName", "mimeType", "sizeBytes", "kind", "createdAt", "content"],
+      "properties": {
+        "id": { "type": "string" },
+        "fileName": { "type": "string" },
+        "mimeType": { "type": "string" },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "kind": { "type": "string" },
+        "createdAt": { "$ref": "#/$defs/iso" },
+        "content": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["included", "encoding", "data", "sha256"],
+              "properties": {
+                "included": { "const": true },
+                "encoding": { "const": "base64" },
+                "data": { "type": "string" },
+                "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["included", "omittedReason"],
+              "properties": {
+                "included": { "const": false },
+                "omittedReason": { "enum": ["attachment_too_large", "attachment_budget", "attachment_missing"] }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "receiptId",
+        "sequence",
+        "previousDigest",
+        "digest",
+        "kind",
+        "agentId",
+        "turnRef",
+        "items",
+        "withheldCount",
+        "processor",
+        "credentialSource",
+        "providerId",
+        "modelId",
+        "passId",
+        "occurredAt"
+      ],
+      "properties": {
+        "schemaVersion": { "type": "integer" },
+        "receiptId": { "type": "string" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "previousDigest": { "type": ["string", "null"] },
+        "digest": { "type": "string" },
+        "kind": { "type": "string" },
+        "agentId": { "type": "string" },
+        "turnRef": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["layer", "id", "dataClass"],
+            "properties": { "layer": { "type": "string" }, "id": { "type": "string" }, "dataClass": { "type": "string" } }
+          }
+        },
+        "withheldCount": { "type": "integer", "minimum": 0 },
+        "processor": { "type": "string" },
+        "credentialSource": { "type": "string" },
+        "providerId": { "type": ["string", "null"] },
+        "modelId": { "type": ["string", "null"] },
+        "passId": { "type": ["string", "null"] },
+        "occurredAt": { "$ref": "#/$defs/iso" }
+      }
+    }
+  }
+}
