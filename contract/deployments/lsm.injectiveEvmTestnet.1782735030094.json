@@ -1,0 +1,22 @@
+{
+  "network": "injectiveEvmTestnet",
+  "chainId": 1439,
+  "deployer": "0x5a419E65A027f1e23E4f0118198d7FF814aFeAaB",
+  "relayer": "0x5a419E65A027f1e23E4f0118198d7FF814aFeAaB",
+  "deployedAt": "2026-06-29T12:10:30.094Z",
+  "unitScale": "10000",
+  "contracts": {
+    "USDC": {
+      "address": "0x9fcF02d8f706BAbc690a860F89b93b9801c8F28D",
+      "decimals": 6,
+      "mock": true
+    },
+    "CollateralVault": {
+      "address": "0x760ee31334EA03c2e47900eb3c419C232b4375C0"
+    }
+  },
+  "publicVault": {
+    "id": "0xb0968f03ede6ff5711015ad41a315b713e38d53e630713beb966f1aa1d8d3ce7",
+    "profitShareBps": 1000
+  }
+}

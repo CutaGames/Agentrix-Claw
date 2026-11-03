@@ -1,0 +1,116 @@
+{
+  "protocolVersion": "1.1",
+  "profileSchemaVersion": 1,
+  "evidenceLevel": "PROTOTYPE",
+  "boundary": "single-audited-CAP; profile+capability enforced on-card; passive-card tap/resident only",
+  "extends": "shared/soul-core-l1/v1/protocol.json",
+  "capabilityBits": {
+    "CAP_TAP_SIGN": 0,
+    "CAP_POLICY_ADMIN": 1,
+    "CAP_SESSION_ISSUE": 2,
+    "CAP_STEP_UP": 3,
+    "CAP_FREEZE": 4,
+    "CAP_ROTATE": 5,
+    "CAP_RECOVER": 6,
+    "CAP_GOVERNANCE_PROPOSAL": 7,
+    "CAP_FINANCE_PROPOSAL": 8,
+    "CAP_RESIDENT_EXECUTION": 9,
+    "CAP_RETIRE": 10
+  },
+  "profiles": [
+    "personal-primary",
+    "recovery-guardian",
+    "operator-policy-admin",
+    "governance-member",
+    "finance-approver",
+    "developer-test",
+    "resident-executor"
+  ],
+  "profileIdWireCodes": {
+    "personal-primary": 1,
+    "recovery-guardian": 2,
+    "operator-policy-admin": 3,
+    "governance-member": 4,
+    "finance-approver": 5,
+    "developer-test": 6,
+    "resident-executor": 7
+  },
+  "proposalTypes": [
+    "session_issue",
+    "policy_update",
+    "step_up",
+    "freeze",
+    "rotate",
+    "recover",
+    "governance",
+    "finance",
+    "retire"
+  ],
+  "apduV1_1": {
+    "GET_PROFILE": { "ins": "0x90", "authorization": "secure-channel" },
+    "GET_MEASUREMENT": { "ins": "0x91", "authorization": "secure-channel" },
+    "GET_CERT_REF": { "ins": "0x92", "authorization": "secure-channel" },
+    "ACTIVATE_USER": { "ins": "0x21", "authorization": "factory-sealed+owner-ceremony" },
+    "SIGN_PROPOSAL": { "ins": "0x51", "authorization": "secure-channel+role-capability+nonce", "implementation": "v1-scaffold-unsupported" },
+    "SIGN_PROPOSAL_V2": {
+      "ins": "0x52",
+      "authorization": "secure-channel+role-capability+nonce+exact-control-epoch+lifecycle-counter",
+      "wire": "sessionNonce(8) + 17 * (uint16-be length + printable-ASCII field)",
+      "canonicalDigest": "card injects AGENTRIX_SOUL_PROPOSAL_V2 and uint32-be field lengths; SHA-256",
+      "unicodeBoundary": "JavaCard PoC accepts printable ASCII only (strict UTF-8/NFC subset); other Unicode fails closed",
+      "replayHistory": "16 append-only nonce records; exact retry returns cached signature; changed fields conflict; capacity exhaustion fails closed with 0x6A8C; no eviction",
+      "response": "digest(32)+profileId(1)+controlEpoch(4)+lifecycleCounter(4)+proposalCounter(4)+sigLen(1)+DER-signature",
+      "statusWords": {
+        "invalid-encoding": "0x6A81",
+        "history-full": "0x6A8C",
+        "profile-or-type-denied": "0x6986",
+        "state-mismatch": "0x698A",
+        "nonce-conflict": "0x6989"
+      }
+    },
+    "APPLY_LIFECYCLE_TRANSITION": { "ins": "0xA0", "authorization": "owner-quorum-issuer-token" },
+    "RETIRE": { "ins": "0xA1", "authorization": "owner-quorum+second-confirm" }
+  },
+  "lifecycleStates": [
+    "manufactured",
+    "factory_personalized",
+    "user_activated",
+    "frozen",
+    "recovery_pending",
+    "retired"
+  ],
+  "attestationClasses": [
+    "self_attested_dev",
+    "test_ca_card",
+    "pilot_hardware",
+    "production_hardware"
+  ],
+  "rejectCodesV1_1": [
+    "profile-unknown",
+    "capability-denied",
+    "apdu-not-allowed-for-profile",
+    "proposal-type-not-allowed",
+    "profile-transition-forbidden",
+    "lifecycle-invalid-transition",
+    "card-retired",
+    "card-revoked",
+    "attestation-chain-invalid",
+    "attestation-reference-mismatch",
+    "attestation-status-invalid",
+    "attestation-stale",
+    "proposal-nonce-replay",
+    "proposal-expired",
+    "proposal-domain-mismatch",
+    "legacy-dev-only"
+  ],
+  "honesty": {
+    "singleAuditedCapNoPerKitFork": true,
+    "profileIsOnCardAuthoritativeNotHostClaimed": true,
+    "developerTestNeverProduction": true,
+    "profileTransitionsDefaultForbidden": true,
+    "attestationClassDoesNotModifyReputation": true,
+    "quorumEnforcedByExternalAuthorityNotSingleCard": true,
+    "productionCeremonyClaimed": false,
+    "certifiedProductionClaimed": false
+  }
+}

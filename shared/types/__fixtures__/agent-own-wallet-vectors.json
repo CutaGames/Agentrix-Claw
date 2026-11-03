@@ -1,0 +1,2321 @@
+{
+ "version": 1,
+ "note": "L8-6 own wallet fixed vectors. Expected values come from sources independent of the code under test (see sources). Read by backend jest, web vitest, desktop cargo and the contract tests.",
+ "sources": {
+  "ownWalletStatus": "Python transcription of design 2.0 (boolean rules 1-5, legacyCustodyStoppedV1)",
+  "ownAccountSwitched": "Python transcription of design 7.1 R-a' item 2",
+  "execMode": "hand-written from design W2.5 (d); selectors from pure-python keccak",
+  "paymasterRules": "hand-written from design 7.3 and decisions A14 (mainnet rule only, nothing configured)",
+  "guardians": "hand-written from design R3-M2 (ascending, distinct, non-zero, at most 16)",
+  "salt": "pure-python keccak over abi.encodePacked(prefix, uint32 saltIndex), design W1.1 / W1.3",
+  "kernelAddress": "eth_call KernelFactory.getAddress(initData, salt) on 97 and 84532 public RPC (S2, read-only)",
+  "userOpHash": "eth_call EntryPoint v0.7 getUserOpHash on 97 and on 84532 public RPC (S2, read-only)",
+  "webauthnSignature": "soft P-256 key (vector only) signed with node crypto; expected = eth_call WebAuthnValidator.validateSignatureWithData on 97 (S2, read-only)"
+ },
+ "ownWalletStatus": {
+  "cases": [
+   {
+    "name": "none: no rows",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": []
+    },
+    "expected": {
+     "status": "none",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": false
+    }
+   },
+   {
+    "name": "none: no rows, legacy custody present",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": []
+    },
+    "expected": {
+     "status": "none",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": false
+    }
+   },
+   {
+    "name": "owner_mismatch: a row owned by someone else",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "22222222-2222-4222-8222-222222222222",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "owner_mismatch",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "name": "owner_mismatch: a lost row on another chain owned by someone else",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      },
+      {
+       "chainId": 84532,
+       "status": "lost",
+       "ownerUserId": "22222222-2222-4222-8222-222222222222",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "owner_mismatch",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "name": "lost: only a lost row on the configured chain",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "name": "lost: only a row on another chain",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 84532,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "name": "pending: counterfactual, no legacy",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "counterfactual",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "pending",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "name": "pending: deployed, legacy, not confirmed, never activated",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "pending",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": false
+    }
+   },
+   {
+    "name": "active: deployed, no legacy custody",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "active",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "name": "active: deployed, legacy, cutover confirmed",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "active",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "name": "active: deployed, legacy, activated before (legacy written later)",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "active",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "name": "pending: lost row activated before, new row not deployed (legacy stays stopped)",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      },
+      {
+       "chainId": 97,
+       "status": "counterfactual",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "pending",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "name": "pending: N not deployed although act is true",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "counterfactual",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "pending",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "name": "active: N deployed, legacy, not confirmed, act true",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "active",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "name": "lost: lost row with only own_wallet_activated_at stays stopped",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "name": "lost: lost row with cutover confirmed stays stopped",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "name": "active: re-enabled main switch, same rows",
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": true
+      }
+     ]
+    },
+    "expected": {
+     "status": "active",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "name": "active: on 84532 when configured there",
+    "input": {
+     "configuredChainId": 84532,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 84532,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "active",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   }
+  ],
+  "exhaustive": [
+   {
+    "combo": {
+     "nExists": false,
+     "dep": false,
+     "legacy": false,
+     "conf": false,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": false,
+     "legacy": false,
+     "conf": false,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": false,
+     "legacy": false,
+     "conf": true,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": false,
+     "legacy": false,
+     "conf": true,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": false,
+     "legacy": true,
+     "conf": false,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": false
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": false,
+     "legacy": true,
+     "conf": false,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": false,
+     "legacy": true,
+     "conf": true,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": false,
+     "legacy": true,
+     "conf": true,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": true,
+     "legacy": false,
+     "conf": false,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": true,
+     "legacy": false,
+     "conf": false,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": true,
+     "legacy": false,
+     "conf": true,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": true,
+     "legacy": false,
+     "conf": true,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": true,
+     "legacy": true,
+     "conf": false,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": false
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": true,
+     "legacy": true,
+     "conf": false,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": true,
+     "legacy": true,
+     "conf": true,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": false,
+     "dep": true,
+     "legacy": true,
+     "conf": true,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "lost",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "lost",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": false,
+     "legacy": false,
+     "conf": false,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "counterfactual",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "pending",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": false,
+     "legacy": false,
+     "conf": false,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "counterfactual",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "pending",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": false,
+     "legacy": false,
+     "conf": true,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "counterfactual",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "pending",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": false,
+     "legacy": false,
+     "conf": true,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "counterfactual",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "pending",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": false,
+     "legacy": true,
+     "conf": false,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "counterfactual",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "pending",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": false
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": false,
+     "legacy": true,
+     "conf": false,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "counterfactual",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "pending",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": false,
+     "legacy": true,
+     "conf": true,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "counterfactual",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "pending",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": false
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": false,
+     "legacy": true,
+     "conf": true,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "counterfactual",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "pending",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": true,
+     "legacy": false,
+     "conf": false,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "active",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": true,
+     "legacy": false,
+     "conf": false,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "active",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": true,
+     "legacy": false,
+     "conf": true,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "active",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": true,
+     "legacy": false,
+     "conf": true,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": false,
+     "hasLegacyAddress": false,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "active",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": true,
+     "legacy": true,
+     "conf": false,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "pending",
+     "legacyCustodyStopped": false,
+     "ownAccountSwitched": false
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": true,
+     "legacy": true,
+     "conf": false,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": false,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "active",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": true,
+     "legacy": true,
+     "conf": true,
+     "act": false
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": false,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "active",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   },
+   {
+    "combo": {
+     "nExists": true,
+     "dep": true,
+     "legacy": true,
+     "conf": true,
+     "act": true
+    },
+    "input": {
+     "configuredChainId": 97,
+     "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+     "hasLegacyCustody": true,
+     "hasLegacyAddress": true,
+     "rows": [
+      {
+       "chainId": 97,
+       "status": "deployed",
+       "ownerUserId": "11111111-1111-4111-8111-111111111111",
+       "legacyCutoverConfirmed": true,
+       "ownWalletActivated": true,
+       "ownAccountSwitched": false
+      }
+     ]
+    },
+    "expected": {
+     "status": "active",
+     "legacyCustodyStopped": true,
+     "ownAccountSwitched": true
+    }
+   }
+  ]
+ },
+ "ownAccountSwitched": [
+  {
+   "name": "none: false",
+   "input": {
+    "configuredChainId": 97,
+    "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+    "hasLegacyCustody": true,
+    "hasLegacyAddress": true,
+    "rows": []
+   },
+   "expected": false
+  },
+  {
+   "name": "pending with a legacy address, never activated: false",
+   "input": {
+    "configuredChainId": 97,
+    "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+    "hasLegacyCustody": true,
+    "hasLegacyAddress": true,
+    "rows": [
+     {
+      "chainId": 97,
+      "status": "counterfactual",
+      "ownerUserId": "11111111-1111-4111-8111-111111111111",
+      "legacyCutoverConfirmed": false,
+      "ownWalletActivated": false,
+      "ownAccountSwitched": false
+     }
+    ]
+   },
+   "expected": false
+  },
+  {
+   "name": "first active: true",
+   "input": {
+    "configuredChainId": 97,
+    "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+    "hasLegacyCustody": true,
+    "hasLegacyAddress": true,
+    "rows": [
+     {
+      "chainId": 97,
+      "status": "deployed",
+      "ownerUserId": "11111111-1111-4111-8111-111111111111",
+      "legacyCutoverConfirmed": false,
+      "ownWalletActivated": true,
+      "ownAccountSwitched": false
+     }
+    ]
+   },
+   "expected": true
+  },
+  {
+   "name": "active then lost: true",
+   "input": {
+    "configuredChainId": 97,
+    "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+    "hasLegacyCustody": true,
+    "hasLegacyAddress": true,
+    "rows": [
+     {
+      "chainId": 97,
+      "status": "lost",
+      "ownerUserId": "11111111-1111-4111-8111-111111111111",
+      "legacyCutoverConfirmed": false,
+      "ownWalletActivated": true,
+      "ownAccountSwitched": false
+     }
+    ]
+   },
+   "expected": true
+  },
+  {
+   "name": "activated before, new row not deployed: true",
+   "input": {
+    "configuredChainId": 97,
+    "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+    "hasLegacyCustody": true,
+    "hasLegacyAddress": true,
+    "rows": [
+     {
+      "chainId": 97,
+      "status": "lost",
+      "ownerUserId": "11111111-1111-4111-8111-111111111111",
+      "legacyCutoverConfirmed": false,
+      "ownWalletActivated": true,
+      "ownAccountSwitched": false
+     },
+     {
+      "chainId": 97,
+      "status": "counterfactual",
+      "ownerUserId": "11111111-1111-4111-8111-111111111111",
+      "legacyCutoverConfirmed": false,
+      "ownWalletActivated": false,
+      "ownAccountSwitched": false
+     }
+    ]
+   },
+   "expected": true
+  },
+  {
+   "name": "pending without a legacy address: true",
+   "input": {
+    "configuredChainId": 97,
+    "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+    "hasLegacyCustody": false,
+    "hasLegacyAddress": false,
+    "rows": [
+     {
+      "chainId": 97,
+      "status": "counterfactual",
+      "ownerUserId": "11111111-1111-4111-8111-111111111111",
+      "legacyCutoverConfirmed": false,
+      "ownWalletActivated": false,
+      "ownAccountSwitched": false
+     }
+    ]
+   },
+   "expected": true
+  },
+  {
+   "name": "pending without a legacy address, mpc_wallet_id written later (own_account_switched_at set): still true",
+   "input": {
+    "configuredChainId": 97,
+    "agentOwnerUserId": "11111111-1111-4111-8111-111111111111",
+    "hasLegacyCustody": true,
+    "hasLegacyAddress": true,
+    "rows": [
+     {
+      "chainId": 97,
+      "status": "counterfactual",
+      "ownerUserId": "11111111-1111-4111-8111-111111111111",
+      "legacyCutoverConfirmed": false,
+      "ownWalletActivated": false,
+      "ownAccountSwitched": true
+     }
+    ]
+   },
+   "expected": true
+  }
+ ],
+ "execMode": [
+  {
+   "name": "single + default (root)",
+   "callData": "0xe9ae5c53000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+   "session": false,
+   "expected": null
+  },
+  {
+   "name": "batch + default (root)",
+   "callData": "0xe9ae5c53010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+   "session": false,
+   "expected": null
+  },
+  {
+   "name": "single + default (session)",
+   "callData": "0xe9ae5c53000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+   "session": true,
+   "expected": null
+  },
+  {
+   "name": "batch in a session UserOp",
+   "callData": "0xe9ae5c53010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+   "session": true,
+   "expected": "session_batch_not_allowed"
+  },
+  {
+   "name": "delegatecall 0xff",
+   "callData": "0xe9ae5c53ff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+   "session": false,
+   "expected": "call_type_not_allowed"
+  },
+  {
+   "name": "static 0xfe",
+   "callData": "0xe9ae5c53fe0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+   "session": false,
+   "expected": "call_type_not_allowed"
+  },
+  {
+   "name": "try exec type 0x01",
+   "callData": "0xe9ae5c53000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+   "session": false,
+   "expected": "exec_type_not_allowed"
+  },
+  {
+   "name": "reserved byte non-zero",
+   "callData": "0xe9ae5c53000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+   "session": false,
+   "expected": "mode_reserved_nonzero"
+  },
+  {
+   "name": "reserved selector bytes non-zero",
+   "callData": "0xe9ae5c53000000000000deadbeef0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+   "session": false,
+   "expected": "mode_reserved_nonzero"
+  },
+  {
+   "name": "executeUserOp prefix",
+   "callData": "0x8dd7712f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+   "session": false,
+   "expected": "outer_selector_not_allowed"
+  },
+  {
+   "name": "direct installModule",
+   "callData": "0x9517e29f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+   "session": false,
+   "expected": "outer_selector_not_allowed"
+  },
+  {
+   "name": "direct uninstallModule",
+   "callData": "0xa71763a8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+   "session": false,
+   "expected": "outer_selector_not_allowed"
+  },
+  {
+   "name": "upgradeTo",
+   "callData": "0x3659cfe60000000000000000000000001111111111111111111111111111111111111111",
+   "session": false,
+   "expected": "outer_selector_not_allowed"
+  },
+  {
+   "name": "executeFromExecutor",
+   "callData": "0xd691c964000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+   "session": false,
+   "expected": "outer_selector_not_allowed"
+  },
+  {
+   "name": "too short for selector + mode + offset",
+   "callData": "0xe9ae5c530000000000000000000000000000000000000000000000000000000000000000",
+   "session": false,
+   "expected": "calldata_malformed"
+  },
+  {
+   "name": "not hex",
+   "callData": "0xe9ae5c53zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+   "session": false,
+   "expected": "calldata_malformed"
+  },
+  {
+   "name": "odd length",
+   "callData": "0xe9ae5c530000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000",
+   "session": false,
+   "expected": "calldata_malformed"
+  },
+  {
+   "name": "missing 0x",
+   "callData": "e9ae5c53000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000",
+   "session": false,
+   "expected": "calldata_malformed"
+  }
+ ],
+ "paymasterRules": [
+  {
+   "name": "97 empty",
+   "chainId": 97,
+   "paymasterAndData": "0x",
+   "pins": null,
+   "expected": null
+  },
+  {
+   "name": "84532 empty",
+   "chainId": 84532,
+   "paymasterAndData": "0x",
+   "pins": null,
+   "expected": null
+  },
+  {
+   "name": "97 non-empty refused",
+   "chainId": 97,
+   "paymasterAndData": "0x11111111111111111111111111111111111111110000000000000000000000000000000000000000000000000000000000000000",
+   "pins": null,
+   "expected": "paymaster_not_allowed_on_testnet"
+  },
+  {
+   "name": "84532 non-empty refused",
+   "chainId": 84532,
+   "paymasterAndData": "0x1111111111111111111111111111111111111111",
+   "pins": null,
+   "expected": "paymaster_not_allowed_on_testnet"
+  },
+  {
+   "name": "8453 without configuration refused (empty)",
+   "chainId": 8453,
+   "paymasterAndData": "0x",
+   "pins": null,
+   "expected": "paymaster_not_configured"
+  },
+  {
+   "name": "8453 without configuration refused (non-empty)",
+   "chainId": 8453,
+   "paymasterAndData": "0xabababababababababababababababababababab0000000000000000000000000000000000000000000000000000000000000000",
+   "pins": null,
+   "expected": "paymaster_not_configured"
+  },
+  {
+   "name": "56 without configuration refused",
+   "chainId": 56,
+   "paymasterAndData": "0x",
+   "pins": null,
+   "expected": "paymaster_not_configured"
+  },
+  {
+   "name": "mainnet rule: empty refused when a pin exists",
+   "chainId": 8453,
+   "paymasterAndData": "0x",
+   "pins": {
+    "8453": "0xabababababababababababababababababababab"
+   },
+   "expected": "paymaster_required"
+  },
+  {
+   "name": "mainnet rule: other paymaster refused",
+   "chainId": 8453,
+   "paymasterAndData": "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd0000000000000000000000000000000000000000000000000000000000000000",
+   "pins": {
+    "8453": "0xabababababababababababababababababababab"
+   },
+   "expected": "paymaster_mismatch"
+  },
+  {
+   "name": "mainnet rule: pinned paymaster accepted",
+   "chainId": 8453,
+   "paymasterAndData": "0xabababababababababababababababababababab0000000000000000000000000000000000000000000000000000000000000000",
+   "pins": {
+    "8453": "0xabababababababababababababababababababab"
+   },
+   "expected": null
+  },
+  {
+   "name": "mainnet rule: shorter than an address refused",
+   "chainId": 8453,
+   "paymasterAndData": "0xababababababababab",
+   "pins": {
+    "8453": "0xabababababababababababababababababababab"
+   },
+   "expected": "paymaster_mismatch"
+  },
+  {
+   "name": "malformed",
+   "chainId": 97,
+   "paymasterAndData": "0xzz",
+   "pins": null,
+   "expected": "paymaster_data_malformed"
+  },
+  {
+   "name": "empty string is not 0x",
+   "chainId": 97,
+   "paymasterAndData": "",
+   "pins": null,
+   "expected": "paymaster_data_malformed"
+  }
+ ],
+ "guardians": [
+  {
+   "name": "sorted by numeric value",
+   "input": [
+    "0xf000000000000000000000000000000000000000",
+    "0x0fffffffffffffffffffffffffffffffffffffff",
+    "0x0000000000000000000000000000000000000001"
+   ],
+   "problem": null,
+   "sorted": [
+    "0x0000000000000000000000000000000000000001",
+    "0x0fffffffffffffffffffffffffffffffffffffff",
+    "0xf000000000000000000000000000000000000000"
+   ]
+  },
+  {
+   "name": "already sorted",
+   "input": [
+    "0x0000000000000000000000000000000000000001",
+    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "problem": null,
+   "sorted": [
+    "0x0000000000000000000000000000000000000001",
+    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ]
+  },
+  {
+   "name": "duplicates refused, sorting dedupes",
+   "input": [
+    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "0x0fffffffffffffffffffffffffffffffffffffff",
+    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "problem": "guardian_duplicate",
+   "sorted": [
+    "0x0fffffffffffffffffffffffffffffffffffffff",
+    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ]
+  },
+  {
+   "name": "empty",
+   "input": [],
+   "problem": "guardian_list_empty",
+   "sorted": null
+  },
+  {
+   "name": "zero address",
+   "input": [
+    "0x0fffffffffffffffffffffffffffffffffffffff",
+    "0x0000000000000000000000000000000000000000"
+   ],
+   "problem": "guardian_zero_address",
+   "sorted": null
+  },
+  {
+   "name": "upper case",
+   "input": [
+    "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+   ],
+   "problem": "guardian_address_invalid",
+   "sorted": null
+  },
+  {
+   "name": "short",
+   "input": [
+    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ],
+   "problem": "guardian_address_invalid",
+   "sorted": null
+  },
+  {
+   "name": "not a string",
+   "input": [
+    5
+   ],
+   "problem": "guardian_address_invalid",
+   "sorted": null
+  },
+  {
+   "name": "sixteen is the maximum",
+   "input": [
+    "0x0000000000000000000000000000000000000001",
+    "0x0000000000000000000000000000000000000002",
+    "0x0000000000000000000000000000000000000003",
+    "0x0000000000000000000000000000000000000004",
+    "0x0000000000000000000000000000000000000005",
+    "0x0000000000000000000000000000000000000006",
+    "0x0000000000000000000000000000000000000007",
+    "0x0000000000000000000000000000000000000008",
+    "0x0000000000000000000000000000000000000009",
+    "0x000000000000000000000000000000000000000a",
+    "0x000000000000000000000000000000000000000b",
+    "0x000000000000000000000000000000000000000c",
+    "0x000000000000000000000000000000000000000d",
+    "0x000000000000000000000000000000000000000e",
+    "0x000000000000000000000000000000000000000f",
+    "0x0000000000000000000000000000000000000010"
+   ],
+   "problem": null,
+   "sorted": [
+    "0x0000000000000000000000000000000000000001",
+    "0x0000000000000000000000000000000000000002",
+    "0x0000000000000000000000000000000000000003",
+    "0x0000000000000000000000000000000000000004",
+    "0x0000000000000000000000000000000000000005",
+    "0x0000000000000000000000000000000000000006",
+    "0x0000000000000000000000000000000000000007",
+    "0x0000000000000000000000000000000000000008",
+    "0x0000000000000000000000000000000000000009",
+    "0x000000000000000000000000000000000000000a",
+    "0x000000000000000000000000000000000000000b",
+    "0x000000000000000000000000000000000000000c",
+    "0x000000000000000000000000000000000000000d",
+    "0x000000000000000000000000000000000000000e",
+    "0x000000000000000000000000000000000000000f",
+    "0x0000000000000000000000000000000000000010"
+   ]
+  },
+  {
+   "name": "seventeen refused",
+   "input": [
+    "0x0000000000000000000000000000000000000001",
+    "0x0000000000000000000000000000000000000002",
+    "0x0000000000000000000000000000000000000003",
+    "0x0000000000000000000000000000000000000004",
+    "0x0000000000000000000000000000000000000005",
+    "0x0000000000000000000000000000000000000006",
+    "0x0000000000000000000000000000000000000007",
+    "0x0000000000000000000000000000000000000008",
+    "0x0000000000000000000000000000000000000009",
+    "0x000000000000000000000000000000000000000a",
+    "0x000000000000000000000000000000000000000b",
+    "0x000000000000000000000000000000000000000c",
+    "0x000000000000000000000000000000000000000d",
+    "0x000000000000000000000000000000000000000e",
+    "0x000000000000000000000000000000000000000f",
+    "0x0000000000000000000000000000000000000010",
+    "0x0000000000000000000000000000000000000011"
+   ],
+   "problem": "guardian_list_too_long",
+   "sorted": null
+  }
+ ],
+ "salt": [
+  {
+   "kind": "agent",
+   "saltIndex": 0,
+   "preimage": "0x6167656e747269782e6167656e742e763100000000",
+   "salt": "0x3f462e05155d2e0b3696e5bebb046411cf02eb9fe9ba63f97026652ee46a77d4"
+  },
+  {
+   "kind": "agent",
+   "saltIndex": 1,
+   "preimage": "0x6167656e747269782e6167656e742e763100000001",
+   "salt": "0x5fe770ef840a8399185939defb4f2d7f698772b273c9c1483f99cbf15f934836"
+  },
+  {
+   "kind": "agent",
+   "saltIndex": 7,
+   "preimage": "0x6167656e747269782e6167656e742e763100000007",
+   "salt": "0x9add26b4bbf647722391d2e224755e4d1981d521fba1fab0cfd71a9056c9e8af"
+  },
+  {
+   "kind": "agent",
+   "saltIndex": 4294967295,
+   "preimage": "0x6167656e747269782e6167656e742e7631ffffffff",
+   "salt": "0x1a969d1cd284d98bba7fde922bdc8869ad4a1935ddb81619ef31d03a507ce55f"
+  },
+  {
+   "kind": "owner_vault",
+   "saltIndex": 0,
+   "preimage": "0x6167656e747269782e7661756c742e763100000000",
+   "salt": "0x84224cc98633b4edb0080b483e613edb77ee19cc9483b4c75fd3cffe128d34cd"
+  },
+  {
+   "kind": "owner_vault",
+   "saltIndex": 1,
+   "preimage": "0x6167656e747269782e7661756c742e763100000001",
+   "salt": "0x354a5d0875d29776c7861cc9319a9e73ac749fcc5427eeeee9b6369938ee27a3"
+  },
+  {
+   "kind": "owner_vault",
+   "saltIndex": 7,
+   "preimage": "0x6167656e747269782e7661756c742e763100000007",
+   "salt": "0x2fc6e3d3db6f0b5197a13d67f9cc84f6ffea942c7cad0b686afccaafa82aee6a"
+  },
+  {
+   "kind": "owner_vault",
+   "saltIndex": 4294967295,
+   "preimage": "0x6167656e747269782e7661756c742e7631ffffffff",
+   "salt": "0x89e6fa33b94bf65b34f424572462b5a6479610d5bd535c27c873ff1f3ad8065e"
+  }
+ ],
+ "kernelAddress": [
+  {
+   "name": "agent, key A, index 0",
+   "pubKeyX": "0x0217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed",
+   "pubKeyY": "0x194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794",
+   "kind": "agent",
+   "saltIndex": 0,
+   "initConfigEmpty": true,
+   "initData": "0x3c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "salt": "0x3f462e05155d2e0b3696e5bebb046411cf02eb9fe9ba63f97026652ee46a77d4",
+   "factoryDataKernelFactory": "0xea6d13ac00000000000000000000000000000000000000000000000000000000000000403f462e05155d2e0b3696e5bebb046411cf02eb9fe9ba63f97026652ee46a77d400000000000000000000000000000000000000000000000000000000000001c43c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e579400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "factoryDataFactoryStaker": "0xc5265d5d000000000000000000000000aac5d4240af87249b3f71bc8e4a2cae074a3e41900000000000000000000000000000000000000000000000000000000000000603f462e05155d2e0b3696e5bebb046411cf02eb9fe9ba63f97026652ee46a77d400000000000000000000000000000000000000000000000000000000000001c43c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e579400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "expectedAddress": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+   "expectedSource": "eth_call KernelFactory.getAddress on 97 and 84532 (equal)"
+  },
+  {
+   "name": "agent, key A, index 1",
+   "pubKeyX": "0x0217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed",
+   "pubKeyY": "0x194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794",
+   "kind": "agent",
+   "saltIndex": 1,
+   "initConfigEmpty": true,
+   "initData": "0x3c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "salt": "0x5fe770ef840a8399185939defb4f2d7f698772b273c9c1483f99cbf15f934836",
+   "factoryDataKernelFactory": "0xea6d13ac00000000000000000000000000000000000000000000000000000000000000405fe770ef840a8399185939defb4f2d7f698772b273c9c1483f99cbf15f93483600000000000000000000000000000000000000000000000000000000000001c43c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e579400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "factoryDataFactoryStaker": "0xc5265d5d000000000000000000000000aac5d4240af87249b3f71bc8e4a2cae074a3e41900000000000000000000000000000000000000000000000000000000000000605fe770ef840a8399185939defb4f2d7f698772b273c9c1483f99cbf15f93483600000000000000000000000000000000000000000000000000000000000001c43c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e579400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "expectedAddress": "0xd8afae25be9493d145160e5dea9a52864f76dfa5",
+   "expectedSource": "eth_call KernelFactory.getAddress on 97 and 84532 (equal)"
+  },
+  {
+   "name": "owner_vault, key A, index 0",
+   "pubKeyX": "0x0217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed",
+   "pubKeyY": "0x194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794",
+   "kind": "owner_vault",
+   "saltIndex": 0,
+   "initConfigEmpty": true,
+   "initData": "0x3c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "salt": "0x84224cc98633b4edb0080b483e613edb77ee19cc9483b4c75fd3cffe128d34cd",
+   "factoryDataKernelFactory": "0xea6d13ac000000000000000000000000000000000000000000000000000000000000004084224cc98633b4edb0080b483e613edb77ee19cc9483b4c75fd3cffe128d34cd00000000000000000000000000000000000000000000000000000000000001c43c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e579400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "factoryDataFactoryStaker": "0xc5265d5d000000000000000000000000aac5d4240af87249b3f71bc8e4a2cae074a3e419000000000000000000000000000000000000000000000000000000000000006084224cc98633b4edb0080b483e613edb77ee19cc9483b4c75fd3cffe128d34cd00000000000000000000000000000000000000000000000000000000000001c43c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e579400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "expectedAddress": "0x71911872e13d24a59baaf14b3ba39b621e8346d5",
+   "expectedSource": "eth_call KernelFactory.getAddress on 97 and 84532 (equal)"
+  },
+  {
+   "name": "agent, key B, index 0",
+   "pubKeyX": "0xd65a93977caa3d1b081852ff57a79e465f1660577304baead505dd3a48589cf3",
+   "pubKeyY": "0x50185e895372df6221ea3a137557e473fddb6755f05bd507c3c533fce9c91285",
+   "kind": "agent",
+   "saltIndex": 0,
+   "initConfigEmpty": true,
+   "initData": "0x3c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001d65a93977caa3d1b081852ff57a79e465f1660577304baead505dd3a48589cf350185e895372df6221ea3a137557e473fddb6755f05bd507c3c533fce9c91285000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "salt": "0x3f462e05155d2e0b3696e5bebb046411cf02eb9fe9ba63f97026652ee46a77d4",
+   "factoryDataKernelFactory": "0xea6d13ac00000000000000000000000000000000000000000000000000000000000000403f462e05155d2e0b3696e5bebb046411cf02eb9fe9ba63f97026652ee46a77d400000000000000000000000000000000000000000000000000000000000001c43c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001d65a93977caa3d1b081852ff57a79e465f1660577304baead505dd3a48589cf350185e895372df6221ea3a137557e473fddb6755f05bd507c3c533fce9c9128500000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "factoryDataFactoryStaker": "0xc5265d5d000000000000000000000000aac5d4240af87249b3f71bc8e4a2cae074a3e41900000000000000000000000000000000000000000000000000000000000000603f462e05155d2e0b3696e5bebb046411cf02eb9fe9ba63f97026652ee46a77d400000000000000000000000000000000000000000000000000000000000001c43c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001d65a93977caa3d1b081852ff57a79e465f1660577304baead505dd3a48589cf350185e895372df6221ea3a137557e473fddb6755f05bd507c3c533fce9c9128500000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "expectedAddress": "0x3d5b54665e4ba043f374d4afacd3abbda028a3ef",
+   "expectedSource": "eth_call KernelFactory.getAddress on 97 and 84532 (equal)"
+  },
+  {
+   "name": "agent, key A, index 0, initConfig not empty (must give another address)",
+   "pubKeyX": "0x0217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed",
+   "pubKeyY": "0x194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e5794",
+   "kind": "agent",
+   "saltIndex": 0,
+   "initConfigEmpty": false,
+   "initData": "0x3c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e579400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000024e9ae5c53000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "salt": "0x3f462e05155d2e0b3696e5bebb046411cf02eb9fe9ba63f97026652ee46a77d4",
+   "factoryDataKernelFactory": "0xea6d13ac00000000000000000000000000000000000000000000000000000000000000403f462e05155d2e0b3696e5bebb046411cf02eb9fe9ba63f97026652ee46a77d400000000000000000000000000000000000000000000000000000000000002443c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e579400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000024e9ae5c5300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "factoryDataFactoryStaker": "0xc5265d5d000000000000000000000000aac5d4240af87249b3f71bc8e4a2cae074a3e41900000000000000000000000000000000000000000000000000000000000000603f462e05155d2e0b3696e5bebb046411cf02eb9fe9ba63f97026652ee46a77d400000000000000000000000000000000000000000000000000000000000002443c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e579400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000024e9ae5c5300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "expectedAddress": "0x8ca280cdb9bdd4b8d286a7003e46e43ff180d348",
+   "expectedSource": "eth_call KernelFactory.getAddress on 97 and 84532 (equal)"
+  }
+ ],
+ "userOpHash": [
+  {
+   "name": "root deploy op on 97 (KernelFactory initCode)",
+   "chainId": 97,
+   "entryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+   "userOp": {
+    "sender": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+    "nonce": 0,
+    "initCode": "0xaac5d4240af87249b3f71bc8e4a2cae074a3e419ea6d13ac00000000000000000000000000000000000000000000000000000000000000403f462e05155d2e0b3696e5bebb046411cf02eb9fe9ba63f97026652ee46a77d400000000000000000000000000000000000000000000000000000000000001c43c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e579400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "callData": "0xe9ae5c53000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000034111111111111111111111111111111111111111100000000000000000000000000000000000000000000000000038d7ea4c68000000000000000000000000000",
+    "accountGasLimits": "0x000000000000000000000000000927c000000000000000000000000000030d40",
+    "preVerificationGas": 80000,
+    "gasFees": "0x0000000000000000000000003b9aca0000000000000000000000000077359400",
+    "paymasterAndData": "0x",
+    "signature": "0x"
+   },
+   "expected": "0x4fe7e6e34b60482b64d5b5a68c2f76e6bb9a69c40364fce17496c1357023ccba",
+   "expectedSource": "eth_call EntryPoint.getUserOpHash on 97"
+  },
+  {
+   "name": "same op on 84532",
+   "chainId": 84532,
+   "entryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+   "userOp": {
+    "sender": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+    "nonce": 0,
+    "initCode": "0xaac5d4240af87249b3f71bc8e4a2cae074a3e419ea6d13ac00000000000000000000000000000000000000000000000000000000000000403f462e05155d2e0b3696e5bebb046411cf02eb9fe9ba63f97026652ee46a77d400000000000000000000000000000000000000000000000000000000000001c43c3b752b010000000000578c4cb0e472a5462da43c495c3f330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e579400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "callData": "0xe9ae5c53000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000034111111111111111111111111111111111111111100000000000000000000000000000000000000000000000000038d7ea4c68000000000000000000000000000",
+    "accountGasLimits": "0x000000000000000000000000000927c000000000000000000000000000030d40",
+    "preVerificationGas": 80000,
+    "gasFees": "0x0000000000000000000000003b9aca0000000000000000000000000077359400",
+    "paymasterAndData": "0x",
+    "signature": "0x"
+   },
+   "expected": "0xddc3ed61a152897d2999e0a22547a91306f408aafabefcc4a3173fcf43df6140",
+   "expectedSource": "eth_call EntryPoint.getUserOpHash on 84532"
+  }
+ ],
+ "webauthnSignature": [
+  {
+   "name": "root-format assertion, usePrecompile=True",
+   "hash": "0x4fe7e6e34b60482b64d5b5a68c2f76e6bb9a69c40364fce17496c1357023ccba",
+   "account": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+   "credentialId": "0xe51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b3729",
+   "requireUV": true,
+   "usePrecompile": true,
+   "auth": {
+    "authenticatorData": "0x4eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000",
+    "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"T-fm40tgSCtk1bWmjC925ruaacQDZPzhdJbBNXAjzLo\",\"origin\":\"https://wallet.agentrix.top\",\"crossOrigin\":false}",
+    "challengeIndex": 23,
+    "typeIndex": 1,
+    "r": "19482229571058929363532098927521749702567497648595573306804557838925420144743",
+    "s": "9287003586337129757124709630033941691939335639233542218779124008116667046491"
+   },
+   "statelessSignature": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000012b128d198a6f577e2a3a37941f0f727b2a456390b63640f4fbeb428675dda867148841fc3d2dad4eae8dba1826d9173c2ce4f43fbeb7005e6c89b36d56c05a5b00000000000000000000000000000000000000000000000000000000000000254eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22542d666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000",
+   "statelessData": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000073ec209692f04b1499c2ce8a31ca502d3f977d0400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b372900000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e57940000000000000000000000000000000000000000000000000000000000000001",
+   "expected": true,
+   "rootSignature": "0x0000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b37290000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000012b128d198a6f577e2a3a37941f0f727b2a456390b63640f4fbeb428675dda867148841fc3d2dad4eae8dba1826d9173c2ce4f43fbeb7005e6c89b36d56c05a5b00000000000000000000000000000000000000000000000000000000000000254eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22542d666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000"
+  },
+  {
+   "name": "authenticatorData byte flipped, usePrecompile=True",
+   "hash": "0x4fe7e6e34b60482b64d5b5a68c2f76e6bb9a69c40364fce17496c1357023ccba",
+   "account": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+   "credentialId": "0xe51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b3729",
+   "requireUV": true,
+   "usePrecompile": true,
+   "auth": {
+    "authenticatorData": "0x4eceed79e7811e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000",
+    "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"T-fm40tgSCtk1bWmjC925ruaacQDZPzhdJbBNXAjzLo\",\"origin\":\"https://wallet.agentrix.top\",\"crossOrigin\":false}",
+    "challengeIndex": 23,
+    "typeIndex": 1,
+    "r": "19482229571058929363532098927521749702567497648595573306804557838925420144743",
+    "s": "9287003586337129757124709630033941691939335639233542218779124008116667046491"
+   },
+   "statelessSignature": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000012b128d198a6f577e2a3a37941f0f727b2a456390b63640f4fbeb428675dda867148841fc3d2dad4eae8dba1826d9173c2ce4f43fbeb7005e6c89b36d56c05a5b00000000000000000000000000000000000000000000000000000000000000254eceed79e7811e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22542d666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000",
+   "statelessData": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000073ec209692f04b1499c2ce8a31ca502d3f977d0400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b372900000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e57940000000000000000000000000000000000000000000000000000000000000001",
+   "expected": false
+  },
+  {
+   "name": "clientDataJSON challenge char changed, usePrecompile=True",
+   "hash": "0x4fe7e6e34b60482b64d5b5a68c2f76e6bb9a69c40364fce17496c1357023ccba",
+   "account": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+   "credentialId": "0xe51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b3729",
+   "requireUV": true,
+   "usePrecompile": true,
+   "auth": {
+    "authenticatorData": "0x4eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000",
+    "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"TAfm40tgSCtk1bWmjC925ruaacQDZPzhdJbBNXAjzLo\",\"origin\":\"https://wallet.agentrix.top\",\"crossOrigin\":false}",
+    "challengeIndex": 23,
+    "typeIndex": 1,
+    "r": "19482229571058929363532098927521749702567497648595573306804557838925420144743",
+    "s": "9287003586337129757124709630033941691939335639233542218779124008116667046491"
+   },
+   "statelessSignature": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000012b128d198a6f577e2a3a37941f0f727b2a456390b63640f4fbeb428675dda867148841fc3d2dad4eae8dba1826d9173c2ce4f43fbeb7005e6c89b36d56c05a5b00000000000000000000000000000000000000000000000000000000000000254eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a225441666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000",
+   "statelessData": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000073ec209692f04b1499c2ce8a31ca502d3f977d0400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b372900000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e57940000000000000000000000000000000000000000000000000000000000000001",
+   "expected": false
+  },
+  {
+   "name": "r changed, usePrecompile=True",
+   "hash": "0x4fe7e6e34b60482b64d5b5a68c2f76e6bb9a69c40364fce17496c1357023ccba",
+   "account": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+   "credentialId": "0xe51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b3729",
+   "requireUV": true,
+   "usePrecompile": true,
+   "auth": {
+    "authenticatorData": "0x4eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000",
+    "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"T-fm40tgSCtk1bWmjC925ruaacQDZPzhdJbBNXAjzLo\",\"origin\":\"https://wallet.agentrix.top\",\"crossOrigin\":false}",
+    "challengeIndex": 23,
+    "typeIndex": 1,
+    "r": "19482229571058929363532098927521749702567497648595573306804557838925420144742",
+    "s": "9287003586337129757124709630033941691939335639233542218779124008116667046491"
+   },
+   "statelessSignature": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000012b128d198a6f577e2a3a37941f0f727b2a456390b63640f4fbeb428675dda866148841fc3d2dad4eae8dba1826d9173c2ce4f43fbeb7005e6c89b36d56c05a5b00000000000000000000000000000000000000000000000000000000000000254eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22542d666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000",
+   "statelessData": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000073ec209692f04b1499c2ce8a31ca502d3f977d0400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b372900000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e57940000000000000000000000000000000000000000000000000000000000000001",
+   "expected": false
+  },
+  {
+   "name": "s changed, usePrecompile=True",
+   "hash": "0x4fe7e6e34b60482b64d5b5a68c2f76e6bb9a69c40364fce17496c1357023ccba",
+   "account": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+   "credentialId": "0xe51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b3729",
+   "requireUV": true,
+   "usePrecompile": true,
+   "auth": {
+    "authenticatorData": "0x4eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000",
+    "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"T-fm40tgSCtk1bWmjC925ruaacQDZPzhdJbBNXAjzLo\",\"origin\":\"https://wallet.agentrix.top\",\"crossOrigin\":false}",
+    "challengeIndex": 23,
+    "typeIndex": 1,
+    "r": "19482229571058929363532098927521749702567497648595573306804557838925420144743",
+    "s": "9287003586337129757124709630033941691939335639233542218779124008116667046490"
+   },
+   "statelessSignature": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000012b128d198a6f577e2a3a37941f0f727b2a456390b63640f4fbeb428675dda867148841fc3d2dad4eae8dba1826d9173c2ce4f43fbeb7005e6c89b36d56c05a5a00000000000000000000000000000000000000000000000000000000000000254eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22542d666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000",
+   "statelessData": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000073ec209692f04b1499c2ce8a31ca502d3f977d0400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b372900000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e57940000000000000000000000000000000000000000000000000000000000000001",
+   "expected": false
+  },
+  {
+   "name": "s in the high half (N - s), usePrecompile=True",
+   "hash": "0x4fe7e6e34b60482b64d5b5a68c2f76e6bb9a69c40364fce17496c1357023ccba",
+   "account": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+   "credentialId": "0xe51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b3729",
+   "requireUV": true,
+   "usePrecompile": true,
+   "auth": {
+    "authenticatorData": "0x4eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000",
+    "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"T-fm40tgSCtk1bWmjC925ruaacQDZPzhdJbBNXAjzLo\",\"origin\":\"https://wallet.agentrix.top\",\"crossOrigin\":false}",
+    "challengeIndex": 23,
+    "typeIndex": 1,
+    "r": "19482229571058929363532098927521749702567497648595573306804557838925420144743",
+    "s": "106505085624019119005572737319373631838057619584902218123643135052951844997878"
+   },
+   "statelessSignature": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000012b128d198a6f577e2a3a37941f0f727b2a456390b63640f4fbeb428675dda867eb77be02c2d252b2517245e7d926e8c39002066de8609e2687301755a5a2caf600000000000000000000000000000000000000000000000000000000000000254eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22542d666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000",
+   "statelessData": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000073ec209692f04b1499c2ce8a31ca502d3f977d0400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b372900000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e57940000000000000000000000000000000000000000000000000000000000000001",
+   "expected": false
+  },
+  {
+   "name": "root-format assertion, usePrecompile=False",
+   "hash": "0x4fe7e6e34b60482b64d5b5a68c2f76e6bb9a69c40364fce17496c1357023ccba",
+   "account": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+   "credentialId": "0xe51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b3729",
+   "requireUV": true,
+   "usePrecompile": false,
+   "auth": {
+    "authenticatorData": "0x4eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000",
+    "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"T-fm40tgSCtk1bWmjC925ruaacQDZPzhdJbBNXAjzLo\",\"origin\":\"https://wallet.agentrix.top\",\"crossOrigin\":false}",
+    "challengeIndex": 23,
+    "typeIndex": 1,
+    "r": "19482229571058929363532098927521749702567497648595573306804557838925420144743",
+    "s": "9287003586337129757124709630033941691939335639233542218779124008116667046491"
+   },
+   "statelessSignature": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000012b128d198a6f577e2a3a37941f0f727b2a456390b63640f4fbeb428675dda867148841fc3d2dad4eae8dba1826d9173c2ce4f43fbeb7005e6c89b36d56c05a5b00000000000000000000000000000000000000000000000000000000000000254eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22542d666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000",
+   "statelessData": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000073ec209692f04b1499c2ce8a31ca502d3f977d0400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b372900000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e57940000000000000000000000000000000000000000000000000000000000000001",
+   "expected": true,
+   "rootSignature": "0x0000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b37290000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000012b128d198a6f577e2a3a37941f0f727b2a456390b63640f4fbeb428675dda867148841fc3d2dad4eae8dba1826d9173c2ce4f43fbeb7005e6c89b36d56c05a5b00000000000000000000000000000000000000000000000000000000000000254eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22542d666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000"
+  },
+  {
+   "name": "authenticatorData byte flipped, usePrecompile=False",
+   "hash": "0x4fe7e6e34b60482b64d5b5a68c2f76e6bb9a69c40364fce17496c1357023ccba",
+   "account": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+   "credentialId": "0xe51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b3729",
+   "requireUV": true,
+   "usePrecompile": false,
+   "auth": {
+    "authenticatorData": "0x4eceed79e7811e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000",
+    "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"T-fm40tgSCtk1bWmjC925ruaacQDZPzhdJbBNXAjzLo\",\"origin\":\"https://wallet.agentrix.top\",\"crossOrigin\":false}",
+    "challengeIndex": 23,
+    "typeIndex": 1,
+    "r": "19482229571058929363532098927521749702567497648595573306804557838925420144743",
+    "s": "9287003586337129757124709630033941691939335639233542218779124008116667046491"
+   },
+   "statelessSignature": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000012b128d198a6f577e2a3a37941f0f727b2a456390b63640f4fbeb428675dda867148841fc3d2dad4eae8dba1826d9173c2ce4f43fbeb7005e6c89b36d56c05a5b00000000000000000000000000000000000000000000000000000000000000254eceed79e7811e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22542d666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000",
+   "statelessData": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000073ec209692f04b1499c2ce8a31ca502d3f977d0400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b372900000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e57940000000000000000000000000000000000000000000000000000000000000001",
+   "expected": false
+  },
+  {
+   "name": "clientDataJSON challenge char changed, usePrecompile=False",
+   "hash": "0x4fe7e6e34b60482b64d5b5a68c2f76e6bb9a69c40364fce17496c1357023ccba",
+   "account": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+   "credentialId": "0xe51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b3729",
+   "requireUV": true,
+   "usePrecompile": false,
+   "auth": {
+    "authenticatorData": "0x4eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000",
+    "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"TAfm40tgSCtk1bWmjC925ruaacQDZPzhdJbBNXAjzLo\",\"origin\":\"https://wallet.agentrix.top\",\"crossOrigin\":false}",
+    "challengeIndex": 23,
+    "typeIndex": 1,
+    "r": "19482229571058929363532098927521749702567497648595573306804557838925420144743",
+    "s": "9287003586337129757124709630033941691939335639233542218779124008116667046491"
+   },
+   "statelessSignature": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000012b128d198a6f577e2a3a37941f0f727b2a456390b63640f4fbeb428675dda867148841fc3d2dad4eae8dba1826d9173c2ce4f43fbeb7005e6c89b36d56c05a5b00000000000000000000000000000000000000000000000000000000000000254eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a225441666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000",
+   "statelessData": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000073ec209692f04b1499c2ce8a31ca502d3f977d0400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b372900000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e57940000000000000000000000000000000000000000000000000000000000000001",
+   "expected": false
+  },
+  {
+   "name": "r changed, usePrecompile=False",
+   "hash": "0x4fe7e6e34b60482b64d5b5a68c2f76e6bb9a69c40364fce17496c1357023ccba",
+   "account": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+   "credentialId": "0xe51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b3729",
+   "requireUV": true,
+   "usePrecompile": false,
+   "auth": {
+    "authenticatorData": "0x4eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000",
+    "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"T-fm40tgSCtk1bWmjC925ruaacQDZPzhdJbBNXAjzLo\",\"origin\":\"https://wallet.agentrix.top\",\"crossOrigin\":false}",
+    "challengeIndex": 23,
+    "typeIndex": 1,
+    "r": "19482229571058929363532098927521749702567497648595573306804557838925420144742",
+    "s": "9287003586337129757124709630033941691939335639233542218779124008116667046491"
+   },
+   "statelessSignature": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000012b128d198a6f577e2a3a37941f0f727b2a456390b63640f4fbeb428675dda866148841fc3d2dad4eae8dba1826d9173c2ce4f43fbeb7005e6c89b36d56c05a5b00000000000000000000000000000000000000000000000000000000000000254eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22542d666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000",
+   "statelessData": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000073ec209692f04b1499c2ce8a31ca502d3f977d0400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b372900000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e57940000000000000000000000000000000000000000000000000000000000000001",
+   "expected": false
+  },
+  {
+   "name": "s changed, usePrecompile=False",
+   "hash": "0x4fe7e6e34b60482b64d5b5a68c2f76e6bb9a69c40364fce17496c1357023ccba",
+   "account": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+   "credentialId": "0xe51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b3729",
+   "requireUV": true,
+   "usePrecompile": false,
+   "auth": {
+    "authenticatorData": "0x4eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000",
+    "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"T-fm40tgSCtk1bWmjC925ruaacQDZPzhdJbBNXAjzLo\",\"origin\":\"https://wallet.agentrix.top\",\"crossOrigin\":false}",
+    "challengeIndex": 23,
+    "typeIndex": 1,
+    "r": "19482229571058929363532098927521749702567497648595573306804557838925420144743",
+    "s": "9287003586337129757124709630033941691939335639233542218779124008116667046490"
+   },
+   "statelessSignature": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000012b128d198a6f577e2a3a37941f0f727b2a456390b63640f4fbeb428675dda867148841fc3d2dad4eae8dba1826d9173c2ce4f43fbeb7005e6c89b36d56c05a5a00000000000000000000000000000000000000000000000000000000000000254eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22542d666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000",
+   "statelessData": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000073ec209692f04b1499c2ce8a31ca502d3f977d0400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b372900000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e57940000000000000000000000000000000000000000000000000000000000000001",
+   "expected": false
+  },
+  {
+   "name": "s in the high half (N - s), usePrecompile=False",
+   "hash": "0x4fe7e6e34b60482b64d5b5a68c2f76e6bb9a69c40364fce17496c1357023ccba",
+   "account": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+   "credentialId": "0xe51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b3729",
+   "requireUV": true,
+   "usePrecompile": false,
+   "auth": {
+    "authenticatorData": "0x4eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000",
+    "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"T-fm40tgSCtk1bWmjC925ruaacQDZPzhdJbBNXAjzLo\",\"origin\":\"https://wallet.agentrix.top\",\"crossOrigin\":false}",
+    "challengeIndex": 23,
+    "typeIndex": 1,
+    "r": "19482229571058929363532098927521749702567497648595573306804557838925420144743",
+    "s": "106505085624019119005572737319373631838057619584902218123643135052951844997878"
+   },
+   "statelessSignature": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000012b128d198a6f577e2a3a37941f0f727b2a456390b63640f4fbeb428675dda867eb77be02c2d252b2517245e7d926e8c39002066de8609e2687301755a5a2caf600000000000000000000000000000000000000000000000000000000000000254eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22542d666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000",
+   "statelessData": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000073ec209692f04b1499c2ce8a31ca502d3f977d0400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b372900000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e57940000000000000000000000000000000000000000000000000000000000000001",
+   "expected": false
+  },
+  {
+   "name": "UV flag not set while the credential requires UV",
+   "hash": "0x4fe7e6e34b60482b64d5b5a68c2f76e6bb9a69c40364fce17496c1357023ccba",
+   "account": "0x73ec209692f04b1499c2ce8a31ca502d3f977d04",
+   "requireUV": true,
+   "usePrecompile": true,
+   "auth": {
+    "authenticatorData": "0x4eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10100000000",
+    "clientDataJSON": "{\"type\":\"webauthn.get\",\"challenge\":\"T-fm40tgSCtk1bWmjC925ruaacQDZPzhdJbBNXAjzLo\",\"origin\":\"https://wallet.agentrix.top\",\"crossOrigin\":false}",
+    "challengeIndex": 23,
+    "typeIndex": 1,
+    "r": "57860478643254350851426070101453047965664630135462222939545719225049810308668",
+    "s": "32072451825579380862949033548998074169135329962435500726708463539555540029340"
+   },
+   "statelessSignature": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000001700000000000000000000000000000000000000000000000000000000000000017febded0a71c14f85303df04346452ab8fe0b197fe0fca03183bcfbe46458e3c46e85d4bca68133d88f19ad0529ff0470f80077a4a17813e9efbc070899e4f9c00000000000000000000000000000000000000000000000000000000000000254eceed79e7801e7d595803c3519d2cc888c4e762d7e4680595b2032106e8f0f10100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008c7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22542d666d343074675343746b3162576d6a43393235727561616351445a507a68644a62424e58416a7a4c6f222c226f726967696e223a2268747470733a2f2f77616c6c65742e6167656e747269782e746f70222c2263726f73734f726967696e223a66616c73657d0000000000000000000000000000000000000000",
+   "statelessData": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000073ec209692f04b1499c2ce8a31ca502d3f977d0400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000001e51b24915041cc08f33c4f41d870641896eebea11e40574676e7f91b2d7b372900000000000000000000000000000000000000000000000000000000000000010217e617f0b6443928278f96999e69a23a4f2c152bdf6d6cdf66e5b80282d4ed194a7debcb97712d2dda3ca85aa8765a56f45fc758599652f2897c65306e57940000000000000000000000000000000000000000000000000000000000000001",
+   "expected": false
+  }
+ ],
+ "s2ReadAt": {
+  "97": 139565215,
+  "84532": 51666402
+ }
+}

@@ -1,0 +1,18 @@
+[package]
+name = "device-simulator"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Software simulator of an Agentrix hardware device (L8 4B, B5): pairing with proof of possession, signed capability declarations, signed OTA with no downgrade, and the e-ink day view. It carries no real key: every key is made at run time, and the OTA keys it trusts are handed in by the caller."
+license = "Apache-2.0"
+
+# Not a member of any other workspace (desktop/src-tauri has its own); this crate builds on its own with plain `cargo test`.
+[workspace]
+
+[dependencies]
+# Exact versions (nobody can run cargo on the build Mac, so the CI result must be reproducible): the same ones
+# desktop/src-tauri/Cargo.lock already resolves.
+base64 = "=0.22.1"
+ring = "=0.17.14"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.149"

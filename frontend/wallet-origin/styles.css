@@ -1,0 +1,125 @@
+/* L8-6 wallet origin styles. The CSP is `style-src 'self'`: no inline style attributes anywhere on these pages. */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #0b1220;
+  color: #e5e7eb;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+}
+
+.ow-page {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.ow-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.ow-header {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: #9ca3af;
+  border-bottom: 1px solid #1f2937;
+  padding-bottom: 8px;
+}
+
+.ow-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ow-line {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.ow-mono {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.ow-address {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.ow-muted {
+  color: #6b7280;
+}
+
+.ow-red {
+  margin: 0;
+  color: #f87171;
+  font-weight: 700;
+}
+
+.ow-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.ow-qr {
+  background: #ffffff;
+  padding: 12px;
+  border-radius: 12px;
+  align-self: flex-start;
+}
+
+.ow-button {
+  align-self: flex-start;
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid #3b82f666;
+  background: #3b82f622;
+  color: #60a5fa;
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.ow-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ow-badge {
+  margin: 0;
+  font-size: 11px;
+  line-height: 24px;
+  color: #d97706;
+  background: transparent;
+}
+
+.ow-badge-ok {
+  color: #16a34a;
+}
+
+/* S6: the recovery code input on /wallet/recover/. */
+.ow-input {
+  width: 100%;
+  min-height: 72px;
+  margin: 8px 0;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #3b82f666;
+  background: transparent;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
