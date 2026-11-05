@@ -1,0 +1,118 @@
+<!doctype html>
+<!--
+  L8-6 S2 / R15: record one real passkey signature vector for the WebAuthnValidator tests. Nothing goes on chain.
+  Run on this Mac:  python3 -m http.server 8765 --bind 127.0.0.1   (in contract/scripts/own-wallet), then open
+  http://localhost:8765/capture-webauthn-vector.html, press 1 then 2, and copy the JSON into
+  contract/test/vendor/own-wallet/webauthn-real-vectors.json. The output is public data of a throwaway test passkey:
+  public key, authenticatorData, clientDataJSON and the signature. No private key exists outside the authenticator.
+  No network request is made by this page.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agentrix own wallet: record a passkey vector</title>
+<style>
+  body { font: 15px/1.5 -apple-system, system-ui, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; }
+  button { font: inherit; padding: 6px 14px; margin-right: 8px; }
+  textarea { width: 100%; height: 320px; font: 12px/1.4 ui-monospace, monospace; margin-top: 16px; }
+  .note { color: #555; }
+</style>
+</head>
+<body>
+<h1>Record a passkey vector</h1>
+<p class="note">Use a throwaway test passkey. The page only runs on localhost and sends nothing anywhere.</p>
+<button id="create">1. Create test passkey</button>
+<button id="sign" disabled>2. Sign the fixed hash</button>
+<textarea id="out" readonly></textarea>
+<script>
+  // A fixed 32-byte hash (any value works; the test checks this exact hash).
+  const HASH = "0x5d6a1d2b0c3e4f5a69788796a5b4c3d2e1f00112233445566778899aabbccdde";
+  const N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+  const out = document.getElementById("out");
+  let credential = null;
+  let pub = null;
+
+  const hex = (buf) => "0x" + Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+  const fromHex = (h) => new Uint8Array(h.slice(2).match(/../g).map((b) => parseInt(b, 16)));
+  const big = (bytes) => BigInt(hex(bytes));
+
+  function derToRS(der) {
+    const d = new Uint8Array(der);
+    if (d[0] !== 0x30) throw new Error("signature is not DER");
+    let i = 2;
+    if (d[1] & 0x80) i = 2 + (d[1] & 0x7f);
+    const read = () => {
+      if (d[i] !== 0x02) throw new Error("bad DER integer");
+      const len = d[i + 1];
+      const v = d.slice(i + 2, i + 2 + len);
+      i += 2 + len;
+      return big(v);
+    };
+    const r = read();
+    let s = read();
+    if (s > N / 2n) s = N - s;
+    return { r, s };
+  }
+
+  document.getElementById("create").onclick = async () => {
+    try {
+      if (location.hostname !== "localhost") throw new Error("open this page on http://localhost only");
+      credential = await navigator.credentials.create({
+        publicKey: {
+          rp: { name: "Agentrix vector (test only)", id: location.hostname },
+          user: { id: crypto.getRandomValues(new Uint8Array(16)), name: "agentrix-vector", displayName: "Agentrix vector" },
+          challenge: crypto.getRandomValues(new Uint8Array(32)),
+          pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+          authenticatorSelection: { residentKey: "required", userVerification: "required" },
+          attestation: "none",
+        },
+      });
+      const spki = new Uint8Array(credential.response.getPublicKey());
+      const point = spki.slice(spki.length - 65);
+      if (point[0] !== 0x04) throw new Error("not an uncompressed P-256 key");
+      pub = { x: hex(point.slice(1, 33)), y: hex(point.slice(33, 65)) };
+      out.value = "passkey created; now press 2";
+      document.getElementById("sign").disabled = false;
+    } catch (e) {
+      out.value = String(e);
+    }
+  };
+
+  document.getElementById("sign").onclick = async () => {
+    try {
+      const assertion = await navigator.credentials.get({
+        publicKey: {
+          challenge: fromHex(HASH),
+          rpId: location.hostname,
+          allowCredentials: [{ type: "public-key", id: credential.rawId }],
+          userVerification: "required",
+        },
+      });
+      const authenticatorData = new Uint8Array(assertion.response.authenticatorData);
+      const clientDataJSON = new TextDecoder().decode(assertion.response.clientDataJSON);
+      const { r, s } = derToRS(assertion.response.signature);
+      const vector = {
+        name: "real passkey, " + navigator.userAgent.replace(/[^ -~]/g, "").slice(0, 80),
+        recordedAt: new Date().toISOString(),
+        rpId: location.hostname,
+        hash: HASH,
+        pubKeyX: pub.x,
+        pubKeyY: pub.y,
+        requireUV: (authenticatorData[32] & 0x04) !== 0,
+        auth: {
+          authenticatorData: hex(authenticatorData),
+          clientDataJSON,
+          challengeIndex: clientDataJSON.indexOf('"challenge":"'),
+          typeIndex: clientDataJSON.indexOf('"type":"webauthn.get"'),
+          r: r.toString(),
+          s: s.toString(),
+        },
+      };
+      out.value = JSON.stringify({ version: 1, note: "R15 real passkey vectors (public data of a throwaway test passkey).", vectors: [vector] }, null, 1);
+    } catch (e) {
+      out.value = String(e);
+    }
+  };
+</script>
+</body>
+</html>

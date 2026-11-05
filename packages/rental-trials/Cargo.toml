@@ -1,0 +1,16 @@
+[package]
+name = "rental-trials"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Two small trials for renting a computer to a stranger on Linux (L8 4B, B4): a WASI sandbox with wasmtime (one temporary directory, no network) and a probe of /dev/kvm. Run on GitHub Actions only; never on the production server, never on the build Mac."
+license = "Apache-2.0"
+
+# Not a member of any other workspace; builds on its own with plain `cargo test -- --nocapture`.
+[workspace]
+
+[dependencies]
+# wasmtime 27 is what desktop/src-tauri already uses. Exact versions for the two direct dependencies; the rest is resolved by
+# cargo at run time (no lock file is committed for this trial crate, nobody can run cargo on the build Mac).
+wasmtime = "=27.0.0"
+wasmtime-wasi = "=27.0.0"

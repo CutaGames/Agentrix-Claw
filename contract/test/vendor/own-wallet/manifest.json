@@ -1,0 +1,372 @@
+{
+ "version": 1,
+ "readAt": {
+  "97": 139565215,
+  "84532": 51666402
+ },
+ "note": "L8-6 S2 vendor manifest. MIT bytecode is in this directory; GPL / AGPL bytecode is not in the repository and is read by fixture.ts from a public RPC before the tests and checked against codehash (decision A4, plan P6).",
+ "webAuthnValidatorCandidateCommits": {
+  "commits": [
+   "2f3ee1824889afc59d1ca3dddc5424dfb51febcc",
+   "ee79e8aedbdf5f244196ad39613792c60f5d0350"
+  ],
+  "abi": "credentialId = keccak256(abi.encode(x, y, account)); onInstall abi.decode(data, (uint256 threshold, WebAuthnCredential[])) with ids strictly ascending; root signature abi.encode(bytes32[] credIds, bool usePrecompile, WebAuthnAuth[]); stateless data abi.encode(WebAuthVerificationContext{usePrecompile, threshold, credentialIds, credentialData}, address account), signature abi.encode(WebAuthnAuth[]); WebAuthnAuth = (authenticatorData, clientDataJSON, challengeIndex, typeIndex, r, s), low s.",
+  "difference": "the two commits differ only in whether the stateless check sorts first or requires sorted ids; with one credential they behave the same (design 1a, 1.6 V6). Which commit is deployed is left to M2."
+ },
+ "contracts": [
+  {
+   "name": "entryPointV07",
+   "address": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "codehash": "0x8db5ff695839d655407cc8490bb7a5d82337a86a6b39c3f0258aa6c3b582fc58",
+   "bytes": 16035,
+   "license": "GPL-3.0",
+   "inRepo": false,
+   "source": "eth-infinitism/account-abstraction v0.7.0",
+   "codehashOtherChain": {
+    "84532": "0x8db5ff695839d655407cc8490bb7a5d82337a86a6b39c3f0258aa6c3b582fc58"
+   }
+  },
+  {
+   "name": "senderCreatorV07",
+   "address": "0xefc2c1444ebcc4db75e7613d20c6a62ff67a167c",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "codehash": "0x283c9d14378f5f4c4e24045b87d621d48443fa5b4af7dd7180a599b3756a7689",
+   "bytes": 451,
+   "license": "GPL-3.0",
+   "inRepo": false,
+   "source": "eth-infinitism/account-abstraction v0.7.0 (created by the EntryPoint constructor)",
+   "codehashOtherChain": {
+    "84532": "0x283c9d14378f5f4c4e24045b87d621d48443fa5b4af7dd7180a599b3756a7689"
+   }
+  },
+  {
+   "name": "kernelFactoryV31",
+   "address": "0xaac5D4240AF87249B3f71BC8E4A2cae074A3E419",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "codehash": "0xeecde6f459d0ecadbd5b76e89de74d8187b52d5c71651fdfc007c45d4f2f3ca0",
+   "bytes": 989,
+   "license": "MIT",
+   "inRepo": true,
+   "source": "zerodevapp/kernel v3.1 src/factory/KernelFactory.sol",
+   "codehashOtherChain": {
+    "84532": "0xeecde6f459d0ecadbd5b76e89de74d8187b52d5c71651fdfc007c45d4f2f3ca0"
+   },
+   "file": "kernelFactoryV31.json"
+  },
+  {
+   "name": "kernelImplementationV31",
+   "address": "0xBAC849bB641841b44E965fB01A4Bf5F074f84b4D",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "codehash": "0x3b9d21f26174ee17651b22c51ce5f6092f24bc707b50952acfb7ca42018440a9",
+   "bytes": 22784,
+   "license": "MIT",
+   "inRepo": true,
+   "source": "zerodevapp/kernel v3.1 src/Kernel.sol (97 bytecode: immutables cache chain id 97)",
+   "codehashOtherChain": {
+    "84532": "0x87dd715bf9aac751c41e503e73bab1028713f6be3e5e63b8d9c9de232d7b610d"
+   },
+   "file": "kernelImplementationV31.json"
+  },
+  {
+   "name": "factoryStaker",
+   "address": "0xd703aaE79538628d27099B8c4f621bE4CCd142d5",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "codehash": "0x4527f3642a53f1f4ce76beb05f955a8859b7245a1ff20da5be9a518d2fcd64aa",
+   "bytes": 1871,
+   "license": "MIT",
+   "inRepo": true,
+   "source": "zerodevapp/kernel v3.1 src/factory/FactoryStaker.sol",
+   "codehashOtherChain": {
+    "84532": "0x4527f3642a53f1f4ce76beb05f955a8859b7245a1ff20da5be9a518d2fcd64aa"
+   },
+   "file": "factoryStaker.json"
+  },
+  {
+   "name": "webAuthnValidator",
+   "address": "0x0000000000578c4cB0e472a5462da43C495C3F33",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "codehash": "0x20e90e51e309aa65087d303221af3f4b32063a40fb8bfc8a80839b4b2e365f0b",
+   "bytes": 20252,
+   "license": "AGPL-3.0-only",
+   "inRepo": false,
+   "source": "rhinestonewtf/core-modules WebAuthnValidator (candidate commits 2f3ee18248 / ee79e8aedb)",
+   "codehashOtherChain": {
+    "84532": "0x20e90e51e309aa65087d303221af3f4b32063a40fb8bfc8a80839b4b2e365f0b"
+   }
+  },
+  {
+   "name": "smartSessions",
+   "address": "0x00000000008bDABA73cD9815d79069c247Eb4bDA",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "codehash": "0x0a31363c38106cce18a3008234d95376a9f2f8bdc67976eab1d1f5ad3cc91b79",
+   "bytes": 23608,
+   "license": "AGPL-3.0-only",
+   "inRepo": false,
+   "source": "erc7579/smartsessions v1.0.0",
+   "codehashOtherChain": {
+    "84532": "0x0a31363c38106cce18a3008234d95376a9f2f8bdc67976eab1d1f5ad3cc91b79"
+   }
+  },
+  {
+   "name": "socialRecovery",
+   "address": "0xA04D053b3C8021e8D5bF641816c42dAA75D8b597",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "codehash": "0x00124da53e4f8a7502466e1ffe06be4df5002e069e4847b5f55888e2af1a952f",
+   "bytes": 6700,
+   "license": "AGPL-3.0-only",
+   "inRepo": false,
+   "source": "rhinestonewtf/core-modules SocialRecovery",
+   "codehashOtherChain": {
+    "84532": "0x00124da53e4f8a7502466e1ffe06be4df5002e069e4847b5f55888e2af1a952f"
+   }
+  },
+  {
+   "name": "uniActionPolicy",
+   "address": "0x0000006DDA6c463511C4e9B05CFc34C1247fCF1F",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "codehash": "0xc58f13d259c69d0db90f611347535e2d5642f3352740b7d58fbf6e6b939670dd",
+   "bytes": 3084,
+   "license": "MIT",
+   "inRepo": true,
+   "source": "erc7579/smartsessions external policies",
+   "codehashOtherChain": {
+    "84532": "0xc58f13d259c69d0db90f611347535e2d5642f3352740b7d58fbf6e6b939670dd"
+   },
+   "file": "uniActionPolicy.json"
+  },
+  {
+   "name": "erc20SpendingLimitPolicy",
+   "address": "0x00000088D48cF102A8Cdb0137A9b173f957c6343",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "codehash": "0x63622e282e97d97c01523436de281b956d98b66ef8a9c6c28fbcc856d9b73512",
+   "bytes": 3116,
+   "license": "MIT",
+   "inRepo": true,
+   "source": "erc7579/smartsessions external policies",
+   "codehashOtherChain": {
+    "84532": "0x63622e282e97d97c01523436de281b956d98b66ef8a9c6c28fbcc856d9b73512"
+   },
+   "file": "erc20SpendingLimitPolicy.json"
+  },
+  {
+   "name": "valueLimitPolicy",
+   "address": "0x730DA93267E7E513e932301B47F2ac7D062abC83",
+   "readChainId": 84532,
+   "readBlock": 51666402,
+   "codehash": "0xc5efddfaf9a5fad8cb996f1fd03056926af11ebd4496a7a7758e2e4315a7865e",
+   "bytes": 3192,
+   "license": "MIT",
+   "inRepo": true,
+   "source": "erc7579/smartsessions main (after v1.0.0); not on 97, read from 84532",
+   "codehashOtherChain": {
+    "97": null
+   },
+   "file": "valueLimitPolicy.json"
+  },
+  {
+   "name": "timeFramePolicy",
+   "address": "0x8177451511dE0577b911C254E9551D981C26dc72",
+   "readChainId": 84532,
+   "readBlock": 51666402,
+   "codehash": "0xfe83529b2df328020b49b8e728f62e571e21a38b3b7e59e75d6c6629a38cd87c",
+   "bytes": 2539,
+   "license": "MIT",
+   "inRepo": true,
+   "source": "erc7579/smartsessions main (after v1.0.0); not on 97, read from 84532",
+   "codehashOtherChain": {
+    "97": null
+   },
+   "file": "timeFramePolicy.json"
+  },
+  {
+   "name": "usageLimitPolicy",
+   "address": "0x1F34eF8311345A3A4a4566aF321b313052F51493",
+   "readChainId": 84532,
+   "readBlock": 51666402,
+   "codehash": "0x1996dc03fa5ad5714c3a9a693239dfae75733efe7c27c1398e0c5df6f320aae9",
+   "bytes": 2174,
+   "license": "MIT",
+   "inRepo": true,
+   "source": "erc7579/smartsessions main (after v1.0.0); not on 97, read from 84532",
+   "codehashOtherChain": {
+    "97": null
+   },
+   "file": "usageLimitPolicy.json"
+  },
+  {
+   "name": "erc8004IdentityRegistryProxy",
+   "address": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "codehash": "0xd0e45b1d89fa9b6cc7e97c1f155d64180e5c232aaccf9900ef9d4fd738c02b41",
+   "bytes": 130,
+   "license": "MIT",
+   "inRepo": true,
+   "source": "erc-8004/erc-8004-contracts ERC1967Proxy",
+   "codehashOtherChain": {
+    "84532": "0xd0e45b1d89fa9b6cc7e97c1f155d64180e5c232aaccf9900ef9d4fd738c02b41"
+   },
+   "file": "erc8004IdentityRegistryProxy.json"
+  },
+  {
+   "name": "erc8004IdentityRegistryImplementation",
+   "address": "0x7274e874ca62410a93bd8bf61c69d8045e399c02",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "codehash": "0xa5f9624ea85e45b3f4b8558581f03bfb3e6cefab278d7bf0500ec9bd065dc16f",
+   "bytes": 14474,
+   "license": "MIT",
+   "inRepo": true,
+   "source": "erc-8004/erc-8004-contracts IdentityRegistryUpgradeable v2.0.0",
+   "codehashOtherChain": {
+    "84532": "0xa5f9624ea85e45b3f4b8558581f03bfb3e6cefab278d7bf0500ec9bd065dc16f"
+   },
+   "file": "erc8004IdentityRegistryImplementation.json"
+  },
+  {
+   "name": "create2Deployer",
+   "address": "0x4e59b44847b379578588920ca78fbf26c0b4956c",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "codehash": "0x2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989",
+   "bytes": 69,
+   "license": "unverified (Arachnid deterministic-deployment-proxy)",
+   "inRepo": false,
+   "source": "Arachnid/deterministic-deployment-proxy",
+   "codehashOtherChain": {
+    "84532": "0x2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989"
+   }
+  }
+ ],
+ "storage": [
+  {
+   "contract": "entryPointV07",
+   "address": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+   "slot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "what": "ReentrancyGuard _status (slot 0)"
+  },
+  {
+   "contract": "factoryStaker",
+   "address": "0xd703aaE79538628d27099B8c4f621bE4CCd142d5",
+   "slot": "0xc1c54f32065b0650d9213ccb9e868d7b2b3e86d37ccbc99e0a93122ed102f1f2",
+   "value": "0x0000000000000000000000000000000000000000000000000000000000000001",
+   "readChainId": 84532,
+   "readBlock": 51666402,
+   "what": "approved[KernelFactory v3.1] (mapping slot 0); 84532 value, 97 is false"
+  },
+  {
+   "contract": "factoryStaker",
+   "address": "0xd703aaE79538628d27099B8c4f621bE4CCd142d5",
+   "slot": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffff74873927",
+   "value": "0x0000000000000000000000009775137314fe595c943712b0b336327dfa80ae8a",
+   "readChainId": 84532,
+   "readBlock": 51666402,
+   "what": "solady Ownable owner"
+  },
+  {
+   "contract": "erc8004IdentityRegistryProxy",
+   "address": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+   "slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+   "value": "0x0000000000000000000000007274e874ca62410a93bd8bf61c69d8045e399c02",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "what": "ERC-1967 implementation"
+  },
+  {
+   "contract": "erc8004IdentityRegistryProxy",
+   "address": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+   "slot": "0x9016d09d72d40fdae2fd8ceac6b6234c7706214fd39c1cd1e609a0528c199300",
+   "value": "0x0000000000000000000000001611e27be13feb93242bf57914872ea63f9e64dc",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "what": "OZ Ownable owner (ERC-7201)"
+  },
+  {
+   "contract": "erc8004IdentityRegistryProxy",
+   "address": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+   "slot": "0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00",
+   "value": "0x0000000000000000000000000000000000000000000000000000000000000002",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "what": "OZ Initializable (ERC-7201)"
+  },
+  {
+   "contract": "erc8004IdentityRegistryProxy",
+   "address": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+   "slot": "0x80bb2b638cc20bc4d0a60d66940f3ab4a00c1d7b313497ca82fb0b4ab0079300",
+   "value": "0x4167656e744964656e746974790000000000000000000000000000000000001a",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "what": "OZ ERC721 _name"
+  },
+  {
+   "contract": "erc8004IdentityRegistryProxy",
+   "address": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+   "slot": "0x80bb2b638cc20bc4d0a60d66940f3ab4a00c1d7b313497ca82fb0b4ab0079301",
+   "value": "0x4147454e5400000000000000000000000000000000000000000000000000000a",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "what": "OZ ERC721 _symbol"
+  },
+  {
+   "contract": "erc8004IdentityRegistryProxy",
+   "address": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+   "slot": "0xa16a46d94261c7517cc8ff89f61c0ce93598e3c849801011dee649a6a557d100",
+   "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "what": "OZ EIP712 _hashedName"
+  },
+  {
+   "contract": "erc8004IdentityRegistryProxy",
+   "address": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+   "slot": "0xa16a46d94261c7517cc8ff89f61c0ce93598e3c849801011dee649a6a557d101",
+   "value": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "what": "OZ EIP712 _hashedVersion"
+  },
+  {
+   "contract": "erc8004IdentityRegistryProxy",
+   "address": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+   "slot": "0xa16a46d94261c7517cc8ff89f61c0ce93598e3c849801011dee649a6a557d102",
+   "value": "0x455243383030344964656e74697479526567697374727900000000000000002e",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "what": "OZ EIP712 _name"
+  },
+  {
+   "contract": "erc8004IdentityRegistryProxy",
+   "address": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+   "slot": "0xa16a46d94261c7517cc8ff89f61c0ce93598e3c849801011dee649a6a557d103",
+   "value": "0x3100000000000000000000000000000000000000000000000000000000000002",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "what": "OZ EIP712 _version"
+  },
+  {
+   "contract": "erc8004IdentityRegistryProxy",
+   "address": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+   "slot": "0xa040f782729de4970518741823ec1276cbcd41a0c7493f62d173341566a04e00",
+   "value": "0x0000000000000000000000000000000000000000000000000000000000000a7a",
+   "readChainId": 97,
+   "readBlock": 139565215,
+   "what": "IdentityRegistry _lastId"
+  }
+ ],
+ "factoryStakerApprovedOn97": "0x0000000000000000000000000000000000000000000000000000000000000000"
+}

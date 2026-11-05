@@ -1,0 +1,13 @@
+{
+  "network": "bscTestnet",
+  "chainId": 97,
+  "deployer": "0x5a419E65A027f1e23E4f0118198d7FF814aFeAaB",
+  "deployedAt": "2026-07-12T13:35:32.876Z",
+  "contracts": {
+    "ReputationAnchor": {
+      "address": "0xad07b6c6a8cA41FA329b577F53454DAF05BCF201",
+      "owner": "0x5a419E65A027f1e23E4f0118198d7FF814aFeAaB"
+    }
+  },
+  "note": "纯 Merkle 批量锚点，ERC-8004 兼容数据形状；持真金前需第三方审计(超本 spec)。"
+}

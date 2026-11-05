@@ -1,0 +1,15 @@
+{
+  "network": "bscTestnet",
+  "chainId": 97,
+  "deployer": "0x5a419E65A027f1e23E4f0118198d7FF814aFeAaB",
+  "deployedAt": "2026-07-12T14:19:20.014Z",
+  "contracts": {
+    "SoulSignerManager": {
+      "address": "0xAA147Dec9586E21FB7fAB06A01161aB293266E2d"
+    },
+    "SpendingLimitValidator": {
+      "address": "0x66187F76e1c08c499C6295aFA9318Ca28529F5da"
+    }
+  },
+  "note": "控制面/校验模块;7579 validator 挂 Kernel + bundler UserOp 为后续集成;持真金前需审计。"
+}

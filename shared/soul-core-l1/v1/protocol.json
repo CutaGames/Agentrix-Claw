@@ -1,0 +1,48 @@
+{
+  "protocolVersion": 1,
+  "evidenceLevel": "PROTOTYPE",
+  "boundary": "passive-card-tap-or-resident-only",
+  "amountEncoding": "unsigned decimal integer in currency minor units",
+  "apdu": {
+    "cla": "0x80",
+    "instructions": {
+      "SELECT": { "ins": "0xA4", "authorization": "none" },
+      "OPEN_SECURE_CHANNEL": { "ins": "0x10", "authorization": "pairing-key" },
+      "MUTUAL_AUTH": { "ins": "0x11", "authorization": "pairing-key" },
+      "INIT_PERSONALIZE": { "ins": "0x20", "authorization": "initial-owner" },
+      "GET_PUBKEY": { "ins": "0x30", "authorization": "secure-channel" },
+      "VERIFY_PIN": { "ins": "0x40", "authorization": "secure-channel" },
+      "SIGN_TX": { "ins": "0x50", "authorization": "secure-channel+nonce+request-id" },
+      "GET_STATE": { "ins": "0x60", "authorization": "secure-channel" },
+      "SET_LIMITS": { "ins": "0x70", "authorization": "owner-pin" },
+      "SET_WHITELIST_ROOT": { "ins": "0x71", "authorization": "owner-pin" },
+      "GET_ATTESTATION": { "ins": "0x80", "authorization": "secure-channel+verifier-nonce" },
+      "ROTATE_SIGNER": { "ins": "host-only", "authorization": "owner-quorum" }
+    }
+  },
+  "statusWords": {
+    "ok": "0x9000",
+    "card-absent": "HOST-0001",
+    "wrong-card": "HOST-0002",
+    "secure-channel-required": "0x6982",
+    "owner-auth-required": "0x6985",
+    "pin-locked": "0x6983",
+    "replay-detected": "0x6988",
+    "request-conflict": "0x6989",
+    "invalid-transaction": "0x6A80",
+    "single-limit-exceeded": "0x6A84",
+    "total-limit-exceeded": "0x6A85",
+    "recipient-not-allowed": "0x6A86",
+    "attestation-challenge-required": "0x6A87",
+    "signer-rotation-failed": "HOST-0003",
+    "unsupported": "0x6D00",
+    "internal-failure": "0x6F00"
+  },
+  "honesty": {
+    "privateKeysExported": false,
+    "calendarLimitClaimed": false,
+    "offlinePassiveCardPerTransactionEnforcementClaimed": false,
+    "simulatorCryptographicEvidence": false,
+    "hardwareCertificationClaimed": false
+  }
+}
