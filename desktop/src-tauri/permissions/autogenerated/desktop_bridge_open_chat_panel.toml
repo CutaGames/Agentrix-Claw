@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-bridge-open-chat-panel"
+description = "Enables the desktop_bridge_open_chat_panel command without any pre-configured scope."
+commands.allow = ["desktop_bridge_open_chat_panel"]
+
+[[permission]]
+identifier = "deny-desktop-bridge-open-chat-panel"
+description = "Denies the desktop_bridge_open_chat_panel command without any pre-configured scope."
+commands.deny = ["desktop_bridge_open_chat_panel"]
