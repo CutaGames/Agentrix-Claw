@@ -257,6 +257,7 @@ export const ORDER_ERROR_CODES = {
   disputeWindowClosed: 'order_dispute_window_closed', // 409，验收期过了，不能再发起争议（v0.8）
   adminStepUpRequired: 'ADMIN_STEP_UP_REQUIRED', // 403，平台写操作缺 `x-admin-step-up`（v0.8）
   reconcileEvidenceMismatch: 'order_reconcile_evidence_mismatch', // 409，对账证据和订单记下的通道对象对不上（v0.10）
+  licensedIndustry: 'order_licensed_industry', // 403，持牌行业账户（`L9_REGULATED_USER_IDS`）不能建/改/发布报价，也不能开收款账户（L9.2 G2）
 } as const;
 
 /**

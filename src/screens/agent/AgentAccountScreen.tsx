@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   RefreshControl, ActivityIndicator, Alert, Modal,
-  TextInput, ScrollView, Platform, StatusBar,
+  TextInput, ScrollView, Platform, StatusBar, Linking,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -19,6 +19,24 @@ import {
 import { apiFetch } from '../../services/api';
 import type { AgentStackParamList } from '../../navigation/types';
 import { themedStyles } from '../../theme/useTheme';
+import { fetchEconomicIdentityCard } from '../../services/agentOpsApi';
+import {
+  OWN_WALLET_MOBILE_COPY_V1,
+  ownWalletChainNameV1,
+  ownWalletMobileEnabledV1,
+  ownWalletSetupUrlV1,
+  ownWalletViewOfCardV1,
+  readOwnWalletCardViewV1,
+  readOwnWalletSummaryV1,
+  shortAddressV1,
+  startOwnAccountV1,
+  walletOriginV1,
+} from '../../services/ownWallet';
+import { ownWalletHttpV1, ownWalletSecureStoreV1 } from '../../services/ownWalletApi';
+import { isDeviceVerifiedV1 } from '../../services/ownWalletVerifyState';
+import { decideAfterAgentCreatedV1, decideOpenWalletV1 } from '../../services/ownWalletAgentCreate';
+import { decideIdentityBadgeV1 } from '../../services/ownWalletIdentityBadge';
+import { APP_URL } from '../../config/env';
 
 // ──────────────────────────────────────────────
 // Types
@@ -81,6 +99,9 @@ interface OnchainStatus {
   contractAddress?: string;
   attestationUid?: string;
   status?: 'pending' | 'confirmed' | 'failed';
+  /** L8-6 (backend main switch on only): the status of the new reading (`resolveOnchainIdentityV1`). */
+  identityStatus?: string;
+  verifyUrl?: string;
 }
 
 async function fetchOnchainStatus(agentAccountId: string): Promise<OnchainStatus> {
@@ -90,6 +111,20 @@ async function fetchOnchainStatus(agentAccountId: string): Promise<OnchainStatus
 
 async function registerOnchain(agentAccountId: string): Promise<any> {
   return apiFetch(`/agent-accounts/${agentAccountId}/onchain-register`, { method: 'POST' });
+}
+
+/**
+ * L8-6 S11b: the own-wallet way to "打开独立钱包" and to a first registration: the first account path of the Agent, then
+ * the wallet origin (which makes the wallet passkey when there is none). The phone signs nothing.
+ */
+async function openOwnWalletOrigin(agentAccountId: string | undefined, agentName?: string): Promise<'opened' | 'ready' | 'failed'> {
+  if (!agentAccountId) return 'failed';
+  const started = await startOwnAccountV1({ agentId: agentAccountId, agentName, walletOrigin: walletOriginV1(), http: ownWalletHttpV1 });
+  if (started.outcome === 'open_wallet') {
+    await Linking.openURL(started.url).catch(() => undefined);
+    return 'opened';
+  }
+  return started.outcome === 'account_ready' ? 'ready' : 'failed';
 }
 
 // ──────────────────────────────────────────────
@@ -308,43 +343,97 @@ function ChainIdentityBadge({ agentAccountId, t: _t }: { agentAccountId?: string
   });
   const [loading, setLoading] = useState(false);
 
+  // L8-6 S11b (T10): with the phone switch on, the Agent's own wallet status (one summary for all Agents) says whether the
+  // button may take the owner to the wallet origin; the badge itself follows the backend's new reading of `onchain-status`.
+  const ownWalletOn = ownWalletMobileEnabledV1();
+  const { data: summary } = useQuery({
+    queryKey: ['own-wallet-summary'],
+    queryFn: () => readOwnWalletSummaryV1(ownWalletHttpV1),
+    enabled: ownWalletOn,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const summaryRow = summary && summary.kind === 'ready' ? summary.agents.find((a) => a.agentId === agentAccountId) : undefined;
+  const decision = onchain
+    ? decideIdentityBadgeV1(onchain, { ownWalletEnabled: ownWalletOn, ownWalletStatus: summaryRow ? summaryRow.ownWalletStatus : null })
+    : null;
+
   const handleRegister = async () => {
-    if (!agentAccountId) return;
-    Alert.alert(
-      _t({ en: 'Register On-Chain Identity', zh: '注册链上身份' }),
-      _t({ en: 'This will create an on-chain attestation for this agent. Gas fees are subsidized.', zh: '这将为该智能体创建链上身份证明，Gas费由平台补贴。' }),
-      [
-        { text: _t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
-        {
-          text: _t({ en: 'Register', zh: '注册' }),
-          onPress: async () => {
-            setLoading(true);
-            try {
-              await registerOnchain(agentAccountId);
-              queryClient.invalidateQueries({ queryKey: ['onchain-status', agentAccountId] });
-              Alert.alert('✅', _t({ en: 'On-chain registration submitted!', zh: '链上注册已提交！' }));
-            } catch (err: any) {
-              Alert.alert(_t({ en: 'Error', zh: '错误' }), err?.message || _t({ en: 'Registration failed.', zh: '注册失败。' }));
-            } finally {
-              setLoading(false);
-            }
+    if (!agentAccountId || decision === null) return;
+    if (decision.register === 'open_wallet_origin') {
+      setLoading(true);
+      try {
+        const opened = await openOwnWalletOrigin(agentAccountId);
+        if (opened === 'ready') queryClient.invalidateQueries({ queryKey: ['own-wallet-summary'] });
+        else if (opened === 'failed') Alert.alert(_t({ en: 'Error', zh: '错误' }), _t(OWN_WALLET_MOBILE_COPY_V1.requestFailed));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+    if (decision.register === 'open_setup') {
+      // S11c: an account that exists but is not registered: the main site's setup page reads the card and opens the wizard or the signature.
+      const setupUrl = ownWalletSetupUrlV1(APP_URL, agentAccountId);
+      if (setupUrl === null) Alert.alert(_t({ en: 'Error', zh: '错误' }), _t(OWN_WALLET_MOBILE_COPY_V1.requestFailed));
+      else await Linking.openURL(setupUrl).catch(() => undefined);
+      return;
+    }
+    if (decision.register === 'legacy_post') {
+      Alert.alert(
+        _t({ en: 'Register On-Chain Identity', zh: '注册链上身份' }),
+        _t({ en: 'This will create an on-chain attestation for this agent. Gas fees are subsidized.', zh: '这将为该智能体创建链上身份证明，Gas费由平台补贴。' }),
+        [
+          { text: _t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+          {
+            text: _t({ en: 'Register', zh: '注册' }),
+            onPress: async () => {
+              setLoading(true);
+              try {
+                await registerOnchain(agentAccountId);
+                queryClient.invalidateQueries({ queryKey: ['onchain-status', agentAccountId] });
+                Alert.alert('✅', _t({ en: 'On-chain registration submitted!', zh: '链上注册已提交！' }));
+              } catch (err: any) {
+                Alert.alert(_t({ en: 'Error', zh: '错误' }), err?.message || _t({ en: 'Registration failed.', zh: '注册失败。' }));
+              } finally {
+                setLoading(false);
+              }
+            },
           },
-        },
-      ],
-    );
+        ],
+      );
+    }
   };
 
-  if (!onchain) return null;
-  if (onchain.registered) {
+  if (!onchain || decision === null) return null;
+  if (decision.badge === 'registered') {
     return (
       <View style={chainBadge.confirmed}>
         <Text style={chainBadge.confirmedIcon}>⛓️</Text>
         <View style={{ flex: 1 }}>
           <Text style={chainBadge.confirmedText}>{_t({ en: 'On-Chain Identity', zh: '链上身份' })}</Text>
-          <Text style={chainBadge.chainName}>{onchain.chain || 'BSC Testnet'}</Text>
+          <Text style={chainBadge.chainName}>{(decision.source === 'own_wallet' ? ownWalletChainNameV1(onchain.chain) : null) || onchain.chain || 'BSC Testnet'}</Text>
         </View>
         <Text style={chainBadge.confirmedStatus}>{_t({ en: 'Verified', zh: '已认证' })}</Text>
       </View>
+    );
+  }
+  // An account that exists but is not registered gets "去完成" (`open_setup`, S11c); an unknown or lost wallet status never
+  // guesses a button: the registration state as a line, no button.
+  if (decision.register === 'none') {
+    return (
+      <View style={chainBadge.register} testID="chain-identity-status-line">
+        <Text style={chainBadge.registerIcon}>⛓️</Text>
+        <Text style={chainBadge.registerText}>{_t(OWN_WALLET_MOBILE_COPY_V1.registrationNone)}</Text>
+      </View>
+    );
+  }
+  if (decision.register === 'open_setup') {
+    return (
+      <TouchableOpacity style={chainBadge.register} onPress={handleRegister} disabled={loading} testID="chain-identity-go-setup">
+        <Text style={chainBadge.registerIcon}>⛓️</Text>
+        <Text style={chainBadge.registerText}>{_t(OWN_WALLET_MOBILE_COPY_V1.registrationNone)}</Text>
+        <Text style={chainBadge.registerText}>{_t(OWN_WALLET_MOBILE_COPY_V1.shareGoComplete)}</Text>
+      </TouchableOpacity>
     );
   }
   return (
@@ -390,6 +479,105 @@ const chainBadge = themedStyles(() => StyleSheet.create({
   registerText: { fontSize: 13, color: '#a78bfa', fontWeight: '600' },
 }));
 
+// ──────────────────────────────────────────────
+// Wallet row (L8-6 S11b: was inline in renderAgent, moved here unchanged for the switch-off branch)
+// ──────────────────────────────────────────────
+
+/**
+ * L8-6 S11b (T10, R4-L3): the wallet row of an Agent card. With the phone switch on it is the own-wallet row (the short
+ * address and the check state from the card, no copy, no `/mpc-wallet/create`); with it off it is exactly today's row.
+ */
+function renderWalletRow({
+  agent, walletLoading, onOpenWallet, t,
+}: {
+  agent: AgentAccount;
+  walletLoading: string | null;
+  onOpenWallet: (agent: AgentAccount) => void;
+  t: ReturnType<typeof useI18n>['t'];
+}) {
+  if (ownWalletMobileEnabledV1()) {
+    return <OwnWalletRow agent={agent} loading={walletLoading === agent.id} onOpenWallet={onOpenWallet} t={t} />;
+  }
+  return (agent as any).walletAddress ? (
+    <TouchableOpacity
+      style={styles.walletRowActive}
+      onPress={() => {
+        Clipboard.setStringAsync((agent as any).walletAddress);
+        Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'Wallet address copied.', zh: '钱包地址已复制。' }));
+      }}
+    >
+      <Text style={styles.walletIcon}>🔐</Text>
+      <Text style={styles.walletAddress} numberOfLines={1}>{(agent as any).walletAddress}</Text>
+      <Text style={{ fontSize: 11, color: colors.textMuted }}>📋</Text>
+    </TouchableOpacity>
+  ) : (
+    <TouchableOpacity
+      style={styles.openWalletBtn}
+      onPress={() => onOpenWallet(agent)}
+      disabled={walletLoading === agent.id}
+    >
+      {walletLoading === agent.id ? (
+        <ActivityIndicator color={colors.accent} size="small" />
+      ) : (
+        <>
+          <Text style={styles.openWalletIcon}>🔐</Text>
+          <Text style={styles.openWalletText}>{t({ en: 'Open Wallet', zh: '打开独立钱包' })}</Text>
+        </>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+function OwnWalletRow({
+  agent, loading, onOpenWallet, t,
+}: {
+  agent: AgentAccount;
+  loading: boolean;
+  onOpenWallet: (agent: AgentAccount) => void;
+  t: ReturnType<typeof useI18n>['t'];
+}) {
+  const { data: card } = useQuery({
+    queryKey: ['agent-economic-identity', agent.agentAccountId],
+    queryFn: () => fetchEconomicIdentityCard(agent.agentAccountId as string),
+    enabled: !!agent.agentAccountId,
+    retry: false,
+    staleTime: 30_000,
+  });
+  const view = card ? ownWalletViewOfCardV1(card) : null;
+  const hasAccount = view !== null && view.account !== undefined && (view.status === 'pending' || view.status === 'active' || view.status === 'lost');
+  const { data: verified } = useQuery({
+    queryKey: ['own-wallet-verified', view?.chainId ?? null, view?.account ?? null],
+    queryFn: () => isDeviceVerifiedV1(view?.chainId as number, view?.account as string, { store: ownWalletSecureStoreV1 }),
+    enabled: view !== null && (view.status === 'pending' || view.status === 'active'),
+    retry: false,
+  });
+  if (view !== null && hasAccount && view.account !== undefined) {
+    // The short form and the check state only; the address to copy is on the wallet origin's receive page (W1.2).
+    return (
+      <View style={styles.walletRowActive} testID="agent-own-wallet-row">
+        <Text style={styles.walletIcon}>🔐</Text>
+        <Text style={styles.walletAddress} numberOfLines={1}>{shortAddressV1(view.account)}</Text>
+        <Text style={{ fontSize: 11, color: colors.textMuted }}>{t(view.status === 'lost' ? OWN_WALLET_MOBILE_COPY_V1.unverified : verified === true ? OWN_WALLET_MOBILE_COPY_V1.verified : OWN_WALLET_MOBILE_COPY_V1.unverified)}</Text>
+      </View>
+    );
+  }
+  if (view !== null && view.status === 'unavailable') {
+    return <Text style={{ fontSize: 12, color: colors.textMuted }}>{t(OWN_WALLET_MOBILE_COPY_V1.statusUnavailable)}</Text>;
+  }
+  return (
+    <TouchableOpacity style={styles.openWalletBtn} onPress={() => onOpenWallet(agent)} disabled={loading}>
+      {loading ? (
+        <ActivityIndicator color={colors.accent} size="small" />
+      ) : (
+        <>
+          <Text style={styles.openWalletIcon}>🔐</Text>
+          <Text style={styles.openWalletText}>{t({ en: 'Open Wallet', zh: '打开独立钱包' })}</Text>
+        </>
+      )}
+    </TouchableOpacity>
+  );
+}
+
 export function AgentAccountScreen() {
   const { t } = useI18n();
   const navigation = useNavigation<NativeStackNavigationProp<AgentStackParamList>>();
@@ -412,21 +600,44 @@ export function AgentAccountScreen() {
     onSuccess: async (result) => {
       queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
       setShowCreate(false);
-      // Auto-trigger wallet creation immediately after agent is created
-      // No need for user to manually click "Open Wallet" — do it automatically
-      try {
-        const walletResult = await openWalletForAgent(result.id);
-        queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
+      // L8-6 S11b (T10): with the phone switch on the MPC wallet is never created here; the backend's default switch has
+      // already made the Agent's own account when the owner has a wallet passkey. Switch off: today's path below.
+      const ownWalletOn = ownWalletMobileEnabledV1();
+      const card = ownWalletOn
+        ? result.agentAccountId ? await readOwnWalletCardViewV1(ownWalletHttpV1, result.agentAccountId) : ({ kind: 'failed' } as const)
+        : ({ kind: 'failed' } as const);
+      const after = decideAfterAgentCreatedV1({ ownWalletEnabled: ownWalletOn, card });
+      if (after.action === 'own_wallet_ready') {
         Alert.alert(
           t({ en: 'Agent Ready ✅🔐', zh: '智能体已就绪 ✅🔐' }),
-          t({ en: `"${result.name}" has been created with an independent MPC wallet.\n\nWallet Address:\n${walletResult.walletAddress}\n\nYour agent now has autonomous payment capability within the spending limits you set.`, zh: `“${result.name}”已创建完成，并已配置独立 MPC 钱包。\n\n钱包地址：\n${walletResult.walletAddress}\n\n你的智能体现在可以在设定的支出限制内自主支付。` }),
+          t({
+            en: `"${result.name}" has been created and has its own independent wallet (${after.shortAddress}; to receive or copy the address, go to the wallet page). Only your keys (passkey, recovery code, guardians you choose) can move this money; you can also authorize it to pay automatically within a limit.`,
+            zh: `“${result.name}”已创建完成，并已有自己的独立钱包（${after.shortAddress}，收款和复制地址请到钱包页）。只有你的钥匙（passkey、恢复码、你指定的守护人）能动这笔钱；你也可以授权它在额度内自动付款。`,
+          }),
         );
-      } catch {
-        // Wallet creation failed, notify user (non-blocking — agent itself was created)
-        Alert.alert(
-          t({ en: 'Agent Created ✅', zh: '智能体已创建 ✅' }),
-          t({ en: `"${result.name}" is ready.\n\n⚠️ Wallet activation failed — tap "Open Wallet" on the agent card to try again.`, zh: `“${result.name}”已就绪。\n\n⚠️ 钱包激活失败——请点击卡片上的“打开独立钱包”重试。` }),
-        );
+      } else if (after.action === 'open_wallet_origin') {
+        const opened = await openOwnWalletOrigin(result.agentAccountId, result.name);
+        queryClient.invalidateQueries({ queryKey: ['own-wallet-summary'] });
+        if (opened === 'failed') Alert.alert(t({ en: 'Error', zh: '错误' }), t(OWN_WALLET_MOBILE_COPY_V1.requestFailed));
+      } else if (after.action === 'own_wallet_unavailable') {
+        Alert.alert(t({ en: 'Agent Created ✅', zh: '智能体已创建 ✅' }), t(OWN_WALLET_MOBILE_COPY_V1.statusUnavailable));
+      } else if (after.action === 'legacy_mpc_create') {
+        // Auto-trigger wallet creation immediately after agent is created
+        // No need for user to manually click "Open Wallet" — do it automatically
+        try {
+          const walletResult = await openWalletForAgent(result.id);
+          queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
+          Alert.alert(
+            t({ en: 'Agent Ready ✅🔐', zh: '智能体已就绪 ✅🔐' }),
+            t({ en: `"${result.name}" has been created with an independent MPC wallet.\n\nWallet Address:\n${walletResult.walletAddress}\n\nYour agent now has autonomous payment capability within the spending limits you set.`, zh: `“${result.name}”已创建完成，并已配置独立 MPC 钱包。\n\n钱包地址：\n${walletResult.walletAddress}\n\n你的智能体现在可以在设定的支出限制内自主支付。` }),
+          );
+        } catch {
+          // Wallet creation failed, notify user (non-blocking — agent itself was created)
+          Alert.alert(
+            t({ en: 'Agent Created ✅', zh: '智能体已创建 ✅' }),
+            t({ en: `"${result.name}" is ready.\n\n⚠️ Wallet activation failed — tap "Open Wallet" on the agent card to try again.`, zh: `“${result.name}”已就绪。\n\n⚠️ 钱包激活失败——请点击卡片上的“打开独立钱包”重试。` }),
+          );
+        }
       }
     },
     onError: (err: any) => {
@@ -435,41 +646,56 @@ export function AgentAccountScreen() {
   });
 
   const handleOpenWallet = async (agent: AgentAccount) => {
-    if (agent.walletAddress) {
-      Alert.alert(
-        t({ en: 'Agent Wallet', zh: '智能体钱包' }),
-        t({ en: `Address: ${agent.walletAddress}`, zh: `地址：${agent.walletAddress}` }),
-        [{ text: t({ en: 'OK', zh: '确定' }) }],
-      );
+    // L8-6 S11b (T10): with the phone switch on "打开独立钱包" opens the wallet origin instead of creating an MPC wallet.
+    const open = decideOpenWalletV1({ ownWalletEnabled: ownWalletMobileEnabledV1() });
+    if (open.action === 'open_wallet_origin') {
+      setWalletLoading(agent.id);
+      try {
+        const opened = await openOwnWalletOrigin(agent.agentAccountId, agent.name);
+        queryClient.invalidateQueries({ queryKey: ['own-wallet-summary'] });
+        if (opened === 'failed') Alert.alert(t({ en: 'Error', zh: '错误' }), t(OWN_WALLET_MOBILE_COPY_V1.requestFailed));
+      } finally {
+        setWalletLoading(null);
+      }
       return;
     }
+    if (open.action === 'legacy_mpc_create') {
+      if (agent.walletAddress) {
+        Alert.alert(
+          t({ en: 'Agent Wallet', zh: '智能体钱包' }),
+          t({ en: `Address: ${agent.walletAddress}`, zh: `地址：${agent.walletAddress}` }),
+          [{ text: t({ en: 'OK', zh: '确定' }) }],
+        );
+        return;
+      }
 
-    Alert.alert(
-      t({ en: 'Open Independent Wallet', zh: '打开独立钱包' }),
-      // L8 A9: honest wording. The key is kept in shares and combined on the Agentrix server to sign; not self-custody.
-      t({ en: `Create a wallet for "${agent.name}"?\n\nThe key is kept in 3 shares; Agentrix combines two of them on its server to sign, and only within this agent's spending limits.`, zh: `要为“${agent.name}”创建钱包吗？\n\n私钥分成 3 份保管；签名时由 Agentrix 服务器临时合成其中两份，而且只在该智能体的支出限制内签署。` }),
-      [
-        { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
-        {
-          text: t({ en: 'Create Wallet', zh: '创建钱包' }),
-          onPress: async () => {
-            setWalletLoading(agent.id);
-            try {
-              const result = await openWalletForAgent(agent.id);
-              queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
-              Alert.alert(
-                t({ en: 'Wallet Created 🎉', zh: '钱包已创建 🎉' }),
-                t({ en: `Your agent wallet is ready!\n\nAddress: ${result.walletAddress}`, zh: `你的智能体钱包已就绪！\n\n地址：${result.walletAddress}` }),
-              );
-            } catch (err: any) {
-              Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || t({ en: 'Failed to create wallet.', zh: '创建钱包失败。' }));
-            } finally {
-              setWalletLoading(null);
-            }
+      Alert.alert(
+        t({ en: 'Open Independent Wallet', zh: '打开独立钱包' }),
+        // L8 A9: honest wording. The key is kept in shares and combined on the Agentrix server to sign; not self-custody.
+        t({ en: `Create a wallet for "${agent.name}"?\n\nThe key is kept in 3 shares; Agentrix combines two of them on its server to sign, and only within this agent's spending limits.`, zh: `要为“${agent.name}”创建钱包吗？\n\n私钥分成 3 份保管；签名时由 Agentrix 服务器临时合成其中两份，而且只在该智能体的支出限制内签署。` }),
+        [
+          { text: t({ en: 'Cancel', zh: '取消' }), style: 'cancel' },
+          {
+            text: t({ en: 'Create Wallet', zh: '创建钱包' }),
+            onPress: async () => {
+              setWalletLoading(agent.id);
+              try {
+                const result = await openWalletForAgent(agent.id);
+                queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
+                Alert.alert(
+                  t({ en: 'Wallet Created 🎉', zh: '钱包已创建 🎉' }),
+                  t({ en: `Your agent wallet is ready!\n\nAddress: ${result.walletAddress}`, zh: `你的智能体钱包已就绪！\n\n地址：${result.walletAddress}` }),
+                );
+              } catch (err: any) {
+                Alert.alert(t({ en: 'Error', zh: '错误' }), err?.message || t({ en: 'Failed to create wallet.', zh: '创建钱包失败。' }));
+              } finally {
+                setWalletLoading(null);
+              }
+            },
           },
-        },
-      ],
-    );
+        ],
+      );
+    }
   };
 
   const handleSuspend = (agent: AgentAccount) => {
@@ -603,34 +829,7 @@ export function AgentAccountScreen() {
       )}
 
       {/* Wallet address display */}
-      {(agent as any).walletAddress ? (
-        <TouchableOpacity
-          style={styles.walletRowActive}
-          onPress={() => {
-            Clipboard.setStringAsync((agent as any).walletAddress);
-            Alert.alert(t({ en: 'Copied', zh: '已复制' }), t({ en: 'Wallet address copied.', zh: '钱包地址已复制。' }));
-          }}
-        >
-          <Text style={styles.walletIcon}>🔐</Text>
-          <Text style={styles.walletAddress} numberOfLines={1}>{(agent as any).walletAddress}</Text>
-          <Text style={{ fontSize: 11, color: colors.textMuted }}>📋</Text>
-        </TouchableOpacity>
-      ) : (
-        <TouchableOpacity
-          style={styles.openWalletBtn}
-          onPress={() => handleOpenWallet(agent)}
-          disabled={walletLoading === agent.id}
-        >
-          {walletLoading === agent.id ? (
-            <ActivityIndicator color={colors.accent} size="small" />
-          ) : (
-            <>
-              <Text style={styles.openWalletIcon}>🔐</Text>
-              <Text style={styles.openWalletText}>{t({ en: 'Open Wallet', zh: '打开独立钱包' })}</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      )}
+      {renderWalletRow({ agent, walletLoading, onOpenWallet: handleOpenWallet, t })}
 
       {/* Balance display */}
       <BalanceBadge agentAccountId={agent.agentAccountId} t={t} />

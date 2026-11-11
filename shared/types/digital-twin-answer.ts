@@ -200,6 +200,96 @@ export function digitalTwinTokenOverlapV1(a: Set<string>, b: Set<string>): numbe
 }
 
 // ---------------------------------------------------------------------------
+// Paraphrase matching for English questions (L9.2 item 27)
+// ---------------------------------------------------------------------------
+//
+// Why: an English visitor who words the same question differently ("Are viewings possible at weekends?"
+// vs "Can I view it this weekend?") got no answer, because the plain tokenizer compares exact word forms
+// (`viewings` ≠ `view`, `weekends` ≠ `weekend`, `cats` ≠ `cat`) and counts a three-question message as one
+// bag of words. These helpers are used only when the caller opts in (`retrieveDigitalTwinContextV1`'s
+// `paraphrase` option, behind `DIGITAL_TWIN_PARAPHRASE_MATCH_V1_ENABLED` and the L9 cohort list) and only
+// for questions with no CJK character. They make retrieval find more of what the person already wrote.
+// They do not change what the twin is allowed to say: the platform ceiling, the owner's topics, the
+// sentinel reply and the sentence check all stay exactly as they are.
+
+/** Exact `'1'` turns English paraphrase matching on; default off; read at call time. */
+export const DIGITAL_TWIN_PARAPHRASE_MATCH_V1_FLAG = 'DIGITAL_TWIN_PARAPHRASE_MATCH_V1_ENABLED' as const;
+
+/** True when the text holds any CJK character. Such questions never use the paraphrase path. */
+export function digitalTwinTextHasCjkV1(text: string): boolean {
+  return CJK.test(text);
+}
+
+function undoubleConsonantV1(word: string): string {
+  // `permitt` → `permit`, `runn` → `run`; `call`, `miss`, `buzz`, `stuff` keep their double letter.
+  return /([bcdghjkmnpqrtvwx])\1$/.test(word) ? word.slice(0, -1) : word;
+}
+
+/**
+ * A small, deterministic suffix stripper (plural, `-ing`, `-ed`, possessive `'s`) so `viewings`, `viewing`
+ * and `view` meet. It is applied to both sides of a comparison, so over-stripping is harmless as long as
+ * it is the same function on both sides. Words of three letters or fewer, and anything that is not a
+ * plain letter word, are left alone.
+ */
+export function digitalTwinStemTokenV1(word: string): string {
+  if (!/^[a-z][a-z'-]*$/.test(word)) return word;
+  let stem = word.replace(/'s$/, '');
+  if (stem.length > 4 && stem.endsWith('ies')) stem = `${stem.slice(0, -3)}y`;
+  else if (stem.length > 4 && /(?:ches|shes|sses|xes|zes)$/.test(stem)) stem = stem.slice(0, -2);
+  else if (stem.length > 3 && stem.endsWith('s') && !/(?:ss|us|is)$/.test(stem)) stem = stem.slice(0, -1);
+  if (stem.length > 5 && stem.endsWith('ing')) stem = undoubleConsonantV1(stem.slice(0, -3));
+  else if (stem.length > 4 && stem.endsWith('ed')) stem = undoubleConsonantV1(stem.slice(0, -2));
+  return stem;
+}
+
+/** The ordinary tokens with every Latin word stemmed; CJK bigrams are kept as they are. */
+export function tokenizeDigitalTwinTextForMatchV1(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const token of tokenizeDigitalTwinTextV1(text)) out.add(CJK.test(token) ? token : digitalTwinStemTokenV1(token));
+  return out;
+}
+
+/**
+ * One-way widening of the *question* side (stemmed forms): a general word finds the specific ways an
+ * owner would write it, and a specific word finds the general way. Specific words do not reach each
+ * other (`dog` does not find a note that only says `cats`; `saturday` does not find `sunday`). This is
+ * deliberately not a general synonym list: `cover ≈ handle` would carry "Do you cover the west?" over
+ * to a note about the east.
+ */
+export const DIGITAL_TWIN_QUESTION_EXPANSIONS_V1: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  pet: ['cat', 'dog'],
+  cat: ['pet'],
+  dog: ['pet'],
+  weekend: ['saturday', 'sunday'],
+  saturday: ['weekend'],
+  sunday: ['weekend'],
+});
+
+/** Stemmed question tokens plus the one-way expansions above. */
+export function tokenizeDigitalTwinQuestionForMatchV1(text: string): Set<string> {
+  const out = tokenizeDigitalTwinTextForMatchV1(text);
+  for (const token of [...out]) for (const extra of DIGITAL_TWIN_QUESTION_EXPANSIONS_V1[token] ?? []) out.add(extra);
+  return out;
+}
+
+const CLAUSE_SPLIT_V1 =
+  /[?？!！;；\n]+|\.+(?=\s|$)|\s+(?:and|also|plus)\s+(?=(?:are|is|do|does|can|could|will|would|what|how|when|where|which|who)\b)/i;
+
+/**
+ * Splits a message into its separate questions: at `? ! ; ` and line breaks, at a full stop followed by a
+ * space or the end (not inside a number such as `1.5`), and at "and / also / plus" in front of a question
+ * word (the joiner is dropped). An extra split only gives a part its own, lower threshold; it never
+ * removes a source. Never returns an empty list.
+ */
+export function splitDigitalTwinQuestionClausesV1(question: string): string[] {
+  const parts = question
+    .split(CLAUSE_SPLIT_V1)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  return parts.length > 0 ? parts : [question];
+}
+
+// ---------------------------------------------------------------------------
 // Policy gate
 // ---------------------------------------------------------------------------
 
@@ -357,6 +447,79 @@ export function classifyDigitalTwinHardCeilingV1(
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// L9.2 G5 (a): the property (estate agent) ceiling
+// ---------------------------------------------------------------------------
+
+export type DigitalTwinPropertyCeilingReasonV1 = Extract<DigitalTwinNoAnswerReasonV1, 'price_or_contract_commitment' | 'hard_boundary'>;
+
+/**
+ * L9.2 G5 (a): extra platform ceiling for licensed-trade accounts only (`L9_REGULATED_USER_IDS`; the caller decides, see
+ * `TwinAnswerService.compose`). Phrases, never single words: price, rent and commission questions go to the person
+ * (`price_or_contract_commitment`), and so do "is there a flat / is it still there" and "that one" questions
+ * (`hard_boundary`, the reason a topic hit gives), because the twin holds no listing facts and must not hint that the agent has a
+ * flat free (PG 02-11 3.9). Questions about the agent's own service (areas, rentals handled, booking a viewing, being free for a
+ * call) are left alone: single `rent`, `rental`, `rentals`, `unit`, `available`, `租房`, and `available now` / `any available`
+ * are deliberately not entries. Matching is the one of the extension lists (`compileCeilingTermV1`): a term with a Chinese
+ * character is a substring; any other is an English phrase on word boundaries (spaces match any whitespace), a trailing `*`
+ * meaning "any ending". The list is a floor, not a promise of completeness; the gold sets in `twin-answer-property.spec.ts` pin
+ * both sides.
+ */
+export const DIGITAL_TWIN_HARD_CEILING_PROPERTY_V1: Readonly<Record<DigitalTwinPropertyCeilingReasonV1, readonly string[]>> = {
+  price_or_contract_commitment: [
+    // price, rent, commission (Chinese)
+    '租金', '月租', '房租', '押金', '佣金', '中介费', '租价', '价位',
+    // price, rent, commission (English)
+    'how much is the rent', 'how much is rent', 'what is the rent', "what's the rent", 'monthly rent', 'rent range', 'rent price',
+    'rental price', 'rental rate', 'rent per month', 'average rent', 'typical rent', 'rents like', 'how expensive', 'commission*',
+    'agent fee*', 'agency fee*',
+    // the preset "how do fees and rent get discussed" and its older wording, as phrases, not as the words fee / rent
+    'fees and rent', 'fee and rent', 'rent and fees', 'rent and fee', 'fees and monthly rent',
+  ],
+  hard_boundary: [
+    // is there a flat, is it still there (Chinese)
+    '有房吗', '有房子吗', '有房源吗', '有没有房', '有空房', '空房', '还有房', '还有吗', '还在吗', '还在不在', '剩几间', '还剩',
+    // that particular flat (until listings exist, G3)
+    '这套', '那套',
+    // is there a flat, is it still there (English)
+    'still available', 'still on the market', 'still for rent', 'any units left', 'any unit left', 'units left', 'unit left',
+    'is it available', 'is this available', 'is that available', 'unit available', 'units available', 'flat available',
+    'flats available', 'room available', 'rooms available', 'available units', 'available flats', 'available rooms', 'vacant',
+    'vacancy', 'vacancies', 'have any rooms', 'have any flats', 'have any units', 'any rooms for rent', 'any flats for rent',
+    // that particular flat (English)
+    'this unit', 'that unit', 'view the unit',
+  ],
+};
+
+interface PropertyCeilingMatcherV1 {
+  reason: DigitalTwinPropertyCeilingReasonV1;
+  test: (lower: string) => boolean;
+}
+
+let propertyMatchersV1: PropertyCeilingMatcherV1[] | null = null;
+
+function propertyCeilingMatchersV1(): PropertyCeilingMatcherV1[] {
+  if (propertyMatchersV1) return propertyMatchersV1;
+  const compiled: PropertyCeilingMatcherV1[] = [];
+  // Price and commission are checked first: "what's the rent, is it still there" is explained as a price question.
+  for (const reason of ['price_or_contract_commitment', 'hard_boundary'] as const) {
+    for (const term of DIGITAL_TWIN_HARD_CEILING_PROPERTY_V1[reason]) compiled.push({ reason, test: compileCeilingTermV1(term) });
+  }
+  propertyMatchersV1 = compiled;
+  return compiled;
+}
+
+/**
+ * L9.2 G5 (a): the reason a licensed-trade account's twin hands this question to the person, or `null`. Call it only for such an
+ * account, and only after `classifyDigitalTwinHardCeilingV1` found nothing (the base and extension lists answer first and keep their
+ * reasons). A hit means: no source read, no model call, no referral offer (`TWIN_REFERRAL_BLOCKING_NO_ANSWER_REASONS_V1`).
+ */
+export function classifyDigitalTwinPropertyCeilingV1(question: string): DigitalTwinPropertyCeilingReasonV1 | null {
+  const normalized = question.toLowerCase().replace(/[\u2018\u2019]/g, "'");
+  for (const matcher of propertyCeilingMatchersV1()) if (matcher.test(normalized)) return matcher.reason;
+  return null;
+}
+
 /**
  * Creator-defined no-answer boundaries (`interim_seed_policy`). A short boundary
  * (≤ 6 chars) matches as a substring; a longer one needs two shared tokens so a
@@ -429,7 +592,14 @@ export function retrieveDigitalTwinContextV1(
   topicHints: readonly DigitalTwinRetrievalTopicHintV1[] = [],
   /** Public Facet only: canonical ids whose approval matches the live item (see `digitalTwinApprovedPublicIdsV1`). */
   approvedPublicIds?: ReadonlySet<string>,
-): { ranked: DigitalTwinRetrievedItemV1[]; coverage: number } {
+  /**
+   * L9.2 item 27. `paraphrase: true` matches an English question per sub-question, with word forms folded
+   * and the one-way expansions of `DIGITAL_TWIN_QUESTION_EXPANSIONS_V1`, and adds `uncoveredClauses` (how
+   * many sub-questions no item is relevant to) to the result. A question with a CJK character, and every
+   * call without this option, uses the original rule and returns the original shape.
+   */
+  options?: { paraphrase?: boolean },
+): { ranked: DigitalTwinRetrievedItemV1[]; coverage: number; uncoveredClauses?: number } {
   const questionTokens = tokenizeDigitalTwinTextV1(question);
   const minOverlap = digitalTwinQuestionMinOverlapV1(question, questionTokens);
   const bridgedAnswerTokens: Set<string>[] = [];
@@ -438,6 +608,42 @@ export function retrieveDigitalTwinContextV1(
     if (promptOverlap < DIGITAL_TWIN_ANSWER_THRESHOLDS_V1.interviewPromptBridgeOverlap) continue;
     const answerTokens = tokenizeDigitalTwinTextV1(hint.answer);
     if (answerTokens.size > 0) bridgedAnswerTokens.push(answerTokens);
+  }
+  if (options?.paraphrase === true && !digitalTwinTextHasCjkV1(question)) {
+    const matchQuestion = tokenizeDigitalTwinQuestionForMatchV1(question);
+    // Each sub-question keeps the short-question rule (one shared word) it would have on its own; the
+    // threshold is judged on the plain words, so the expansions add chances to match, not a lower bar.
+    const clauses = splitDigitalTwinQuestionClausesV1(question)
+      .map((clause) => ({
+        tokens: tokenizeDigitalTwinQuestionForMatchV1(clause),
+        min: digitalTwinQuestionMinOverlapV1(clause, tokenizeDigitalTwinTextV1(clause)),
+      }))
+      .filter((clause) => clause.tokens.size > 0);
+    const scored = items
+      .filter((item) => digitalTwinFacetAllowsItemV1(item, facet, approvedPublicIds))
+      .map((item) => {
+        const matchText = tokenizeDigitalTwinTextForMatchV1(item.text);
+        const whole = digitalTwinTokenOverlapV1(matchText, matchQuestion);
+        const perClause = clauses.map((clause) => digitalTwinTokenOverlapV1(matchText, clause.tokens));
+        let overlap = Math.max(whole, ...perClause);
+        let relevant = whole >= minOverlap || perClause.some((count, index) => count >= clauses[index].min);
+        const textTokens = tokenizeDigitalTwinTextV1(item.text);
+        for (const answerTokens of bridgedAnswerTokens) {
+          const bridge = digitalTwinTokenOverlapV1(textTokens, answerTokens);
+          if (bridge >= interviewAnswerBridgeMinV1(answerTokens)) {
+            overlap = Math.max(overlap, minOverlap, bridge);
+            relevant = true;
+          }
+        }
+        return { item, overlap, relevant, perClause };
+      });
+    const uncoveredClauses = clauses.filter((clause, index) => !scored.some((entry) => entry.perClause[index] >= clause.min)).length;
+    const ranked = scored
+      .filter((entry) => entry.overlap > 0)
+      .map(({ item, overlap, relevant }) => ({ item, overlap, relevant }))
+      .sort((a, b) => b.overlap - a.overlap || a.item.canonicalId.localeCompare(b.item.canonicalId))
+      .slice(0, DIGITAL_TWIN_ANSWER_THRESHOLDS_V1.retrievalTopK);
+    return { ranked, coverage: ranked.filter((entry) => entry.relevant).length, uncoveredClauses };
   }
   const ranked = items
     .filter((item) => digitalTwinFacetAllowsItemV1(item, facet, approvedPublicIds))
@@ -573,10 +779,25 @@ export function checkDigitalTwinSentenceSupportV1(
    * `citations: false` (E116 owner-stated answers): a `[S#]` citation alone no longer counts; every
    * sentence must share enough tokens with a source. Default: citations count, as before.
    */
-  options?: { citations?: boolean },
+  options?: {
+    citations?: boolean;
+    /** L9.2 item 27: compare word stems, so `viewing` in the answer supports `viewings` in the source. */
+    stem?: boolean;
+    /**
+     * L9.2 item 27: a sentence that states a number no source states is unsupported, even when it cites
+     * a source (a cited sentence could otherwise carry an invented price). `[S#]` markers and a leading
+     * list number do not count as numbers.
+     */
+    numbers?: boolean;
+  },
 ): { supported: string[]; unsupported: string[] } {
   const citationsCount = options?.citations !== false;
-  const sourceTokens = sources.map((source) => tokenizeDigitalTwinTextV1(source.text));
+  const tokenize = options?.stem === true ? tokenizeDigitalTwinTextForMatchV1 : tokenizeDigitalTwinTextV1;
+  const sourceTokens = sources.map((source) => tokenize(source.text));
+  const sourceNumbers = new Set<string>();
+  if (options?.numbers === true) {
+    for (const source of sources) for (const number of digitalTwinNumericMentionsV1(source.text)) sourceNumbers.add(number);
+  }
   const supported: string[] = [];
   const unsupported: string[] = [];
   const sentences = answer
@@ -590,13 +811,31 @@ export function checkDigitalTwinSentenceSupportV1(
     }
     const citations = [...sentence.matchAll(/\[S(\d+)\]/g)].map((match) => Number(match[1]));
     const cited = citationsCount && citations.some((index) => index >= 1 && index <= sources.length);
-    const tokens = tokenizeDigitalTwinTextV1(sentence.replace(/\[S\d+\]/g, ''));
+    const bare = sentence.replace(/\[S\d+\]/g, '');
+    const tokens = tokenize(bare);
     const lexical = sourceTokens.some(
       (source) => digitalTwinTokenOverlapV1(tokens, source) >= DIGITAL_TWIN_ANSWER_THRESHOLDS_V1.sentenceSupportOverlap,
     );
-    (cited || lexical || tokens.size === 0 ? supported : unsupported).push(sentence);
+    const numbersOk =
+      options?.numbers !== true ||
+      [...digitalTwinNumericMentionsV1(bare.replace(/^\s*\d+[.)]\s+/, ''))].every((number) => sourceNumbers.has(number));
+    (numbersOk && (cited || lexical || tokens.size === 0) ? supported : unsupported).push(sentence);
   }
   return { supported, unsupported };
+}
+
+const TWIN_CITATION_MARKER_DISPLAY_V1 = /[ \t]*\[S\d{1,2}(?:\s*,\s*S\d{1,2})*\]/;
+const TWIN_CITATION_MARKERS_DISPLAY_V1 = /[ \t]*\[S\d{1,2}(?:\s*,\s*S\d{1,2})*\]/g;
+
+/**
+ * Display-only (L9.2 batch 4, backlog #26): the `[S#]` citations the model writes for the
+ * sentence check above are not shown to readers. Removes each marker together with the spaces
+ * or tabs right before it, then trims trailing spaces on each line. Text without a marker is
+ * returned as the same string. Never apply this to stored, logged or checked text.
+ */
+export function stripTwinCitationMarkersForDisplayV1(text: string): string {
+  if (!TWIN_CITATION_MARKER_DISPLAY_V1.test(text)) return text;
+  return text.replace(TWIN_CITATION_MARKERS_DISPLAY_V1, '').replace(/[ \t]+$/gm, '');
 }
 
 // ---------------------------------------------------------------------------

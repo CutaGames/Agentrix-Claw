@@ -146,9 +146,15 @@ export const RESALE_LISTING_STATUSES_V1 = ['draft', 'published', 'reserved', 'so
 export type ResaleListingStatusV1 = (typeof RESALE_LISTING_STATUSES_V1)[number];
 /** Ended: never published again (sell it again from the ledger row with a new listing). */
 export const RESALE_LISTING_ENDED_STATUSES_V1 = ['sold', 'withdrawn', 'expired'] as const;
-/** The item page and the buyer side are readable only in these. */
+/** The item page, and the buyer side of a conversation without an escrow, are readable only in these. */
 export const RESALE_LISTING_OPEN_STATUSES_V1 = ['published', 'reserved'] as const;
 export type ResaleListingOpenStatusV1 = (typeof RESALE_LISTING_OPEN_STATUSES_V1)[number];
+/**
+ * What the buyer's own view of a conversation can carry (ESC-5.10, E167): the open ones, and the ended ones for a buyer
+ * who started an escrow in it (read and delete stay reachable after the item is sold, withdrawn or expired). Never `draft`.
+ */
+export const RESALE_LISTING_BUYER_STATUSES_V1 = ['published', 'reserved', 'sold', 'withdrawn', 'expired'] as const;
+export type ResaleListingBuyerStatusV1 = (typeof RESALE_LISTING_BUYER_STATUSES_V1)[number];
 /**
  * Allowed moves. Every move is a conditional update (`WHERE status = <from>`); the loser of a race gets 409
  * `listing_state_changed`. `published → sold` is "mark sold" without an accepted offer (sold to someone off the page);
@@ -225,6 +231,8 @@ export const RESALE_ERROR_CODES_V1 = [
   // L3 (S18): sale receipts.
   'sale_receipt_unavailable',
   'sale_receipt_exists',
+  // L4 (S24): money is held for this item in the test-mode escrow (handed over, or in dispute).
+  'escrow_in_progress',
 ] as const;
 export type ResaleErrorCodeV1 = (typeof RESALE_ERROR_CODES_V1)[number];
 /** Error bodies carry `code` and this one line in both languages (a field name or a reason goes after it in brackets). */
@@ -257,7 +265,13 @@ export const RESALE_ERROR_MESSAGES_V1: Record<ResaleErrorCodeV1, string> = {
   asset_not_owned: '只有「持有中」的东西才能卖。 Only items you still own can be sold.',
   sale_receipt_unavailable: '平台暂时签不了成交回执，请稍后再试。 The platform cannot sign sale receipts right now. Please try again later.',
   sale_receipt_exists: '这件东西已经有一张双方确认的成交回执。 This item already has a sale receipt both sides confirmed.',
+  escrow_in_progress: '这件东西有一笔托管还没结束，先退款或等它放款。 There is an escrow on this item that has not finished. Refund it or wait until it is paid out.',
 };
+/**
+ * L4 (S24, coord 11-01): what a buyer is told when deleting their side of a conversation while its escrow is in progress
+ * (the conversation is the evidence for a dispute). Goes in brackets after the `escrow_in_progress` line; the web shows it.
+ */
+export const RESALE_ESCROW_DELETE_LATER_NOTE_V1 = '托管结束后可以删 / You can delete it once the escrow has finished';
 
 // ── copy ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -271,6 +285,7 @@ export const RESALE_SYSTEM_COPY_CODES_V1 = [
   'disclosure_denied',
   'handoff',
   'reserve_cancelled',
+  'disclosure_hidden',
 ] as const;
 export type ResaleSystemCopyCodeV1 = (typeof RESALE_SYSTEM_COPY_CODES_V1)[number];
 export const RESALE_SYSTEM_COPY_V1: Record<ResaleSystemCopyCodeV1, { zh: string; en: string }> = {
@@ -282,6 +297,8 @@ export const RESALE_SYSTEM_COPY_V1: Record<ResaleSystemCopyCodeV1, { zh: string;
   disclosure_denied: { zh: '主人会再和你约', en: 'The owner will arrange this with you another way' },
   handoff: { zh: '这个问题我转给主人了', en: 'I have passed this question to the owner' },
   reserve_cancelled: { zh: '主人取消了这次约定，这件东西重新开放', en: 'The owner cancelled this arrangement. The item is open again.' },
+  /** L9.2 B3 F3: shown to the buyer in place of an approved pickup point or meeting time once the escrow of that deal has ended. Never stored. */
+  disclosure_hidden: { zh: '交易已结束，取货信息已隐去', en: 'The deal is over; pickup details are hidden' },
 };
 /** Always on the item page and in the conversation (design 3.3 item 6). */
 export const RESALE_FIXED_SAFETY_LINE_V1 = {
@@ -661,7 +678,7 @@ export interface ResaleThreadBuyerViewV1 {
   schemaVersion: 1;
   threadRef: string;
   listingRef: string;
-  listingStatus: ResaleListingOpenStatusV1;
+  listingStatus: ResaleListingBuyerStatusV1;
   status: 'open' | 'closed';
   sellerLabel: string;
   /** "<seller>'s AI twin"; `null` when the twin does not answer on this item. */
@@ -1062,6 +1079,7 @@ const MESSAGE: Check = (v) => {
 const MESSAGES: Check = S.arrayOf(MESSAGE, RESALE_THREAD_LIMITS_V1.messagesInViewMax);
 const LISTING_STATUS: Check = S.oneOf(RESALE_LISTING_STATUSES_V1);
 const OPEN_STATUS: Check = S.oneOf(RESALE_LISTING_OPEN_STATUSES_V1);
+const BUYER_STATUS: Check = S.oneOf(RESALE_LISTING_BUYER_STATUSES_V1);
 
 const LISTING_OWNER_KEYS: Record<string, Check> = {
   schemaVersion: S.literal(1),
@@ -1115,7 +1133,7 @@ const THREAD_BUYER_KEYS: Record<string, Check> = {
   schemaVersion: S.literal(1),
   threadRef: S.pattern(RESALE_THREAD_REF_PATTERN_V1),
   listingRef: S.pattern(RESALE_LISTING_REF_PATTERN_V1),
-  listingStatus: OPEN_STATUS,
+  listingStatus: BUYER_STATUS,
   status: S.oneOf(['open', 'closed']),
   sellerLabel: LABEL,
   twinLabel: S.nullable(LABEL),

@@ -7,6 +7,7 @@
  */
 import { createBusinessExportClientV1, type BusinessExportClientV1 } from '../../shared/client/account-export-business';
 import { readL9CohortGateV1, type L9CohortGateResultV1 } from '../../shared/client/l9-cohort';
+import { readL9RegulatedGateV1, type L9RegulatedGateResultV1 } from '../../shared/client/l9-regulated';
 import type { HttpTransportV1 } from '../../shared/client/transport';
 
 export function businessExportEnabled(value: unknown): boolean {
@@ -30,4 +31,8 @@ export function createMobileBusinessExportClient(deps: MobileBusinessExportDeps)
 
 export function readMobileL9Cohort(deps: MobileBusinessExportDeps): Promise<L9CohortGateResultV1> {
   return readL9CohortGateV1({ ...deps, headers: { ...MOBILE_SURFACE } });
+}
+/** L9.2 G6b: "is this a licensed-trade account" (`GET /l9/regulated/me`); only then the DNC sentence is drawn. Anything unreadable is "not regulated". */
+export function readMobileL9Regulated(deps: MobileBusinessExportDeps): Promise<L9RegulatedGateResultV1> {
+  return readL9RegulatedGateV1({ ...deps, headers: { ...MOBILE_SURFACE } });
 }

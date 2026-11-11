@@ -8,7 +8,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { HttpRequestV1, HttpResponseV1, HttpTransportV1 } from '../../../shared/client/transport';
 import { BUSINESS_EXPORT_FORMAT_V1, BUSINESS_EXPORT_SCHEMA_VERSION_V1 } from '../../../shared/types/account-export-business';
-import { businessExportEnabled, createMobileBusinessExportClient, readMobileL9Cohort } from '../businessExport';
+import { RELATIONSHIP_DNC_NOTICE_V1, relationshipDncNoticeV1 } from '../../../shared/types/relationship-book';
+import { businessExportEnabled, createMobileBusinessExportClient, readMobileL9Cohort, readMobileL9Regulated } from '../businessExport';
 
 const BASE = 'https://api.example.test/api';
 type Route = { status: number; body: unknown } | 'throw';
@@ -78,6 +79,12 @@ describe('EXPO_PUBLIC_ACCOUNT_EXPORT_BUSINESS_V1', () => {
     expect(card).not.toMatch(/>[^<{]*[\u4e00-\u9fff][^<{]*</);
   });
 
+  it('L9.2 batch 4 (E163 ③): the ledger is "Referral ledger" in English, as on the web; the Chinese stays 转介账', () => {
+    const card = read('components/BusinessExportCard.tsx');
+    expect(card).toContain("introductions: { zh: '转介账', en: 'Referral ledger' }");
+    expect(card).not.toContain('Introduction ledger');
+  });
+
   it('review D-R4: the file is deleted from the app cache after the share sheet, whether sharing worked or not', () => {
     const card = read('components/BusinessExportCard.tsx');
     const share = card.indexOf('await Sharing.shareAsync(path');
@@ -117,6 +124,74 @@ describe('the L9 list on the phone', () => {
   });
 });
 
+describe('L9.2 G6b · is this a licensed-trade account, on the phone', () => {
+  const regulated = (value: unknown) => ({ status: 200, body: { schemaVersion: 1, regulated: value } });
+
+  it('only regulated: true is regulated', async () => {
+    expect(await readMobileL9Regulated(deps(transport({ 'GET /l9/regulated/me': regulated(true) })))).toBe('regulated');
+    expect(await readMobileL9Regulated(deps(transport({ 'GET /l9/regulated/me': regulated(false) })))).toBe('not_regulated');
+  });
+
+  it('a 404, a 401, a body it cannot read, a network error or no token are all "not regulated"', async () => {
+    expect(await readMobileL9Regulated(deps(transport({ 'GET /l9/regulated/me': { status: 404, body: {} } })))).toBe('not_regulated');
+    expect(await readMobileL9Regulated(deps(transport({ 'GET /l9/regulated/me': { status: 401, body: {} } })))).toBe('not_regulated');
+    expect(await readMobileL9Regulated(deps(transport({ 'GET /l9/regulated/me': regulated('yes') })))).toBe('not_regulated');
+    expect(await readMobileL9Regulated(deps(transport({ 'GET /l9/regulated/me': { status: 200, body: { schemaVersion: 1, regulated: true, extra: 1 } } })))).toBe('not_regulated');
+    expect(await readMobileL9Regulated(deps(transport({ 'GET /l9/regulated/me': { status: 200, body: { regulated: true } } })))).toBe('not_regulated');
+    expect(await readMobileL9Regulated(deps(transport({ 'GET /l9/regulated/me': 'throw' })))).toBe('not_regulated');
+    const t = transport({ 'GET /l9/regulated/me': regulated(true) });
+    expect(await readMobileL9Regulated(deps(t, null))).toBe('not_regulated');
+    expect(t.calls).toHaveLength(0);
+  });
+
+  it('sends the token and the surface header, and never touches /l9/cohort/me', async () => {
+    const t = transport({ 'GET /l9/regulated/me': regulated(true) });
+    await readMobileL9Regulated(deps(t));
+    expect(t.calls).toHaveLength(1);
+    expect(t.calls[0].path).toBe(`${BASE}/l9/regulated/me`);
+    expect(t.calls[0].headers).toMatchObject({ Authorization: 'Bearer tok', 'X-Agentrix-Surface': 'mobile' });
+  });
+
+  it('the export card asks only after the L9 list says "in", and draws the sentence only for a regulated owner; the relationship book does the same', () => {
+    const card = read('components/BusinessExportCard.tsx');
+    expect(card).toContain("if (gate === 'in') {");
+    expect(card.indexOf("if (gate === 'in') {")).toBeLessThan(card.indexOf('readMobileL9Regulated(deps())'));
+    expect(card).toContain('relationshipDncNoticeV1(lang, regulated)');
+    expect(card).toContain("setRegulated(answer === 'regulated')");
+    const screen = read('screens/four-zone/TwinRelationshipsScreen.tsx');
+    expect(screen).toContain("relationshipDncNoticeV1(lang, regulated.data === 'regulated')");
+    expect(screen).toContain('{dnc ? <Text style={styles.muted} testID="twin-relationships-dnc">{dnc}</Text> : null}');
+    // One language per screen: no Chinese text is hard-coded in the new lines.
+    expect(card).not.toMatch(/>[^<{]*[\u4e00-\u9fff][^<{]*</);
+  });
+});
+
+describe('L9.2 G6b · the "export all my data" card carries the DNC sentence for a licensed-trade owner only', () => {
+  const card = read('components/AccountExportCard.tsx');
+  it('asks GET /l9/regulated/me once on mount; only the answer "regulated" turns the sentence on, a failed read leaves it off', () => {
+    expect(card).toContain("import { readMobileL9Regulated } from '../services/businessExport';");
+    expect(card).toContain('const [regulated, setRegulated] = useState(false);');
+    expect(card).toContain("setRegulated(answer === 'regulated')");
+    expect(card).toContain('.catch(() => undefined)');
+    expect(card).toMatch(/useEffect\(\(\) => \{[\s\S]*readMobileL9Regulated\([\s\S]*\}, \[\]\);/);
+    // The read never uses the L9 list and never writes anything.
+    expect(card).not.toContain('readMobileL9Cohort');
+  });
+  it('draws the shared sentence under the description, in the app language, and nothing else about the card changes', () => {
+    expect(card).toContain("import { relationshipDncNoticeV1 } from '../../shared/types/relationship-book';");
+    expect(card).toContain('{relationshipDncNoticeV1(lang, regulated) ? <Text style={styles.muted} testID="account-export-dnc">{relationshipDncNoticeV1(lang, regulated)}</Text> : null}');
+    expect(card.indexOf('COPY.scope[lang]')).toBeLessThan(card.indexOf('testID="account-export-dnc"'));
+    expect(card.indexOf('testID="account-export-dnc"')).toBeLessThan(card.indexOf('accessibilityRole="button"'));
+    // No Chinese text is hard-coded in the new lines.
+    expect(card).not.toMatch(/>[^<{]*[\u4e00-\u9fff][^<{]*</);
+  });
+  it('the sentence is on only for exactly true: regulated -> text, not regulated or unreadable -> null', () => {
+    expect(relationshipDncNoticeV1('zh', true)).toBe(RELATIONSHIP_DNC_NOTICE_V1.zh);
+    expect(relationshipDncNoticeV1('en', true)).toBe(RELATIONSHIP_DNC_NOTICE_V1.en);
+    expect(relationshipDncNoticeV1('en', false)).toBeNull();
+    expect(relationshipDncNoticeV1('zh', undefined as unknown as boolean)).toBeNull();
+  });
+});
 describe('the business export client on the phone', () => {
   it('posts to the file route and the check route with the token, the surface header and no body (the owner is never sent)', async () => {
     const t = transport({

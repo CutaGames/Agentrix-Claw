@@ -47,6 +47,8 @@ import { DeliverablesScreen } from '../screens/agent-ops/DeliverablesScreen';
 import { ReliabilityScreen } from '../screens/agent-ops/ReliabilityScreen';
 import { AgentEconomicStatusScreen } from '../screens/agent-ops/AgentEconomicStatusScreen';
 import { SoulCoreViewScreen } from '../screens/soul-core/SoulCoreViewScreen';
+import { AgentOwnWalletScreen } from '../screens/agent/AgentOwnWalletScreen';
+import { ownWalletMobileEnabledV1, OWN_WALLET_MOBILE_COPY_V1 } from '../services/ownWallet';
 import { useI18n } from '../stores/i18nStore';
 import { MyHomeScreen } from '../screens/four-zone/MyHomeScreen';
 import { AppearanceScreen } from '../screens/four-zone/AppearanceScreen';
@@ -163,6 +165,10 @@ export function MeStackNavigator({ initialRouteName }: { initialRouteName?: keyo
           ),
         })}
       />
+      {/* L8-6 S11b: the landing of the wallet origin's address-check deep link; only with the phone switch on. */}
+      {ownWalletMobileEnabledV1() ? (
+        <Stack.Screen name="AgentOwnWallet" component={AgentOwnWalletScreen} options={{ title: t(OWN_WALLET_MOBILE_COPY_V1.verifyTitle) }} />
+      ) : null}
     </Stack.Navigator>
   );
 }

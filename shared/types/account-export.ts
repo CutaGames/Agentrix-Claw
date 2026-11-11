@@ -1,8 +1,8 @@
 /**
  * L8 第 2 批 data 线 A8：全量导出（开放格式）。
  *
- * 「导出我的全部数据」一键导出整个账户：原生对话、自动记忆、分身、附件、使用回执（A3 账本）、关系簿（rel 线还没合进来，
- * 先留接口，返回空数组）。在 canonical-export（`agent-portability`，签名的 Agent 包）的基础上把范围扩大到整个账户，
+ * 「导出我的全部数据」一键导出整个账户：原生对话、自动记忆、分身、附件、使用回执（A3 账本）、关系簿（L8-15 第 12 条起由
+ * 关系簿模块提供，每条是主人在页面上看到的那一行）。在 canonical-export（`agent-portability`，签名的 Agent 包）的基础上把范围扩大到整个账户，
  * 格式是一份普通 JSON，不依赖 Agentrix 就能读。
  *
  * - 服务端把加密的内容（A7 封存的记忆、分身资料、附件）解开以后再导出；解不开的条目只给出处和 `readable: false`，不给占位。
@@ -34,7 +34,7 @@ export type AccountExportAnySectionKeyV2 = AccountExportSectionKeyV2 | AccountEx
  * - `complete`：该分区全部在里面；
  * - `truncated`：碰到上限，只给了前面一部分（`omissions` 里说明）；
  * - `unavailable`：这个来源现在读不出来（`reasonCode`），分区是空的，不代表账户里没有；
- * - `not_enabled`：这类数据所在的功能还没上线（关系簿），分区是空的。
+ * - `not_enabled`：这类数据所在的功能还没上线（例如没有接上的合作方工作区），分区是空的。
  */
 export const ACCOUNT_EXPORT_SECTION_STATUSES_V2 = ['complete', 'truncated', 'unavailable', 'not_enabled'] as const;
 export type AccountExportSectionStatusV2 = (typeof ACCOUNT_EXPORT_SECTION_STATUSES_V2)[number];
@@ -172,7 +172,11 @@ export interface AccountExportReceiptV2 {
   occurredAt: string;
 }
 
-/** 关系簿（rel 线）。接口先留着；还没上线时分区是空的。条目形状等 rel 线定下来再加字段。 */
+/**
+ * 关系簿：每条是主人自己看到的一行（`RelationshipContactViewV1`，`shared/types/relationship-book.ts`），封存的联系方式由
+ * 服务器打开，打不开的是 `contactState: 'unreadable'`、`contact: null`。不含身份哈希，也不含属主字段。类型保持宽松，
+ * 两份 JSON schema 不用改。
+ */
 export type AccountExportRelationshipV2 = Record<string, unknown>;
 /** 合作方工作区（L8 3A E3）：用 Agentrix 登录的应用写进主人账号里它自己那一角的条目，带正文。还没上线时分区是空的。 */
 export type AccountExportPartnerWorkspaceV2 = Record<string, unknown>;
@@ -251,6 +255,20 @@ export interface AccountExportDeviceAssetListingV2 {
   saleReceipt?: AccountExportDeviceAssetSaleReceiptV2;
   /** L3（S18）：卖家选了把这件挂在名片上时是 `true`，没选时不出现这个键。 */
   onCard?: true;
+  /**
+   * L4（S24）：这件东西的托管记录（测试模式，从早到晚）：订单号、状态、金额、放进托管和结束的时间。没有托管记录时不出现
+   * 这个键。买家是谁不在这里。
+   */
+  escrow?: AccountExportDeviceAssetEscrowV2[];
+  /** L5（S25）：卖家选了让别人的 AI 助手能搜到这件东西时是 `true`，没选时不出现这个键。 */
+  discoverable?: true;
+}
+export interface AccountExportDeviceAssetEscrowV2 {
+  orderId: string;
+  state: 'held' | 'handed_over' | 'disputed' | 'released' | 'refunded';
+  amount: { amountMinor: number; currency: 'SGD' };
+  createdAt: string;
+  closedAt: string | null;
 }
 export interface AccountExportDeviceAssetSaleReceiptV2 {
   receiptRef: string;

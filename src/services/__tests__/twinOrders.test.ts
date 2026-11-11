@@ -96,6 +96,9 @@ describe('reading the orders the twin took', () => {
     const run = (route: Route, input: Record<string, unknown> = base) => readTwinOrders(AGENT, { ...input, transport: transport({ [LIST]: route }) });
     expect(await run({ status: 503, body: { code: 'orders_unavailable' } })).toEqual({ kind: 'unavailable', reason: 'not_enabled' });
     expect(await run({ status: 404, body: { code: 'order_not_found' } })).toEqual({ kind: 'unavailable', reason: 'not_found' });
+    // L9.2 G2: the new 403 code of a licensed-trade account is only ever sent by the web-only catalogue and payout routes; if it
+    // came back on a read anyway, it is a plain non-retryable error carrying its code, never a partial list.
+    expect(await run({ status: 403, body: { code: 'order_licensed_industry' } })).toEqual({ kind: 'error', reason: 'order_licensed_industry', retryable: false });
     expect(await run(ok({ items: [] }), { baseUrl: BASE, token: '' })).toEqual({ kind: 'unavailable', reason: 'authentication_required' });
     expect(await run('throw')).toEqual({ kind: 'error', reason: 'network', retryable: true });
     expect(await run(ok({ items: [sellerJson(), sellerJson({ status: 'shipped' })] }))).toEqual({ kind: 'error', reason: 'response_malformed', retryable: false });

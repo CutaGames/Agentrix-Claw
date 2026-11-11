@@ -85,3 +85,54 @@ export function decodeTwinPeerProposalViewV1(value: unknown): IntroductionCfDeco
     },
   };
 }
+
+// ── L9.2 G7a：主人直接从同行名单里转介（POST /peers/:id/introduce）─────────────────────────────
+
+/** 主人路由：从名单里的一位同行发起转介。`:id` 是名单条目 id；请求只带需求卡，B 的名字和联系方式服务端从条目读。 */
+export const TWIN_PEER_INTRODUCE_ROUTE_V1 = '/peers/:id/introduce';
+
+export function twinPeerIntroducePathV1(peerId: string): string {
+  return `/peers/${encodeURIComponent(peerId)}/introduce`;
+}
+
+/** 请求体：只有需求卡（不带 B、不带客户的联系方式、不带分成）。 */
+export interface TwinPeerIntroduceInputV1 {
+  schemaVersion: typeof TWIN_PEER_SCHEMA_VERSION_V1;
+  needCard: IntroductionNeedCardV1;
+}
+
+export function decodeTwinPeerIntroduceInputV1(value: unknown): IntroductionCfDecodeResultV1<TwinPeerIntroduceInputV1> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return { ok: false, reasonCode: 'invalid_type', field: '$' };
+  const rec = value as Record<string, unknown>;
+  for (const key of Object.keys(rec)) if (!['schemaVersion', 'needCard'].includes(key)) return { ok: false, reasonCode: 'unknown_field', field: key };
+  if (rec.needCard === undefined) return { ok: false, reasonCode: 'missing_field', field: 'needCard' };
+  if (rec.schemaVersion !== undefined && rec.schemaVersion !== TWIN_PEER_SCHEMA_VERSION_V1) return { ok: false, reasonCode: 'unsupported_schema_version', field: 'schemaVersion' };
+  const card = decodeIntroductionNeedCardV1(rec.needCard, 'needCard');
+  if (card.ok === false) return card;
+  return { ok: true, value: { schemaVersion: TWIN_PEER_SCHEMA_VERSION_V1, needCard: card.value } };
+}
+
+/** 回答：新引荐的编号，和客户同意页的链接（只显示这一次，主人把它交给客户）。 */
+export interface TwinPeerIntroduceResultV1 {
+  schemaVersion: typeof TWIN_PEER_SCHEMA_VERSION_V1;
+  introductionId: string;
+  consentUrl: string;
+}
+
+export function decodeTwinPeerIntroduceResultV1(value: unknown): IntroductionCfDecodeResultV1<TwinPeerIntroduceResultV1> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return { ok: false, reasonCode: 'invalid_type', field: '$' };
+  const rec = value as Record<string, unknown>;
+  const keys = ['schemaVersion', 'introductionId', 'consentUrl'];
+  for (const key of Object.keys(rec)) if (!keys.includes(key)) return { ok: false, reasonCode: 'unknown_field', field: key };
+  for (const key of keys) if (rec[key] === undefined) return { ok: false, reasonCode: 'missing_field', field: key };
+  if (rec.schemaVersion !== TWIN_PEER_SCHEMA_VERSION_V1) return { ok: false, reasonCode: 'unsupported_schema_version', field: 'schemaVersion' };
+  if (typeof rec.introductionId !== 'string' || !UUID.test(rec.introductionId)) return { ok: false, reasonCode: 'invalid_value', field: 'introductionId' };
+  if (typeof rec.consentUrl !== 'string' || !/^https?:\/\//.test(rec.consentUrl)) return { ok: false, reasonCode: 'invalid_value', field: 'consentUrl' };
+  return { ok: true, value: { schemaVersion: TWIN_PEER_SCHEMA_VERSION_V1, introductionId: rec.introductionId, consentUrl: rec.consentUrl } };
+}
+
+/** G7a 的两个新拒绝码（400）。页面按码写人话：「只能转给你名单里、对方已同意的经纪」。 */
+export const INTRODUCTION_G7A_ERROR_CODES_V1 = {
+  bNotVerified: 'introduction_b_not_verified',
+  needNoteMoney: 'need_note_money',
+} as const;

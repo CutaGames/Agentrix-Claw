@@ -57,6 +57,28 @@ describe('twinEveryone', () => {
     expect(await fetchTwinEveryoneHome({ baseUrl: BASE, token: '', transport: t })).toEqual({ kind: 'unauthorized' });
   });
 
+  it('L9.2 G1/G6a: a licensed agent\'s home carries a `regulated` block; the phone reads it and a malformed one is a contract error; no block is the home it always was', () => {
+    const regulated = {
+      ceaIdentity: { nameOnRegister: 'TAN AH KOW', registrationNumber: 'R012345A', agencyName: 'Lion Realty Pte Ltd', agencyLicenseNumber: 'L3008899K', registeredPhone: '+65 6123 4567', checkedOn: '2026-11-04' },
+      agencyReviewDigest: 'a'.repeat(64),
+      agencyReviewedOn: '2026-11-04',
+      frozen: true,
+    };
+    const withBlock = readTwinEveryoneHome(200, { success: true, data: { ...readyHome, twin: { ...readyHome.twin, regulated, publicCard: { ...readyHome.twin.publicCard, canPublish: false, blockedBy: 'twin_everyone:agency_review_missing' } } } });
+    expect(withBlock.kind).toBe('ready');
+    if (withBlock.kind === 'ready') {
+      expect(withBlock.home.twin?.regulated?.frozen).toBe(true);
+      expect(withBlock.home.twin?.publicCard.blockedBy).toBe('twin_everyone:agency_review_missing');
+    }
+    const notYet = readTwinEveryoneHome(200, { success: true, data: { ...readyHome, twin: { ...readyHome.twin, regulated: { ...regulated, ceaIdentity: null, agencyReviewedOn: null, frozen: false } } } });
+    expect(notYet.kind).toBe('ready');
+    for (const bad of [{ ...regulated, agencyReviewDigest: 'abcd1234' }, { ...regulated, frozen: 'yes' }, { ...regulated, agencyReviewedOn: '04/11/2026' }, 'x']) {
+      expect(readTwinEveryoneHome(200, { success: true, data: { ...readyHome, twin: { ...readyHome.twin, regulated: bad } } }).kind).toBe('error');
+    }
+    const plain = readTwinEveryoneHome(200, { success: true, data: readyHome });
+    expect(plain.kind).toBe('ready');
+    if (plain.kind === 'ready') expect(Object.keys(plain.home.twin ?? {})).not.toContain('regulated');
+  });
   it('makes the twin in one tap for the linked Agent, with an Idempotency-Key', async () => {
     const t = transport({ 'POST /v1/me/twin': { status: 200, body: { success: true, data: { status: 'applied', value: readyHome, operationRef: { kind: 'operation', id: 'op' } } } } });
     const result = await createTwinEveryone(AGENT, 'key-1', { ...base, transport: t });

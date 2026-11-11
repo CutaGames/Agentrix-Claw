@@ -82,11 +82,31 @@ export type SoulCoreVaultBackupStateV1 =
   | 'not_configured'
   | 'unavailable';
 
+/** L8-6 S12b: one own account (2160) the vault card may show: the short form and the wallet origin's check only. */
+export interface SoulCoreOwnAccountRefV1 {
+  accountId: string;
+  /** Lower-case. */
+  address: string;
+  chainId: number;
+}
+
 export interface SoulCoreVaultProjectionV1 {
   walletType: string;
   address?: string;
   explorerUrl?: string;
   balances: SoulCoreVaultBalanceV1[];
+  /**
+   * L8-6 S12b (design decision 2, T5), additive: only with the backend own-wallet switch on and only for the owner.
+   * `vault` is the owner's own vault, `agent` this Agent's own account (pending / active); both are controlled by the
+   * owner's keys. Absent: nothing to show (never "no vault").
+   */
+  ownAccounts?: { vault?: SoulCoreOwnAccountRefV1; agent?: SoulCoreOwnAccountRefV1 };
+  /**
+   * L8-6 S12b (appendix C item 3), additive, same conditions: the old custody wallet the platform can still move
+   * (lower-case). `migration` is true only when the owner can start a move into an own account now
+   * (`AGENT_WALLET_MIGRATION_V1_ENABLED` on and an own account to move into).
+   */
+  legacyCustody?: { address: string; migration: boolean };
   backup: {
     /**
      * `true` is the only positive assertion. `false` MUST be interpreted

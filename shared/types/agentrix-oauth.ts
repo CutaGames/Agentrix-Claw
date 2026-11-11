@@ -935,6 +935,27 @@ export function agentrixOauthClientLabelV1(clientId: string, clientName: string 
   return match ? match[1] : clientId;
 }
 
+const NAME_LINE_BREAKS = /[\t\n\r\u2028\u2029]/g;
+/** 控制字符、零宽字符和方向控制字符：显示名里不留（方向控制字符能把标题反过来读）。 */
+const NAME_INVISIBLES = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g;
+
+/**
+ * 登记应用的名字是对方填的：给人看之前清成纯文本。换行和制表符变空格，控制字符、零宽和方向控制字符去掉，连续空白折成一个，
+ * 首尾空白去掉，超过 `clientNameMax` 截断；清完是空的、或不是字符串，返回 `null`（调用方退回 `client_id`）。
+ * 不做 HTML 转义：这里给的永远是纯文本，网页只能当文本节点画，不当 HTML、不当链接。
+ */
+export function safeAgentrixOauthClientNameV1(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  let name = value.replace(NAME_LINE_BREAKS, ' ').replace(NAME_INVISIBLES, '').replace(/\s+/g, ' ').trim();
+  if (name.length > AGENTRIX_OAUTH_LIMITS_V1.clientNameMax) {
+    name = name.slice(0, AGENTRIX_OAUTH_LIMITS_V1.clientNameMax);
+    // a cut through the middle of a surrogate pair would leave half an emoji
+    if (/[\ud800-\udbff]$/.test(name)) name = name.slice(0, -1);
+    name = name.trim();
+  }
+  return name.length > 0 ? name : null;
+}
+
 /** 「最近用过」那一句，三端的登录应用列表共用：日期时间格式跟界面语言走（中文 `zh-CN`、英文 `en-US`），不跟系统或浏览器的语言走。 */
 export function agentrixOauthLastUsedTextV1(lastUsedAt: string | null, language: 'zh' | 'en'): string {
   if (!lastUsedAt) return language === 'zh' ? '还没用过' : 'Not used yet';

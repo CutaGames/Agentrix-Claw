@@ -23,6 +23,8 @@ import {
 import type { MeStackParamList } from '../../navigation/types';
 import { AgentEconomicIdentityCard } from '../../components/agent/AgentEconomicIdentityCard';
 import { SOUL_CORE_VIEW_ENABLED } from '../../services/soulCoreApi';
+import { ownWalletMobileEnabledV1 } from '../../services/ownWallet';
+import { economicWalletBlockV1 } from '../../services/ownWalletEconomicStatus';
 
 type EcoRoute = RouteProp<MeStackParamList, 'AgentOpsEconomicStatus'>;
 
@@ -103,11 +105,27 @@ function Content({
   c: Palette;
   t: (d: { en: string; zh: string }) => string;
 }) {
+  const walletBlock = economicWalletBlockV1(s.wallet, { ownWalletEnabled: ownWalletMobileEnabledV1() });
   return (
     <>
       <Text style={styles.agentName}>{s.agentName || s.agentId}</Text>
 
       {/* Wallet */}
+      {walletBlock !== null ? (
+        // L8-6 S11b (T11, R6-L2): the own wallet reading of the wallet dimension; an own account address in the wallet row, the old wallet only on its own row.
+        <StatusCard
+          icon="👛"
+          title={t({ en: 'Wallet', zh: '钱包' })}
+          status={walletBlock.status}
+          styles={styles}
+          c={c}
+          t={t}
+          testID="ao-eco-wallet"
+          rows={walletBlock.rows.map((row) => ({ label: t(row.label), value: row.value === null ? null : typeof row.value === 'string' ? row.value : t(row.value) }))}
+          detail={walletBlock.detail ? t(walletBlock.detail) : undefined}
+          alwaysRows={walletBlock.alwaysRows}
+        />
+      ) : (
       <StatusCard
         icon="👛"
         title={t({ en: 'Wallet', zh: '钱包' })}
@@ -122,6 +140,7 @@ function Content({
         ]}
         detail={s.wallet.detail}
       />
+      )}
 
       {/* Limit */}
       <StatusCard
@@ -191,7 +210,7 @@ function Content({
 }
 
 function StatusCard({
-  icon, title, status, rows, detail, styles, c, t, testID,
+  icon, title, status, rows, detail, styles, c, t, testID, alwaysRows,
 }: {
   icon: string;
   title: string;
@@ -202,8 +221,10 @@ function StatusCard({
   c: Palette;
   t: (d: { en: string; zh: string }) => string;
   testID?: string;
+  /** L8-6 S11b: list the rows even when the status is not `enabled` (a lost wallet still lists the old wallet). */
+  alwaysRows?: boolean;
 }) {
-  const enabled = status === 'enabled';
+  const enabled = status === 'enabled' || alwaysRows === true;
   return (
     <View style={styles.card} testID={testID}>
       <View style={styles.cardHead}>

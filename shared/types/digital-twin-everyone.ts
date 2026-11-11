@@ -28,6 +28,7 @@ import {
   type DigitalTwinFacetV1,
   type DigitalTwinProfileStateV1,
 } from './digital-twin';
+import { zhNameV1 } from './zh-name-spacing';
 import type { DigitalTwinAnswerLanguageV1, DigitalTwinContextSensitivityV1, TwinContextItemV1 } from './digital-twin-answer';
 import {
   digitalTwinInterimRecordStatusV1,
@@ -42,6 +43,7 @@ import {
   type DigitalTwinInterviewQuestionIdV1,
   type DigitalTwinInterviewResponseV1,
 } from './digital-twin-interview';
+import { DIGITAL_TWIN_PUBLIC_FORBIDDEN_SUBSTRINGS_V1 } from './digital-twin-public';
 import { computeDigest } from './trust-loop-primitives';
 
 const { isRecord, isNonEmptyString, isIsoTimestamp, isMember, fail } = DIGITAL_TWIN_DECODE_HELPERS_V1;
@@ -174,7 +176,168 @@ export interface DigitalTwinEveryoneRecordV1 {
   /** Visitor review items the owner already answered with a note; hidden from "pending". */
   answeredReviewRefs: string[];
   publicCard?: DigitalTwinEveryonePublicCardRecordV1;
+  /** L9.2 G1: the licensed agent's CEA lines; only an account on the licensed-trade list can write them. */
+  ceaIdentity?: DigitalTwinEveryoneCeaIdentityV1;
+  /** L9.2 G6a: what the agency's compliance reviewed, newest last, at most `DIGITAL_TWIN_EVERYONE_CEA_LIMITS_V1.agencyReviewKeep`. */
+  agencyReview?: DigitalTwinEveryoneAgencyReviewEntryV1[];
   updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// L9.2 G1 / G6a: the licensed estate agent's card (CEA lines, back-office check, agency review, freeze)
+// ---------------------------------------------------------------------------
+
+export const DIGITAL_TWIN_EVERYONE_CEA_LIMITS_V1 = {
+  nameMaxChars: 40,
+  registrationNumberMaxChars: 20,
+  agencyNameMaxChars: 80,
+  agencyLicenseNumberMaxChars: 20,
+  registeredPhoneMinChars: 6,
+  registeredPhoneMaxChars: 30,
+  /** The page shows "checked against the CEA public register on <date>" only while the last match is this young. */
+  checkFreshDays: 35,
+  /** How many agency review entries the record keeps. */
+  agencyReviewKeep: 20,
+} as const;
+
+/** The five lines, in the order the card shows them. */
+export const DIGITAL_TWIN_EVERYONE_CEA_FIELDS_V1 = ['nameOnRegister', 'registrationNumber', 'agencyName', 'agencyLicenseNumber', 'registeredPhone'] as const;
+export type DigitalTwinEveryoneCeaFieldV1 = (typeof DIGITAL_TWIN_EVERYONE_CEA_FIELDS_V1)[number];
+export type DigitalTwinEveryoneCeaFieldsV1 = Record<DigitalTwinEveryoneCeaFieldV1, string>;
+
+/** The five lines plus the back office's match date (`YYYY-MM-DD`, written only by the operator route). */
+export interface DigitalTwinEveryoneCeaIdentityV1 extends DigitalTwinEveryoneCeaFieldsV1 {
+  checkedOn?: string;
+}
+
+/** One "the agency reviewed exactly this content" mark. Only the operator route writes it. */
+export interface DigitalTwinEveryoneAgencyReviewEntryV1 {
+  /** The full 64-hex digest of the content that was reviewed (`computeDigitalTwinAgencyReviewDigestV1`). */
+  digest: string;
+  /** `YYYY-MM-DD`, as the operator reported it. */
+  reviewedOn: string;
+  recordedAt: string;
+}
+
+/** Why a card cannot go public (home `blockedBy`, publish `blockedBy`) or why a write is refused, for the licensed-trade card. */
+export const DIGITAL_TWIN_EVERYONE_G1_CODES_V1 = {
+  ceaIdentityMissing: 'twin_everyone:cea_identity_missing',
+  ceaCheckPending: 'twin_everyone:cea_check_pending',
+  nameMismatch: 'twin_everyone:name_mismatch',
+  agencyReviewMissing: 'twin_everyone:agency_review_missing',
+  frozenAfterReview: 'twin_everyone:frozen_after_review',
+} as const;
+
+/** The CEA registration number shape on gov.sg: `R` + 6 digits + 1 letter. A hint for the form only; the back-office match decides. */
+export const DIGITAL_TWIN_EVERYONE_CEA_REGISTRATION_FORMAT_V1 = /^R\d{6}[A-Z]$/;
+export function digitalTwinEveryoneCeaRegistrationFormatOkV1(value: string): boolean {
+  return DIGITAL_TWIN_EVERYONE_CEA_REGISTRATION_FORMAT_V1.test(value.trim().toUpperCase());
+}
+
+/** All five lines non-empty. */
+export function digitalTwinEveryoneCeaCompleteV1(identity: Partial<DigitalTwinEveryoneCeaFieldsV1> | null | undefined): identity is DigitalTwinEveryoneCeaFieldsV1 {
+  return Boolean(identity) && DIGITAL_TWIN_EVERYONE_CEA_FIELDS_V1.every((field) => typeof identity![field] === 'string' && identity![field]!.trim().length > 0);
+}
+
+/** The key two names are compared by: Unicode-normalised, blanks collapsed, case ignored ("TAN AH KOW" is "Tan Ah Kow"). */
+export function digitalTwinEveryoneCeaNameKeyV1(name: string): string {
+  return String(name ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/** `checkedOn` is a plain date no later than today and at most `checkFreshDays` days before it (UTC days). */
+export function digitalTwinEveryoneCeaCheckFreshV1(checkedOn: string | null | undefined, nowMs: number): boolean {
+  if (typeof checkedOn !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(checkedOn)) return false;
+  const checkedMs = Date.parse(`${checkedOn}T00:00:00.000Z`);
+  if (!Number.isFinite(checkedMs)) return false;
+  const todayMs = Math.floor(nowMs / 86_400_000) * 86_400_000;
+  const days = (todayMs - checkedMs) / 86_400_000;
+  return days >= 0 && days <= DIGITAL_TWIN_EVERYONE_CEA_LIMITS_V1.checkFreshDays;
+}
+
+/** Same judgement the home uses for "published": the public facet and the self-attested card are both published. */
+export function digitalTwinEveryoneCardPublishedV1(
+  interim: { publicFacet?: { state?: string } | null; everyone?: { publicCard?: { state?: string } | null } | null } | null | undefined,
+): boolean {
+  return interim?.publicFacet?.state === 'published' && interim?.everyone?.publicCard?.state === 'published';
+}
+
+/**
+ * L9.2 G6a: once the agency has reviewed a licensed-trade card and it is public, nothing that feeds the public answers may change
+ * until the owner takes the card back. `regulated` is whether the owner is on the licensed-trade list (the caller knows; this
+ * file does not read the environment). Every other account is never frozen.
+ */
+export function digitalTwinEveryoneFrozenAfterReviewV1(
+  interim: { publicFacet?: { state?: string } | null; everyone?: { publicCard?: { state?: string } | null } | null } | null | undefined,
+  regulated: boolean,
+): boolean {
+  return regulated === true && digitalTwinEveryoneCardPublishedV1(interim);
+}
+
+export const DIGITAL_TWIN_AGENCY_REVIEW_DIGEST_DOMAIN_V1 = 'AGENTRIX_DIGITAL_TWIN_AGENCY_REVIEW_V1' as const;
+/** A full SHA-256, lower-case hex. The page shows the first 8; the store and every comparison use all 64. */
+export const DIGITAL_TWIN_AGENCY_REVIEW_DIGEST_PATTERN_V1 = /^[0-9a-f]{64}$/;
+
+/**
+ * L9.2 G6a: the digest of everything the agency reviews, over canonical JSON: the card (name on the register, intro, the five
+ * lines, the "never answer" topics, notes and answers filed as card-usable) and the two sources the public answers read from
+ * outside the card (the interview policy's `noAnswerBoundaries` / `inferenceScope` / `handoffDefaults`, and the approved items'
+ * `canonicalId` + `digest`). The match date (`checkedOn`) is not part of it. Pure and deterministic.
+ */
+export function computeDigitalTwinAgencyReviewDigestV1(input: {
+  everyone?: Pick<DigitalTwinEveryoneRecordV1, 'intro' | 'notes' | 'boundaries' | 'ceaIdentity'> | null;
+  responses?: readonly Pick<DigitalTwinInterviewResponseV1, 'questionId' | 'skipped' | 'text' | 'facet'>[] | null;
+  policy?: { noAnswerBoundaries?: readonly string[]; inferenceScope?: readonly string[]; handoffDefaults?: readonly string[] } | null;
+  facetApprovals?: { items?: ReadonlyArray<{ canonicalId: string; digest: string }> } | null;
+}): string {
+  const everyone = input.everyone ?? null;
+  const cea = everyone?.ceaIdentity ?? null;
+  const answers = (input.responses ?? [])
+    .filter((response) => response.facet === 'public' && !response.skipped && response.text.trim().length > 0)
+    .map((response) => ({ questionId: response.questionId, text: response.text.trim() }))
+    .sort((a, b) => (a.questionId < b.questionId ? -1 : a.questionId > b.questionId ? 1 : 0));
+  const approvals = (input.facetApprovals?.items ?? [])
+    .map((item) => ({ canonicalId: item.canonicalId, digest: item.digest }))
+    .sort((a, b) => (a.canonicalId < b.canonicalId ? -1 : a.canonicalId > b.canonicalId ? 1 : 0));
+  return computeDigest({
+    domain: DIGITAL_TWIN_AGENCY_REVIEW_DIGEST_DOMAIN_V1,
+    card: {
+      cea: cea
+        ? {
+            nameOnRegister: cea.nameOnRegister ?? '',
+            registrationNumber: cea.registrationNumber ?? '',
+            agencyName: cea.agencyName ?? '',
+            agencyLicenseNumber: cea.agencyLicenseNumber ?? '',
+            registeredPhone: cea.registeredPhone ?? '',
+          }
+        : null,
+      intro: (everyone?.intro ?? '').trim(),
+      boundaries: [...(everyone?.boundaries ?? [])],
+      notes: (everyone?.notes ?? []).filter((note) => note.facet === 'public').map((note) => note.text.trim()),
+      answers,
+    },
+    sources: {
+      noAnswerBoundaries: [...(input.policy?.noAnswerBoundaries ?? [])],
+      inferenceScope: [...(input.policy?.inferenceScope ?? [])],
+      handoffDefaults: [...(input.policy?.handoffDefaults ?? [])],
+      approvals,
+    },
+  }).value;
+}
+
+/** The newest review entry, if its digest is the current one (the only case in which the card may go public). */
+export function digitalTwinEveryoneAgencyReviewCurrentV1(
+  entries: readonly DigitalTwinEveryoneAgencyReviewEntryV1[] | null | undefined,
+  currentDigest: string,
+): DigitalTwinEveryoneAgencyReviewEntryV1 | null {
+  const last = entries && entries.length > 0 ? entries[entries.length - 1] : null;
+  return last && last.digest === currentDigest ? last : null;
+}
+
+/** `YYYY-MM-DD` that is a real calendar date. */
+export function isDigitalTwinPlainDateV1(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const ms = Date.parse(`${value}T00:00:00.000Z`);
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === value;
 }
 
 /**
@@ -291,10 +454,25 @@ function nameOrDefault(name: string | null | undefined, language: DigitalTwinAns
   return language === 'zh-CN' ? '本人' : 'the person';
 }
 
-export function renderDigitalTwinEveryoneUnknownTextV1(input: { name?: string | null; language: DigitalTwinAnswerLanguageV1 }): string {
+/**
+ * `passOn: false` drops the promise "I'll pass it on to <owner>". The public twin uses it when the same
+ * answer also carries a referral offer ("<owner> cannot take this right now, here is a peer"): the visitor
+ * must not read "I'll pass it on" and then "they cannot take it" one line below (L9 quality line S1).
+ * Default is `true`, so every existing caller keeps the E116 ④ sentence the owner decided on.
+ */
+export function renderDigitalTwinEveryoneUnknownTextV1(input: {
+  name?: string | null;
+  language: DigitalTwinAnswerLanguageV1;
+  passOn?: boolean;
+}): string {
   const name = nameOrDefault(input.name, input.language);
-  if (input.language === 'zh-CN') return `我是 ${name} 的 AI 分身，这件事 ${name} 还没告诉我，我帮你转给 ${name}。`;
-  return `I'm ${name}'s AI twin. ${name} hasn't told me about this yet, so I'll pass it on to ${name}.`;
+  const passOn = input.passOn !== false;
+  if (input.language === 'zh-CN') {
+    const head = `我是${zhNameV1(name)}的 AI 分身，这件事${zhNameV1(name)}还没告诉我`;
+    return passOn ? `${head}，我帮你转给${zhNameV1(name, { trailing: false })}。` : `${head}。`;
+  }
+  const head = `I'm ${name}'s AI twin. ${name} hasn't told me about this yet`;
+  return passOn ? `${head}, so I'll pass it on to ${name}.` : `${head}.`;
 }
 
 /**
@@ -320,7 +498,9 @@ export function isDigitalTwinEveryoneUnknownReplyV1(text: string): boolean {
 
 export function renderDigitalTwinEveryoneCapTextV1(input: { name?: string | null; language: DigitalTwinAnswerLanguageV1 }): string {
   const name = nameOrDefault(input.name, input.language);
-  if (input.language === 'zh-CN') return `今天我替 ${name} 回答的次数已经用完了。请给 ${name} 留言，${name} 会看到。`;
+  if (input.language === 'zh-CN') {
+    return `今天我替${zhNameV1(name)}回答的次数已经用完了。请给${zhNameV1(name)}留言，${zhNameV1(name, { leading: false })}会看到。`;
+  }
   return `I've answered as many questions for ${name} as I can today. Please leave ${name} a message; ${name} will see it.`;
 }
 
@@ -448,6 +628,22 @@ export interface DigitalTwinEveryoneTwinViewV1 {
   publicCard: DigitalTwinEveryonePublicCardViewV1;
   /** The full creation flow, now "专业设置". */
   proSettingsRoute: string;
+  /** L9.2 G1 / G6a: present only for an owner on the licensed-trade list. Every other owner's home has no such key. */
+  regulated?: DigitalTwinEveryoneRegulatedViewV1;
+}
+
+/**
+ * What the self-built card page of a licensed-trade owner needs beyond the common home: the five lines as saved (with the back
+ * office's match date), the digest of the content the agency would review right now, when the agency last reviewed exactly that,
+ * and whether the card is frozen (public and reviewed: a change needs the card taken back first).
+ */
+export interface DigitalTwinEveryoneRegulatedViewV1 {
+  ceaIdentity: DigitalTwinEveryoneCeaIdentityV1 | null;
+  /** Full 64-hex digest of the content to review now. The page shows 8 characters; "copy for the agency" copies all 64. */
+  agencyReviewDigest: string;
+  /** `YYYY-MM-DD` of the review of exactly this content, or `null` when the newest review no longer matches (or none). */
+  agencyReviewedOn: string | null;
+  frozen: boolean;
 }
 
 export const DIGITAL_TWIN_EVERYONE_HOME_STATUSES_V1 = ['unavailable', 'needs_agent_choice', 'no_twin', 'ready'] as const;
@@ -704,6 +900,98 @@ export function decodeDigitalTwinEveryonePublishCommandV1(input: unknown): Digit
 }
 
 // ---------------------------------------------------------------------------
+// L9.2 G1 / G6a commands (the owner's `PUT /v1/me/twin/cea-identity`; the operator's `cea-check` and `agency-review`)
+// ---------------------------------------------------------------------------
+
+export const DIGITAL_TWIN_EVERYONE_CEA_IDENTITY_ROUTE_V1 = '/v1/me/twin/cea-identity' as const;
+
+export interface DigitalTwinEveryoneCeaIdentityCommandV1 extends DigitalTwinEveryoneCeaFieldsV1 {
+  schemaVersion: typeof DIGITAL_TWIN_SCHEMA_VERSION;
+}
+
+const REGISTERED_PHONE_PATTERN = /^[0-9+()\-\s.]+$/;
+
+function ceaText(value: unknown, maxChars: number): string | null {
+  if (typeof value !== 'string') return null;
+  const text = cleanLine(value);
+  if (!text || text.length > maxChars) return null;
+  // A value that holds one of the identity-internal substrings would make the public projection unreadable for every client.
+  const lower = text.toLowerCase();
+  if (DIGITAL_TWIN_PUBLIC_FORBIDDEN_SUBSTRINGS_V1.some((forbidden) => lower.includes(forbidden.toLowerCase()))) return null;
+  return text;
+}
+
+/**
+ * The five lines, from the owner. Names must not look like a secret and must not hold the identity-internal substrings. The
+ * registration number is upper-cased and only its length is bounded (the gov.sg shape is a form hint, see
+ * `digitalTwinEveryoneCeaRegistrationFormatOkV1`); the back-office match against the CEA register decides. The match date can
+ * not be sent here: it is not a field of this command.
+ */
+export function decodeDigitalTwinEveryoneCeaIdentityCommandV1(input: unknown): DigitalTwinDecodeResultV1<DigitalTwinEveryoneCeaIdentityCommandV1> {
+  if (!isRecord(input)) return fail('invalid_shape', ['command must be an object']);
+  const bad = checkSchema(input) ?? refuseUnknown(input, ['schemaVersion', ...DIGITAL_TWIN_EVERYONE_CEA_FIELDS_V1]);
+  if (bad) return bad;
+  const limits = DIGITAL_TWIN_EVERYONE_CEA_LIMITS_V1;
+  const nameOnRegister = ceaText(input.nameOnRegister, limits.nameMaxChars);
+  const registrationNumber = ceaText(input.registrationNumber, limits.registrationNumberMaxChars);
+  const agencyName = ceaText(input.agencyName, limits.agencyNameMaxChars);
+  const agencyLicenseNumber = ceaText(input.agencyLicenseNumber, limits.agencyLicenseNumberMaxChars);
+  const registeredPhone = ceaText(input.registeredPhone, limits.registeredPhoneMaxChars);
+  if (!nameOnRegister) return fail('invalid_shape', ['nameOnRegister']);
+  if (!registrationNumber) return fail('invalid_shape', ['registrationNumber']);
+  if (!agencyName) return fail('invalid_shape', ['agencyName']);
+  if (!agencyLicenseNumber) return fail('invalid_shape', ['agencyLicenseNumber']);
+  if (!registeredPhone || registeredPhone.length < limits.registeredPhoneMinChars || !REGISTERED_PHONE_PATTERN.test(registeredPhone)) {
+    return fail('invalid_shape', ['registeredPhone']);
+  }
+  if (digitalTwinTextLooksSecretV1(nameOnRegister) || digitalTwinTextLooksSecretV1(agencyName)) return fail('invalid_shape', ['looks like a secret']);
+  return {
+    ok: true,
+    value: {
+      schemaVersion: DIGITAL_TWIN_SCHEMA_VERSION,
+      nameOnRegister,
+      registrationNumber: registrationNumber.toUpperCase(),
+      agencyName,
+      agencyLicenseNumber,
+      registeredPhone,
+    },
+  };
+}
+
+export const DIGITAL_TWIN_OPERATOR_CEA_CHECK_RESULTS_V1 = ['match', 'mismatch'] as const;
+export type DigitalTwinOperatorCeaCheckResultV1 = (typeof DIGITAL_TWIN_OPERATOR_CEA_CHECK_RESULTS_V1)[number];
+
+/** `POST /api/admin/digital-twin/agents/:agentId/cea-check` body. `schemaVersion` is optional (the operator tools send only `result`). */
+export interface DigitalTwinOperatorCeaCheckCommandV1 {
+  result: DigitalTwinOperatorCeaCheckResultV1;
+}
+
+export function decodeDigitalTwinOperatorCeaCheckCommandV1(input: unknown): DigitalTwinDecodeResultV1<DigitalTwinOperatorCeaCheckCommandV1> {
+  if (!isRecord(input)) return fail('invalid_shape', ['command must be an object']);
+  const bad = refuseUnknown(input, ['schemaVersion', 'result']);
+  if (bad) return bad;
+  if (input.schemaVersion !== undefined && input.schemaVersion !== DIGITAL_TWIN_SCHEMA_VERSION) return checkSchema(input) as DigitalTwinDecodeResultV1<never>;
+  if (!isMember(DIGITAL_TWIN_OPERATOR_CEA_CHECK_RESULTS_V1, input.result)) return fail('invalid_enum', ['result']);
+  return { ok: true, value: { result: input.result } };
+}
+
+/** `POST /api/admin/digital-twin/agents/:agentId/agency-review` body: the full 64-hex digest the agency reviewed and the review date. */
+export interface DigitalTwinOperatorAgencyReviewCommandV1 {
+  digest: string;
+  reviewedOn: string;
+}
+
+export function decodeDigitalTwinOperatorAgencyReviewCommandV1(input: unknown): DigitalTwinDecodeResultV1<DigitalTwinOperatorAgencyReviewCommandV1> {
+  if (!isRecord(input)) return fail('invalid_shape', ['command must be an object']);
+  const bad = refuseUnknown(input, ['schemaVersion', 'digest', 'reviewedOn']);
+  if (bad) return bad;
+  if (input.schemaVersion !== undefined && input.schemaVersion !== DIGITAL_TWIN_SCHEMA_VERSION) return checkSchema(input) as DigitalTwinDecodeResultV1<never>;
+  if (typeof input.digest !== 'string' || !DIGITAL_TWIN_AGENCY_REVIEW_DIGEST_PATTERN_V1.test(input.digest)) return fail('invalid_shape', ['digest must be 64 lower-case hex characters']);
+  if (!isDigitalTwinPlainDateV1(input.reviewedOn)) return fail('invalid_shape', ['reviewedOn must be YYYY-MM-DD']);
+  return { ok: true, value: { digest: input.digest, reviewedOn: input.reviewedOn } };
+}
+
+// ---------------------------------------------------------------------------
 // View decoders (clients; unknown keys are ignored so the server can add fields)
 // ---------------------------------------------------------------------------
 
@@ -733,6 +1021,31 @@ function decodeKnowledge(value: unknown): DigitalTwinEveryoneKnowledgeV1 | undef
   if (typeof points !== 'number' || ![0, 1, 2, 3].includes(level as number) || typeof hasIntro !== 'boolean') return undefined;
   if (typeof answeredQuestions !== 'number' || typeof notes !== 'number' || typeof linkedImports !== 'number') return undefined;
   return { points, level: level as DigitalTwinEveryoneKnowledgeV1['level'], hasIntro, answeredQuestions, notes, linkedImports };
+}
+
+function decodeCeaIdentity(value: unknown): DigitalTwinEveryoneCeaIdentityV1 | null | undefined {
+  if (value === null) return null;
+  if (!isRecord(value)) return undefined;
+  const out = {} as DigitalTwinEveryoneCeaIdentityV1;
+  for (const field of DIGITAL_TWIN_EVERYONE_CEA_FIELDS_V1) {
+    const text = value[field];
+    if (!isString(text)) return undefined;
+    out[field] = text;
+  }
+  if (value.checkedOn !== undefined) {
+    if (!isDigitalTwinPlainDateV1(value.checkedOn)) return undefined;
+    out.checkedOn = value.checkedOn;
+  }
+  return out;
+}
+
+function decodeRegulatedView(value: unknown): DigitalTwinEveryoneRegulatedViewV1 | undefined {
+  if (!isRecord(value)) return undefined;
+  const ceaIdentity = decodeCeaIdentity(value.ceaIdentity);
+  if (ceaIdentity === undefined) return undefined;
+  if (!isString(value.agencyReviewDigest) || !DIGITAL_TWIN_AGENCY_REVIEW_DIGEST_PATTERN_V1.test(value.agencyReviewDigest)) return undefined;
+  if (!(value.agencyReviewedOn === null || isDigitalTwinPlainDateV1(value.agencyReviewedOn)) || typeof value.frozen !== 'boolean') return undefined;
+  return { ceaIdentity, agencyReviewDigest: value.agencyReviewDigest, agencyReviewedOn: value.agencyReviewedOn as string | null, frozen: value.frozen };
 }
 
 function decodeTwinView(value: unknown): DigitalTwinEveryoneTwinViewV1 | undefined {
@@ -765,6 +1078,9 @@ function decodeTwinView(value: unknown): DigitalTwinEveryoneTwinViewV1 | undefin
   if (!(card.displayName === null || isString(card.displayName)) || !(card.shareRoute === null || isString(card.shareRoute))) return undefined;
   if (typeof card.visitorAnswersLast24h !== 'number' || typeof card.visitorDailyCap !== 'number' || typeof card.canPublish !== 'boolean') return undefined;
   if (card.blockedBy !== undefined && !isString(card.blockedBy)) return undefined;
+  // L9.2: present only for a licensed-trade owner; a malformed one is not guessed at.
+  const regulated = value.regulated === undefined ? undefined : decodeRegulatedView(value.regulated);
+  if (value.regulated !== undefined && !regulated) return undefined;
   return {
     agentAccountId: value.agentAccountId,
     profileState: value.profileState,
@@ -787,6 +1103,7 @@ function decodeTwinView(value: unknown): DigitalTwinEveryoneTwinViewV1 | undefin
       ...(isString(card.blockedBy) ? { blockedBy: card.blockedBy } : {}),
     },
     proSettingsRoute: value.proSettingsRoute,
+    ...(regulated ? { regulated } : {}),
   };
 }
 

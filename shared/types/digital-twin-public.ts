@@ -26,6 +26,7 @@ import {
   type DigitalTwinPrerequisiteStatusV1,
   type DigitalTwinRefV1,
 } from './digital-twin';
+import type { DigitalTwinEveryoneCeaIdentityV1 } from './digital-twin-everyone';
 import type { DigestRef } from './trust-loop-primitives';
 import type { TwinReferralOfferV1 } from './twin-referral';
 
@@ -88,6 +89,8 @@ export const DIGITAL_TWIN_PUBLISH_CHECKS_V1 = [
   'self_model',
   'not_stopped',
   'representation_mandate',
+  /** L9.2 G1: present only for a licensed-trade owner, always `blocked`: such an account publishes the self-built card only. */
+  'regulated_everyone_only',
 ] as const;
 export type DigitalTwinPublishCheckV1 = (typeof DIGITAL_TWIN_PUBLISH_CHECKS_V1)[number];
 /** Why publishing is (not) possible right now; every line is a fact the Creator can act on. */
@@ -145,6 +148,19 @@ export interface DigitalTwinPublicProjectionV1 {
   leadConsent?: { version: number; 'zh-CN': string; en: string };
   facetVersion: number;
   projectedAt: string;
+  /**
+   * L9.2 G5 (b): which preset wording the card's buttons show. Present only as `'property'`, on the self-built card of a
+   * licensed-trade owner; absent on every other card, so older clients and other cards read exactly what they read before.
+   */
+  presetVariant?: DigitalTwinPublicPresetVariantV1;
+  /**
+   * L9.2 G1: the five CEA lines a licensed estate agent's card must carry (name on the register, registration number,
+   * agency, agency licence number, registered phone). Present only on a self-built card whose owner filled all five.
+   * `checkedOn` (`YYYY-MM-DD`) is present only while the back office's last match against the CEA public register is at most
+   * `DIGITAL_TWIN_EVERYONE_CEA_LIMITS_V1.checkFreshDays` old, so the page may show "checked against the register on <date>"
+   * exactly when this key exists. Every other card carries no such key.
+   */
+  ceaIdentity?: DigitalTwinEveryoneCeaIdentityV1;
 }
 
 export interface DigitalTwinPublicAskCommandV1 {
@@ -177,6 +193,41 @@ export const DIGITAL_TWIN_PUBLIC_PRESET_QUESTIONS_V1: Readonly<Record<DigitalTwi
   price: { zh: '你怎么收费？能不能给我个折扣？', en: 'How much do you charge, and can I get a discount?' },
 };
 
+/**
+ * L9.2 G5 (b): the variants of the preset questions. Only `'property'` exists: the card of a licensed-trade owner (estate agent)
+ * shows property wording for questions 3 to 5 (`DIGITAL_TWIN_PUBLIC_PRESET_QUESTIONS_PROPERTY_V1`); every other card shows the default
+ * five. The server says which one in the projection's `presetVariant`; the page never decides it.
+ */
+export const DIGITAL_TWIN_PUBLIC_PRESET_VARIANTS_V1 = ['property'] as const;
+export type DigitalTwinPublicPresetVariantV1 = (typeof DIGITAL_TWIN_PUBLIC_PRESET_VARIANTS_V1)[number];
+
+/**
+ * L9.2 G5 (b): property wording for the topics `area`, `hours` and `price` (questions 3, 4 and 5); questions 1 and 2 keep the default
+ * words. Wording fixed by coord 11-04. None of them asks whether a flat is free (PG 02-11 3.9). The Chinese and English fifth question
+ * both go to the person (rent and fees are not answered by the twin) and a labelled hand-off still counts for the A1 clock.
+ */
+export const DIGITAL_TWIN_PUBLIC_PRESET_QUESTIONS_PROPERTY_V1: Readonly<Partial<Record<DigitalTwinPublicPresetTopicV1, { zh: string; en: string }>>> = {
+  area: { zh: '你主要做哪些区、哪类房？', en: 'Which areas and property types do you cover?' },
+  hours: { zh: '怎么约你看房？什么时候有空？', en: 'How do I book a viewing? When are you free?' },
+  price: { zh: '费用和租金怎么谈？', en: 'How do fees and rent get discussed?' },
+};
+
+export function isDigitalTwinPublicPresetVariantV1(value: unknown): value is DigitalTwinPublicPresetVariantV1 {
+  return typeof value === 'string' && (DIGITAL_TWIN_PUBLIC_PRESET_VARIANTS_V1 as readonly string[]).includes(value);
+}
+
+/**
+ * The words to show (and ask) for one preset button. With `variant` `'property'` and a property version of that topic: the property
+ * words; anything else (no variant, an unknown variant, a topic without a property version): the default words.
+ */
+export function digitalTwinPublicPresetQuestionForV1(topic: DigitalTwinPublicPresetTopicV1, variant?: DigitalTwinPublicPresetVariantV1 | null): { zh: string; en: string } {
+  if (variant === 'property') {
+    const property = DIGITAL_TWIN_PUBLIC_PRESET_QUESTIONS_PROPERTY_V1[topic];
+    if (property) return property;
+  }
+  return DIGITAL_TWIN_PUBLIC_PRESET_QUESTIONS_V1[topic];
+}
+
 export function isDigitalTwinPublicPresetTopicV1(value: unknown): value is DigitalTwinPublicPresetTopicV1 {
   return typeof value === 'string' && (DIGITAL_TWIN_PUBLIC_PRESET_TOPICS_V1 as readonly string[]).includes(value);
 }
@@ -194,8 +245,13 @@ function presetComparableV1(text: string): string {
 export function digitalTwinPublicPresetTopicForV1(topic: unknown, question: string): DigitalTwinPublicPresetTopicV1 | undefined {
   if (!isDigitalTwinPublicPresetTopicV1(topic)) return undefined;
   const text = typeof question === 'string' ? presetComparableV1(question) : '';
-  const preset = DIGITAL_TWIN_PUBLIC_PRESET_QUESTIONS_V1[topic];
-  return text === presetComparableV1(preset.zh) || text === presetComparableV1(preset.en) ? topic : undefined;
+  // L9.2 G5 (b): the default words and, where there is one, the property words of that same topic are both that preset's own text.
+  // The account is not asked: the server does not need to know which set the page showed, and the two cannot disagree.
+  const presets = [DIGITAL_TWIN_PUBLIC_PRESET_QUESTIONS_V1[topic], DIGITAL_TWIN_PUBLIC_PRESET_QUESTIONS_PROPERTY_V1[topic]];
+  for (const preset of presets) {
+    if (preset && (text === presetComparableV1(preset.zh) || text === presetComparableV1(preset.en))) return topic;
+  }
+  return undefined;
 }
 
 export interface DigitalTwinPublicAnswerV1 {
@@ -269,6 +325,13 @@ export function decodeDigitalTwinPublicAskCommandV1(input: unknown): DigitalTwin
   };
 }
 
+/**
+ * Substrings a public projection must never contain (identity internals). The projection decoder refuses a document
+ * that has any of them anywhere, so a free-text value an owner writes into a public field (the CEA lines) must not
+ * contain them either: the write is refused instead of making the whole card unreadable.
+ */
+export const DIGITAL_TWIN_PUBLIC_FORBIDDEN_SUBSTRINGS_V1 = ['principal:', 'ownerPrincipalId', 'evidenceNote', 'verifiedByPrincipalRef', 'statement'] as const;
+
 export function decodeDigitalTwinPublicProjectionV1(input: unknown): DigitalTwinDecodeResultV1<DigitalTwinPublicProjectionV1> {
   if (!isRecord(input)) return fail('invalid_shape', ['root']);
   if (input.schemaVersion !== DIGITAL_TWIN_SCHEMA_VERSION) return fail('unknown_schema_version', ['schemaVersion']);
@@ -283,9 +346,20 @@ export function decodeDigitalTwinPublicProjectionV1(input: unknown): DigitalTwin
     if (!isMember(DIGITAL_TWIN_CREATOR_DISPLAY_NAME_SOURCES_V1, creator.source)) return fail('invalid_enum', ['creator.source']);
     if (input.state !== 'available') return fail('invalid_shape', ['creator:only_when_available']);
   }
+  // L9.2 G1: the CEA lines are checked when present (all five non-empty strings, `checkedOn` a plain date); absent is the norm.
+  if (input.ceaIdentity !== undefined) {
+    const cea = input.ceaIdentity;
+    if (!isRecord(cea)) return fail('invalid_shape', ['ceaIdentity']);
+    for (const field of ['nameOnRegister', 'registrationNumber', 'agencyName', 'agencyLicenseNumber', 'registeredPhone']) {
+      if (!isNonEmptyString(cea[field])) return fail('invalid_shape', [`ceaIdentity.${field}`]);
+    }
+    if (cea.checkedOn !== undefined && (typeof cea.checkedOn !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(cea.checkedOn))) {
+      return fail('invalid_shape', ['ceaIdentity.checkedOn']);
+    }
+  }
   // A public projection must never leak identity internals.
   const raw = JSON.stringify(input);
-  for (const forbidden of ['principal:', 'ownerPrincipalId', 'evidenceNote', 'verifiedByPrincipalRef', 'statement']) {
+  for (const forbidden of DIGITAL_TWIN_PUBLIC_FORBIDDEN_SUBSTRINGS_V1) {
     if (raw.includes(forbidden)) return fail('unknown_field', [`leak:${forbidden}`]);
   }
   return { ok: true, value: input as unknown as DigitalTwinPublicProjectionV1 };

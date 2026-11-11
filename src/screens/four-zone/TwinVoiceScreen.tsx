@@ -15,7 +15,7 @@ import { useI18n } from '../../stores/i18nStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useThemedStyles, type Palette } from '../../theme/useTheme';
 import { DIGITAL_TWIN_AI_MEDIA_LABEL_V1 } from '../../../shared/types/digital-twin-body';
-import type { TwinAnswerOutputV1 } from '../../../shared/types/digital-twin-answer';
+import { stripTwinCitationMarkersForDisplayV1, type TwinAnswerOutputV1 } from '../../../shared/types/digital-twin-answer';
 import {
   TWIN_VOICE_STATE_COPY,
   TwinVoiceError,
@@ -306,7 +306,7 @@ export function TwinVoiceScreen() {
         ) : null}
         {answers.map((answer) => (
           <View key={answer.turnRef.id} style={styles.answer} testID="twin-voice-answer">
-            <Text style={styles.summary}>{answer.text}</Text>
+            <Text style={styles.summary}>{stripTwinCitationMarkersForDisplayV1(answer.text)}</Text>
             {answer.decision.noAnswerReason ? <Text style={styles.muted}>{answer.decision.noAnswerReason}</Text> : null}
             {twinAnswerVoiceable(answer) ? <AnswerVoice agentId={agentId} answer={answer} styles={styles} t={t} /> : null}
           </View>

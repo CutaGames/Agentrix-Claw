@@ -18,6 +18,41 @@ export function l9FlagOnV1(env: Record<string, string | undefined>, name: string
 /** 真钱开关。本线的代码只读它们来拒绝，不置位，也不依赖它们为真。 */
 export const L9_REAL_MONEY_FLAGS_V1 = ['AGENTRIX_ORDERS_LIVE_MONEY_ENABLED', 'REAL_MONEY_WAVE1_ENABLED'] as const;
 
+// ── L9.2 G2 持牌行业账户：按账户关掉一切钱的入口 ───────────────────────────────────────
+
+/** 服务端环境变量：逗号分隔的持牌行业主人 id。只认精确 id；`*` 当没写；空名单在所有环境都没有人。 */
+export const L9_REGULATED_USER_IDS_VAR = 'L9_REGULATED_USER_IDS';
+/** 只读接口：我是不是持牌行业账户。不改 `/l9/cohort/me`（三端解码器拒收多出的字段）。 */
+export const L9_REGULATED_ROUTE_V1 = '/l9/regulated/me';
+
+/**
+ * 持牌名单规则（前后端、测试共用一份）。只认名单里精确出现的 id：`*` 不算通配，空名单（含没设）在生产和非生产都没有人，
+ * 没有主人 id（匿名）一律不在。和 `l9CohortAdmitsV1`（`*` = 全体、非生产空名单 = 全允许）刻意相反：这里宁可漏标也不误标全体。
+ */
+export function l9RegulatedAdmitsV1(input: { userId: string | null | undefined; raw: string | undefined }): boolean {
+  if (typeof input.userId !== 'string' || input.userId.length === 0 || input.userId === '*') return false;
+  const ids = (input.raw ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0 && item !== '*');
+  return ids.includes(input.userId);
+}
+
+/** `GET /l9/regulated/me` 的回答：只有这一个布尔。 */
+export interface L9RegulatedStatusV1 {
+  schemaVersion: 1;
+  regulated: boolean;
+}
+
+/** 严格解码：多一个字段、少一个字段、类型不对都返回 null（网页读不到时按「不是持牌账户」照旧显示）。 */
+export function decodeL9RegulatedStatusV1(value: unknown): L9RegulatedStatusV1 | null {
+  if (!isRecordV1(value)) return null;
+  const keys = Object.keys(value);
+  if (keys.length !== 2 || !keys.includes('schemaVersion') || !keys.includes('regulated')) return null;
+  if (value.schemaVersion !== 1 || typeof value.regulated !== 'boolean') return null;
+  return { schemaVersion: 1, regulated: value.regulated };
+}
+
 // ── P3-1 订单关联转介 ──────────────────────────────────────────────────────────────────
 
 /** P3-1：退款冲回走全部退款路径、卡住的冲回自动重试、引荐双方能看到关联订单的分成状态。默认关。 */

@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { HttpRequestV1, HttpResponseV1, HttpTransportV1 } from '../../../shared/client/transport';
 import { DIGITAL_TWIN_SCHEMA_VERSION, computeTwinAnswerDecisionDigestV1, type TwinAnswerDecisionV1 } from '../../../shared/types/digital-twin';
-import { computeTwinAnswerOutputDigestV1, type TwinAnswerOutputV1 } from '../../../shared/types/digital-twin-answer';
+import { computeTwinAnswerOutputDigestV1, stripTwinCitationMarkersForDisplayV1, type TwinAnswerOutputV1 } from '../../../shared/types/digital-twin-answer';
 import { computeDigest } from '../../../shared/types/trust-loop-primitives';
 import {
   TwinVoiceError,
@@ -323,5 +323,19 @@ describe('twin voice on the phone · screen wiring', () => {
     expect(screen).toContain('DIGITAL_TWIN_AI_MEDIA_LABEL_V1');
     expect(screen).toMatch(/useEffect\(\s*\(\) => \(\) => \{[\s\S]*?unloadAsync\(\)[\s\S]*?deleteTwinVoiceFile\(fileRef\.current\)/);
     expect(screen).not.toMatch(/dangerouslySetInnerHTML|WebView/);
+  });
+
+  it('L9.2 batch 4: the answer text on screen drops the [S#] citations; the text sent for the voice stays the original', () => {
+    const screen = read('screens/four-zone/TwinVoiceScreen.tsx');
+    expect(screen).toContain('<Text style={styles.summary}>{stripTwinCitationMarkersForDisplayV1(answer.text)}</Text>');
+    expect(screen).not.toContain('<Text style={styles.summary}>{answer.text}</Text>');
+    expect(read('services/twinVoice.ts')).toContain("modality: 'voice', decisionRef, text: answer.text }");
+  });
+
+  it('L9.2 batch 4: the shared display helper removes the markers and leaves plain text alone', () => {
+    expect(stripTwinCitationMarkersForDisplayV1('我同意养猫。[S3] 周六可以看房。[S1]')).toBe('我同意养猫。 周六可以看房。');
+    const plain = '周六可以看房。';
+    expect(stripTwinCitationMarkersForDisplayV1(plain)).toBe(plain);
+    expect(stripTwinCitationMarkersForDisplayV1('[S$800]')).toBe('[S$800]');
   });
 });

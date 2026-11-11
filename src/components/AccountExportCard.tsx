@@ -3,13 +3,15 @@
  * Rendered only behind EXPO_PUBLIC_ACCOUNT_EXPORT=1; renders nothing while the server switch is off.
  * The JSON file is written to the app cache and handed to the share sheet; the owner decides where it goes.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { ACCOUNT_EXPORT_COPY_V2 as COPY, accountExportFailureCopyV2 } from '../../shared/client/account-export';
 import { getApiConfig } from '../services/api';
+import { relationshipDncNoticeV1 } from '../../shared/types/relationship-book';
 import { createMobileAccountExportClient } from '../services/accountExport';
+import { readMobileL9Regulated } from '../services/businessExport';
 import { mobileV6HttpTransport } from '../services/mobileV6Runtime';
 import { useAuthStore } from '../stores/authStore';
 import { useI18n } from '../stores/i18nStore';
@@ -29,7 +31,24 @@ export function AccountExportCard() {
   const styles = useThemedStyles(makeStyles);
   const [state, setState] = useState<'idle' | 'working' | 'closed'>('idle');
   const [notice, setNotice] = useState('');
-
+  // L9.2 G6b: this file holds the relationship book with phone numbers, so a licensed-trade owner reads the DNC sentence on this
+  // card too. Unreadable or not regulated: nothing is drawn and the card is what it was.
+  const [regulated, setRegulated] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void readMobileL9Regulated({
+      transport: mobileV6HttpTransport,
+      baseUrl: getApiConfig().baseUrl || 'https://api.agentrix.top/api',
+      token: () => getApiConfig().token || useAuthStore.getState().token,
+    })
+      .then((answer) => {
+        if (live) setRegulated(answer === 'regulated');
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
   const run = async () => {
     setState('working');
     setNotice('');
@@ -62,6 +81,7 @@ export function AccountExportCard() {
     <View style={styles.card} testID="account-export-card">
       <Text style={styles.title}>{COPY.title[lang]}</Text>
       <Text style={styles.muted}>{COPY.scope[lang]}</Text>
+      {relationshipDncNoticeV1(lang, regulated) ? <Text style={styles.muted} testID="account-export-dnc">{relationshipDncNoticeV1(lang, regulated)}</Text> : null}
       <TouchableOpacity accessibilityRole="button" disabled={state === 'working'} onPress={() => void run()}>
         {state === 'working' ? <ActivityIndicator /> : <Text style={styles.action}>{COPY.action[lang]}</Text>}
       </TouchableOpacity>

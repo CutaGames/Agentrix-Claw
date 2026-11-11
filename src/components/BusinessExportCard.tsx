@@ -11,7 +11,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { BUSINESS_EXPORT_COPY_V1 as COPY, businessExportFailureCopyV1, type BusinessExportFailureV1 } from '../../shared/client/account-export-business';
 import type { BusinessExportCheckV1 } from '../../shared/types/account-export-business';
 import { getApiConfig } from '../services/api';
-import { createMobileBusinessExportClient, readMobileL9Cohort } from '../services/businessExport';
+import { createMobileBusinessExportClient, readMobileL9Cohort, readMobileL9Regulated } from '../services/businessExport';
+import { relationshipDncNoticeV1 } from '../../shared/types/relationship-book';
 import { mobileV6HttpTransport } from '../services/mobileV6Runtime';
 import { useAuthStore } from '../stores/authStore';
 import { useI18n } from '../stores/i18nStore';
@@ -28,7 +29,7 @@ function deps() {
 const LABELS = {
   customers: { zh: '客户', en: 'Customers' },
   answers: { zh: '问答', en: 'Questions and answers' },
-  introductions: { zh: '转介账', en: 'Introduction ledger' },
+  introductions: { zh: '转介账', en: 'Referral ledger' },
   receipts: { zh: '回执', en: 'Receipts' },
 } as const;
 
@@ -40,11 +41,18 @@ export function BusinessExportCard() {
   const [state, setState] = useState<'idle' | 'working' | 'checking' | 'closed'>('idle');
   const [notice, setNotice] = useState('');
   const [check, setCheck] = useState<BusinessExportCheckV1 | null>(null);
+  // L9.2 G6b: a licensed-trade owner reads the DNC sentence next to the customers' contacts. Anyone else sees nothing new.
+  const [regulated, setRegulated] = useState(false);
 
   useEffect(() => {
     let live = true;
     void readMobileL9Cohort(deps()).then((gate) => {
       if (live) setCohort(gate);
+      if (gate === 'in') {
+        void readMobileL9Regulated(deps()).then((answer) => {
+          if (live) setRegulated(answer === 'regulated');
+        });
+      }
     });
     return () => {
       live = false;
@@ -104,6 +112,7 @@ export function BusinessExportCard() {
     <View style={styles.card} testID="business-export-card">
       <Text style={styles.title}>{COPY.title[lang]}</Text>
       <Text style={styles.muted}>{COPY.scope[lang]}</Text>
+      {relationshipDncNoticeV1(lang, regulated) ? <Text style={styles.muted} testID="business-export-dnc">{relationshipDncNoticeV1(lang, regulated)}</Text> : null}
       <TouchableOpacity accessibilityRole="button" disabled={busy} onPress={() => void run()} testID="business-export-take">
         {state === 'working' ? <ActivityIndicator /> : <Text style={styles.action}>{COPY.action[lang]}</Text>}
       </TouchableOpacity>

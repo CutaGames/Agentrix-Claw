@@ -94,7 +94,7 @@ export const BUSINESS_EXPORT_COPY_V1 = {
   title: { zh: '带走你的生意数据', en: 'Take your business data with you' },
   scope: {
     zh: '客户、问答、转介账和回执，一份普通的 JSON 文件，不用 Agentrix 也能读。里面只有你自己这一侧：别的主人的资料、客户的联系方式哈希都不在里面。文件本身没有加密，请自己保管好。需要你最近 10 分钟内登录过。',
-    en: 'Your customers, questions and answers, introduction ledger and receipts, as one plain JSON file you can read without Agentrix. It holds your side only: nothing from other owners, and no hashes of a customer’s contact. The file is not encrypted, so keep it safe. You must have signed in within the last 10 minutes.',
+    en: 'Your customers, questions and answers, referral ledger and receipts, as one plain JSON file you can read without Agentrix. It holds your side only: nothing from other owners, and no hashes of a customer’s contact. The file is not encrypted, so keep it safe. You must have signed in within the last 10 minutes.',
   },
   action: { zh: '带走', en: 'Take it' },
   working: { zh: '正在整理……', en: 'Putting it together…' },

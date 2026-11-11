@@ -93,7 +93,8 @@ export const PLATFORM_MODEL_PREFERENCE_ERROR_CODES = {
   invalidRequest: 'platform_model_preference_invalid', // 400，带 errors
   modelNotInPool: 'platform_model_preference_model_not_in_pool', // 400，errors 列出不在目录里的 id
   unknownVersion: 'platform_model_preference_version_unknown', // 404：回滚的版本不在历史里
-  catalogUnavailable: 'platform_model_preference_catalog_unavailable', // 503：号池目录读不到，没写入
+  catalogUnavailable: 'platform_model_preference_catalog_unavailable', // 503：号池目录读不到，没写入（第 11 批起保存校验不再返回，改回 modelNotAllowed）
+  modelNotAllowed: 'platform_model_preference_model_not_allowed', // 400：号池问不到，只能对允许列表核对；current.allowedModelIds 是允许列表，detail 是问不到的原因
   storeUnavailable: 'platform_model_preference_store_unavailable', // 503：审计或配置写不进去，没写入
 } as const;
 

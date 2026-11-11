@@ -108,6 +108,8 @@ export interface TwinBroadcastInputV1 {
   kind: TwinBroadcastKindV1;
   subject: string;
   body: string;
+  /** 第 12 批：从分身草稿改来的那条带上草稿编号，发出去标「分身起草，本人确认后发出」。 */
+  draftRef?: string;
 }
 
 /** 主人看到的关注者概况：数量加打码地址。 */
@@ -117,6 +119,8 @@ export interface TwinFollowersViewV1 {
   pending: number;
   unsubscribed: number;
   recent: Array<{ maskedEmail: string; status: TwinFollowerStatusV1; at: string }>;
+  /** 第 12 批：站内关注的人数（站内关注开着才有），看不到是谁。 */
+  inSite?: number;
 }
 
 export interface TwinBroadcastPreviewV1 {
@@ -128,10 +132,16 @@ export interface TwinBroadcastPreviewV1 {
   /** 现在会收到的人数（只算已确认、未退订的）。 */
   recipientCount: number;
   sendsLeftThisWeek: number;
+  /** 第 12 批：两个渠道各有多少人（站内关注开着才有）。 */
+  channels?: { email: number; inSite: number };
+  /** 第 12 批：这条从分身草稿改来。 */
+  twinDrafted?: boolean;
 }
 
 export const TWIN_BROADCAST_REF_PATTERN_V1 = /^tbc_[0-9a-f]{32}$/;
 export const TWIN_FOLLOWER_REF_PATTERN_V1 = /^tfl_[0-9a-f]{32}$/;
+/** 分身草稿的编号（`twin-social.ts`）。 */
+export const TWIN_UPDATE_DRAFT_REF_PATTERN_V1 = /^tud_[0-9a-f]{32}$/;
 
 // ── 小工具 ──────────────────────────────────────────────────────────────────────────
 
@@ -236,7 +246,7 @@ export function decodeTwinFollowInputV1(value: unknown): TwinDirectoryDecodeResu
 
 export function decodeTwinBroadcastInputV1(value: unknown): TwinDirectoryDecodeResultV1<TwinBroadcastInputV1> {
   if (!isRecord(value)) return fail('invalid_type', '$');
-  const bad = envelope(value, ['schemaVersion', 'kind', 'subject', 'body'], ['kind', 'subject', 'body']);
+  const bad = envelope(value, ['schemaVersion', 'kind', 'subject', 'body', 'draftRef'], ['kind', 'subject', 'body']);
   if (bad) return bad;
   if (typeof value.kind !== 'string') return fail('invalid_type', 'kind');
   if (!(TWIN_BROADCAST_KINDS_V1 as readonly string[]).includes(value.kind)) return fail('invalid_value', 'kind');
@@ -244,5 +254,11 @@ export function decodeTwinBroadcastInputV1(value: unknown): TwinDirectoryDecodeR
   if (!subject) return fail(typeof value.subject === 'string' ? 'invalid_value' : 'invalid_type', 'subject');
   const body = text(value.body, TWIN_DIRECTORY_LIMITS_V1.bodyMax, true);
   if (!body) return fail(typeof value.body === 'string' ? 'invalid_value' : 'invalid_type', 'body');
-  return { ok: true, value: { schemaVersion: TWIN_DIRECTORY_SCHEMA_VERSION_V1, kind: value.kind as TwinBroadcastKindV1, subject, body } };
+  const decoded: TwinBroadcastInputV1 = { schemaVersion: TWIN_DIRECTORY_SCHEMA_VERSION_V1, kind: value.kind as TwinBroadcastKindV1, subject, body };
+  if (value.draftRef !== undefined) {
+    if (typeof value.draftRef !== 'string') return fail('invalid_type', 'draftRef');
+    if (!TWIN_UPDATE_DRAFT_REF_PATTERN_V1.test(value.draftRef)) return fail('invalid_value', 'draftRef');
+    decoded.draftRef = value.draftRef;
+  }
+  return { ok: true, value: decoded };
 }

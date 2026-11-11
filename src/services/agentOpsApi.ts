@@ -369,6 +369,15 @@ export interface AgentEconomicStatus {
     address?: string | null;
     custody?: 'mpc' | 'external' | null;
     detail?: string;
+    /** L8-6 (backend main switch on only, read by `ownWalletEconomicStatus.ts`): the own wallet reading of the wallet dimension. */
+    type?: string;
+    ownWalletStatus?: string;
+    accountAddress?: string;
+    chainId?: number;
+    label?: string;
+    mpcWalletId?: string;
+    externalWalletAddress?: string;
+    legacyCustody?: { type: string; address: string; label: string } | null;
   };
   limit: {
     status: CapabilityStatus;
@@ -407,13 +416,21 @@ export interface EconomicIdentityCard {
   ownerId?: string;
   wallet: {
     status: CardStatus;
-    type: 'mpc' | 'external' | 'none';
+    type: 'mpc' | 'external' | 'none' | 'own_account';
     address?: string;
     explorerUrl?: string;
     balances: { platform: string; onchain?: string; currency: string };
+    /** L8-6 R3-L3 (backend main switch on only): where `address` comes from. */
+    label?: 'own_account' | 'legacy_custody' | 'external';
   };
+  /** L8-6 (backend main switch on only; read by `ownWallet.ts`): the own wallet status of the Agent. */
+  ownWallet?: { status: string; chainId?: number; accountAddress?: string; accountStatus?: string; recovery?: { enabled: boolean } };
+  /** L8-6: the old custody wallet as its own line (backend main switch on only). */
+  legacyCustody?: { type: string; address: string; label: string } | null;
+  /** L8-6: the server part of the share gate G (backend main switch on only). */
+  shareGate?: unknown;
   backup: { status: 'enabled' | 'not_enabled'; confirmedAt?: string };
-  onchain: { status: CardStatus; txHash?: string; explorerUrl?: string; chain?: string };
+  onchain: { status: CardStatus; txHash?: string; explorerUrl?: string; chain?: string; identity?: { verifyUrl?: string } };
   credit: {
     status: CardStatus;
     creditScore: number;
@@ -439,6 +456,10 @@ export interface AgentLedgerItem {
   amount: string;
   currency: string;
   status: string;
+  /** What the ledger route returns for an on-chain row (the identity card already read these; the type did not name them). */
+  counterparty?: string;
+  txHash?: string;
+  explorerUrl?: string;
 }
 
 export interface AgentLedger {

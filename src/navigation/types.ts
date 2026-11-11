@@ -196,6 +196,8 @@ export type MeStackParamList = {
   AgentOpsEconomicStatus: { agentId?: string } | undefined;
   /** 元神 Soul Core L0 视图（六锚 + enforcedBy 诚实标记，flag 门控，默认关）。 */
   SoulCoreView: { agentId?: string } | undefined;
+  /** L8-6 S11b: where `agentrix://wallet-verified?state=…&account=…&chainId=…` lands (the wallet origin's address check). */
+  AgentOwnWallet: { state?: string; account?: string; chainId?: string } | undefined;
 };
 
 export type DiscoverStackParamList = {

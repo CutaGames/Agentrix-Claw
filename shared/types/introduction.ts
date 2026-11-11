@@ -569,6 +569,17 @@ export function introductionNeedNoteHasPersonalDataV1(note: string): boolean {
   return /(?:\+?\d[\s\-().]?){8,}/.test(withoutDates);
 }
 
+const NOTE_MONEY_PATTERN =
+  /(?:佣金|分佣|返佣|转介费|介绍费|引荐费|推荐费|回扣|提成)|\b(?:commissions?|referral[\s-]+fees?|introduction[\s-]+fees?|introducer[\s-]+fees?|finder'?s[\s-]+fees?|kick-?backs?)\b/i;
+
+/**
+ * 需求卡一句话里有没有提到佣金、分佣、转介费这类「转介给我多少钱」的词（L9.2 G7a）。只对持牌行业账户的转介起作用：
+ * 他们的转介不许带任何费用话题（E172）。按短语拦，宁可误拦（被拦只是请他换个写法）。
+ */
+export function introductionNeedNoteMentionsMoneyV1(note: unknown): boolean {
+  return typeof note === 'string' && NOTE_MONEY_PATTERN.test(note);
+}
+
 export function decodeIntroductionNeedCardV1(value: unknown, field = 'needCard'): IntroductionCfDecodeResultV1<IntroductionNeedCardV1> {
   if (!isRecord(value)) return failCf('invalid_type', field);
   for (const key of Object.keys(value)) if (!['category', 'region', 'window', 'note'].includes(key)) return failCf('unknown_field', `${field}.${key}`);

@@ -109,6 +109,39 @@ export function normalizeClientEndorsementTextV1(value: unknown): string | null 
   return text.length >= 1 && text.length <= CLIENT_ENDORSEMENT_TEXT_MAX_V1 ? text : null;
 }
 
+/**
+ * L9.2 G6c: what a licensed estate agent's endorsement (and a public introduction receipt) must not carry: an address, a rent,
+ * a price, a commission. The patterns are deliberately narrow so an ordinary thank-you passes: a street number with a street
+ * word, a block or unit number, a postal code, a currency amount, and the words for rent, price and commission. A bare
+ * "rental", "租房" or "房子" is not a deal detail. Case-insensitive; the same function runs on the server and in any client check.
+ */
+const CLIENT_ENDORSEMENT_DEAL_DETAIL_PATTERNS_V1: readonly RegExp[] = [
+  // amounts
+  /(?:\b(?:s\$|us\$|sgd|usd|rmb|rm)|[$¥￥])\s*\d/i,
+  /\d[\d,.]*\s*(?:k\b|dollars?\b|sgd\b|usd\b|rmb\b|元|块钱|万|千)/i,
+  /\bper\s+(?:month|mth|mo)\b|\bpcm\b|\bpsf\b|\/\s*(?:month|mth|mo)\b|每月\s*\d|\/\s*月/i,
+  // the words for rent, price and commission
+  /\b(?:price|prices|priced|pricing|commission|commissions)\b/i,
+  // "rent" as a noun about the deal ("the rent", "monthly rent", "rent was fair"); the verb ("helped me rent a flat") is fine
+  /\b(?:the|a|monthly|weekly|my|our|his|her|their|low|lower|high|higher|good|great|fair|reasonable|cheap|affordable|discounted|reduced|negotiated)\s+rents?\b/i,
+  /\brents?\s+(?:is|was|were|of|at|for|price|rate|negotiat\w*|cut|reduction|discount|dropped)\b/i,
+  /\brental\s+(?:price|rate|fee|amount|cost)\b/i,
+  /\bsold\s+for\b|\bbought\s+(?:at|for)\b|\brented\s+(?:at|for)\b/i,
+  /租金|房租|月租|价格|价钱|成交价|售价|报价|佣金|中介费/,
+  // addresses
+  /\b(?:blk|block)\.?\s*\d+/i,
+  /#\s*\d{1,3}\s*-\s*\d{1,4}/,
+  /\bunit\s*#?\s*\d/i,
+  /\b\d+[a-z]?\s+(?:[a-z']+\s+){0,3}(?:road|rd|street|avenue|ave|lane|crescent|boulevard|terrace|walk)\b/i,
+  /\bsingapore\s+\d{6}\b|\bs\s?\(?\d{6}\)?/i,
+  /\d+\s*号(?!线)|\d+\s*(?:栋|幢|座|室|单元)/,
+];
+
+/** True when the text names an address, a rent, a price or a commission (see the patterns above). */
+export function clientEndorsementMentionsDealDetailsV1(text: unknown): boolean {
+  if (typeof text !== 'string') return false;
+  return CLIENT_ENDORSEMENT_DEAL_DETAIL_PATTERNS_V1.some((pattern) => pattern.test(text));
+}
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }

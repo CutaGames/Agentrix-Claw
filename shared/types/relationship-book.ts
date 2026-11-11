@@ -105,7 +105,17 @@ export interface RelationshipContactDetailsV1 {
   visitorMessage: string | null;
 }
 
-/** `plain` = stored in the clear (the owner key switch was off); `sealed` = opened from the sealed table; `unreadable` = sealed and cannot be opened now. */
+/**
+ * L8-15 item 13: the error `code` when the owner gives an email or phone while the server cannot seal it (the owner-key
+ * switch `OWNER_DATA_KEYS_V1_ENABLED` is off). Contact details are never stored in the clear; nothing of that request is
+ * written. Web shows a line saying names, tiers and notes still save without the contact details.
+ */
+export const RELATIONSHIP_CONTACT_NOT_SEALABLE_CODE_V1 = 'RELATIONSHIP_CONTACT_NOT_SEALABLE' as const;
+
+/**
+ * `plain` = stored in the clear (only rows written before L8-15 item 13 while the owner key switch was off; nothing new is
+ * written in the clear); `sealed` = opened from the sealed table; `unreadable` = sealed and cannot be opened now.
+ */
 export const RELATIONSHIP_CONTACT_STATES_V1 = ['none', 'plain', 'sealed', 'unreadable'] as const;
 export type RelationshipContactStateV1 = (typeof RELATIONSHIP_CONTACT_STATES_V1)[number];
 
@@ -395,7 +405,7 @@ export const RELATIONSHIP_SOURCE_COPY_V1: Readonly<Record<RelationshipSourceKind
   qr: { zh: '二维码', en: 'QR code' },
   share_page: { zh: '共享页', en: 'Shared page' },
   external_agent: { zh: '别人的 Agent', en: "Someone else's Agent" },
-  referral: { zh: '引荐', en: 'Referral' },
+  referral: { zh: '转介', en: 'Referral' },
   event: { zh: '活动', en: 'Event' },
   lead: { zh: '留下联系方式', en: 'Left their details' },
   booking: { zh: '预约', en: 'Booking' },
@@ -417,6 +427,19 @@ export const RELATIONSHIP_OPEN_ITEM_COPY_V1: Readonly<Record<RelationshipOpenIte
   reply_promised: { zh: '答应了要回复', en: 'You owe a reply' },
 };
 
+/**
+ * L9.2 G6b: shown on the relationship book (and next to the contact export) of a licensed-trade owner only. Selling other
+ * listings to these numbers needs a Do Not Call registry check first, and the platform offers no bulk sending. The surfaces ask
+ * `GET /l9/regulated/me` and show this when the answer is `regulated: true`; nobody else sees it.
+ */
+export const RELATIONSHIP_DNC_NOTICE_V1: RelationshipCopyV1 = {
+  zh: '用这些号码推销别的房源之前，要先查 DNC 登记（发送前 21 天内）。平台不提供群发。',
+  en: 'Before you market other listings to these numbers, check the DNC registry (within 21 days before sending). The platform does not send bulk messages.',
+};
+/** The sentence for this owner: the text when `regulated` is exactly `true`, else `null` (nothing is drawn). */
+export function relationshipDncNoticeV1(language: 'zh' | 'en', regulated: boolean | null | undefined): string | null {
+  return regulated === true ? RELATIONSHIP_DNC_NOTICE_V1[language] : null;
+}
 export function relationshipOpenItemsLabelV1(items: readonly RelationshipOpenItemV1[], language: 'zh' | 'en'): string {
   return items.map((item) => RELATIONSHIP_OPEN_ITEM_COPY_V1[item.kind][language]).join(language === 'zh' ? '、' : ', ');
 }

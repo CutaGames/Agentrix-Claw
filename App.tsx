@@ -65,6 +65,7 @@ import { installDefaultIntentHandlers } from './src/services/intents/defaultInte
 import { flushPendingMobilePush, handleMobilePushResponse, setupMobilePushChannels } from './src/services/mobilePush';
 import { describeLinkState } from './src/navigation/four-zone/fourZoneLinking';
 import { resolveFourZoneLinkState } from './src/navigation/four-zone/fourZoneLegacyLinks';
+import { ownWalletMobileEnabledV1, WALLET_VERIFIED_PATH_V1 } from './src/services/ownWallet';
 import { syncAppearanceNow } from './src/services/appearanceSyncRuntime';
 import { globalLayerPolicy } from './src/navigation/four-zone/globalLayerPolicy';
 import { bootSystemAppearance } from './src/theme/systemAppearance';
@@ -936,6 +937,10 @@ const linking = {
               PetPlayground: 'me/pet/playground',
               PetSkinMarketplace: 'me/pet/skins',
               MemoryManagement: 'me/pet/memory',
+              // L8-6 S11b: the wallet origin's address check comes back as agentrix://wallet-verified?state=…&account=…&chainId=…
+              // (same Me / My stack as the other deep-link screens); only with the phone switch on, so a build without it
+              // keeps today's link table.
+              ...(ownWalletMobileEnabledV1() ? { AgentOwnWallet: WALLET_VERIFIED_PATH_V1 } : {}),
             },
           },
           // ── Legacy tabs (hidden, but keep deep link compat) ──

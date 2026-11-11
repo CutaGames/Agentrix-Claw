@@ -353,7 +353,29 @@
             "token": { "type": ["string", "null"] }
           }
         },
-        "onCard": { "const": true }
+        "onCard": { "const": true },
+        "escrow": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["orderId", "state", "amount", "createdAt", "closedAt"],
+            "properties": {
+              "orderId": { "type": "string", "pattern": "^ord_[0-9a-f]{32}$" },
+              "state": { "enum": ["held", "handed_over", "disputed", "released", "refunded"] },
+              "amount": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["amountMinor", "currency"],
+                "properties": { "amountMinor": { "type": "integer" }, "currency": { "const": "SGD" } }
+              },
+              "createdAt": { "$ref": "#/$defs/iso" },
+              "closedAt": { "$ref": "#/$defs/isoOrNull" }
+            }
+          }
+        },
+        "discoverable": { "const": true }
       }
     },
     "deviceAsset_ownMessage": {

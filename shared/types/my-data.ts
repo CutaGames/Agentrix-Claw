@@ -15,6 +15,14 @@ export const MY_DATA_ROUTES_V0 = {
   withdrawDeletion: 'POST /api/my-data/deletion-request/withdraw',
 } as const;
 
+/**
+ * 运营后台的只读列表（L9.2 第 35 条）：管理员能看到"我的数据"里提交的删号申请，不能在这里执行删除
+ * （删号照 `deletion-runbook.md` 每次由 owner 批准，运营按流程做）。路径带 admin，只给后台管理员。
+ */
+export const MY_DATA_ADMIN_ROUTES_V0 = {
+  list: 'GET /api/admin/deletion-requests',
+} as const;
+
 export const MY_DATA_CATEGORIES_V0 = [
   'agents',
   'terms_acceptances',
@@ -45,8 +53,32 @@ export interface MyDataDeletionRequestViewV0 {
   updatedAt: string;
 }
 
+/** 后台列表里的一条申请。申请人只有打码的账号编号，没有完整的用户 id。 */
+export interface MyDataDeletionRequestAdminViewV0 {
+  requestRef: string;
+  state: MyDataDeletionStateV0;
+  /** 申请人自己撤回了（`state === 'withdrawn'`）。 */
+  withdrawn: boolean;
+  /** 申请人账号编号的打码形式：前 4 位 + … + 后 4 位；太短的编号只显示 ****。 */
+  applicant: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MyDataDeletionRequestAdminListV0 {
+  schemaVersion: 0;
+  /** 表里全部申请的条数（可能多于 items）。 */
+  totalCount: number;
+  /** 待处理（已收到 + 处理中）的条数，同样按全表算。 */
+  pendingCount: number;
+  /** items 最多这么多条（最近的）。 */
+  limit: number;
+  items: MyDataDeletionRequestAdminViewV0[];
+}
+
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 export const MY_DATA_REQUEST_REF_PATTERN_V0 = /^mdr_[0-9a-f]{32}$/;
+const FULL_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -68,6 +100,36 @@ export function decodeMyDataSummaryV0(value: unknown): MyDataSummaryV0 | null {
     counts[category] = count as number | null;
   }
   return { schemaVersion: 0, counts };
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+/** 后台列表的解码。任何一处不合法（含申请人是完整 id、状态和撤回标记对不上）都返回 null。 */
+export function decodeMyDataDeletionRequestAdminListV0(value: unknown): MyDataDeletionRequestAdminListV0 | null {
+  if (!isRecord(value) || value.schemaVersion !== 0 || !Array.isArray(value.items)) return null;
+  const { totalCount, pendingCount, limit } = value;
+  if (!isCount(totalCount) || !isCount(pendingCount) || !isCount(limit) || limit < 1 || pendingCount > totalCount) return null;
+  if (value.items.length > limit) return null;
+  const items: MyDataDeletionRequestAdminViewV0[] = [];
+  for (const raw of value.items) {
+    if (!isRecord(raw)) return null;
+    if (typeof raw.requestRef !== 'string' || !MY_DATA_REQUEST_REF_PATTERN_V0.test(raw.requestRef)) return null;
+    if (!(MY_DATA_DELETION_STATES_V0 as readonly unknown[]).includes(raw.state)) return null;
+    if (typeof raw.withdrawn !== 'boolean' || raw.withdrawn !== (raw.state === 'withdrawn')) return null;
+    if (typeof raw.applicant !== 'string' || raw.applicant.length < 1 || raw.applicant.length > 16 || FULL_ID_PATTERN.test(raw.applicant)) return null;
+    if (typeof raw.createdAt !== 'string' || !ISO.test(raw.createdAt) || typeof raw.updatedAt !== 'string' || !ISO.test(raw.updatedAt)) return null;
+    items.push({
+      requestRef: raw.requestRef,
+      state: raw.state as MyDataDeletionStateV0,
+      withdrawn: raw.withdrawn,
+      applicant: raw.applicant,
+      createdAt: raw.createdAt,
+      updatedAt: raw.updatedAt,
+    });
+  }
+  return { schemaVersion: 0, totalCount, pendingCount, limit, items };
 }
 
 export function decodeMyDataDeletionRequestV0(value: unknown): MyDataDeletionRequestViewV0 | null {

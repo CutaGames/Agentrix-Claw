@@ -14,12 +14,13 @@ import {
   RELATIONSHIP_TIERS_V1,
   RELATIONSHIP_TIER_COPY_V1,
   RELATIONSHIP_VERIFICATION_COPY_V1,
+  relationshipDncNoticeV1,
   relationshipOpenItemsLabelV1,
   type RelationshipContactViewV1,
   type RelationshipTierV1,
 } from '../../../shared/types/relationship-book';
 import { RELATIONSHIP_BOOK_FAILURE_COPY, RelationshipBookError } from '../../services/relationshipBook';
-import { mobileRelationshipBookClient } from '../../services/relationshipBookSession';
+import { mobileL9Regulated, mobileRelationshipBookClient } from '../../services/relationshipBookSession';
 
 export const relationshipBookQueryKey = ['four-zone', 'relationship-book'] as const;
 const failureOf = (error: unknown) => (error instanceof RelationshipBookError ? error.failure : 'unavailable');
@@ -32,6 +33,9 @@ export function TwinRelationshipsScreen() {
   const [notice, setNotice] = useState('');
   const [open, setOpen] = useState<RelationshipContactViewV1 | null>(null);
   const book = useQuery({ queryKey: relationshipBookQueryKey, queryFn: () => mobileRelationshipBookClient().list(), retry: 0, staleTime: 15_000 });
+  // L9.2 G6b: a licensed-trade owner reads one DNC sentence here. Unreadable or not regulated: nothing is drawn.
+  const regulated = useQuery({ queryKey: ['four-zone', 'l9-regulated'], queryFn: () => mobileL9Regulated(), retry: 0, staleTime: 60_000 });
+  const dnc = relationshipDncNoticeV1(lang, regulated.data === 'regulated');
   const refresh = () => void queryClient.invalidateQueries({ queryKey: relationshipBookQueryKey });
   const view = useMutation({
     mutationFn: (contactRef: string) => mobileRelationshipBookClient().get(contactRef),
@@ -70,6 +74,7 @@ export function TwinRelationshipsScreen() {
           zh: '你打过交道的人。只有你看得到，分身不会拿它去回答访客。档位只是你的标签，不会让对方多得到任何权限。',
         })}
       </Text>
+      {dnc ? <Text style={styles.muted} testID="twin-relationships-dnc">{dnc}</Text> : null}
       {items.length === 0 ? <Text style={styles.muted}>{t({ en: 'No one yet. New visitors, bookings and requests show up here.', zh: '还没有人。新来的访客、预约和请求会出现在这里。' })}</Text> : null}
       {items.map((item) => (
         <TouchableOpacity key={item.contactRef} style={styles.card} onPress={() => view.mutate(item.contactRef)} disabled={busy} accessibilityRole="button" testID={`twin-relationship-${item.contactRef}`}>

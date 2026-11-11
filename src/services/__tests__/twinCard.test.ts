@@ -164,6 +164,43 @@ describe('visitor view', () => {
     expect(creatorWhilePaused.kind).toBe('error');
   });
 
+  it('L9.2 G5: a licensed-trade owner\'s card carries presetVariant; the phone does not read presets and shows the same card either way', async () => {
+    const plain = await fetchTwinPublicCard(AGENT, { ...base, transport: transport(200, publicProjection()) });
+    const property = await fetchTwinPublicCard(AGENT, { ...base, transport: transport(200, publicProjection({ presetVariant: 'property' })) });
+    expect(property.kind).toBe('ready');
+    if (plain.kind === 'ready' && property.kind === 'ready') {
+      expect(property.data).toEqual(plain.data);
+      expect(JSON.stringify(property.data)).not.toContain('property');
+    }
+  });
+
+  it('L9.2 G1: a licensed agent\'s card carries the five CEA lines; the phone decodes it and shows the same card, and a malformed block is a contract error', async () => {
+    const cea = {
+      nameOnRegister: 'TAN AH KOW',
+      registrationNumber: 'R012345A',
+      agencyName: 'Lion Realty Pte Ltd',
+      agencyLicenseNumber: 'L3008899K',
+      registeredPhone: '+65 6123 4567',
+      checkedOn: '2026-11-04',
+    };
+    const plain = await fetchTwinPublicCard(AGENT, { ...base, transport: transport(200, publicProjection()) });
+    const withCea = await fetchTwinPublicCard(AGENT, { ...base, transport: transport(200, publicProjection({ ceaIdentity: cea })) });
+    const withoutDate = await fetchTwinPublicCard(AGENT, { ...base, transport: transport(200, publicProjection({ ceaIdentity: { ...cea, checkedOn: undefined } })) });
+    expect(withCea.kind).toBe('ready');
+    expect(withoutDate.kind).toBe('ready');
+    if (plain.kind === 'ready' && withCea.kind === 'ready') {
+      expect(withCea.data).toEqual(plain.data);
+      expect(JSON.stringify(withCea.data)).not.toContain('R012345A');
+    }
+    for (const bad of [{ ...cea, registrationNumber: '' }, { ...cea, checkedOn: 'yesterday' }, 'x']) {
+      const state = await fetchTwinPublicCard(AGENT, { ...base, transport: transport(200, publicProjection({ ceaIdentity: bad })) });
+      expect(state).toMatchObject({ kind: 'error', retryable: false });
+    }
+    // The identity-internals guard still covers the new block: a line holding a forbidden substring is refused, not shown.
+    const leak = await fetchTwinPublicCard(AGENT, { ...base, transport: transport(200, publicProjection({ ceaIdentity: { ...cea, agencyName: 'ownerPrincipalId=abc' } })) });
+    expect(leak).toMatchObject({ kind: 'error', reason: 'public_projection_unknown_field' });
+  });
+
   it('caps list lengths and drops empty entries', async () => {
     const many = Array.from({ length: 20 }, (_, i) => `topic ${i}`);
     const state = await fetchTwinPublicCard(AGENT, { ...base, transport: transport(200, publicProjection({ topics: [...many, ''] })) });
