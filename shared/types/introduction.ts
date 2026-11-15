@@ -408,6 +408,15 @@ export const INTRODUCTIONS_GUEST_B_FLAG_V1 = 'INTRODUCTIONS_GUEST_B_V1_ENABLED';
 
 /** 同意页文案版本；客户同意时服务端记下，换文案时改这个值。 */
 export const INTRODUCTION_CONSENT_VERSION_V1 = '2026-10-31.1';
+/**
+ * S7：同意页多了「转介人的分身可能先和对方的分身（AI）对一下……」那一句的版本。网页开关 `NEXT_PUBLIC_TWIN_PRECHAT_ENABLED`
+ * 开着时同意页显示这句、带这个版本；关着时照旧带上一版。只有在这一版下同意的转介才能先聊（`twinPrechatCanStartV0`）。
+ * 以后再换文案、再升版时，带这句的新版也要让 `twinPrechatCanStartV0` 收，否则新版下同意的转介反而不能先聊。
+ */
+export const INTRODUCTION_CONSENT_VERSION_TWIN_PRECHAT_V1 = '2026-11-14.1';
+/** 服务端两版都收，照记客户看到的是哪一版。网页开关要等服务端上了这一版才能开，否则旧服务端会回 `consent_version_mismatch`。 */
+export const INTRODUCTION_CONSENT_VERSIONS_V1 = [INTRODUCTION_CONSENT_VERSION_V1, INTRODUCTION_CONSENT_VERSION_TWIN_PRECHAT_V1] as const;
+export type IntroductionConsentVersionV1 = (typeof INTRODUCTION_CONSENT_VERSIONS_V1)[number];
 
 export const INTRODUCTION_CUSTOMER_FIRST_STATUSES_V1 = ['c_consented', 'a_approved', 'c_declined', 'withdrawn'] as const;
 /** 旧状态加新状态。数据库 CHECK（迁移 2190）就是这一份，列宽 varchar(12) 不变。 */
@@ -461,6 +470,7 @@ export const INTRODUCTION_NEED_CATEGORIES_V1 = [
   'tech',
   'business',
   'moving',
+  'property',
   'other',
 ] as const;
 export type IntroductionNeedCategoryV1 = (typeof INTRODUCTION_NEED_CATEGORIES_V1)[number];
@@ -700,7 +710,7 @@ export function decodeIntroductionConsentCommandV1(value: unknown): Introduction
   if (value.contact === undefined) return failCf('decision_mismatch', 'contact');
   if (value.consentVersion === undefined) return failCf('decision_mismatch', 'consentVersion');
   if (typeof value.consentVersion !== 'string') return failCf('invalid_type', 'consentVersion');
-  if (value.consentVersion !== INTRODUCTION_CONSENT_VERSION_V1) return failCf('consent_version_mismatch', 'consentVersion');
+  if (!isOneOf(INTRODUCTION_CONSENT_VERSIONS_V1, value.consentVersion)) return failCf('consent_version_mismatch', 'consentVersion');
   const contact = decodeIntroductionContactV1(value.contact);
   if (contact.ok === false) return contact;
   return {
