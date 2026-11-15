@@ -171,10 +171,13 @@ export function twinPhoneOpeningHeldV1(openingLine: string, firstUtterance: stri
  * The instructions the provider's model gets. The opening sentence is a fixed first message that the provider speaks as
  * given; the model's own text comes after it. The brief is the owner's words, quoted.
  */
-export function twinPhoneAssistantInstructionsV1(input: { openingLine: string; purpose: string; brief: string; commitment?: TwinPhoneCommitmentV0 | null }): string {
+export function twinPhoneAssistantInstructionsV1(input: { openingLine: string; purpose: string; brief: string; commitment?: TwinPhoneCommitmentV0 | null; ownVoice?: boolean }): string {
   const commitment = input.commitment && Object.keys(input.commitment).length > 0 ? input.commitment : null;
   return [
     `Your first sentence has already been spoken for you: "${input.openingLine}". Never say that you are a person. If asked, say you are an AI assistant.`,
+    ...(input.ownVoice
+      ? ['You speak in an AI copy of the owner\'s voice, and the first message said so. Never say or suggest that you are the owner. If asked, say the voice is AI-generated.']
+      : []),
     `Purpose of the call: ${input.purpose}.`,
     'Do not agree to any amount, time or place beyond what the owner approved on the card, quoted below. If the other side asks for more, say you will ask the owner and end politely.',
     commitment
@@ -206,6 +209,28 @@ export function decodeTwinPhoneOutboundBodyV1(
   if (!request) return { ok: false, reasonCode: 'invalid_value', field: 'request' };
   return { ok: true, value: { request, language } };
 }
+
+/** The `code` of every refusal the phone routes answer with (the web maps them to text). */
+export const TWIN_PHONE_ERROR_CODES_V1 = {
+  signInRequired: 'TWIN_PHONE_SIGN_IN_REQUIRED',
+  invalid: 'TWIN_PHONE_INVALID',
+  notFound: 'TWIN_PHONE_NOT_FOUND',
+  locked: 'TWIN_PHONE_LOCKED',
+  notPending: 'TWIN_PHONE_NOT_PENDING',
+  expired: 'TWIN_PHONE_CARD_EXPIRED',
+  digestMismatch: 'TWIN_PHONE_DIGEST_MISMATCH',
+  tooManyPending: 'TWIN_PHONE_TOO_MANY_PENDING',
+  dailyLimit: 'TWIN_PHONE_DAILY_LIMIT',
+  tooManyNumbers: 'TWIN_PHONE_TOO_MANY_NUMBERS',
+  numberTaken: 'TWIN_PHONE_NUMBER_TAKEN',
+  signatureInvalid: 'TWIN_PHONE_SIGNATURE_INVALID',
+  codeInvalid: 'TWIN_PHONE_CODE_INVALID',
+  codeAttempts: 'TWIN_PHONE_CODE_ATTEMPTS',
+  verificationUnavailable: 'TWIN_PHONE_VERIFICATION_UNAVAILABLE',
+  retryLater: 'TWIN_PHONE_RETRY_LATER',
+  /** L9.2 batch 16: the chosen voice cannot be used right now (`reasonCode` says why); nothing was stored. */
+  voiceUnavailable: 'TWIN_PHONE_VOICE_UNAVAILABLE',
+} as const;
 
 export interface TwinPhoneNumberInputV1 {
   e164: string;
@@ -354,6 +379,8 @@ export interface TwinPhoneCallViewV1 {
   createdAt: string;
   expiresAt: string | null;
   receipt: TwinPhoneReceiptV1 | null;
+  /** L9.2 batch 16: what the call spoke in; null before batch 16 and until the call is dialled or answered. */
+  voice?: TwinPhoneCallVoiceV1 | null;
 }
 
 export interface TwinPhoneNumberViewV1 {
@@ -362,4 +389,64 @@ export interface TwinPhoneNumberViewV1 {
   label: string | null;
   status: 'active' | 'released';
   createdAt: string;
+}
+
+// ── L9.2 batch 16: the owner's own voice on calls ──────────────────────────────────────────────────────────────────
+
+/** Second switch, read only while `TWIN_PHONE_V1_ENABLED` is on as well: calls may speak in the owner's approved voice. */
+export const TWIN_PHONE_VOICE_V1_FLAG = 'TWIN_PHONE_VOICE_V1_ENABLED';
+
+/** Said right after the opening sentence on every call that speaks in the owner's voice. */
+export const TWIN_PHONE_AI_VOICE_NOTICE_V1 = {
+  en: 'The voice you are hearing is AI-generated.',
+  zh: '您听到的声音是 AI 生成的。',
+} as const;
+
+export const TWIN_PHONE_VOICE_MODES_V1 = ['own', 'default'] as const;
+export type TwinPhoneVoiceModeV1 = (typeof TWIN_PHONE_VOICE_MODES_V1)[number];
+
+/**
+ * Why a call used the provider's default voice: `switch_off`, `not_chosen`, or the reason code of the twin's voice check
+ * (`kill_switch`, `stopped`, `asset_not_approved`, `consent_missing`, ...). At most 40 characters.
+ */
+export const TWIN_PHONE_VOICE_REASON_MAX_V1 = 40;
+
+export interface TwinPhoneCallVoiceV1 {
+  mode: TwinPhoneVoiceModeV1;
+  /** Null for `own`. */
+  reason: string | null;
+}
+
+/** The first message: the opening sentence, then, only in the owner's voice, the notice in the call's language. */
+export function twinPhoneFirstMessageV1(openingLine: string, language: TwinPhoneLanguageV1, ownVoice: boolean): string {
+  if (!ownVoice) return openingLine;
+  return language === 'zh' ? `${openingLine}${TWIN_PHONE_AI_VOICE_NOTICE_V1.zh}` : `${openingLine} ${TWIN_PHONE_AI_VOICE_NOTICE_V1.en}`;
+}
+
+/** `PUT /twin-phone/voice`: one approved voice asset of one of the owner's twins. */
+export interface TwinPhoneVoiceInputV1 {
+  agentAccountId: string;
+  assetRef: string;
+}
+
+const TWIN_PHONE_VOICE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const TWIN_PHONE_VOICE_ASSET_REF = /^[A-Za-z0-9_:.-]{1,80}$/;
+
+export function decodeTwinPhoneVoiceInputV1(value: unknown): { ok: true; value: TwinPhoneVoiceInputV1 } | TwinPhoneDecodeFailureV1 {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, reasonCode: 'unsupported_shape', field: 'body' };
+  const raw = value as Record<string, unknown>;
+  for (const key of Object.keys(raw)) if (key !== 'agentAccountId' && key !== 'assetRef') return { ok: false, reasonCode: 'unknown_field', field: key };
+  if (!('agentAccountId' in raw)) return { ok: false, reasonCode: 'missing_field', field: 'agentAccountId' };
+  if (!('assetRef' in raw)) return { ok: false, reasonCode: 'missing_field', field: 'assetRef' };
+  if (typeof raw.agentAccountId !== 'string' || !TWIN_PHONE_VOICE_ID.test(raw.agentAccountId)) return { ok: false, reasonCode: 'invalid_value', field: 'agentAccountId' };
+  if (typeof raw.assetRef !== 'string' || !TWIN_PHONE_VOICE_ASSET_REF.test(raw.assetRef)) return { ok: false, reasonCode: 'invalid_value', field: 'assetRef' };
+  return { ok: true, value: { agentAccountId: raw.agentAccountId, assetRef: raw.assetRef } };
+}
+
+/** `GET /twin-phone/voice`. Never carries the provider's voice id. */
+export interface TwinPhoneVoiceViewV1 {
+  schemaVersion: 1;
+  chosen: TwinPhoneVoiceInputV1 | null;
+  /** What the next call would speak in, checked now by the same gate a call runs. */
+  nextCall: TwinPhoneCallVoiceV1;
 }
