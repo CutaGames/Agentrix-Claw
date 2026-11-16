@@ -1,14 +1,17 @@
 /**
- * L9 G 线「订单测试模式」共用契约（coord 10-31，owner E145）。
+ * L9 G 线「订单」共用契约（coord 10-31，owner E145；L9.2 第 10 批 11-06 加了真钱路的合同，见文件末尾）。
  *
  * 钱的总规矩：
- * - 这条线的一切只走测试模式。这里不加、不开任何真钱开关；`L9_REAL_MONEY_FLAGS_V1` 里的两个开关
- *   （`AGENTRIX_ORDERS_LIVE_MONEY_ENABLED`、`REAL_MONEY_WAVE1_ENABLED`）只被读来拒绝，从不被置位。
+ * - 记账单（`rail_mode = none`，今天的全部订单）一切只走测试模式，不碰任何支付通道。这个文件不置位任何开关；
+ *   `L9_REAL_MONEY_FLAGS_V1` 里的两个开关（`AGENTRIX_ORDERS_LIVE_MONEY_ENABLED`、`REAL_MONEY_WAVE1_ENABLED`）
+ *   在 L9 真钱总开关（`L9_LIVE_MONEY_V1_ENABLED`）没开时只被读来拒绝记账单，从不被置位。
+ * - 真钱单（第 10 批的 V2 视图、`L9_LIVE_*` 常量）只在总开关、种类名单、卖方名单和一整套闸门都成立之后才会产生，
+ *   默认全关，开一次要 owner 逐次批准（E95）；闸门的实现在 `backend/src/modules/order-escrow/order-live-gate.ts`，这里只放合同。
  * - 每个新开关默认关，只认精确的 `'1'`（`l9FlagOnV1`）。
- * - P3-6（真钱第一波）不在范围内。
  */
 
-import { ORDER_STATUSES, normalizeOrderVisitorEmailV1 } from './order-escrow';
+import { ORDER_STATUSES, normalizeOrderVisitorEmailV1, orderPlatformFeeV1, orderSellerNetProceedsV1 } from './order-escrow';
+import { L9_LIVE_LIMITS_V1 } from './real-money-wave1';
 
 /** 只认精确的 '1'。 */
 export function l9FlagOnV1(env: Record<string, string | undefined>, name: string): boolean {
@@ -583,7 +586,21 @@ export const ITEM_ORDER_PAYOUT_COUNTRY_V1 = 'SG' as const;
 /** 面交验收期（秒）：和 `ORDER_DEFAULT_WINDOWS_SECONDS.acceptance.item_purchase` 同一个数（D2）。 */
 export const ITEM_ORDER_ACCEPTANCE_SECONDS_V1 = 48 * 60 * 60;
 
-export const ITEM_ORDER_REASONS_V1 = ['disabled', 'orders_disabled', 'test_mode_only', 'invalid_input', 'self_purchase', 'seller_not_found', 'already_held'] as const;
+export const ITEM_ORDER_REASONS_V1 = [
+  'disabled',
+  'orders_disabled',
+  'test_mode_only',
+  'invalid_input',
+  'self_purchase',
+  'seller_not_found',
+  'already_held',
+  // L9.2 第 10 批（真钱路）：预订剩余的时间不够走完付款和交接。旧的记账路径不会产生它。
+  'quote_expiring_soon',
+  // L9.2 第 10 批（真钱路，设计 12.3 第 9 步）：卖方还不能真钱收款（收款账户、条款、名单等建单闸没过；细节只给卖方）。网页显示 `escrow_seller_not_ready`。
+  'seller_not_ready',
+  // L9.2 第 10 批（U-04）：总开关开着时，持牌行业卖方的物品订单（`L9_REGULATED_USER_IDS`）。总开关关着时照旧答 `seller_not_found`；网页对买方仍按「卖方不存在」显示。
+  'order_licensed_industry',
+] as const;
 export type ItemOrderReasonV1 = (typeof ITEM_ORDER_REASONS_V1)[number];
 
 // ── 保留期（P3-2、P3-3 的免登录入口，接口规则「90 天删除」） ─────────────────────────────────
@@ -758,4 +775,236 @@ export function l9OrderTokenUrlV1(base: string, path: string, token: string): st
 export function l9OrderTokenFromHashV1(hash: string | null | undefined): string | null {
   const match = /^#t=([A-Za-z0-9_-]+)$/.exec(hash ?? '');
   return match && ONE_TIME_TOKEN_V1.test(match[1]) ? match[1] : null;
+}
+
+// ── L9.2 第 10 批：真钱路的合同（S0）。所有开关默认关；V1 视图和解码器原样保留，旧网页收到 V2 视图解码失败（失败关闭）。 ──────────
+
+/**
+ * 真钱路的开关和变量名（设计 11.1）。读它们的函数在后端 `order-live-config.ts`：布尔开关只认精确的 `'1'`，名单读不出来就是空，
+ * 数值只能往收紧的方向调。
+ *
+ * 前提（C20，owner 批准 O6）：访客买方的通知邮箱是新收集的一类个人数据（设计 12.5）。隐私页写明并经 owner 批准之前，
+ * `masterFlag` 不许和 `project_deposit` / `booking_deposit` 一起打开。
+ */
+export const L9_LIVE_ENV_V1 = {
+  masterFlag: 'L9_LIVE_MONEY_V1_ENABLED',
+  kinds: 'L9_LIVE_MONEY_KINDS',
+  sellerIds: 'ORDER_LIVE_SELLER_IDS',
+  rehearsalFlag: 'L9_RAIL_REHEARSAL_V1_ENABLED',
+  payoutsPaused: 'ORDER_LIVE_PAYOUTS_PAUSED',
+  minOrderMinor: 'L9_LIVE_MIN_ORDER_MINOR',
+  maxOrderMinor: 'L9_LIVE_MAX_ORDER_MINOR',
+  dailySellerMinor: 'L9_LIVE_DAILY_SELLER_MINOR',
+  dailyBuyerMinor: 'L9_LIVE_DAILY_BUYER_MINOR',
+  dailyPlatformMinor: 'L9_LIVE_DAILY_PLATFORM_MINOR',
+  balanceMarginMinor: 'L9_LIVE_BALANCE_MARGIN_MINOR',
+  bookingMaxAheadDays: 'L9_LIVE_BOOKING_MAX_AHEAD_DAYS',
+  bookingDeliveryAfterServiceSeconds: 'L9_LIVE_BOOKING_DELIVERY_AFTER_SERVICE_SECONDS',
+  checkoutsPerBuyerHour: 'L9_LIVE_CHECKOUTS_PER_BUYER_HOUR',
+} as const;
+
+/** 通道单的 Checkout 会话时长：31 分钟，比 Stripe 的 30 分钟下限多 60 秒余量（设计 7.2，R4-L03）。非通道单仍用基线的 30 分钟。 */
+export const L9_LIVE_CHECKOUT_TTL_SECONDS = 1860;
+/** 通道单的付款期限：固定常量，取会话时长的值（同一个数），**不读** `ORDER_WINDOW_PAYMENT_SECONDS`（G15，R2-L02、R4-L03）。 */
+export const L9_LIVE_PAYMENT_WINDOW_SECONDS = L9_LIVE_CHECKOUT_TTL_SECONDS;
+/** 真钱预约定金「服务发生之后」的交付窗口上限：7 天；变量 `L9_LIVE_BOOKING_DELIVERY_AFTER_SERVICE_SECONDS` 只能往小调（设计 12.2）。 */
+export const BOOKING_DELIVERY_AFTER_SERVICE_SECONDS_V1 = 604_800;
+
+/** 区间：含境外卡的最少 / 最多（设计 7.5，R3-L08）。两端同币种，低 ≤ 高。 */
+export interface L9MoneyRangeV2 {
+  estimatedLow: ProjectMoneyV1;
+  estimatedHigh: ProjectMoneyV1;
+}
+
+/** 卖方在报价页、要定金页看到的金额拆分：平台费、预计通道费区间、预计到账区间（最少到账按境外卡算，最多按本地卡算）。 */
+export interface L9SellerFeesV2 {
+  platformFee: ProjectMoneyV1;
+  processingFee: L9MoneyRangeV2;
+  sellerNet: L9MoneyRangeV2;
+}
+
+/** 买方看到的费用披露：费率和通道费由卖方承担。**不叫 `amounts`**：`decodeOrderBuyerView` 对任何带 `amounts` 的买方视图返回 null。 */
+export interface L9FeeDisclosureV2 {
+  platformFeeBps: number;
+  processingFeeBearer: 'seller';
+}
+
+/** 设计 7.5 的卡费估算（千分比加固定最小单位）：本地卡 3.4% + 0.50，境外卡 3.9% + 0.50。按分向上取整，预计所得只会说少、不会说多。 */
+export const L9_CARD_FEE_ESTIMATE_V2 = {
+  local: { perMille: 34, fixedMinor: 50 },
+  foreign: { perMille: 39, fixedMinor: 50 },
+} as const;
+
+function cardFeeEstimateV2(total: ProjectMoneyV1, card: keyof typeof L9_CARD_FEE_ESTIMATE_V2): ProjectMoneyV1 {
+  const rate = L9_CARD_FEE_ESTIMATE_V2[card];
+  const fee = (BigInt(total.amountMinor) * BigInt(rate.perMille) + BigInt(999)) / BigInt(1000) + BigInt(rate.fixedMinor);
+  return { amountMinor: fee.toString(), currency: total.currency, decimals: total.decimals };
+}
+
+/**
+ * 卖方视图的金额拆分（设计 7.5，R3-L08）：平台费用 `orderPlatformFeeV1`（向下取整），所得用唯一的净额公式
+ * `orderSellerNetProceedsV1`；最少到账按境外卡、最多按本地卡。放款时仍按 Stripe 实收的通道费扣。
+ */
+export function l9SellerFeesV2(total: ProjectMoneyV1, platformFeeBps: number): L9SellerFeesV2 {
+  const fee = orderPlatformFeeV1(total, platformFeeBps);
+  const platformFee: ProjectMoneyV1 = { amountMinor: fee.amountMinor, currency: total.currency, decimals: total.decimals };
+  const local = cardFeeEstimateV2(total, 'local');
+  const foreign = cardFeeEstimateV2(total, 'foreign');
+  const net = (processingFee: ProjectMoneyV1): ProjectMoneyV1 => ({
+    amountMinor: orderSellerNetProceedsV1(total, platformFee, processingFee).amountMinor,
+    currency: total.currency,
+    decimals: total.decimals,
+  });
+  return {
+    platformFee,
+    processingFee: { estimatedLow: local, estimatedHigh: foreign },
+    sellerNet: { estimatedLow: net(foreign), estimatedHigh: net(local) },
+  };
+}
+
+/** 买方视图的费用披露：只有费率和「通道费由卖方承担」。 */
+export function l9FeeDisclosureV2(platformFeeBps: number): L9FeeDisclosureV2 {
+  return { platformFeeBps, processingFeeBearer: 'seller' };
+}
+
+/** 接受之后等买方付款的订单（买方接着调订单的 `pay` 动作）。 */
+export interface L9PaymentV2 {
+  state: 'awaiting_payment';
+  orderId: string;
+  deadline: string;
+}
+
+/** 报价的 V2 视图。卖方角色带 `fees`（不带 `feeDisclosure`），买方角色带 `feeDisclosure`（不带 `fees`，也没有任何卖方所得）。 */
+export interface ProjectOrderViewV2 extends Omit<ProjectOrderViewV1, 'schemaVersion' | 'environment'> {
+  schemaVersion: 2;
+  environment: 'test' | 'live';
+  payment: L9PaymentV2 | null;
+  fees?: L9SellerFeesV2;
+  feeDisclosure?: L9FeeDisclosureV2;
+}
+
+export interface ProjectQuoteCreatedV2 extends ProjectOrderViewV2 {
+  quoteToken: string;
+}
+
+/** 预约定金的 V2 视图，规则同报价的 V2 视图。 */
+export interface BookingDepositViewV2 extends Omit<BookingDepositViewV1, 'schemaVersion' | 'environment'> {
+  schemaVersion: 2;
+  environment: 'test' | 'live';
+  payment: L9PaymentV2 | null;
+  fees?: L9SellerFeesV2;
+  feeDisclosure?: L9FeeDisclosureV2;
+}
+
+function moneyRangeV2(value: unknown): L9MoneyRangeV2 | null {
+  if (!isRecordV1(value) || !exactKeysV1(value, ['estimatedLow', 'estimatedHigh'])) return null;
+  const low = value.estimatedLow;
+  const high = value.estimatedHigh;
+  if (!moneyV1(low) || !moneyV1(high) || low.currency !== high.currency) return null;
+  if (BigInt(low.amountMinor) > BigInt(high.amountMinor)) return null;
+  return value as unknown as L9MoneyRangeV2;
+}
+
+function sellerFeesV2(value: unknown): L9SellerFeesV2 | null {
+  if (!isRecordV1(value) || !exactKeysV1(value, ['platformFee', 'processingFee', 'sellerNet'])) return null;
+  const fee = value.platformFee;
+  const processing = moneyRangeV2(value.processingFee);
+  const net = moneyRangeV2(value.sellerNet);
+  if (!moneyV1(fee) || !processing || !net) return null;
+  if (fee.currency !== processing.estimatedLow.currency || fee.currency !== net.estimatedLow.currency) return null;
+  return value as unknown as L9SellerFeesV2;
+}
+
+function feeDisclosureV2(value: unknown): L9FeeDisclosureV2 | null {
+  if (!isRecordV1(value) || !exactKeysV1(value, ['platformFeeBps', 'processingFeeBearer'])) return null;
+  if (value.processingFeeBearer !== 'seller') return null;
+  const bps = value.platformFeeBps;
+  if (typeof bps !== 'number' || !Number.isInteger(bps) || bps < 0 || bps > L9_LIVE_LIMITS_V1.maxFeeBps) return null;
+  return value as unknown as L9FeeDisclosureV2;
+}
+
+/** The parts both V2 views share: the payment block (or null), then the role's own block (`fees` or `feeDisclosure`). */
+function viewExtrasV2(value: Record<string, unknown>): boolean {
+  const payment = value.payment;
+  if (payment !== null) {
+    if (!isRecordV1(payment) || !exactKeysV1(payment, ['state', 'orderId', 'deadline'])) return false;
+    if (payment.state !== 'awaiting_payment' || typeof payment.orderId !== 'string' || !ORDER_ID_V1.test(payment.orderId) || !isoV1(payment.deadline)) return false;
+  }
+  return value.role === 'seller' ? sellerFeesV2(value.fees) !== null : feeDisclosureV2(value.feeDisclosure) !== null;
+}
+
+/**
+ * 报价的 V2 视图，严格解码：多一个字段、少一个字段、角色不对的费用块都整条拒绝。金额要和 `projectDepositSplitV1` 算出来的一致。
+ * 接受之后订单在等付款时报价行还是 `quoted`，所以 V2 不要求「已接受 ⇔ 有订单」，只要求 `deposit_held` 必须有订单号。
+ */
+export function decodeProjectOrderViewV2(value: unknown, extraKeys: readonly string[] = []): ProjectOrderViewV2 | null {
+  if (!isRecordV1(value) || (value.role !== 'seller' && value.role !== 'buyer')) return null;
+  const roleBlock = value.role === 'seller' ? 'fees' : 'feeDisclosure';
+  if (!exactKeysV1(value, [...PROJECT_VIEW_KEYS_V1, 'payment', roleBlock, ...extraKeys])) return null;
+  if (value.schemaVersion !== 2 || (value.environment !== 'test' && value.environment !== 'live') || value.finalHandledOffPlatform !== true) return null;
+  if (typeof value.projectRef !== 'string' || !/^prj_[0-9a-f]{32}$/.test(value.projectRef)) return null;
+  if (!(PROJECT_ORDER_STATUSES_V1 as readonly unknown[]).includes(value.status)) return null;
+  if (!(PROJECT_FINAL_STATES_V1 as readonly unknown[]).includes(value.finalState)) return null;
+  if (typeof value.title !== 'string' || typeof value.scope !== 'string') return null;
+  if (!moneyV1(value.total) || !moneyV1(value.deposit) || !moneyV1(value.final)) return null;
+  if (value.total.currency !== value.deposit.currency || value.total.currency !== value.final.currency) return null;
+  if (typeof value.depositBps !== 'number') return null;
+  const split = projectDepositSplitV1(value.total.amountMinor, value.depositBps);
+  if (!split || split.depositMinor !== value.deposit.amountMinor || split.finalMinor !== value.final.amountMinor) return null;
+  if (!orderLinkV1(value.depositOrderId, value.depositOrderStatus)) return null;
+  if (typeof value.sellerAgentId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(value.sellerAgentId)) return null;
+  if (!isoV1(value.createdAt) || !isoV1(value.expiresAt) || !(value.acceptedAt === null || isoV1(value.acceptedAt))) return null;
+  if (value.status === 'deposit_held' && value.depositOrderId === null) return null;
+  if (!viewExtrasV2(value)) return null;
+  return value as unknown as ProjectOrderViewV2;
+}
+
+/** 刚发出的报价（V2）：视图加只出现这一次的令牌，只给卖方，只对还开着的报价。 */
+export function decodeProjectQuoteCreatedV2(value: unknown): ProjectQuoteCreatedV2 | null {
+  const view = decodeProjectOrderViewV2(value, ['quoteToken']);
+  if (!view || view.role !== 'seller' || view.status !== 'quoted') return null;
+  const token = (value as Record<string, unknown>).quoteToken;
+  return typeof token === 'string' && ONE_TIME_TOKEN_V1.test(token) ? (value as ProjectQuoteCreatedV2) : null;
+}
+
+/** 预约定金的 V2 视图，严格解码，规则同报价。金额在定金上下限之内，`held` 必须有订单号。 */
+export function decodeBookingDepositViewV2(value: unknown, extraKeys: readonly string[] = []): BookingDepositViewV2 | null {
+  if (!isRecordV1(value) || (value.role !== 'seller' && value.role !== 'buyer')) return null;
+  const roleBlock = value.role === 'seller' ? 'fees' : 'feeDisclosure';
+  if (!exactKeysV1(value, [...BOOKING_DEPOSIT_VIEW_KEYS_V1, 'payment', roleBlock, ...extraKeys])) return null;
+  if (value.schemaVersion !== 2 || (value.environment !== 'test' && value.environment !== 'live')) return null;
+  if (typeof value.depositRef !== 'string' || !/^bkd_[0-9a-f]{32}$/.test(value.depositRef)) return null;
+  if (typeof value.bookingRef !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{7,79}$/.test(value.bookingRef)) return null;
+  if (!(BOOKING_DEPOSIT_STATUSES_V1 as readonly unknown[]).includes(value.status)) return null;
+  if (!moneyV1(value.amount)) return null;
+  const minor = Number(value.amount.amountMinor);
+  if (minor < BOOKING_DEPOSIT_LIMITS_V1.minMinor || minor > BOOKING_DEPOSIT_LIMITS_V1.maxMinor) return null;
+  if (!orderLinkV1(value.depositOrderId, value.depositOrderStatus)) return null;
+  if (value.status === 'held' && value.depositOrderId === null) return null;
+  if (!isoV1(value.startsAt) || !isoV1(value.createdAt) || !isoV1(value.expiresAt) || !(value.acceptedAt === null || isoV1(value.acceptedAt))) return null;
+  if (!viewExtrasV2(value)) return null;
+  return value as unknown as BookingDepositViewV2;
+}
+
+/**
+ * 接受请求（V2）：令牌，加访客买方勾选「用这个邮箱接收本单提醒」时的 `notifyEmail`（设计 12.5）。邮箱规范化；格式不对、类型不对、
+ * 多出别的字段都拒绝。V1 的接受请求（`decodeProjectTokenRequestV1`）不认 `notifyEmail`，记账模式下出现它按未知字段处理，行为不变。
+ */
+export interface L9AcceptRequestV2 {
+  schemaVersion: 1;
+  token: string;
+  notifyEmail?: string;
+}
+
+export function decodeL9AcceptRequestV2(value: unknown): ProjectDecodeV1<L9AcceptRequestV2> {
+  const fail = (reasonCode: ProjectReasonV1, field: string): ProjectDecodeV1<never> => ({ ok: false, reasonCode, field });
+  if (!isRecordV1(value)) return fail('invalid_type', '$');
+  for (const key of Object.keys(value)) if (!['schemaVersion', 'token', 'notifyEmail'].includes(key)) return fail('unknown_field', key);
+  const base = decodeProjectTokenRequestV1({ schemaVersion: value.schemaVersion, token: value.token });
+  if (base.ok === false) return base;
+  if (value.notifyEmail === undefined) return { ok: true, value: { schemaVersion: 1, token: base.value.token } };
+  if (typeof value.notifyEmail !== 'string') return fail('invalid_type', 'notifyEmail');
+  const email = normalizeOrderVisitorEmailV1(value.notifyEmail);
+  if (!email) return fail('invalid_value', 'notifyEmail');
+  return { ok: true, value: { schemaVersion: 1, token: base.value.token, notifyEmail: email } };
 }

@@ -48,11 +48,16 @@ export const ORDER_ESCROW_SCHEMA_VERSION = 'agentrix.order.v0' as const;
 
 export const ORDER_KINDS_LEGACY = ['paid_question', 'consultation_deposit', 'device_rental'] as const;
 /**
- * L9 G line: bookkeeping-only kinds. Their orders are always `environment: 'test'` (the database refuses a live row of these
- * kinds, migration 2252), are never reachable through the public create routes, and never touch a payment rail: the escrow
- * is held and released as ledger entries only, like `device_rental`. `project_deposit`: the deposit of a project quote
- * (P3-2); `booking_deposit`: the deposit of a visitor booking (P3-3); `item_purchase`: a second-hand item paid into escrow and
- * released after an in-person handover (P3-8, migration 2254; the device-assets resale line's escrow, S24, uses this same kind).
+ * The L9 kinds: a project deposit, a booking deposit and a second-hand item escrow. Each is a bookkeeping order, a sandbox
+ * rehearsal order or a real-money order (L9.2 batch 10; the name keeps `TEST_ONLY` because migration specs refer to it).
+ * A bookkeeping order is the only kind of these that exists while the real-money switches are off, and it is the one the next
+ * paragraph describes: always `environment: 'test'` (the database refuses a live row of these kinds until migration 2273
+ * replaces that guard), never reachable through the public create routes, never touching a payment rail: the escrow is held and
+ * released as ledger entries only, like `device_rental`. A rail order (`rail_mode` `sandbox` or `live`) starts `awaiting_payment`
+ * and moves money only behind the gates of `order-live-gate.ts`.
+ * `project_deposit`: the deposit of a project quote (P3-2); `booking_deposit`: the deposit of a visitor booking (P3-3);
+ * `item_purchase`: a second-hand item paid into escrow and released after an in-person handover (P3-8, migration 2254; the
+ * device-assets resale line's escrow, S24, uses this same kind).
  */
 export const ORDER_KINDS_L9_TEST_ONLY = ['project_deposit', 'booking_deposit', 'item_purchase'] as const;
 /** Kinds whose settled orders never pay an introducer's share (second-hand sales pay no referral share, target-l9 3.4). */
@@ -134,6 +139,13 @@ export interface OrderAmountsV1 {
   platformFee: Money;
   /** 支付通道手续费由谁承担，费率未定前如实写明。 */
   processingFeeBearer: 'seller' | 'platform' | 'undecided';
+  /**
+   * v0.14（L9.2 第 10 批，只加字段）：放款前读出并锁定的通道手续费（Stripe 实收）。只有通道单（`rail_mode` 为 `sandbox` 或 `live`）
+   * 的卖方视图带这个字段；锁定之前是 `null`，记账单和旧服务端不带（响应字节不变）。
+   */
+  processingFee?: Money | null;
+  /** v0.14：卖方实际到账 = `orderSellerNetProceedsV1(总额, 平台费, 通道费)`；规则同 `processingFee`（`null` = 通道费还没锁定，不显示一个数）。 */
+  sellerNet?: Money | null;
 }
 
 export interface OrderV1 {
@@ -186,6 +198,8 @@ export interface OrderSellerViewV1 extends Omit<OrderV1, 'parties'> {
   delivery: OrderDeliveryV1 | null;
   /** v0.7：`paid` 状态下写过草稿时才有，其余时候为 null。v0.7 起服务端总是带这个字段；旧客户端可以忽略。 */
   deliveryDraft?: OrderDeliveryDraftV1 | null;
+  /** v0.14：发卡行争议是否未结（`open` = 放款暂停）。只有通道单带；记账单不带，响应字节不变。 */
+  paymentDispute?: 'none' | 'open';
 }
 
 /** 买方视图：看不到主人账号、授权引用和平台内部的费用拆分之外的东西。 */
@@ -196,6 +210,8 @@ export interface OrderBuyerViewV1 extends Omit<OrderV1, 'parties' | 'mandateRef'
   buyerNote: string;
   /** 交付之后买方要看到内容才能验收。 */
   delivery: OrderDeliveryV1 | null;
+  /** v0.14：同卖方视图。 */
+  paymentDispute?: 'none' | 'open';
 }
 
 /** 服务目录条目（买方下单用；价格只从这里来，页面不算）。只列主人确认过、在接单的条目。 */
@@ -258,6 +274,17 @@ export const ORDER_ERROR_CODES = {
   adminStepUpRequired: 'ADMIN_STEP_UP_REQUIRED', // 403，平台写操作缺 `x-admin-step-up`（v0.8）
   reconcileEvidenceMismatch: 'order_reconcile_evidence_mismatch', // 409，对账证据和订单记下的通道对象对不上（v0.10）
   licensedIndustry: 'order_licensed_industry', // 403，持牌行业账户（`L9_REGULATED_USER_IDS`）不能建/改/发布报价，也不能开收款账户（L9.2 G2）
+  // v0.14（L9.2 第 10 批，真钱路；全是新码，旧码不动）
+  paymentDisputed: 'order_payment_disputed', // 409，买方向发卡行争议未结，放款和新建退款暂停
+  escrowRulesAckRequired: 'escrow_rules_ack_required', // 400，付款前没有确认托管规则（`acknowledgement`）
+  termsVersionNotCurrent: 'terms_version_not_current', // 409，确认的托管规则版本不是现行版本
+  sellerPayoutNotReady: 'seller_payout_not_ready', // 409，卖方的收款账户还没有开通（`cleared`）
+  deliveryBeforeService: 'delivery_before_service', // 409，预约定金：预约开始之前不能交付
+  quoteExpiringSoon: 'quote_expiring_soon', // 409，报价、定金请求或预订剩余的有效期不够走完付款
+  bookingTooSoon: 'booking_too_soon', // 409，预约开始得太近，来不及付款
+  bookingTooFar: 'booking_too_far', // 409，预约太远，定金要留太久
+  quoteModeChanged: 'quote_mode_changed', // 409，报价发出之后记账 / 真钱的模式变了，不建单
+  checkoutRateLimited: 'checkout_rate_limited', // 429，同一买方一小时内开了太多结账会话
 } as const;
 
 /**
@@ -300,10 +327,59 @@ export interface PutOrderDeliveryDraftRequestV1 {
  * v0.6（T7-2）：支付通道回调，服务器对服务器，客户端不调。签名密钥是 `ORDER_STRIPE_WEBHOOK_SECRET`，验签不过 400。
  * 订单只能由这里变成 `paid`（Checkout 完成且金额、币种、测试 / 真钱模式都和订单一致）；对不上就进 `unknown` 等对账。
  * 同一个通道事件只处理一次。
+ *
+ * v0.14（L9.2 第 10 批 S4，设计 8.1）：连接账户端点，签名密钥是 `ORDER_STRIPE_CONNECT_WEBHOOK_SECRET`（不和平台端点共用）。
+ * 通道关着时它和不存在的路由一样回 404；开着时验签、核对模式、写事件日志后回 200，由处理器在请求之后处理。
  */
 export const ORDER_RAIL_ROUTES = {
   stripeWebhook: 'POST /api/order-escrow/stripe/webhook',
+  stripeConnectWebhook: 'POST /api/order-escrow/stripe/connect-webhook',
 } as const;
+
+/**
+ * v0.14（L9.2 第 10 批，设计 8.5）：平台端点（「你的账户」范围）订阅的事件类型，共 15 个。事件清单是代码里的常量，处理器遇到
+ * 不认识的类型记 `ignored`；新增类型走代码评审，不在 Stripe 后台临时加。
+ */
+export const ORDER_RAIL_EVENT_TYPES_V1 = [
+  'checkout.session.completed',
+  'checkout.session.async_payment_succeeded',
+  'checkout.session.async_payment_failed',
+  'checkout.session.expired',
+  'charge.dispute.created',
+  'charge.dispute.updated',
+  'charge.dispute.closed',
+  'charge.dispute.funds_withdrawn',
+  'charge.dispute.funds_reinstated',
+  'charge.refunded',
+  'refund.created',
+  'refund.updated',
+  'refund.failed',
+  'radar.early_fraud_warning.created',
+  'transfer.reversed',
+] as const;
+export type OrderRailEventTypeV1 = (typeof ORDER_RAIL_EVENT_TYPES_V1)[number];
+
+/** 每日对账补写的合成事件类型，是内部类型，不出现在 Stripe 后台的订阅清单里。 */
+export const ORDER_RAIL_INTERNAL_EVENT_TYPES_V1 = ['recon.dispute_found', 'recon.refund_found'] as const;
+
+/**
+ * 争议类事件（I-14）：订单在事件日志里有状态为 `received`、`processing`、`failed` 的争议类事件时，放款加锁**和**新建退款都被挡住。
+ * 不含任何退款类类型。
+ */
+export const ORDER_RAIL_DISPUTE_EVENT_TYPES_V1 = [
+  'charge.dispute.created',
+  'charge.dispute.updated',
+  'charge.dispute.closed',
+  'charge.dispute.funds_withdrawn',
+  'charge.dispute.funds_reinstated',
+  'recon.dispute_found',
+] as const;
+
+/**
+ * 退款类事件（I-14，R3-M01）：只挡**放款**加锁，不挡新建退款——否则我们自己发起退款产生的 `refund.created` 会拦住自己的轮询。
+ * 含合成的 `recon.refund_found`。
+ */
+export const ORDER_RAIL_REFUND_EVENT_TYPES_V1 = ['charge.refunded', 'refund.created', 'refund.updated', 'refund.failed', 'recon.refund_found'] as const;
 
 /**
  * `pay` 的响应。`url` 只能是 Stripe 的托管页（`STRIPE_HOSTED_ORIGINS`）。v0 对 Web 一律返回 `redirect`
@@ -406,6 +482,17 @@ export interface OrderActionRequestV1 {
 
   /** `open_dispute` / `refund` 的原因代码。 */
   reasonCode?: string;
+
+  /**
+   * v0.14：`pay` 的买方确认（真钱单必填，记账单忽略）。`escrowRulesVersion` 必须是现行的 `escrow_rules` 版本（形如 `2026-11-01`），
+   * `adult` 必须是 true；多出别的字段整条拒绝。缺失或格式不对 400 `escrow_rules_ack_required`，版本不是现行 409 `terms_version_not_current`。
+   */
+  acknowledgement?: OrderAcknowledgementV1;
+}
+
+export interface OrderAcknowledgementV1 {
+  escrowRulesVersion: string;
+  adult: true;
 }
 
 // 状态机
@@ -928,6 +1015,30 @@ export function orderSellerProceedsV1(total: Money, platformFee: Money): Money {
   const proceeds = BigInt(total.amountMinor) - BigInt(platformFee.amountMinor);
   if (proceeds < BigInt(0)) throw new Error('fee above total');
   return { amountMinor: proceeds.toString(), currency: total.currency, decimals: total.decimals };
+}
+
+/**
+ * v0.14（L9.2 第 10 批，R3-M02）：卖方净额**全系统只有这一个公式**——转账金额、自动对账的预期金额、入账、每日对账、卖方视图、
+ * 手机收入页都调它。净额 = 总额 − 平台费 − 通道费（放款前读出并锁定的 Stripe 实收）。通道费为 `null`（记账单、旧服务端、
+ * 通道费还没锁定）时与 `orderSellerProceedsV1` 逐字相同；币种或小数位不一致、结果为负就抛错（和旧函数一致）。
+ * 全部是整数最小单位的 BigInt 运算，没有浮点。
+ */
+export function orderSellerNetProceedsV1(total: Money, platformFee: Money, processingFee: Money | null): Money {
+  if (processingFee === null || processingFee === undefined) return orderSellerProceedsV1(total, platformFee);
+  if (total.currency !== processingFee.currency || total.decimals !== processingFee.decimals) throw new Error('currency mismatch');
+  if (total.currency !== platformFee.currency || total.decimals !== platformFee.decimals) throw new Error('currency mismatch');
+  const net = BigInt(total.amountMinor) - BigInt(platformFee.amountMinor) - BigInt(processingFee.amountMinor);
+  if (net < BigInt(0)) throw new Error('fee above total');
+  return { amountMinor: net.toString(), currency: total.currency, decimals: total.decimals };
+}
+
+/**
+ * 视图里的卖方净额：`amounts.sellerNet` 存在就用它（`null` = 通道费还没锁定，不显示一个数）；字段不存在——记账单和旧服务端——
+ * 就用旧公式。网页和手机共用。
+ */
+export function orderSellerNetForViewV1(amounts: Pick<OrderAmountsV1, 'total' | 'platformFee'> & { sellerNet?: Money | null }): Money | null {
+  if (amounts.sellerNet === undefined) return orderSellerProceedsV1(amounts.total, amounts.platformFee);
+  return amounts.sellerNet;
 }
 
 /** 平台费：总额乘费率（万分比）向下取整；费率由服务端配置（OA-50 之前测试占位 100 = 1%）。 */

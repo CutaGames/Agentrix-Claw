@@ -24,7 +24,7 @@
  *   GET  /order-escrow/orders/:orderId?as=seller       OrderSellerViewV1
  *   POST /order-escrow/orders/:orderId/actions         { action: 'deliver', expectedVersion, idempotencyKey, reviewedDeliveryDigest }
  */
-import { ORDER_ERROR_CODES, orderSellerProceedsV1, type OrderActionRequestV1 } from '../../shared/types/order-escrow';
+import { ORDER_ERROR_CODES, orderSellerNetForViewV1, type OrderActionRequestV1 } from '../../shared/types/order-escrow';
 import {
   decodeOrderItems,
   decodeOrderSellerView,
@@ -158,7 +158,11 @@ export async function readTwinOrder(orderId: string, input: TwinStatusTransportI
 }
 
 export interface TwinOrderSummary {
-  /** What the owner gets once the money is released (total − platform fee); `null` if it cannot be computed. */
+  /**
+   * What the owner gets once the money is released. The server's `amounts.sellerNet` when the view carries it (an order on the
+   * payment rail: the processing fee is already taken off; `null` while that fee is not known yet, and then no figure is
+   * shown). Without that field: total − platform fee, as before. `null` also when it cannot be computed.
+   */
   proceeds: Money | null;
   /** The saved draft the owner can deliver from the phone, with its digest. */
   reviewable: { draft: OrderDeliveryDraft; digest: string } | null;
@@ -171,7 +175,7 @@ export interface TwinOrderSummary {
 export function summarizeTwinOrder(order: OrderSellerView, nowMs: number = Date.now()): TwinOrderSummary {
   let proceeds: Money | null = null;
   try {
-    proceeds = orderSellerProceedsV1(order.amounts.total, order.amounts.platformFee);
+    proceeds = orderSellerNetForViewV1(order.amounts);
   } catch {
     proceeds = null;
   }

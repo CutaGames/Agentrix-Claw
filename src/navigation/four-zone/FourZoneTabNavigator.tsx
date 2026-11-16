@@ -48,6 +48,11 @@ import { TwinRelationshipsScreen } from '../../screens/four-zone/TwinRelationshi
 import { RELATIONSHIP_BOOK_ENABLED } from '../../services/relationshipBook';
 import { TwinCardExchangeScreen } from '../../screens/four-zone/TwinCardExchangeScreen';
 import { CARD_EXCHANGE_ENABLED } from '../../services/cardExchange';
+import { TwinHuddleDetailScreen } from '../../screens/four-zone/TwinHuddleDetailScreen';
+import { TwinHuddleListScreen } from '../../screens/four-zone/TwinHuddleListScreen';
+import { TwinHuddleSettingsScreen } from '../../screens/four-zone/TwinHuddleSettingsScreen';
+import { TwinHuddleStartScreen } from '../../screens/four-zone/TwinHuddleStartScreen';
+import { TWIN_HUDDLE_ENABLED } from '../../services/twinHuddle';
 import { GlobalPushToTalk } from '../../components/GlobalPushToTalk';
 
 type FourZoneTabParamList = {
@@ -71,6 +76,10 @@ type TwinStackParamList = {
   TwinMailbox: undefined;
   TwinRelationships: undefined;
   TwinCardExchange: undefined;
+  TwinHuddles: undefined;
+  TwinHuddleStart: undefined;
+  TwinHuddleDetail: { id: string };
+  TwinHuddleSettings: undefined;
   TwinQr: TwinQrParams;
   TwinAnswers: undefined;
   BuyerOrders: { ref?: string } | undefined;
@@ -150,6 +159,19 @@ function TwinNavigator() {
       {/* L8 R6 card exchange: registered only in builds with EXPO_PUBLIC_CARD_EXCHANGE=1 (and the relationship book on). */}
       {CARD_EXCHANGE_ENABLED ? (
         <TwinStack.Screen name="TwinCardExchange" component={TwinCardExchangeScreen} options={{ title: t({ en: 'Swap cards', zh: '交换名片' }) }} />
+      ) : null}
+      {/* Twin huddle: registered only in builds with EXPO_PUBLIC_TWIN_HUDDLE=1. */}
+      {TWIN_HUDDLE_ENABLED ? (
+        <TwinStack.Screen name="TwinHuddles" component={TwinHuddleListScreen} options={{ title: t({ en: 'Plan a time', zh: '约个时间' }) }} />
+      ) : null}
+      {TWIN_HUDDLE_ENABLED ? (
+        <TwinStack.Screen name="TwinHuddleStart" component={TwinHuddleStartScreen} options={{ title: t({ en: 'Start a plan', zh: '发起商量' }) }} />
+      ) : null}
+      {TWIN_HUDDLE_ENABLED ? (
+        <TwinStack.Screen name="TwinHuddleDetail" component={TwinHuddleDetailScreen} options={{ title: t({ en: 'Plan', zh: '商量详情' }) }} />
+      ) : null}
+      {TWIN_HUDDLE_ENABLED ? (
+        <TwinStack.Screen name="TwinHuddleSettings" component={TwinHuddleSettingsScreen} options={{ title: t({ en: 'Planning settings', zh: '约时间设置' }) }} />
       ) : null}
       {MOBILE_M0_ENABLED || CARD_EXCHANGE_ENABLED ? <TwinStack.Screen name="TwinQr" component={TwinQrScreen} options={{ headerShown: false, presentation: 'fullScreenModal' }} /> : null}
       {/* M0: the answers visitors meet and the card's services, edited natively. */}

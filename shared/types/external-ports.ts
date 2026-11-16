@@ -15,12 +15,20 @@ export type ExternalPortImplementationV0 = (typeof EXTERNAL_PORT_IMPLEMENTATIONS
 export interface ExternalPortStatusV0 {
   port: 'payments' | 'seller_kyc' | 'tax' | 'terms';
   implementation: ExternalPortImplementationV0;
-  /** 例如 `stripe_connect_hk`、`test_in_memory`；`not_configured` 时为 null。 */
+  /** 例如 `stripe_connect_hk`、`stripe_connect_sg`（第 10 批真钱路用新加坡主体）、`test_in_memory`；`not_configured` 时为 null。只是文字说明，类型不变。 */
   provider: string | null;
 }
 
-/** 测试实现在生产上一律当作没配：防止把假的"已收款"当成真的。 */
-export function effectivePortImplementationV0(implementation: ExternalPortImplementationV0, nodeEnv: string | undefined): ExternalPortImplementationV0 {
+/**
+ * 测试实现在生产上一律当作没配：防止把假的"已收款"当成真的。
+ * `liveRailOn`（第 10 批）：真实现靠真钱路开着才算数，传 `false` 时 `live` 也当作没配；不传就和以前一样。
+ */
+export function effectivePortImplementationV0(
+  implementation: ExternalPortImplementationV0,
+  nodeEnv: string | undefined,
+  liveRailOn?: boolean,
+): ExternalPortImplementationV0 {
+  if (implementation === 'live' && liveRailOn === false) return 'not_configured';
   return implementation === 'test' && nodeEnv === 'production' ? 'not_configured' : implementation;
 }
 
@@ -69,7 +77,7 @@ export interface SellerKycViewV0 {
   state: SellerKycStateV0;
   /** 收款主体所在地（例如 `HK`）；卖方必须在这里才能收款（路线图 3.5）。 */
   jurisdiction: string | null;
-  /** `not_started` / `expired` 时，去服务商页面的地址（只认 https）。 */
+  /** `not_started` / `expired` 时（第 10 批的 `stripe_live` 在 `pending` 时也给，让卖方接着填），去服务商页面的地址（只认 https）。 */
   startUrl: string | null;
   updatedAt: string | null;
 }

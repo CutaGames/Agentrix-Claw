@@ -176,6 +176,9 @@ function decodeCommon(value: Record<string, unknown>) {
   const delivery = decodeDelivery(value.delivery);
   if (paymentDeadline === null || deliveryDeadline === null || deliveredAt === null || acceptedAt === null || delivery === undefined) return null;
   if (typeof value.buyerNote !== 'string') return null;
+  // v0.14: whether a card-issuer dispute is open. Only rail orders carry it; absent from bookkeeping orders and older servers.
+  const paymentDispute = value.paymentDispute;
+  if (paymentDispute !== undefined && paymentDispute !== 'none' && paymentDispute !== 'open') return null;
   const escrowDates: { heldAt?: string; releasedAt?: string; refundedAt?: string } = {};
   for (const key of ['heldAt', 'releasedAt', 'refundedAt'] as const) {
     const at = optionalIso(escrow[key]);
@@ -200,7 +203,18 @@ function decodeCommon(value: Record<string, unknown>) {
     version: value.version,
     buyerNote: value.buyerNote,
     delivery,
+    ...(paymentDispute ? { paymentDispute: paymentDispute as 'none' | 'open' } : {}),
   };
+}
+
+/**
+ * v0.14: an optional `Money` field of the amounts block. `undefined` when the key is absent (a bookkeeping order, an older
+ * server), `null` when it is `null` (not locked in yet), the `Money` when it is a valid one, `false` when it is present but not.
+ */
+function decodeOptionalMoney(record: Record<string, unknown>, key: string): Money | null | undefined | false {
+  if (!(key in record) || record[key] === undefined) return undefined;
+  if (record[key] === null) return null;
+  return decodeMoney(record[key]) ?? false;
 }
 
 export function decodeOrderBuyerView(value: unknown): OrderBuyerView | null {
@@ -232,9 +246,20 @@ export function decodeOrderSellerView(value: unknown): OrderSellerView | null {
   if (!nonEmpty(mandate.grantRef, 200) || typeof mandate.grantVersion !== 'number') return null;
   const deliveryDraft = decodeDeliveryDraft(value.deliveryDraft);
   if (deliveryDraft === undefined) return null;
+  // v0.14 (R3-M02): the card fee locked in at payout and the seller's net are carried as they came, or not at all. This decoder
+  // rebuilds `amounts` field by field, so a field it does not name never reaches the web or the phone.
+  const processingFee = decodeOptionalMoney(amounts, 'processingFee');
+  const sellerNet = decodeOptionalMoney(amounts, 'sellerNet');
+  if (processingFee === false || sellerNet === false) return null;
   return {
     ...common,
-    amounts: { total, platformFee, processingFeeBearer: bearer },
+    amounts: {
+      total,
+      platformFee,
+      processingFeeBearer: bearer,
+      ...(processingFee !== undefined ? { processingFee } : {}),
+      ...(sellerNet !== undefined ? { sellerNet } : {}),
+    },
     buyer: { displayName: typeof buyer.displayName === 'string' && buyer.displayName.trim() ? buyer.displayName : null, kind: buyer.kind },
     mandateRef: { grantRef: mandate.grantRef, grantVersion: mandate.grantVersion },
     sellerAgentId: value.sellerAgentId,

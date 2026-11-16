@@ -22,6 +22,27 @@ export type RealMoneyRefundRuleV0 = (typeof REAL_MONEY_REFUND_RULES_V0)[number];
 
 export const REAL_MONEY_LIMITS_V0 = { minMinor: 100, maxMinor: 500_000, maxTakeRateBps: 3000 } as const;
 
+/**
+ * L9.2 batch 10 (real-money road): the hard ceilings the live order path enforces on top of anything an operator
+ * configures. Configuration can only tighten these, never loosen them. Amounts are SGD minor units (cents).
+ * Nothing here switches live money on; the switches are in the backend (all default off).
+ */
+export const L9_LIVE_LIMITS_V1 = {
+  currency: REAL_MONEY_CURRENCY_V0,
+  /** Smallest live order: SGD 10.00. Below this the Stripe fee eats most of the amount. */
+  minMinor: 1000,
+  /** Largest live order: same ceiling as the first real-money wave. */
+  maxMinor: REAL_MONEY_LIMITS_V0.maxMinor,
+  /** Per-day ceilings by who the money belongs to. */
+  dailyMinor: { seller: 1_000_000, buyer: 500_000, platform: 3_000_000 },
+  /** Highest fee the platform may take, in basis points. */
+  maxFeeBps: REAL_MONEY_LIMITS_V0.maxTakeRateBps,
+  /** A booking deposit may be taken for a service at most this many days ahead. */
+  bookingMaxAheadDays: 14,
+  /** Checkout sessions one buyer may open per hour. */
+  checkoutsPerBuyerHour: 10,
+} as const;
+
 export interface RealMoneyOrderDraftV0 {
   kind: RealMoneyOrderKindV0;
   amountMinor: number;

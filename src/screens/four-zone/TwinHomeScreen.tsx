@@ -38,6 +38,7 @@ import { AGENT_AUTOMATIONS_ENABLED } from '../../services/agentAutomations';
 import { AGENT_MAILBOX_ENABLED } from '../../services/agentMailbox';
 import { RELATIONSHIP_BOOK_ENABLED } from '../../services/relationshipBook';
 import { CARD_EXCHANGE_ENABLED } from '../../services/cardExchange';
+import { TWIN_HUDDLE_ENABLED } from '../../services/twinHuddle';
 import { TWIN_VOICE_ENABLED } from '../../services/twinVoice';
 import { MOBILE_M0_ENABLED } from '../../services/mobileM0';
 import { GLOBAL_PTT_SCROLL_INSET } from '../../services/pushToTalk';
@@ -255,6 +256,18 @@ export function TwinHomeScreen() {
         >
           <Text style={styles.rowLabel}>{t({ en: 'Swap cards', zh: '交换名片' })}</Text>
           <Text style={styles.rowHint}>{t({ en: 'Meet in person · both confirm · each book gets one entry', zh: '当面互扫 · 双方确认 · 各记一条' })}</Text>
+        </TouchableOpacity>
+      ) : null}
+      {TWIN_HUDDLE_ENABLED ? (
+        <TouchableOpacity
+          style={styles.row}
+          onPress={() => navigation.navigate('TwinHuddles')}
+          accessibilityRole="button"
+          accessibilityLabel={t({ en: 'Plan a time together', zh: '约个时间' })}
+          testID="twin-open-huddles"
+        >
+          <Text style={styles.rowLabel}>{t({ en: 'Plan a time together', zh: '约个时间' })}</Text>
+          <Text style={styles.rowHint}>{t({ en: 'Your twin works it out with theirs · you have the final say', zh: '分身替你商量 · 最后你点头' })}</Text>
         </TouchableOpacity>
       ) : null}
       {AGENT_MAILBOX_ENABLED ? (

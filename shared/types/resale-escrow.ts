@@ -13,6 +13,7 @@
  * - Switches: backend `RESALE_ESCROW_TEST_V1_ENABLED`, web `NEXT_PUBLIC_RESALE_ESCROW_TEST_ENABLED`; both exactly `'1'`,
  *   default off. Off: every route answers the 404 of a route that does not exist.
  */
+import { L9_LIVE_LIMITS_V1 } from './real-money-wave1';
 import type { ResaleMoneySgdV1 } from './resale';
 
 export const RESALE_ESCROW_TEST_FLAG_V1 = 'RESALE_ESCROW_TEST_V1_ENABLED';
@@ -209,6 +210,9 @@ export const RESALE_ESCROW_ERROR_CODES_V1 = [
   'escrow_state_changed',
   'escrow_no_seller_agent',
   'escrow_unavailable',
+  // L9.2 batch 10 (real-money road): the seller has not set up payouts; the reservation ends too soon to pay and hand over.
+  'escrow_seller_not_ready',
+  'escrow_reservation_ending',
 ] as const;
 export type ResaleEscrowErrorCodeV1 = (typeof RESALE_ESCROW_ERROR_CODES_V1)[number];
 
@@ -220,6 +224,8 @@ export const RESALE_ESCROW_ERROR_MESSAGES_V1: Record<ResaleEscrowErrorCodeV1, st
   escrow_state_changed: '托管的状态刚刚变了，刷新页面再看。 The escrow just changed; reload the page.',
   escrow_no_seller_agent: '卖家现在没有可以收款的 Agent，托管用不了。 The seller has no Agent that can take this escrow right now.',
   escrow_unavailable: '托管暂时用不了。 Escrow is not available right now.',
+  escrow_seller_not_ready: '卖家还没有开通收款，现在不能付款。 The seller has not set up payouts yet, so you cannot pay right now.',
+  escrow_reservation_ending: '这件东西的预订快到期了，来不及完成付款和交接。 The reservation is about to end, so there is not enough time to pay and hand over.',
 };
 
 /** Shown on every escrow box. */
@@ -227,3 +233,104 @@ export const RESALE_ESCROW_TEST_MODE_NOTE_V1 = {
   zh: '测试模式：不会真的扣款，也不会真的打款，平台不收费用。',
   en: 'Test mode: nothing is charged or paid out, and there is no platform fee.',
 } as const;
+
+// ── L9.2 batch 10 (real-money road, S0): the V2 view. V1 and its decoder stay as they are; a page that only knows V1 cannot
+// read a V2 view (`schemaVersion` 2), which fails closed. Whether a V2 view is ever served is decided by the backend switches. ──
+
+/** V1's states plus `awaiting_payment`: the order exists, the buyer has not paid yet (pay on the order page). */
+export const RESALE_ESCROW_STATES_V2 = ['none', 'awaiting_payment', 'held', 'handed_over', 'disputed', 'releasing', 'released', 'refunding', 'refunded', 'checking'] as const;
+export type ResaleEscrowStateV2 = (typeof RESALE_ESCROW_STATES_V2)[number];
+
+/** `awaiting_payment` becomes its own state; every other order status maps as in V1 (V1 itself still answers `none` for it). */
+export function resaleEscrowStateFromOrderV2(orderStatus: string | null | undefined): ResaleEscrowStateV2 {
+  return orderStatus === 'awaiting_payment' ? 'awaiting_payment' : resaleEscrowStateFromOrderV1(orderStatus);
+}
+
+/** Nobody has a button while the buyer has not paid: the buyer pays through `payHref`, and nothing is held yet to hand over or refund. */
+export function resaleEscrowActionsV2(role: 'buyer' | 'seller', state: ResaleEscrowStateV2, holdable = false): ResaleEscrowActionV1[] {
+  return state === 'awaiting_payment' ? [] : resaleEscrowActionsV1(role, state, holdable);
+}
+
+/** What the buyer is told before paying: the platform's rate, and that the card fee is the seller's (never shown to the seller). */
+export interface ResaleEscrowFeeDisclosureV2 {
+  platformFeeBps: number;
+  processingFeeBearer: 'seller';
+}
+
+export interface ResaleEscrowViewV2 {
+  schemaVersion: 2;
+  threadRef: string;
+  role: 'buyer' | 'seller';
+  state: ResaleEscrowStateV2;
+  amount: ResaleMoneySgdV1 | null;
+  orderId: string | null;
+  heldAt: string | null;
+  handedOverAt: string | null;
+  acceptBy: string | null;
+  closedAt: string | null;
+  actions: ResaleEscrowActionV1[];
+  environment: 'test' | 'live';
+  /** The platform's fee on this order in cents; 0 until there is an order. */
+  platformFeeMinor: number;
+  /** `/orders/<orderId>` for the buyer while the order awaits payment; `null` in every other case. */
+  payHref: string | null;
+  /** Buyer only. The seller's view has no such key. */
+  feeDisclosure?: ResaleEscrowFeeDisclosureV2;
+}
+
+/**
+ * Key by key. The buyer's view has `feeDisclosure`, the seller's does not (one key more or less is unreadable). `payHref` is
+ * exactly `/orders/<orderId>` for the buyer in `awaiting_payment` and `null` otherwise; a fee is a whole number of cents,
+ * at most the amount, and 0 while there is no order.
+ */
+export function decodeResaleEscrowViewV2(value: unknown): ResaleEscrowViewV2 | null {
+  if (!isRecord(value) || (value.role !== 'buyer' && value.role !== 'seller')) return null;
+  const keys = value.role === 'buyer' ? [...VIEW_KEYS, 'payHref', 'feeDisclosure'] : [...VIEW_KEYS, 'payHref'];
+  if (!sameKeys(value, keys)) return null;
+  if (value.schemaVersion !== 2 || typeof value.threadRef !== 'string' || !THREAD_REF.test(value.threadRef)) return null;
+  if (typeof value.state !== 'string' || !(RESALE_ESCROW_STATES_V2 as readonly string[]).includes(value.state)) return null;
+  if (value.amount !== null) {
+    if (!isRecord(value.amount) || !sameKeys(value.amount, ['amountMinor', 'currency']) || !isAmountMinor(value.amount.amountMinor) || value.amount.currency !== 'SGD') return null;
+  }
+  if (value.orderId !== null && (typeof value.orderId !== 'string' || !ORDER_ID.test(value.orderId))) return null;
+  if (!isTime(value.heldAt) || !isTime(value.handedOverAt) || !isTime(value.acceptBy) || !isTime(value.closedAt)) return null;
+  if (!Array.isArray(value.actions) || value.actions.length > RESALE_ESCROW_ACTIONS_V1.length) return null;
+  if (!value.actions.every((action) => typeof action === 'string' && (RESALE_ESCROW_ACTIONS_V1 as readonly string[]).includes(action))) return null;
+  if (new Set(value.actions).size !== value.actions.length) return null;
+  if (value.environment !== 'test' && value.environment !== 'live') return null;
+  const fee = value.platformFeeMinor;
+  if (typeof fee !== 'number' || !Number.isInteger(fee) || fee < 0) return null;
+  if (fee > 0 && (value.orderId === null || value.amount === null || fee > (value.amount as { amountMinor: number }).amountMinor)) return null;
+  if (value.state === 'awaiting_payment' && (value.orderId === null || value.actions.length > 0)) return null;
+  if (value.role === 'buyer' && value.state === 'awaiting_payment') {
+    if (value.payHref !== `/orders/${value.orderId}`) return null;
+  } else if (value.payHref !== null) {
+    return null;
+  }
+  let feeDisclosure: ResaleEscrowFeeDisclosureV2 | undefined;
+  if (value.role === 'buyer') {
+    const note = value.feeDisclosure;
+    if (!isRecord(note) || !sameKeys(note, ['platformFeeBps', 'processingFeeBearer']) || note.processingFeeBearer !== 'seller') return null;
+    const bps = note.platformFeeBps;
+    if (typeof bps !== 'number' || !Number.isInteger(bps) || bps < 0 || bps > L9_LIVE_LIMITS_V1.maxFeeBps) return null;
+    feeDisclosure = { platformFeeBps: bps, processingFeeBearer: 'seller' };
+  }
+  const view: ResaleEscrowViewV2 = {
+    schemaVersion: 2,
+    threadRef: value.threadRef as string,
+    role: value.role as 'buyer' | 'seller',
+    state: value.state as ResaleEscrowStateV2,
+    amount: value.amount === null ? null : { amountMinor: (value.amount as { amountMinor: number }).amountMinor, currency: 'SGD' },
+    orderId: value.orderId as string | null,
+    heldAt: value.heldAt as string | null,
+    handedOverAt: value.handedOverAt as string | null,
+    acceptBy: value.acceptBy as string | null,
+    closedAt: value.closedAt as string | null,
+    actions: [...(value.actions as ResaleEscrowActionV1[])],
+    environment: value.environment as 'test' | 'live',
+    platformFeeMinor: fee,
+    payHref: value.payHref as string | null,
+  };
+  if (feeDisclosure) view.feeDisclosure = feeDisclosure;
+  return view;
+}
