@@ -62,12 +62,27 @@ export const AGENT_PASS_CATEGORIES_V1 = [
   'collab_file_offer',
   /** L8 R4: the thin slice of the relationship book an Agent may read (name, tier label, source, last contact; never contact details or notes). */
   'relationship_book',
+  /**
+   * 「问遍身边人」（`twin-ask.ts`）：本人写的「可以告诉朋友」条目，一个话题一类，只和目的 `friend_ask` 配对。
+   * 不在任何一档的默认条款里：本人在「问遍身边人」的设置里逐档打开。
+   */
+  'friend_fact_food',
+  'friend_fact_travel',
+  'friend_fact_kids_school',
+  'friend_fact_home',
+  'friend_fact_work',
+  'friend_fact_local_services',
 ] as const;
 export type AgentPassCategoryV1 = (typeof AGENT_PASS_CATEGORIES_V1)[number];
 
-/** 目的：Context Gateway 的四种，加上看护照页和协作请求。 */
-export const AGENT_PASS_PURPOSES_V1 = [...CONTEXT_PURPOSES_V1, 'passport_viewing', 'collaboration_request'] as const;
+/** 目的：Context Gateway 的四种，加上看护照页、协作请求，和「问遍身边人」里分身替本人回答朋友的提问。 */
+export const AGENT_PASS_PURPOSES_V1 = [...CONTEXT_PURPOSES_V1, 'passport_viewing', 'collaboration_request', 'friend_ask'] as const;
 export type AgentPassPurposeV1 = (typeof AGENT_PASS_PURPOSES_V1)[number];
+
+/** 朋友条目只和 `friend_ask` 配对，`friend_ask` 也只配朋友条目；其余类别和目的任意配。 */
+export function agentPassScopePairAllowedV1(category: AgentPassCategoryV1, purpose: AgentPassPurposeV1): boolean {
+  return category.startsWith('friend_fact_') === (purpose === 'friend_ask');
+}
 
 export const AGENT_PASS_DURATIONS_V1 = ['once', 'session', 'timed', 'ongoing'] as const;
 export type AgentPassDurationV1 = (typeof AGENT_PASS_DURATIONS_V1)[number];
@@ -271,6 +286,7 @@ function decodeScopes(value: unknown, path: string): AgentPassDecodeResultV1<Age
     if (!isOneOf(AGENT_PASS_CATEGORIES_V1, scope.category)) return fail('invalid_value', `${at}.category`);
     if (typeof scope.purpose !== 'string') return fail('invalid_type', `${at}.purpose`);
     if (!isOneOf(AGENT_PASS_PURPOSES_V1, scope.purpose)) return fail('invalid_value', `${at}.purpose`);
+    if (!agentPassScopePairAllowedV1(scope.category, scope.purpose)) return fail('invalid_value', `${at}.purpose`);
     const key = `${scope.category}|${scope.purpose}`;
     if (seen.has(key)) return fail('invalid_value', at);
     seen.add(key);
@@ -436,6 +452,7 @@ export function decodeAgentPassAuthorizeRequestV1(value: unknown): AgentPassDeco
   if (!isOneOf(AGENT_PASS_CATEGORIES_V1, value.category)) return fail('invalid_value', 'category');
   if (typeof value.purpose !== 'string') return fail('invalid_type', 'purpose');
   if (!isOneOf(AGENT_PASS_PURPOSES_V1, value.purpose)) return fail('invalid_value', 'purpose');
+  if (!agentPassScopePairAllowedV1(value.category, value.purpose)) return fail('invalid_value', 'purpose');
   if (typeof value.requestId !== 'string') return fail('invalid_type', 'requestId');
   if (!OPAQUE_ID.test(value.requestId)) return fail('invalid_value', 'requestId');
   return {
@@ -626,6 +643,12 @@ const CATEGORY_COPY: Readonly<Record<AgentPassCategoryV1, AgentPassCopyV1>> = {
   collab_deposit_intent: { zh: '提出定金意向', en: 'Propose a deposit' },
   collab_file_offer: { zh: '给你发文件', en: 'Offer you a file' },
   relationship_book: { zh: '关系簿里的称呼和档位', en: 'Names and tiers in your relationship book' },
+  friend_fact_food: { zh: '可以告诉朋友的：吃喝', en: 'What you tell friends: food and drink' },
+  friend_fact_travel: { zh: '可以告诉朋友的：出行', en: 'What you tell friends: getting around' },
+  friend_fact_kids_school: { zh: '可以告诉朋友的：孩子和学校', en: 'What you tell friends: kids and school' },
+  friend_fact_home: { zh: '可以告诉朋友的：装修和家务', en: 'What you tell friends: home and housework' },
+  friend_fact_work: { zh: '可以告诉朋友的：工作和行业', en: 'What you tell friends: work and industry' },
+  friend_fact_local_services: { zh: '可以告诉朋友的：本地服务', en: 'What you tell friends: local services' },
 };
 
 const PURPOSE_COPY: Readonly<Record<AgentPassPurposeV1, AgentPassCopyV1>> = {
@@ -635,6 +658,7 @@ const PURPOSE_COPY: Readonly<Record<AgentPassPurposeV1, AgentPassCopyV1>> = {
   support_diagnostics: { zh: '排查问题', en: 'support diagnostics' },
   passport_viewing: { zh: '查看护照页', en: 'viewing the passport page' },
   collaboration_request: { zh: '协作请求', en: 'a collaboration request' },
+  friend_ask: { zh: '替你回答朋友的提问', en: 'answering a friend’s question for you' },
 };
 
 const DURATION_COPY: Readonly<Record<AgentPassDurationV1, AgentPassCopyV1>> = {

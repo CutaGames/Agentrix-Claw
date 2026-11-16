@@ -27,6 +27,7 @@ import {
   AGENT_PASS_LIMITS_V1,
   AGENT_PASS_PURPOSES_V1,
   agentPassPreviewV1,
+  agentPassScopePairAllowedV1,
   type AgentPassCategoryV1,
   type AgentPassPurposeV1,
   type AgentPassScopeV1,
@@ -166,6 +167,11 @@ function isOneOf<T extends string>(list: readonly T[], value: unknown): value is
   return typeof value === 'string' && (list as readonly string[]).includes(value);
 }
 
+/** 第三方应用只能拿普通的「类别:目的」：朋友条目和 `friend_ask` 只给「问遍身边人」里本人的分身用。 */
+function clientPassScope(category: AgentPassCategoryV1, purpose: AgentPassPurposeV1): boolean {
+  return purpose !== 'friend_ask' && agentPassScopePairAllowedV1(category, purpose);
+}
+
 function isIso(value: unknown): value is string {
   return typeof value === 'string' && ISO.test(value) && Number.isFinite(Date.parse(value));
 }
@@ -222,7 +228,7 @@ export function decodeAgentrixOauthScopeV1(value: unknown, field = 'scope'): Age
       continue;
     }
     const [category, purpose, ...rest] = token.split(':');
-    if (rest.length > 0 || !isOneOf(AGENT_PASS_CATEGORIES_V1, category) || !isOneOf(AGENT_PASS_PURPOSES_V1, purpose)) return fail('invalid_scope', field);
+    if (rest.length > 0 || !isOneOf(AGENT_PASS_CATEGORIES_V1, category) || !isOneOf(AGENT_PASS_PURPOSES_V1, purpose) || !clientPassScope(category, purpose)) return fail('invalid_scope', field);
     pass.push({ category: category as AgentPassCategoryV1, purpose: purpose as AgentPassPurposeV1 });
   }
   if (pass.length > AGENTRIX_OAUTH_LIMITS_V1.scopesMax) return fail('invalid_scope', field);
@@ -564,10 +570,10 @@ export interface AgentrixAuthorizationServerMetadataV1 {
   client_id_metadata_document_supported: true;
 }
 
-/** 全部 scope：身份三项加每一对「类别:目的」。 */
+/** 全部 scope：身份三项加第三方能申请的每一对「类别:目的」。 */
 export function agentrixOauthScopesSupportedV1(): string[] {
   const pairs: string[] = [];
-  for (const category of AGENT_PASS_CATEGORIES_V1) for (const purpose of AGENT_PASS_PURPOSES_V1) pairs.push(`${category}:${purpose}`);
+  for (const category of AGENT_PASS_CATEGORIES_V1) for (const purpose of AGENT_PASS_PURPOSES_V1) if (clientPassScope(category, purpose)) pairs.push(`${category}:${purpose}`);
   return [...AGENTRIX_OAUTH_IDENTITY_SCOPES_V1, ...pairs];
 }
 
@@ -697,6 +703,7 @@ function decodePassScopes(value: unknown, path: string): AgentrixOauthDecodeResu
     if (!isOneOf(AGENT_PASS_CATEGORIES_V1, scope.category)) return fail('invalid_value', `${at}.category`);
     if (typeof scope.purpose !== 'string') return fail('invalid_type', `${at}.purpose`);
     if (!isOneOf(AGENT_PASS_PURPOSES_V1, scope.purpose)) return fail('invalid_value', `${at}.purpose`);
+    if (!clientPassScope(scope.category, scope.purpose)) return fail('invalid_value', `${at}.purpose`);
     const key = `${scope.category}|${scope.purpose}`;
     if (seen.has(key)) return fail('invalid_value', at);
     seen.add(key);

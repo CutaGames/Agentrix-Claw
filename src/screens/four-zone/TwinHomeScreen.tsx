@@ -39,6 +39,7 @@ import { AGENT_MAILBOX_ENABLED } from '../../services/agentMailbox';
 import { RELATIONSHIP_BOOK_ENABLED } from '../../services/relationshipBook';
 import { CARD_EXCHANGE_ENABLED } from '../../services/cardExchange';
 import { TWIN_HUDDLE_ENABLED } from '../../services/twinHuddle';
+import { TWIN_ASK_ENABLED } from '../../services/twinAsk';
 import { TWIN_VOICE_ENABLED } from '../../services/twinVoice';
 import { MOBILE_M0_ENABLED } from '../../services/mobileM0';
 import { GLOBAL_PTT_SCROLL_INSET } from '../../services/pushToTalk';
@@ -268,6 +269,18 @@ export function TwinHomeScreen() {
         >
           <Text style={styles.rowLabel}>{t({ en: 'Plan a time together', zh: '约个时间' })}</Text>
           <Text style={styles.rowHint}>{t({ en: 'Your twin works it out with theirs · you have the final say', zh: '分身替你商量 · 最后你点头' })}</Text>
+        </TouchableOpacity>
+      ) : null}
+      {TWIN_ASK_ENABLED ? (
+        <TouchableOpacity
+          style={styles.row}
+          onPress={() => navigation.navigate('TwinAsks')}
+          accessibilityRole="button"
+          accessibilityLabel={t({ en: 'Ask around', zh: '问遍身边人' })}
+          testID="twin-open-asks"
+        >
+          <Text style={styles.rowLabel}>{t({ en: 'Ask around', zh: '问遍身边人' })}</Text>
+          <Text style={styles.rowHint}>{t({ en: 'Your twin asks your friends · theirs answer only from what they wrote', zh: '分身替你问朋友 · 对方分身只照他写好的答' })}</Text>
         </TouchableOpacity>
       ) : null}
       {AGENT_MAILBOX_ENABLED ? (

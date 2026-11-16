@@ -53,6 +53,11 @@ import { TwinHuddleListScreen } from '../../screens/four-zone/TwinHuddleListScre
 import { TwinHuddleSettingsScreen } from '../../screens/four-zone/TwinHuddleSettingsScreen';
 import { TwinHuddleStartScreen } from '../../screens/four-zone/TwinHuddleStartScreen';
 import { TWIN_HUDDLE_ENABLED } from '../../services/twinHuddle';
+import { TwinAskListScreen } from '../../screens/four-zone/TwinAskListScreen';
+import { TwinAskStartScreen } from '../../screens/four-zone/TwinAskStartScreen';
+import { TwinAskDetailScreen } from '../../screens/four-zone/TwinAskDetailScreen';
+import { TwinAskSettingsScreen } from '../../screens/four-zone/TwinAskSettingsScreen';
+import { TWIN_ASK_ENABLED } from '../../services/twinAsk';
 import { GlobalPushToTalk } from '../../components/GlobalPushToTalk';
 
 type FourZoneTabParamList = {
@@ -80,6 +85,10 @@ type TwinStackParamList = {
   TwinHuddleStart: undefined;
   TwinHuddleDetail: { id: string };
   TwinHuddleSettings: undefined;
+  TwinAsks: undefined;
+  TwinAskStart: undefined;
+  TwinAskDetail: { id: string };
+  TwinAskSettings: undefined;
   TwinQr: TwinQrParams;
   TwinAnswers: undefined;
   BuyerOrders: { ref?: string } | undefined;
@@ -172,6 +181,19 @@ function TwinNavigator() {
       ) : null}
       {TWIN_HUDDLE_ENABLED ? (
         <TwinStack.Screen name="TwinHuddleSettings" component={TwinHuddleSettingsScreen} options={{ title: t({ en: 'Planning settings', zh: '约时间设置' }) }} />
+      ) : null}
+      {/* Twin ask: registered only in builds with EXPO_PUBLIC_TWIN_ASK=1. */}
+      {TWIN_ASK_ENABLED ? (
+        <TwinStack.Screen name="TwinAsks" component={TwinAskListScreen} options={{ title: t({ en: 'Ask around', zh: '问遍身边人' }) }} />
+      ) : null}
+      {TWIN_ASK_ENABLED ? (
+        <TwinStack.Screen name="TwinAskStart" component={TwinAskStartScreen} options={{ title: t({ en: 'Ask your friends', zh: '问朋友' }) }} />
+      ) : null}
+      {TWIN_ASK_ENABLED ? (
+        <TwinStack.Screen name="TwinAskDetail" component={TwinAskDetailScreen} options={{ title: t({ en: 'Question', zh: '问题详情' }) }} />
+      ) : null}
+      {TWIN_ASK_ENABLED ? (
+        <TwinStack.Screen name="TwinAskSettings" component={TwinAskSettingsScreen} options={{ title: t({ en: 'Ask-around settings', zh: '问遍身边人设置' }) }} />
       ) : null}
       {MOBILE_M0_ENABLED || CARD_EXCHANGE_ENABLED ? <TwinStack.Screen name="TwinQr" component={TwinQrScreen} options={{ headerShown: false, presentation: 'fullScreenModal' }} /> : null}
       {/* M0: the answers visitors meet and the card's services, edited natively. */}

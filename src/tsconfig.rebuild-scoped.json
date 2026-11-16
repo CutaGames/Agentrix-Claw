@@ -156,6 +156,14 @@
     "screens/four-zone/TwinHuddleStartScreen.tsx",
     "screens/four-zone/TwinHuddleChip.tsx",
     "screens/four-zone/TwinHuddleDetailScreen.tsx",
-    "screens/four-zone/TwinHuddleSettingsScreen.tsx"
+    "screens/four-zone/TwinHuddleSettingsScreen.tsx",
+    "services/twinAsk.ts",
+    "services/twinAskSession.ts",
+    "services/twinAskView.ts",
+    "screens/four-zone/TwinAskChip.tsx",
+    "screens/four-zone/TwinAskListScreen.tsx",
+    "screens/four-zone/TwinAskStartScreen.tsx",
+    "screens/four-zone/TwinAskDetailScreen.tsx",
+    "screens/four-zone/TwinAskSettingsScreen.tsx"
   ]
 }
