@@ -6,6 +6,8 @@
  */
 import {
   TWIN_ASK_ANSWERED_BY_LABELS_V0,
+  TWIN_ASK_DEVICE_CONFIRMED_LABEL_V0,
+  TWIN_ASK_FACT_SOURCE_LABELS_V0,
   TWIN_ASK_LIMITS_V0,
   TWIN_ASK_TOPIC_LABELS_V0,
   TWIN_ASK_TWIN_TOPICS_V0,
@@ -15,6 +17,7 @@ import {
   twinAskGuestRefV0,
   type TwinAskCloseReasonV0,
   type TwinAskDecodeResultV0,
+  type TwinAskFactSourceV0,
   type TwinAskFriendOptionV0,
   type TwinAskInvitedViewV0,
   type TwinAskListItemV0,
@@ -215,9 +218,17 @@ export function twinAskStatusWords(item: Pick<TwinAskListItemV0, 'role' | 'statu
 
 // ── The summary card (asker) ──
 
-/** One person's line on the summary card: who answered, or that no answer came. */
-export function twinAskPersonWords(person: Pick<TwinAskPersonV0, 'state' | 'answeredBy'>): TwinAskWords {
-  if (person.state === 'answered') return person.answeredBy ? TWIN_ASK_ANSWERED_BY_LABELS_V0[person.answeredBy] : { en: 'Answered', zh: '已回答' };
+/**
+ * One person's line on the summary card: who answered, or that no answer came. An answer the person confirmed on their
+ * own phone says so; only the person's own answers can carry that.
+ */
+export function twinAskPersonWords(person: Pick<TwinAskPersonV0, 'state' | 'answeredBy' | 'deviceConfirmed'>): TwinAskWords {
+  if (person.state === 'answered') {
+    if (!person.answeredBy) return { en: 'Answered', zh: '已回答' };
+    const by = TWIN_ASK_ANSWERED_BY_LABELS_V0[person.answeredBy];
+    if (person.answeredBy !== 'owner' || person.deviceConfirmed !== true) return by;
+    return { en: `${by.en} · ${TWIN_ASK_DEVICE_CONFIRMED_LABEL_V0.en}`, zh: `${by.zh} · ${TWIN_ASK_DEVICE_CONFIRMED_LABEL_V0.zh}` };
+  }
   return person.state === 'waiting' ? { en: 'Not answered yet', zh: '还没回答' } : { en: 'No answer', zh: '没有回答' };
 }
 
@@ -279,14 +290,17 @@ export function twinAskCanRelink(
 
 // ── The person asked ──
 
-export function twinAskMyStateWords(view: Pick<TwinAskInvitedViewV0, 'myState' | 'answeredBy'>): TwinAskWords {
+export function twinAskMyStateWords(view: Pick<TwinAskInvitedViewV0, 'myState' | 'answeredBy' | 'deviceConfirmed'>): TwinAskWords {
   switch (view.myState) {
     case 'twin_pending':
       return { en: 'Your twin is checking whether what you wrote answers it', zh: '分身在看你写好的话能不能回答' };
     case 'needs_me':
       return { en: 'Waiting for your answer', zh: '等你回答' };
     case 'answered':
-      return view.answeredBy === 'twin' ? { en: 'Your twin answered with what you wrote', zh: '分身用你写好的话替你答了' } : { en: 'You answered', zh: '你回答了' };
+      if (view.answeredBy === 'twin') return { en: 'Your twin answered with what you wrote', zh: '分身用你写好的话替你答了' };
+      return view.answeredBy === 'owner' && view.deviceConfirmed === true
+        ? { en: 'You answered · confirmed on your phone', zh: '你回答了 · 已在你的手机上确认' }
+        : { en: 'You answered', zh: '你回答了' };
     case 'declined':
       return { en: 'You chose not to answer', zh: '你选了不回答' };
     default:
@@ -318,6 +332,11 @@ export function twinAskProfilePatch(before: TwinAskProfileV0, after: TwinAskProf
 
 export function twinAskFactFromForm(topic: TwinAskTwinTopicV0 | null, text: string): TwinAskDecodeResultV0<TwinFriendFactInputV0> {
   return decodeTwinFriendFactInputV0({ topic, text });
+}
+
+/** Where an entry was written, when that is worth saying: nothing for the settings page itself. */
+export function twinAskFactSourceWords(source: TwinAskFactSourceV0): TwinAskWords | null {
+  return source === 'settings' ? null : TWIN_ASK_FACT_SOURCE_LABELS_V0[source];
 }
 
 /** Facts grouped by topic in the contract's order; topics without facts are left out. */

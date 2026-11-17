@@ -2,6 +2,7 @@ import { describe, it, expect } from '@jest/globals';
 import {
   TWIN_ASK_ANSWERED_BY_LABELS_V0,
   TWIN_ASK_CLOSE_REASONS_V0,
+  TWIN_ASK_DEVICE_CONFIRMED_LABEL_V0,
   TWIN_ASK_LIMITS_V0,
   TWIN_ASK_MY_STATES_V0,
   TWIN_ASK_PUBLIC_ROUTES_V0,
@@ -20,6 +21,7 @@ import {
   twinAskDailyCapWords,
   twinAskFactFits,
   twinAskFactFromForm,
+  twinAskFactSourceWords,
   twinAskFactsByTopic,
   twinAskFailureWords,
   twinAskMyStateWords,
@@ -203,6 +205,16 @@ describe('twinAskView', () => {
   it('words the summary card, the receipt and the asked person\'s own state', () => {
     expect(twinAskPersonWords({ state: 'answered', answeredBy: 'twin' })).toBe(TWIN_ASK_ANSWERED_BY_LABELS_V0.twin);
     expect(twinAskPersonWords({ state: 'answered', answeredBy: 'guest' }).zh).toBe('未验证');
+    // Confirmed on the person's own phone: said only for the person's own answer.
+    expect(twinAskPersonWords({ state: 'answered', answeredBy: 'owner' })).toBe(TWIN_ASK_ANSWERED_BY_LABELS_V0.owner);
+    expect(twinAskPersonWords({ state: 'answered', answeredBy: 'owner', deviceConfirmed: false })).toBe(TWIN_ASK_ANSWERED_BY_LABELS_V0.owner);
+    expect(twinAskPersonWords({ state: 'answered', answeredBy: 'owner', deviceConfirmed: true })).toEqual({
+      en: `${TWIN_ASK_ANSWERED_BY_LABELS_V0.owner.en} · ${TWIN_ASK_DEVICE_CONFIRMED_LABEL_V0.en}`,
+      zh: `${TWIN_ASK_ANSWERED_BY_LABELS_V0.owner.zh} · 已在本人手机上确认`,
+    });
+    expect(twinAskPersonWords({ state: 'answered', answeredBy: 'twin', deviceConfirmed: true })).toBe(TWIN_ASK_ANSWERED_BY_LABELS_V0.twin);
+    expect(twinAskPersonWords({ state: 'answered', answeredBy: 'guest', deviceConfirmed: true })).toBe(TWIN_ASK_ANSWERED_BY_LABELS_V0.guest);
+    expect(twinAskPersonWords({ state: 'waiting', answeredBy: null, deviceConfirmed: true }).zh).toBe('还没回答');
     expect(twinAskPersonWords({ state: 'waiting', answeredBy: null })).toEqual({ en: 'Not answered yet', zh: '还没回答' });
     expect(twinAskPersonWords({ state: 'no_answer', answeredBy: null })).toEqual({ en: 'No answer', zh: '没有回答' });
     const tally = twinAskTally([
@@ -222,6 +234,9 @@ describe('twinAskView', () => {
     for (const myState of TWIN_ASK_MY_STATES_V0) expect(twinAskMyStateWords({ myState, answeredBy: null }).zh).toMatch(CJK);
     expect(twinAskMyStateWords({ myState: 'answered', answeredBy: 'twin' }).zh).toContain('分身');
     expect(twinAskMyStateWords({ myState: 'answered', answeredBy: 'owner' })).toEqual({ en: 'You answered', zh: '你回答了' });
+    expect(twinAskMyStateWords({ myState: 'answered', answeredBy: 'owner', deviceConfirmed: true }).zh).toBe('你回答了 · 已在你的手机上确认');
+    expect(twinAskMyStateWords({ myState: 'answered', answeredBy: 'twin', deviceConfirmed: true }).zh).not.toContain('确认');
+    expect(twinAskMyStateWords({ myState: 'withdrawn', answeredBy: null, deviceConfirmed: true }).zh).not.toContain('确认');
   });
 
   it('offers a fresh link only while someone asked by link can still answer', () => {
@@ -254,6 +269,9 @@ describe('twinAskView', () => {
       ['food', ['b']],
       ['work', ['a', 'c']],
     ]);
+    expect(twinAskFactSourceWords('settings')).toBeNull();
+    expect(twinAskFactSourceWords('owner_reply')).toEqual({ en: 'From one of your answers', zh: '来自你的一次回答' });
+    expect(twinAskFactSourceWords('memory')).toEqual({ en: 'From memory review', zh: '来自记忆审核' });
     expect(twinAskFactFits(facts, 'work')).toBe(true);
     const fullTopic = Array.from({ length: L.factsPerTopicMax }, (_, i) => fact(`w${i}`, 'work'));
     expect(twinAskFactFits(fullTopic, 'work')).toBe(false);

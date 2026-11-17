@@ -202,6 +202,30 @@ describe('asking around on the phone', () => {
     await expect(client.previewSharing({ tier: 'family', topics: [] })).rejects.toMatchObject({ failure: 'unreadable' });
   });
 
+  it('sends the phone confirmation and where an entry came from only when they are set', async () => {
+    const proof = { deviceId: `dev_${'c'.repeat(32)}`, nonce: T0, signature: 'A'.repeat(86) };
+    const confirmed = {
+      ...INVITED,
+      myState: 'answered',
+      answeredBy: 'owner',
+      myParts: ['去巷口那家'],
+      canDecline: false,
+      canWithdraw: true,
+      canDeviceConfirm: true,
+      deviceNonce: T1,
+      deviceConfirmed: true,
+    };
+    const { calls, client } = scripted({ status: 200, body: confirmed }, { status: 201, body: { fact: { ...FACT, source: 'memory' } } });
+    // Anything else riding on the proof object stays on the phone.
+    const reply = { text: '去巷口那家', saveAsFact: true, deviceProof: { ...proof, privateNote: 'x' } };
+    await expect(client.answer(ID, reply)).resolves.toMatchObject({ deviceConfirmed: true, canDeviceConfirm: true, deviceNonce: T1 });
+    await expect(client.addFact({ topic: 'food', text: FACT.text, source: 'memory' })).resolves.toMatchObject({ source: 'memory' });
+    expect(sent(calls)).toEqual([
+      ['POST', `/twin-ask/${ID}/answer`, { text: '去巷口那家', saveAsFact: true, deviceProof: proof }],
+      ['POST', '/twin-ask/facts', { topic: 'food', text: FACT.text, source: 'memory' }],
+    ]);
+  });
+
   it('maps statuses to failures and keeps the rule a bad form broke', async () => {
     const cases: [Scripted, string][] = [
       [{ status: 401, body: { code: 'x' } }, 'not_allowed'],
@@ -209,6 +233,11 @@ describe('asking around on the phone', () => {
       [STEP_UP, 'step_up_required'],
       [{ status: 404, body: { code: 'x' } }, 'not_found'],
       [{ status: 409, body: { code: 'sharing_changed' } }, 'changed'],
+      [{ status: 409, body: { code: 'changed' } }, 'changed'],
+      [{ status: 409, body: { code: 'device_proof_rejected' } }, 'device_proof_rejected'],
+      [{ status: 409, body: { code: 'facts_full' } }, 'facts_full'],
+      [{ status: 409, body: 'device_proof_rejected' }, 'changed'],
+      [{ status: 410, body: { code: 'device_proof_rejected' } }, 'changed'],
       [{ status: 429, body: { code: 'rate_limited' } }, 'too_many'],
       [{ status: 500, body: { code: 'x' } }, 'unavailable'],
     ];
@@ -266,7 +295,7 @@ describe('asking around on the phone', () => {
       ...TWIN_ASK_REFUSAL_CODES_V0.map((code) => TWIN_ASK_REFUSAL_COPY[code]),
       ...Object.values(TWIN_ASK_STEP_UP_COPY),
     ];
-    expect(copies).toHaveLength(9 + TWIN_ASK_REFUSAL_CODES_V0.length + 2);
+    expect(copies).toHaveLength(11 + TWIN_ASK_REFUSAL_CODES_V0.length + 2);
     for (const copy of copies) {
       expect(copy.en.length).toBeGreaterThan(0);
       expect(copy.zh).toMatch(CJK);

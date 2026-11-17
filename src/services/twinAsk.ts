@@ -6,6 +6,9 @@
  * tell them, and which relationship tiers it may tell. Only in builds with `EXPO_PUBLIC_TWIN_ASK=1`; the routes answer
  * 404 while the server switch is off or the user is outside the cohort. No React Native import: the transport and
  * token are injected (twinAskSession.ts binds them).
+ *
+ * Phase 2: an answer may carry a proof from the owner's phone key (twinAskDeviceProof.ts), and an entry may say it came
+ * from memory review (twinAskMemoryShare.ts). Both fields are sent only when set: a server without phase 2 refuses them.
  */
 import type { HttpResponseV1, HttpTransportV1 } from '../../shared/client/transport';
 import {
@@ -57,6 +60,8 @@ export type TwinAskFailure =
   | 'step_up_required'
   | 'invalid'
   | 'changed'
+  | 'device_proof_rejected'
+  | 'facts_full'
   | 'too_many'
   | 'unavailable'
   | 'unreadable';
@@ -68,6 +73,14 @@ export const TWIN_ASK_FAILURE_COPY: Record<TwinAskFailure, { en: string; zh: str
   step_up_required: { en: 'Confirm it is you before your twin tells friends more.', zh: '要再确认一次是你本人，分身才能多告诉朋友一些。' },
   invalid: { en: 'Something in the form is not right. Check it and try again.', zh: '填的内容有不对的地方，请检查后再试。' },
   changed: { en: 'Things changed in the meantime. Refresh and try again.', zh: '情况刚有变化，请刷新后再试。' },
+  device_proof_rejected: {
+    en: "The server did not accept this phone's confirmation. The answer has not been sent.",
+    zh: '服务器没有认这台手机的确认，回答还没发出。',
+  },
+  facts_full: {
+    en: `Up to ${L.factsMax} entries in all and ${L.factsPerTopicMax} per topic. Delete one in settings first.`,
+    zh: `最多 ${L.factsMax} 条，每个话题最多 ${L.factsPerTopicMax} 条。请先到设置里删一条。`,
+  },
   too_many: { en: 'Too many tries. Wait a minute.', zh: '操作太频繁了，请过一分钟再试。' },
   unavailable: { en: 'Not available right now. Try again later.', zh: '现在用不了，请稍后再试。' },
   unreadable: { en: 'The answer could not be read.', zh: '读不出服务器的回答。' },
@@ -105,7 +118,7 @@ export interface MobileTwinAskClient {
   friends(): Promise<TwinAskFriendOptionV0[]>;
   facts(): Promise<TwinFriendFactV0[]>;
   addFact(input: TwinFriendFactInputV0): Promise<TwinFriendFactV0>;
-  /** The whole entry is replaced. */
+  /** The whole entry is replaced; where it was first written stays as it was. */
   replaceFact(id: string, input: TwinFriendFactInputV0): Promise<TwinFriendFactV0>;
   removeFact(id: string): Promise<void>;
   sharing(): Promise<TwinAskSharingV0>;
@@ -135,6 +148,8 @@ function failureOf(status: number, body: unknown): TwinAskFailure {
   if (status === 400 || status === 422) return 'invalid';
   if (status === 401 || status === 403) return 'not_allowed';
   if (status === 404) return 'not_found';
+  if (status === 409 && isRecord(body) && body.code === 'device_proof_rejected') return 'device_proof_rejected';
+  if (status === 409 && isRecord(body) && body.code === 'facts_full') return 'facts_full';
   if (status === 409 || status === 410) return 'changed';
   if (status === 429) return 'too_many';
   return 'unavailable';
@@ -217,7 +232,8 @@ export function createMobileTwinAskClient(deps: {
       return read(decodeTwinFriendFactsV0(await call('GET', '/facts')));
     },
     async addFact(input) {
-      return read(decodeTwinFriendFactV0(await call('POST', '/facts', { topic: input.topic, text: input.text })));
+      const body = { topic: input.topic, text: input.text, ...(input.source === undefined ? {} : { source: input.source }) };
+      return read(decodeTwinFriendFactV0(await call('POST', '/facts', body)));
     },
     async replaceFact(id, input) {
       const fact = read(decodeTwinFriendFactV0(await call('PUT', `/facts/${checked(id)}`, { topic: input.topic, text: input.text })));
@@ -257,7 +273,14 @@ export function createMobileTwinAskClient(deps: {
       return linkOf(relinked.ref, relinked.code);
     },
     async answer(id, reply) {
-      return asInvited(await view(id, 'answer', reply.saveAsFact === true ? { text: reply.text, saveAsFact: true } : { text: reply.text }));
+      const proof = reply.deviceProof;
+      return asInvited(
+        await view(id, 'answer', {
+          text: reply.text,
+          ...(reply.saveAsFact === true ? { saveAsFact: true } : {}),
+          ...(proof === undefined ? {} : { deviceProof: { deviceId: proof.deviceId, nonce: proof.nonce, signature: proof.signature } }),
+        }),
+      );
     },
     async decline(id) {
       return asInvited(await view(id, 'decline'));

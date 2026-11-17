@@ -3,7 +3,8 @@
  * `EXPO_PUBLIC_TWIN_ASK=1`. The asker sees the summary card: who answered, how (their twin passing on what they wrote,
  * the person, or an unverified link answer) and the words; ends the question early or gets a fresh link for someone who
  * lost theirs. The person asked answers (and may keep the answer for their twin), says they'd rather not, or withdraws
- * what they or their twin said.
+ * what they or their twin said. Where the server offers it and this phone has a registered key, sending an answer first
+ * asks the person to confirm on the phone (twinAskDeviceProof.ts); the asker then sees it was confirmed on their own phone.
  */
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Share, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -19,6 +20,8 @@ import {
   type TwinAskReplyV0,
 } from '../../../shared/types/twin-ask';
 import { TwinAskError } from '../../services/twinAsk';
+import { TWIN_ASK_DEVICE_PROOF_WORDS as PROOF, twinAskDeviceProof, twinAskDeviceProofOffered } from '../../services/twinAskDeviceProof';
+import { twinAskDeviceProofDeps, twinAskDeviceProofReadiness } from '../../services/twinAskDeviceProofSession';
 import { mobileTwinAskClient } from '../../services/twinAskSession';
 import {
   TWIN_ASK_CLOSED_WORDS,
@@ -223,27 +226,50 @@ function InvitedPart({ view, onView, onFail }: PartProps<TwinAskInvitedViewV0>) 
   const [text, setText] = useState('');
   const [keep, setKeep] = useState(false);
   const [problem, setProblem] = useState<TwinAskWords | null>(null);
+  /** The confirmation on the phone did not go through: nothing was sent, the words are still in the box. */
+  const [unconfirmed, setUnconfirmed] = useState<TwinAskWords | null>(null);
+  const offered = twinAskDeviceProofOffered(view);
+  const readiness = useQuery({ queryKey: ['twin-ask', 'device-proof-readiness'], queryFn: twinAskDeviceProofReadiness, enabled: offered, staleTime: 0 });
   const answer = useMutation({
-    mutationFn: (reply: TwinAskReplyV0) => mobileTwinAskClient().answer(view.id, reply),
+    mutationFn: async (input: { reply: TwinAskReplyV0; confirm: boolean }): Promise<TwinAskInvitedViewV0 | 'cancelled' | 'failed'> => {
+      if (!input.confirm) return mobileTwinAskClient().answer(view.id, input.reply);
+      const proof = await twinAskDeviceProof(view, input.reply.text, await twinAskDeviceProofDeps(t(PROOF.prompt)));
+      if (proof.kind === 'cancelled' || proof.kind === 'failed') return proof.kind;
+      return mobileTwinAskClient().answer(view.id, proof.kind === 'signed' ? { ...input.reply, deviceProof: proof.proof } : input.reply);
+    },
     onSuccess: (next) => {
+      if (next === 'cancelled' || next === 'failed') {
+        setUnconfirmed(PROOF[next]);
+        return;
+      }
       setText('');
       setKeep(false);
+      setUnconfirmed(null);
       onView(next);
     },
-    onError: onFail,
+    onError: (error) => {
+      if (error instanceof TwinAskError && error.failure === 'device_proof_rejected') {
+        setUnconfirmed(twinAskFailureWords(error));
+        return;
+      }
+      setUnconfirmed(null);
+      onFail(error);
+    },
   });
   const decline = useMutation({ mutationFn: () => mobileTwinAskClient().decline(view.id), onSuccess: onView, onError: onFail });
   const withdraw = useMutation({ mutationFn: () => mobileTwinAskClient().withdraw(view.id), onSuccess: onView, onError: onFail });
   const busy = answer.isPending || decline.isPending || withdraw.isPending;
 
-  const send = (): void => {
+  /** `confirm: false` is the person choosing to send without the phone's confirmation. */
+  const send = (confirm: boolean): void => {
     const reply = twinAskReplyFromForm(text, keep, view.canSaveAsFact);
+    setUnconfirmed(null);
     if (reply.ok === false) {
       setProblem(twinAskProblemWords(reply.reasonCode, reply.field));
       return;
     }
     setProblem(null);
-    answer.mutate(reply.value);
+    answer.mutate({ reply: reply.value, confirm });
   };
   const askWithdraw = (): void => {
     Alert.alert(
@@ -306,9 +332,32 @@ function InvitedPart({ view, onView, onFail }: PartProps<TwinAskInvitedViewV0>) 
               {t(problem)}
             </Text>
           ) : null}
-          <TouchableOpacity style={[styles.button, busy && styles.dim]} disabled={busy} onPress={send} accessibilityRole="button" testID="twin-ask-answer">
+          <TouchableOpacity style={[styles.button, busy && styles.dim]} disabled={busy} onPress={() => send(true)} accessibilityRole="button" testID="twin-ask-answer">
             {answer.isPending ? <ActivityIndicator /> : <Text style={styles.buttonText}>{t({ en: 'Send', zh: '发送' })}</Text>}
           </TouchableOpacity>
+          {offered && readiness.data === 'ready' ? (
+            <Text style={styles.muted} testID="twin-ask-device-proof-hint">
+              {t(PROOF.hint)}
+            </Text>
+          ) : null}
+          {offered && readiness.data === 'no_key' ? (
+            <Text style={styles.muted} testID="twin-ask-device-proof-no-key">
+              {t(PROOF.noKey)}
+            </Text>
+          ) : null}
+          {unconfirmed ? (
+            <View style={styles.section}>
+              <Text style={styles.problem} testID="twin-ask-device-proof-problem">
+                {t(unconfirmed)}
+              </Text>
+              <TouchableOpacity style={[styles.secondary, busy && styles.dim]} disabled={busy} onPress={() => send(true)} accessibilityRole="button" testID="twin-ask-device-proof-again">
+                <Text style={styles.secondaryText}>{t(PROOF.again)}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.secondary, busy && styles.dim]} disabled={busy} onPress={() => send(false)} accessibilityRole="button" testID="twin-ask-device-proof-plain">
+                <Text style={styles.secondaryText}>{t(PROOF.plain)}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
       ) : null}
       {view.canDecline ? (

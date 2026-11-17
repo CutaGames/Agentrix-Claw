@@ -21,6 +21,13 @@
  *
  * 开关（后端接线时才读）：服务端 `TWIN_ASK_V0_ENABLED`，只认精确的 `'1'`；网页 `NEXT_PUBLIC_TWIN_ASK_ENABLED`；
  * 手机 `EXPO_PUBLIC_TWIN_ASK`。
+ *
+ * 第 2 阶段（设计稿 `.agents/tasks/twin-social-net/ask-phase2-design.md`）：
+ * - 站内本人回答可以带一段本人手机设备钥匙的签名（`TwinAskDeviceProofV0`）：服务端验过才收，发起人那边「本人回答」
+ *   后面多一句「已在本人手机上确认」。分身转述和链接回答不签。开关：服务端 `TWIN_ASK_DEVICE_PROOF_V0_ENABLED`，
+ *   手机 `EXPO_PUBLIC_TWIN_ASK_DEVICE_PROOF`，都只认精确的 `'1'`。
+ * - 条目多一种来源 `memory`：记忆审核里接受一条记忆时勾了「也可以告诉朋友」，文字是本人在那里确认或改过的一句。
+ *
  * 本文件只有常量、类型和纯函数：不读环境变量、不碰数据库、不调模型。
  */
 import {
@@ -30,12 +37,16 @@ import {
   type AgentPassScopeV1,
   type AgentPassTierPresetV1,
 } from './agent-pass';
+import { sha256Hex, utf8Encode } from './trust-loop-primitives';
 import { twinPrechatTextViolationsV0 } from './twin-prechat';
 
 export const TWIN_ASK_SCHEMA_VERSION_V0 = 'agentrix.twin-ask.v0' as const;
 export const TWIN_ASK_FLAG_V0 = 'TWIN_ASK_V0_ENABLED';
 export const TWIN_ASK_WEB_FLAG_V0 = 'NEXT_PUBLIC_TWIN_ASK_ENABLED';
 export const TWIN_ASK_MOBILE_FLAG_V0 = 'EXPO_PUBLIC_TWIN_ASK';
+/** 本人回答在手机上确认（第 2 阶段）：服务端和手机各一个开关，都只认精确的 `'1'`。 */
+export const TWIN_ASK_DEVICE_PROOF_FLAG_V0 = 'TWIN_ASK_DEVICE_PROOF_V0_ENABLED';
+export const TWIN_ASK_DEVICE_PROOF_MOBILE_FLAG_V0 = 'EXPO_PUBLIC_TWIN_ASK_DEVICE_PROOF';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -164,9 +175,16 @@ export type TwinAskAnswerStateV0 = (typeof TWIN_ASK_ANSWER_STATES_V0)[number];
 export const TWIN_ASK_ANSWERED_BY_V0 = ['twin', 'owner', 'guest'] as const;
 export type TwinAskAnsweredByV0 = (typeof TWIN_ASK_ANSWERED_BY_V0)[number];
 
-/** 条目从哪来：设置页里写的，或者回答朋友时勾了「以后这类问题让分身直接用这句」。 */
-export const TWIN_ASK_FACT_SOURCES_V0 = ['settings', 'owner_reply'] as const;
+/**
+ * 条目从哪来：设置页里写的；回答朋友时勾了「以后这类问题让分身直接用这句」；记忆审核里接受一条记忆时勾了
+ * 「也可以告诉朋友」（`memory`：文字是本人在那里确认或改过的一句，不是模型写的原文直接入库）。
+ */
+export const TWIN_ASK_FACT_SOURCES_V0 = ['settings', 'owner_reply', 'memory'] as const;
 export type TwinAskFactSourceV0 = (typeof TWIN_ASK_FACT_SOURCES_V0)[number];
+
+/** 新建条目时客户端可以说的来源；`owner_reply` 只能由回答接口产生。 */
+export const TWIN_ASK_FACT_INPUT_SOURCES_V0 = ['settings', 'memory'] as const;
+export type TwinAskFactInputSourceV0 = (typeof TWIN_ASK_FACT_INPUT_SOURCES_V0)[number];
 
 // ── 解码 ──────────────────────────────────────────────────────────────────────
 
@@ -411,23 +429,93 @@ export function twinAskPickedNumbersV0(modelText: string, count: number): number
 
 // ── 回答 ──────────────────────────────────────────────────────────────────────
 
+/**
+ * 本人回答时，本人手机设备钥匙对这条回答的签名（第 2 阶段）。钥匙在手机的安全硬件里，用之前要过指纹或面容；公钥是
+ * 这台手机登记设备时交给服务端的。它证明的是「这条回答是在本人登记过的这台手机上、过了指纹或面容之后发的」，
+ * 不证明回答的内容是真的。
+ */
+export interface TwinAskDeviceProofV0 {
+  /** 这台手机登记的设备号。 */
+  deviceId: string;
+  /** 被问的人的视图里的 `deviceNonce`，原样带回；这一行每变一次它就换一个，旧签名不能再用。 */
+  nonce: string;
+  /** P-256 ECDSA（SHA-256）签名，IEEE P1363（r‖s 共 64 字节），base64url 不带填充。签的是 `twinAskAnswerDeviceMessageV0`。 */
+  signature: string;
+}
+
+/** 和设备登记用的设备号是同一个格式（`SELF_CERTIFYING_DEVICE_ID_PATTERN_V1`）。 */
+export const TWIN_ASK_DEVICE_ID_PATTERN_V0 = /^dev_[0-9a-f]{32}$/;
+const DEVICE_NONCE = /^[A-Za-z0-9:.+_-]{8,40}$/;
+const DEVICE_SIGNATURE = /^[A-Za-z0-9_-]{86}$/;
+
+export function isTwinAskDeviceNonceV0(value: unknown): value is string {
+  return typeof value === 'string' && DEVICE_NONCE.test(value);
+}
+
+function decodeDeviceProof(value: unknown, field: string): TwinAskDecodeResultV0<TwinAskDeviceProofV0> {
+  const rec = strict(value, field, ['deviceId', 'nonce', 'signature'], ['deviceId', 'nonce', 'signature']);
+  if (rec.ok === false) return rec;
+  const { deviceId, nonce, signature } = rec.value;
+  if (typeof deviceId !== 'string') return fail('invalid_type', `${field}.deviceId`);
+  if (!TWIN_ASK_DEVICE_ID_PATTERN_V0.test(deviceId)) return fail('invalid_value', `${field}.deviceId`);
+  if (typeof nonce !== 'string') return fail('invalid_type', `${field}.nonce`);
+  if (!DEVICE_NONCE.test(nonce)) return fail('invalid_value', `${field}.nonce`);
+  if (typeof signature !== 'string') return fail('invalid_type', `${field}.signature`);
+  if (!DEVICE_SIGNATURE.test(signature)) return fail('invalid_value', `${field}.signature`);
+  return { ok: true, value: { deviceId, nonce, signature } };
+}
+
+/** 回答原文的 SHA-256 十六进制：几段用换行连起来再算，和回答凭证里的 `textSha256` 是同一个算法。 */
+export function twinAskAnswerTextSha256V0(parts: readonly string[]): string {
+  return sha256Hex(utf8Encode(parts.join('\n')));
+}
+
+/**
+ * 手机设备钥匙签的那段文字：一行一项，顺序固定。问题和回答只放 SHA-256；回答按去掉首尾空白后的文字算（和
+ * `decodeTwinAskReplyV0` 收下的一样）。手机和服务端都用这个函数拼，不各写一份。
+ */
+export function twinAskAnswerDeviceMessageV0(input: { askId: string; question: string; text: string; nonce: string; deviceId: string }): string {
+  return [
+    'Agentrix twin-ask answer v1',
+    `ask: ${input.askId}`,
+    `question-sha256: ${twinAskAnswerTextSha256V0([input.question])}`,
+    `answer-sha256: ${twinAskAnswerTextSha256V0([input.text.trim()])}`,
+    `nonce: ${input.nonce}`,
+    `device: ${input.deviceId}`,
+  ].join('\n');
+}
+
 export interface TwinAskReplyV0 {
   text: string;
   /** 只有站内本人回答可以勾：「以后这类问题让分身直接用这句」，存成一条「可以告诉朋友」。默认不勾。 */
   saveAsFact?: boolean;
+  /** 只有站内本人回答、视图里 `canDeviceConfirm` 为真时可以带：这条回答在本人手机上确认过。 */
+  deviceProof?: TwinAskDeviceProofV0;
 }
 
-/** `allowSave`：站内本人回答；链接回答不能带 `saveAsFact`。要存成条目的回答也不许提钱。 */
-export function decodeTwinAskReplyV0(value: unknown, allowSave: boolean, field = 'reply'): TwinAskDecodeResultV0<TwinAskReplyV0> {
-  const rec = strict(value, field, allowSave ? ['text', 'saveAsFact'] : ['text'], ['text']);
+/**
+ * `allowSave`：站内本人回答；链接回答不能带 `saveAsFact`。要存成条目的回答也不许提钱。
+ * `allowDeviceProof`：站内本人回答、服务端开着设备确认时才收 `deviceProof`；这里只看格式，验签在服务端。
+ */
+export function decodeTwinAskReplyV0(value: unknown, allowSave: boolean, field = 'reply', allowDeviceProof = false): TwinAskDecodeResultV0<TwinAskReplyV0> {
+  const allowed = ['text', ...(allowSave ? ['saveAsFact'] : []), ...(allowDeviceProof ? ['deviceProof'] : [])];
+  const rec = strict(value, field, allowed, ['text']);
   if (rec.ok === false) return rec;
   const text = decodeText(rec.value.text, `${field}.text`, 'reply');
   if (text.ok === false) return text;
+  const reply: TwinAskReplyV0 = { text: text.value };
   const save = rec.value.saveAsFact;
-  if (save === undefined || save === false) return { ok: true, value: { text: text.value } };
-  if (typeof save !== 'boolean') return fail('invalid_type', `${field}.saveAsFact`);
-  if (Array.from(text.value).length > L.factMax || textBlocked(text.value, true)) return fail('text_violation', `${field}.saveAsFact`);
-  return { ok: true, value: { text: text.value, saveAsFact: true } };
+  if (save !== undefined && save !== false) {
+    if (typeof save !== 'boolean') return fail('invalid_type', `${field}.saveAsFact`);
+    if (Array.from(text.value).length > L.factMax || textBlocked(text.value, true)) return fail('text_violation', `${field}.saveAsFact`);
+    reply.saveAsFact = true;
+  }
+  if (rec.value.deviceProof !== undefined) {
+    const proof = decodeDeviceProof(rec.value.deviceProof, `${field}.deviceProof`);
+    if (proof.ok === false) return proof;
+    reply.deviceProof = proof.value;
+  }
+  return { ok: true, value: reply };
 }
 
 // ── 设置：可以被朋友问 ────────────────────────────────────────────────────────
@@ -477,17 +565,25 @@ export interface TwinFriendFactV0 {
 export interface TwinFriendFactInputV0 {
   topic: TwinAskTwinTopicV0;
   text: string;
+  /** 只有新建时可以带；不带就是 `settings`。 */
+  source?: TwinAskFactInputSourceV0;
 }
 
-/** 新建和修改都用它（修改是整条换掉）。话题只能是分身能答的六个。 */
-export function decodeTwinFriendFactInputV0(value: unknown, field = 'fact'): TwinAskDecodeResultV0<TwinFriendFactInputV0> {
-  const rec = strict(value, field, ['topic', 'text'], ['topic', 'text']);
+/**
+ * 新建和修改都用它（修改是整条换掉）。话题只能是分身能答的六个。
+ * `allowSource`：新建时可以带来源（`TWIN_ASK_FACT_INPUT_SOURCES_V0`）；修改不能改来源。
+ */
+export function decodeTwinFriendFactInputV0(value: unknown, field = 'fact', allowSource = false): TwinAskDecodeResultV0<TwinFriendFactInputV0> {
+  const rec = strict(value, field, allowSource ? ['topic', 'text', 'source'] : ['topic', 'text'], ['topic', 'text']);
   if (rec.ok === false) return rec;
   const topic = decodeEnum(TWIN_ASK_TWIN_TOPICS_V0, rec.value.topic, `${field}.topic`);
   if (topic.ok === false) return topic;
   const text = decodeText(rec.value.text, `${field}.text`, 'fact');
   if (text.ok === false) return text;
-  return { ok: true, value: { topic: topic.value, text: text.value } };
+  if (rec.value.source === undefined) return { ok: true, value: { topic: topic.value, text: text.value } };
+  const source = decodeEnum(TWIN_ASK_FACT_INPUT_SOURCES_V0, rec.value.source, `${field}.source`);
+  if (source.ok === false) return source;
+  return { ok: true, value: { topic: topic.value, text: text.value, source: source.value } };
 }
 
 // ── 设置：每一档朋友能问哪些话题（Pass）────────────────────────────────────────
@@ -586,6 +682,8 @@ export interface TwinAskPersonV0 {
   /** 分身转述：1–2 条本人写的原文；本人回答或链接回答：一段。 */
   parts: string[];
   answeredAt: string | null;
+  /** 本人回答在本人登记过的手机上确认过（设备钥匙签名，服务端验过）。只有为真时才出现。 */
+  deviceConfirmed?: boolean;
 }
 
 export interface TwinAskAskerViewV0 {
@@ -626,6 +724,12 @@ export interface TwinAskInvitedViewV0 {
   canWithdraw: boolean;
   /** 话题是分身能答的六个之一时，回答可以勾「以后这类问题让分身直接用这句」。 */
   canSaveAsFact: boolean;
+  /** 现在回答可以在手机上确认（服务端开着设备确认，而且我能回答）。只有为真时才出现，并且一定带 `deviceNonce`。 */
+  canDeviceConfirm?: boolean;
+  /** 签名要带的一次性码（`TwinAskDeviceProofV0.nonce`）。 */
+  deviceNonce?: string;
+  /** 我这条本人回答在手机上确认过。只有为真时才出现。 */
+  deviceConfirmed?: boolean;
 }
 
 /** 链接那头看到的：不显示别人，不显示发起人以外的任何名字。 */
@@ -672,6 +776,8 @@ export interface TwinAskAnswerClaimsV0 {
   answeredAt: string;
   /** 回答原文（几段用换行连起来）的 SHA-256 十六进制。 */
   textSha256: string;
+  /** 本人回答在本人登记过的手机上确认过。只有为真时才出现；设备号和签名不进凭证。 */
+  deviceConfirmed?: true;
 }
 
 export const TWIN_ASK_RECEIPT_TYP_V0 = 'agentrix.twin-ask-receipt.v0' as const;
@@ -702,6 +808,15 @@ export const TWIN_ASK_ANSWERED_BY_LABELS_V0: Readonly<Record<TwinAskAnsweredByV0
   twin: { zh: '分身转述', en: 'Relayed by their twin' },
   owner: { zh: '本人回答', en: 'Answered in person' },
   guest: { zh: '未验证', en: 'Unverified' },
+};
+
+/** 本人回答在本人手机上确认过时，接在「本人回答」后面。 */
+export const TWIN_ASK_DEVICE_CONFIRMED_LABEL_V0 = { zh: '已在本人手机上确认', en: 'Confirmed on their own phone' } as const;
+
+/** 设置页里条目下面的一行小字；设置页里写的不标。 */
+export const TWIN_ASK_FACT_SOURCE_LABELS_V0: Readonly<Record<Exclude<TwinAskFactSourceV0, 'settings'>, { zh: string; en: string }>> = {
+  owner_reply: { zh: '来自你的一次回答', en: 'From one of your answers' },
+  memory: { zh: '来自记忆审核', en: 'From memory review' },
 };
 
 /** 站内通知的标题（中文）和正文（英文）。只发站内，不推送到手机。 */
@@ -753,7 +868,7 @@ function readOptionalTime(value: unknown): string | null | undefined {
 
 function readPerson(value: unknown): TwinAskPersonV0 | null {
   if (!isRecord(value)) return null;
-  const { ref, label, via, state, answeredBy } = value;
+  const { ref, label, via, state, answeredBy, deviceConfirmed } = value;
   if (typeof ref !== 'string' || typeof label !== 'string') return null;
   if (via !== 'app' && via !== 'link') return null;
   if (state !== 'waiting' && state !== 'answered' && state !== 'no_answer') return null;
@@ -761,7 +876,10 @@ function readPerson(value: unknown): TwinAskPersonV0 | null {
   const parts = readList(value.parts, readText);
   const answeredAt = readOptionalTime(value.answeredAt);
   if (parts === null || answeredAt === undefined) return null;
-  return { ref, label, via, state, answeredBy, parts, answeredAt };
+  if (deviceConfirmed !== undefined && typeof deviceConfirmed !== 'boolean') return null;
+  // 「已在本人手机上确认」只跟着本人回答走：别的回答带了也不认。
+  const confirmed = deviceConfirmed === true && state === 'answered' && answeredBy === 'owner';
+  return { ref, label, via, state, answeredBy, parts, answeredAt, ...(confirmed ? { deviceConfirmed: true } : {}) };
 }
 
 function readCommon(value: Record<string, unknown>) {
@@ -786,7 +904,7 @@ function readAskerView(value: Record<string, unknown>): TwinAskAskerViewV0 | nul
 function readInvitedView(value: Record<string, unknown>): TwinAskInvitedViewV0 | null {
   const common = readCommon(value);
   if (!common) return null;
-  const { askerName, myState, answeredBy, canAnswer, canDecline, canWithdraw, canSaveAsFact } = value;
+  const { askerName, myState, answeredBy, canAnswer, canDecline, canWithdraw, canSaveAsFact, canDeviceConfirm, deviceNonce, deviceConfirmed } = value;
   if (typeof askerName !== 'string' || !isOneOf(TWIN_ASK_MY_STATES_V0, myState)) return null;
   if (!isOneOfOrNull(['twin', 'owner'] as const, answeredBy)) return null;
   if (typeof canAnswer !== 'boolean' || typeof canDecline !== 'boolean' || typeof canWithdraw !== 'boolean' || typeof canSaveAsFact !== 'boolean') {
@@ -794,7 +912,16 @@ function readInvitedView(value: Record<string, unknown>): TwinAskInvitedViewV0 |
   }
   const myParts = readList(value.myParts, readText);
   if (myParts === null) return null;
-  return { ...common, role: 'invited', askerName, myState, answeredBy, myParts, canAnswer, canDecline, canWithdraw, canSaveAsFact };
+  if (canDeviceConfirm !== undefined && typeof canDeviceConfirm !== 'boolean') return null;
+  if (deviceConfirmed !== undefined && typeof deviceConfirmed !== 'boolean') return null;
+  const nonce = isTwinAskDeviceNonceV0(deviceNonce) ? deviceNonce : null;
+  if (deviceNonce !== undefined && nonce === null) return null;
+  if (canDeviceConfirm === true && nonce === null) return null;
+  const device = {
+    ...(canDeviceConfirm === true && canAnswer && nonce !== null ? { canDeviceConfirm: true, deviceNonce: nonce } : {}),
+    ...(deviceConfirmed === true && myState === 'answered' && answeredBy === 'owner' ? { deviceConfirmed: true } : {}),
+  };
+  return { ...common, role: 'invited', askerName, myState, answeredBy, myParts, canAnswer, canDecline, canWithdraw, canSaveAsFact, ...device };
 }
 
 export function decodeTwinAskViewV0(body: unknown): TwinAskAskerViewV0 | TwinAskInvitedViewV0 | null {

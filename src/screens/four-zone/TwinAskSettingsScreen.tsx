@@ -29,6 +29,7 @@ import {
   twinAskDailyCapWords,
   twinAskFactFits,
   twinAskFactFromForm,
+  twinAskFactSourceWords,
   twinAskFactsByTopic,
   twinAskFailureWords,
   twinAskProblemWords,
@@ -237,7 +238,7 @@ function FactsSection() {
             <View key={fact.id} style={[styles.factRow, fact.id === editing && styles.factEditing]} testID={`twin-ask-fact-${fact.id}`}>
               <View style={styles.grow}>
                 <Text style={styles.body}>{fact.text}</Text>
-                {fact.source === 'owner_reply' ? <Text style={styles.muted}>{t({ en: 'From one of your answers', zh: '来自你的一次回答' })}</Text> : null}
+                <FactSource source={fact.source} />
               </View>
               <TouchableOpacity style={styles.linkButton} disabled={busy} onPress={() => startEdit(fact)} accessibilityRole="button" testID={`twin-ask-fact-edit-${fact.id}`}>
                 <Text style={styles.linkText}>{t({ en: 'Edit', zh: '改' })}</Text>
@@ -291,6 +292,14 @@ function FactsSection() {
       </View>
     </View>
   );
+}
+
+/** Where the entry was written, when it was not this page: one of the owner's answers, or memory review. */
+function FactSource({ source }: { source: TwinFriendFactV0['source'] }) {
+  const { t } = useI18n();
+  const styles = useThemedStyles(makeStyles);
+  const words = twinAskFactSourceWords(source);
+  return words ? <Text style={styles.muted}>{t(words)}</Text> : null;
 }
 
 function SharingSection() {

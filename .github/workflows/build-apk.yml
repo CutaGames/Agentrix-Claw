@@ -85,6 +85,11 @@ jobs:
       # Twin ask staging trial (owner 11-16): the ask screens (src/services/twinAsk.ts) have their own switch.
       # Same refs as the staging switch; formal builds leave it empty.
       EXPO_PUBLIC_TWIN_ASK: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-staging-') && '1' || '' }}
+      # Twin ask phase 2 staging trial (owner 11-17): the phone-confirm step and the memory card with its
+      # "friends may be told" tick each have their own switch. Same refs as the staging switch; formal builds
+      # leave both empty.
+      EXPO_PUBLIC_TWIN_ASK_DEVICE_PROOF: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-staging-') && '1' || '' }}
+      EXPO_PUBLIC_MEMORY_PROPOSALS: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-staging-') && '1' || '' }}
       # L9 package 3 (backlog 3.3): the L9 owner-facing screens whose server switches are on in production.
       # Only build/mobile-signing-check-* sets them (formal signing, no download-server deploy, no Release);
       # every other ref, including build/mobile-release-*, leaves them empty. The business export card needs
@@ -133,6 +138,7 @@ jobs:
           echo "[ci] L9 switches: TWIN_FAST_PATH_V1_ENABLED='${EXPO_PUBLIC_TWIN_FAST_PATH_V1_ENABLED:-}' ACCOUNT_EXPORT='${EXPO_PUBLIC_ACCOUNT_EXPORT:-}' ACCOUNT_EXPORT_BUSINESS_V1='${EXPO_PUBLIC_ACCOUNT_EXPORT_BUSINESS_V1:-}' DEVICE_ASSETS_ENABLED='${EXPO_PUBLIC_DEVICE_ASSETS_ENABLED:-}'"
           echo "[ci] huddle switches: AGENT_PASS='${EXPO_PUBLIC_AGENT_PASS:-}' RELATIONSHIP_BOOK='${EXPO_PUBLIC_RELATIONSHIP_BOOK:-}' CARD_EXCHANGE='${EXPO_PUBLIC_CARD_EXCHANGE:-}' TWIN_HUDDLE='${EXPO_PUBLIC_TWIN_HUDDLE:-}'"
           echo "[ci] ask switches: TWIN_ASK='${EXPO_PUBLIC_TWIN_ASK:-}'"
+          echo "[ci] ask phase 2 switches: TWIN_ASK_DEVICE_PROOF='${EXPO_PUBLIC_TWIN_ASK_DEVICE_PROOF:-}' MEMORY_PROPOSALS='${EXPO_PUBLIC_MEMORY_PROPOSALS:-}'"
           files=$(ls -1a .env* 2>/dev/null | xargs -r grep -lE '^[[:space:]]*(export[[:space:]]+)?EXPO_PUBLIC_(STAGING_SWITCH|PHONE_DEVICE_KEY)=' 2>/dev/null || true)
           if [ "$RELEASE_SIGNING" = "true" ]; then
             if [ -n "${EXPO_PUBLIC_STAGING_SWITCH:-}" ] || [ -n "${EXPO_PUBLIC_PHONE_DEVICE_KEY:-}" ] || [ -n "$files" ]; then
