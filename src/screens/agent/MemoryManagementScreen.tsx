@@ -5,7 +5,7 @@
  */
 import React, { useState } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet,
+  View, Text, FlatList, ScrollView, TouchableOpacity, StyleSheet,
   Alert, ActivityIndicator, RefreshControl, TextInput,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -13,6 +13,8 @@ import { apiFetch, memoryApi } from '../../services/api';
 import { colors } from '../../theme/colors';
 import { useI18n } from '../../stores/i18nStore';
 import { themedStyles } from '../../theme/useTheme';
+import { MemoryInboxCard } from '../../components/MemoryInboxCard';
+import { MEMORY_PROPOSALS_ENABLED } from '../../services/memoryProposals';
 
 // ─── Types ────────────────────────────────────────────────────
 interface KnowledgeFile {
@@ -77,6 +79,7 @@ const styles = themedStyles(() => StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 10,
   },
   infoBannerText: { fontSize: 12, color: colors.textSecondary, lineHeight: 18 },
+  reviewContent: { padding: 16, paddingBottom: 32 },
   loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { color: colors.textMuted, fontSize: 14 },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 32 },
@@ -177,7 +180,7 @@ function AddKnowledgeSheet({
 export function MemoryManagementScreen() {
   const { t, language } = useI18n();
   const [showAdd, setShowAdd] = useState(false);
-  const [tab, setTab] = useState<'knowledge' | 'preferences'>('knowledge');
+  const [tab, setTab] = useState<'knowledge' | 'preferences' | 'review'>('knowledge');
   const queryClient = useQueryClient();
 
   const formatTimeAgo = (iso: string) => {
@@ -256,14 +259,18 @@ export function MemoryManagementScreen() {
         <View>
           <Text style={styles.headerTitle}>🧠 {t({ en: 'Memory Hub', zh: '记忆中心' })}</Text>
           <Text style={styles.headerSub}>
-            {tab === 'knowledge'
+            {tab === 'review'
+              ? t({ en: 'Waiting for you', zh: '等你确认' })
+              : tab === 'knowledge'
               ? t({ en: `${files.length} files · ${files.reduce((a, f) => a + f.chunks, 0)} chunks indexed`, zh: `${files.length} 个文件 · 已索引 ${files.reduce((a, f) => a + f.chunks, 0)} 个分块` })
               : t({ en: `${prefs.length} memory preferences`, zh: `${prefs.length} 条记忆偏好` })}
           </Text>
         </View>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setShowAdd(true)}>
-          <Text style={styles.addBtnText}>+ {t({ en: 'Add', zh: '添加' })}</Text>
-        </TouchableOpacity>
+        {tab !== 'review' && (
+          <TouchableOpacity style={styles.addBtn} onPress={() => setShowAdd(true)}>
+            <Text style={styles.addBtnText}>+ {t({ en: 'Add', zh: '添加' })}</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.tabsRow}>
@@ -273,12 +280,19 @@ export function MemoryManagementScreen() {
         <TouchableOpacity style={[styles.tabBtn, tab === 'preferences' && styles.tabBtnActive]} onPress={() => setTab('preferences')}>
           <Text style={[styles.tabText, tab === 'preferences' && styles.tabTextActive]}>{t({ en: 'Preferences', zh: '偏好' })}</Text>
         </TouchableOpacity>
+        {MEMORY_PROPOSALS_ENABLED && (
+          <TouchableOpacity style={[styles.tabBtn, tab === 'review' && styles.tabBtnActive]} onPress={() => setTab('review')} testID="memory-tab-review">
+            <Text style={[styles.tabText, tab === 'review' && styles.tabTextActive]}>{t({ en: 'To review', zh: '待确认' })}</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Info Banner */}
       <View style={styles.infoBanner}>
         <Text style={styles.infoBannerText}>
-          {tab === 'knowledge' 
+          {tab === 'review'
+            ? t({ en: 'What your Agent wants to remember is listed here first, waiting for you.', zh: 'Agent 想记住的事会先列在这里，等你确认。' })
+            : tab === 'knowledge' 
             ? t({ en: '🔍 Knowledge files are chunked and vectorised. Your agent searches them automatically during conversations.', zh: '🔍 知识文件会被切分并向量化，智能体会在对话中自动检索它们。' })
             : t({ en: '💡 Memory preferences tell your agent how to behave and what to remember about you.', zh: '💡 记忆偏好会告诉智能体该如何行动，以及需要记住你的哪些信息。' })}
         </Text>
@@ -392,6 +406,12 @@ export function MemoryManagementScreen() {
             />
           )}
         </>
+      )}
+
+      {tab === 'review' && MEMORY_PROPOSALS_ENABLED && (
+        <ScrollView contentContainerStyle={styles.reviewContent} keyboardShouldPersistTaps="handled" testID="memory-review-tab">
+          <MemoryInboxCard />
+        </ScrollView>
       )}
     </View>
   );
