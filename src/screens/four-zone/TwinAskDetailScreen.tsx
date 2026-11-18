@@ -23,6 +23,7 @@ import { TwinAskError } from '../../services/twinAsk';
 import { TWIN_ASK_DEVICE_PROOF_WORDS as PROOF, twinAskDeviceProof, twinAskDeviceProofOffered } from '../../services/twinAskDeviceProof';
 import { twinAskDeviceProofDeps, twinAskDeviceProofReadiness } from '../../services/twinAskDeviceProofSession';
 import { mobileTwinAskClient } from '../../services/twinAskSession';
+import { TwinTelegramForward } from './TwinTelegramForward';
 import {
   TWIN_ASK_CLOSED_WORDS,
   TWIN_ASK_ROUTE_WORDS,
@@ -203,6 +204,7 @@ function AskerPart({ view, now, onView, onFail }: PartProps<TwinAskAskerViewV0>)
             <TouchableOpacity style={styles.smallButton} onPress={() => forward(fresh.url)} accessibilityRole="button" testID="twin-ask-fresh-forward">
               <Text style={styles.smallButtonText}>{t({ en: 'Forward', zh: '转发' })}</Text>
             </TouchableOpacity>
+            <TwinTelegramForward kind="ask" url={fresh.url} layout="stack" testID="twin-ask-fresh-telegram" />
           </View>
         ) : null}
         {receipt ? (

@@ -21,7 +21,10 @@ import {
   type TwinHuddleReplyV0,
 } from '../../../shared/types/twin-huddle';
 import { TwinHuddleError } from '../../services/twinHuddle';
+import { TWIN_HUDDLE_MONEY_ENABLED } from '../../services/twinHuddleMoney';
+import { TWIN_HUDDLE_PLACES_ENABLED } from '../../services/twinHuddlePlaces';
 import { mobileTwinHuddleClient } from '../../services/twinHuddleSession';
+import { TwinTelegramForward } from './TwinTelegramForward';
 import {
   TWIN_HUDDLE_ANSWER_WORDS,
   TWIN_HUDDLE_ROUTE_WORDS,
@@ -39,6 +42,8 @@ import {
   type TwinHuddleWords,
 } from '../../services/twinHuddleView';
 import { TwinHuddleChip } from './TwinHuddleChip';
+import { TwinHuddleMoneyCard } from './TwinHuddleMoneyCard';
+import { TwinHuddlePlacesCard } from './TwinHuddlePlacesCard';
 
 type DetailRoute = RouteProp<{ TwinHuddleDetail: { id: string } }, 'TwinHuddleDetail'>;
 type HuddleView = TwinHuddleInitiatorViewV0 | TwinHuddleInvitedViewV0;
@@ -108,6 +113,8 @@ export function TwinHuddleDetailScreen() {
         {deadline ? ` · ${t(deadline)}` : ''}
       </Text>
       <DetailsCard details={view.details} now={now} />
+      {TWIN_HUDDLE_PLACES_ENABLED ? <TwinHuddlePlacesCard huddleId={id} stage={view.status} people={view.role === 'initiator' ? view.people : undefined} /> : null}
+      {TWIN_HUDDLE_MONEY_ENABLED && view.status === 'settled' ? <TwinHuddleMoneyCard huddleId={id} people={view.role === 'initiator' ? view.people : undefined} /> : null}
       {view.role === 'initiator' ? (
         <InitiatorPart view={view} now={now} onView={onView} onFail={onFail} />
       ) : (
@@ -233,6 +240,7 @@ function InitiatorPart({ view, now, onView, onFail }: PartProps<TwinHuddleInitia
             <TouchableOpacity style={styles.button} onPress={() => forward(fresh.url)} accessibilityRole="button" testID="twin-huddle-share-fresh">
               <Text style={styles.buttonText}>{t({ en: `Forward to ${freshLabel}`, zh: `转发给${freshLabel}` })}</Text>
             </TouchableOpacity>
+            <TwinTelegramForward kind="huddle" url={fresh.url} layout="stack" testID="twin-huddle-telegram-fresh" />
           </View>
         ) : null}
       </View>

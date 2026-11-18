@@ -94,7 +94,8 @@ export interface MobileTwinHuddleClient {
 
 const HUDDLE_PATH = '/twin-huddle';
 
-function failureOf(status: number): TwinHuddleFailure {
+/** Shared with the weekly plan client (twinHuddleSeries.ts): the same routes family answers with the same statuses. */
+export function twinHuddleFailureOf(status: number): TwinHuddleFailure {
   if (status === 400 || status === 422) return 'invalid';
   if (status === 401 || status === 403) return 'not_allowed';
   if (status === 404) return 'not_found';
@@ -103,7 +104,7 @@ function failureOf(status: number): TwinHuddleFailure {
   return 'unavailable';
 }
 
-function invalidReason(body: unknown): { reasonCode: TwinHuddleReasonCodeV0; field: string } | undefined {
+export function twinHuddleInvalidReason(body: unknown): { reasonCode: TwinHuddleReasonCodeV0; field: string } | undefined {
   if (typeof body !== 'object' || body === null) return undefined;
   const { reasonCode, field } = body as Record<string, unknown>;
   const known = (TWIN_HUDDLE_REASON_CODES_V0 as readonly unknown[]).includes(reasonCode);
@@ -133,8 +134,8 @@ export function createMobileTwinHuddleClient(deps: {
       throw new TwinHuddleError('unavailable');
     }
     if (response.status < 200 || response.status >= 300) {
-      const failure = failureOf(response.status);
-      throw new TwinHuddleError(failure, failure === 'invalid' ? invalidReason(response.body) : undefined);
+      const failure = twinHuddleFailureOf(response.status);
+      throw new TwinHuddleError(failure, failure === 'invalid' ? twinHuddleInvalidReason(response.body) : undefined);
     }
     return response.body;
   };

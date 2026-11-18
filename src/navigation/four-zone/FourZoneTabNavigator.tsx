@@ -53,11 +53,19 @@ import { TwinHuddleListScreen } from '../../screens/four-zone/TwinHuddleListScre
 import { TwinHuddleSettingsScreen } from '../../screens/four-zone/TwinHuddleSettingsScreen';
 import { TwinHuddleStartScreen } from '../../screens/four-zone/TwinHuddleStartScreen';
 import { TWIN_HUDDLE_ENABLED } from '../../services/twinHuddle';
+import { TwinHuddleSeriesDetailScreen } from '../../screens/four-zone/TwinHuddleSeriesDetailScreen';
+import { TwinHuddleSeriesStartScreen } from '../../screens/four-zone/TwinHuddleSeriesStartScreen';
+import { TWIN_HUDDLE_SERIES_ENABLED } from '../../services/twinHuddleSeries';
 import { TwinAskListScreen } from '../../screens/four-zone/TwinAskListScreen';
 import { TwinAskStartScreen } from '../../screens/four-zone/TwinAskStartScreen';
 import { TwinAskDetailScreen } from '../../screens/four-zone/TwinAskDetailScreen';
 import { TwinAskSettingsScreen } from '../../screens/four-zone/TwinAskSettingsScreen';
 import { TWIN_ASK_ENABLED } from '../../services/twinAsk';
+import { TwinFindListScreen } from '../../screens/four-zone/TwinFindListScreen';
+import { TwinFindStartScreen } from '../../screens/four-zone/TwinFindStartScreen';
+import { TwinFindDetailScreen } from '../../screens/four-zone/TwinFindDetailScreen';
+import { TwinFindIntroScreen } from '../../screens/four-zone/TwinFindIntroScreen';
+import { TWIN_FIND_ENABLED } from '../../services/twinFind';
 import { GlobalPushToTalk } from '../../components/GlobalPushToTalk';
 
 type FourZoneTabParamList = {
@@ -85,10 +93,16 @@ type TwinStackParamList = {
   TwinHuddleStart: undefined;
   TwinHuddleDetail: { id: string };
   TwinHuddleSettings: undefined;
+  TwinHuddleSeriesStart: undefined;
+  TwinHuddleSeriesDetail: { id: string };
   TwinAsks: undefined;
   TwinAskStart: undefined;
   TwinAskDetail: { id: string };
   TwinAskSettings: undefined;
+  TwinFinds: undefined;
+  TwinFindStart: undefined;
+  TwinFindDetail: { id: string };
+  TwinFindIntro: { bridgeId: string };
   TwinQr: TwinQrParams;
   TwinAnswers: undefined;
   BuyerOrders: { ref?: string } | undefined;
@@ -182,6 +196,13 @@ function TwinNavigator() {
       {TWIN_HUDDLE_ENABLED ? (
         <TwinStack.Screen name="TwinHuddleSettings" component={TwinHuddleSettingsScreen} options={{ title: t({ en: 'Planning settings', zh: '约时间设置' }) }} />
       ) : null}
+      {/* Weekly plans: registered only in builds that also set EXPO_PUBLIC_TWIN_HUDDLE_SERIES=1. */}
+      {TWIN_HUDDLE_SERIES_ENABLED ? (
+        <TwinStack.Screen name="TwinHuddleSeriesStart" component={TwinHuddleSeriesStartScreen} options={{ title: t({ en: 'Weekly plan', zh: '发起每周固定' }) }} />
+      ) : null}
+      {TWIN_HUDDLE_SERIES_ENABLED ? (
+        <TwinStack.Screen name="TwinHuddleSeriesDetail" component={TwinHuddleSeriesDetailScreen} options={{ title: t({ en: 'Weekly plan', zh: '每周固定' }) }} />
+      ) : null}
       {/* Twin ask: registered only in builds with EXPO_PUBLIC_TWIN_ASK=1. */}
       {TWIN_ASK_ENABLED ? (
         <TwinStack.Screen name="TwinAsks" component={TwinAskListScreen} options={{ title: t({ en: 'Ask around', zh: '问遍身边人' }) }} />
@@ -194,6 +215,19 @@ function TwinNavigator() {
       ) : null}
       {TWIN_ASK_ENABLED ? (
         <TwinStack.Screen name="TwinAskSettings" component={TwinAskSettingsScreen} options={{ title: t({ en: 'Ask-around settings', zh: '问遍身边人设置' }) }} />
+      ) : null}
+      {/* Twin find: registered only in builds with EXPO_PUBLIC_TWIN_FIND=1. */}
+      {TWIN_FIND_ENABLED ? (
+        <TwinStack.Screen name="TwinFinds" component={TwinFindListScreen} options={{ title: t({ en: 'Find someone', zh: '帮我找人' }) }} />
+      ) : null}
+      {TWIN_FIND_ENABLED ? (
+        <TwinStack.Screen name="TwinFindStart" component={TwinFindStartScreen} options={{ title: t({ en: 'Ask who knows someone', zh: '问问谁认识' }) }} />
+      ) : null}
+      {TWIN_FIND_ENABLED ? (
+        <TwinStack.Screen name="TwinFindDetail" component={TwinFindDetailScreen} options={{ title: t({ en: 'Looking for someone', zh: '找人详情' }) }} />
+      ) : null}
+      {TWIN_FIND_ENABLED ? (
+        <TwinStack.Screen name="TwinFindIntro" component={TwinFindIntroScreen} options={{ title: t({ en: 'An introduction', zh: '有人想介绍你' }) }} />
       ) : null}
       {MOBILE_M0_ENABLED || CARD_EXCHANGE_ENABLED ? <TwinStack.Screen name="TwinQr" component={TwinQrScreen} options={{ headerShown: false, presentation: 'fullScreenModal' }} /> : null}
       {/* M0: the answers visitors meet and the card's services, edited natively. */}

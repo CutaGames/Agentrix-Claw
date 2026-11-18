@@ -22,6 +22,7 @@ import {
 } from '../../../shared/types/twin-huddle';
 import { TWIN_HUDDLE_REFUSAL_COPY } from '../../services/twinHuddle';
 import { mobileTwinHuddleClient } from '../../services/twinHuddleSession';
+import { TwinTelegramForward } from './TwinTelegramForward';
 import {
   TWIN_HUDDLE_DAY_PARTS,
   twinHuddleDayWords,
@@ -139,6 +140,7 @@ export function TwinHuddleStartScreen() {
                 <TouchableOpacity style={styles.smallButton} onPress={() => forward(link.url)} accessibilityRole="button" testID={`twin-huddle-share-${link.ref}`}>
                   <Text style={styles.smallButtonText}>{t({ en: 'Forward', zh: '转发' })}</Text>
                 </TouchableOpacity>
+                <TwinTelegramForward kind="huddle" url={link.url} layout="row" testID={`twin-huddle-telegram-${link.ref}`} />
               </View>
             ))}
           </View>

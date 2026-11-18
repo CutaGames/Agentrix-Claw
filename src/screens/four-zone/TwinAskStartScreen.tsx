@@ -19,6 +19,7 @@ import {
 } from '../../../shared/types/twin-ask';
 import { TWIN_ASK_REFUSAL_COPY } from '../../services/twinAsk';
 import { mobileTwinAskClient } from '../../services/twinAskSession';
+import { TwinTelegramForward } from './TwinTelegramForward';
 import {
   TWIN_ASK_OWNER_ONLY_WORDS,
   TWIN_ASK_ROUTE_WORDS,
@@ -112,9 +113,12 @@ export function TwinAskStartScreen() {
                 <Text style={styles.muted}>{t(TWIN_ASK_ROUTE_WORDS[person.route])}</Text>
               </View>
               {url ? (
-                <TouchableOpacity style={styles.smallButton} onPress={() => forward(url)} accessibilityRole="button" testID={`twin-ask-share-${person.ref}`}>
-                  <Text style={styles.smallButtonText}>{t({ en: 'Forward', zh: '转发' })}</Text>
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity style={styles.smallButton} onPress={() => forward(url)} accessibilityRole="button" testID={`twin-ask-share-${person.ref}`}>
+                    <Text style={styles.smallButtonText}>{t({ en: 'Forward', zh: '转发' })}</Text>
+                  </TouchableOpacity>
+                  <TwinTelegramForward kind="ask" url={url} layout="row" testID={`twin-ask-telegram-${person.ref}`} />
+                </>
               ) : null}
             </View>
           );

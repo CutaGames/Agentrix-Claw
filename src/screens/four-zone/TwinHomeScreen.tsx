@@ -40,6 +40,7 @@ import { RELATIONSHIP_BOOK_ENABLED } from '../../services/relationshipBook';
 import { CARD_EXCHANGE_ENABLED } from '../../services/cardExchange';
 import { TWIN_HUDDLE_ENABLED } from '../../services/twinHuddle';
 import { TWIN_ASK_ENABLED } from '../../services/twinAsk';
+import { TWIN_FIND_ENABLED } from '../../services/twinFind';
 import { TWIN_VOICE_ENABLED } from '../../services/twinVoice';
 import { MOBILE_M0_ENABLED } from '../../services/mobileM0';
 import { GLOBAL_PTT_SCROLL_INSET } from '../../services/pushToTalk';
@@ -281,6 +282,18 @@ export function TwinHomeScreen() {
         >
           <Text style={styles.rowLabel}>{t({ en: 'Ask around', zh: '问遍身边人' })}</Text>
           <Text style={styles.rowHint}>{t({ en: 'Your twin asks your friends · theirs answer only from what they wrote', zh: '分身替你问朋友 · 对方分身只照他写好的答' })}</Text>
+        </TouchableOpacity>
+      ) : null}
+      {TWIN_FIND_ENABLED ? (
+        <TouchableOpacity
+          style={styles.row}
+          onPress={() => navigation.navigate('TwinFinds')}
+          accessibilityRole="button"
+          accessibilityLabel={t({ en: 'Find someone through friends', zh: '帮我找人' })}
+          testID="twin-open-finds"
+        >
+          <Text style={styles.rowLabel}>{t({ en: 'Find someone through friends', zh: '帮我找人' })}</Text>
+          <Text style={styles.rowHint}>{t({ en: 'Friends ask someone they know · all three agree first', zh: '朋友帮你问他认识的人 · 三方都点头才算' })}</Text>
         </TouchableOpacity>
       ) : null}
       {AGENT_MAILBOX_ENABLED ? (
