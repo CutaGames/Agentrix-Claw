@@ -2,26 +2,36 @@ import { describe, it, expect } from '@jest/globals';
 import type { HttpRequestV1, HttpTransportV1 } from '../../../shared/client/transport';
 import {
   TWIN_HUDDLE_BILL_STATUSES_V0,
+  TWIN_HUDDLE_MONEY_CAP_LIMITS_V0,
+  TWIN_HUDDLE_MONEY_CAP_SCHEMA_VERSION_V0,
   TWIN_HUDDLE_MONEY_CONFLICT_CODES_V0,
   TWIN_HUDDLE_MONEY_KINDS_V0,
   TWIN_HUDDLE_MONEY_SCHEMA_VERSION_V0,
   TWIN_HUDDLE_SHARE_STATUSES_V0,
   type TwinHuddleBillV0,
+  type TwinHuddleMoneyCapViewV0,
   type TwinHuddleMoneyViewV0,
 } from '../../../shared/types/twin-huddle-money';
 import { TWIN_HUDDLE_FAILURE_COPY, TwinHuddleError } from '../twinHuddle';
 import {
   TWIN_HUDDLE_BILL_STATUS_COPY,
+  TWIN_HUDDLE_MONEY_CAP_COPY,
+  TWIN_HUDDLE_MONEY_CAP_RULES,
   TWIN_HUDDLE_MONEY_CONFLICT_COPY,
   TWIN_HUDDLE_MONEY_KIND_COPY,
   TWIN_HUDDLE_MONEY_TEST_BADGE,
   TWIN_HUDDLE_SHARE_STATUS_COPY,
   TwinHuddleMoneyError,
+  createMobileTwinHuddleMoneyCapClient,
   createMobileTwinHuddleMoneyClient,
   twinHuddleBillMineWords,
   twinHuddleBillProgressWords,
   twinHuddleBillTitleWords,
   twinHuddleMoneyAmountProblem,
+  twinHuddleMoneyCapFailureWords,
+  twinHuddleMoneyCapInput,
+  twinHuddleMoneyCapProblem,
+  twinHuddleMoneyCapStateWords,
   twinHuddleMoneyConflictOf,
   twinHuddleMoneyFailureWords,
   twinHuddleMoneyFormProblem,
@@ -282,5 +292,128 @@ describe('money on a settled plan, on the phone: the words', () => {
     expect(twinHuddleMoneyConflictOf({ conflict: 'bill_limit' })).toBe('bill_limit');
     expect(twinHuddleMoneyConflictOf({ conflict: 'nope' })).toBeNull();
     expect(twinHuddleMoneyConflictOf(null)).toBeNull();
+  });
+});
+
+describe('the limit within which my twin agrees for me, on the phone', () => {
+  const CAP_VIEW: TwinHuddleMoneyCapViewV0 = {
+    schemaVersion: TWIN_HUDDLE_MONEY_CAP_SCHEMA_VERSION_V0,
+    testMode: true,
+    available: true,
+    cap: { currency: 'SGD', perBillMinor: '5000', weeklyMinor: '8000' },
+    usedMinor: '3000',
+  };
+  const NONE: TwinHuddleMoneyCapViewV0 = { ...CAP_VIEW, cap: null, usedMinor: '0' };
+
+  function scriptedCap(...responses: Scripted[]) {
+    const calls: HttpRequestV1[] = [];
+    const transport: HttpTransportV1 = {
+      async request(req) {
+        calls.push(req);
+        const next = responses.shift();
+        if (next === undefined) throw new Error('no scripted response left');
+        if (next instanceof Error) throw next;
+        return { status: next.status, headers: {}, body: next.body };
+      },
+    };
+    return { calls, client: createMobileTwinHuddleMoneyCapClient({ transport, baseUrl: `${BASE}/`, token: () => 'tok' }) };
+  }
+
+  it('reads, sets and turns off my own limit on one route, as a signed-in mobile request', async () => {
+    const { calls, client } = scriptedCap({ status: 200, body: CAP_VIEW }, { status: 200, body: { data: CAP_VIEW } }, { status: 200, body: NONE });
+    await expect(client.get()).resolves.toEqual(CAP_VIEW);
+    await expect(client.set({ currency: 'SGD', perBill: ' 50 ', weekly: '80.5' })).resolves.toEqual(CAP_VIEW);
+    await expect(client.clear()).resolves.toEqual(NONE);
+    expect(calls).toEqual([
+      { method: 'GET', path: `${BASE}/twin-huddle/money-cap`, headers: HEADERS },
+      { method: 'PUT', path: `${BASE}/twin-huddle/money-cap`, headers: HEADERS, body: { currency: 'SGD', perBillMinor: '5000', weeklyMinor: '8050' } },
+      { method: 'DELETE', path: `${BASE}/twin-huddle/money-cap`, headers: HEADERS },
+    ]);
+  });
+
+  it('refuses before sending: no session, or a limit the server would refuse', async () => {
+    const { calls, client } = scriptedCap();
+    const drafts = [
+      { currency: 'SGD', perBill: '0.5', weekly: '80' },
+      { currency: 'SGD', perBill: '500.01', weekly: '800' },
+      { currency: 'SGD', perBill: '50', weekly: '49.99' },
+      { currency: 'SGD', perBill: '50', weekly: '2000.01' },
+      { currency: 'SGD', perBill: 'abc', weekly: '80' },
+      { currency: 'SGD', perBill: '50', weekly: '' },
+    ] as const;
+    for (const draft of drafts) expect((await failure(client.set(draft))).failure).toBe('invalid');
+    const signedOut = createMobileTwinHuddleMoneyCapClient({ transport: { request: async () => ({ status: 200, headers: {}, body: CAP_VIEW }) }, baseUrl: BASE, token: () => null });
+    expect((await failure(signedOut.get())).failure).toBe('no_session');
+    expect(calls).toEqual([]);
+  });
+
+  it('turns each refusal into words: the field a 400 names, a switched-off server, a server that only allows test mode', async () => {
+    const { client } = scriptedCap(
+      { status: 400, body: { reasonCode: 'invalid_value', field: 'body.weeklyMinor' } },
+      { status: 404 },
+      { status: 503, body: { code: 'test_mode_only' } },
+      new Error('offline'),
+    );
+    const draft = { currency: 'USD', perBill: '50', weekly: '80' } as const;
+    const weekly = await failure(client.set(draft));
+    expect(weekly.failure).toBe('invalid');
+    expect(twinHuddleMoneyCapFailureWords(weekly).zh).toMatch(/每周上限/);
+    expect((await failure(client.get())).failure).toBe('not_found');
+    expect((await failure(client.set(draft))).failure).toBe('unavailable');
+    expect((await failure(client.clear())).failure).toBe('unavailable');
+    expect(twinHuddleMoneyCapFailureWords(new TwinHuddleMoneyError('invalid', { reason: { reasonCode: 'invalid_value', field: 'body.perBillMinor' } })).zh).toMatch(/每笔上限/);
+    expect(twinHuddleMoneyCapFailureWords(new Error('x'))).toEqual(TWIN_HUDDLE_FAILURE_COPY.unavailable);
+  });
+
+  it('does not accept an answer it cannot read or one that is not marked test mode', async () => {
+    const { client } = scriptedCap(
+      { status: 200, body: 'ok' },
+      { status: 200, body: { ...CAP_VIEW, testMode: false } },
+      { status: 200, body: { ...CAP_VIEW, schemaVersion: TWIN_HUDDLE_MONEY_SCHEMA_VERSION_V0 } },
+      { status: 200, body: { ...CAP_VIEW, cap: { currency: 'SGD', perBillMinor: '90000', weeklyMinor: '90000' } } },
+    );
+    for (let i = 0; i < 4; i += 1) expect((await failure(client.get())).failure).toBe('unreadable');
+  });
+
+  it('checks a typed limit by the rule the server applies, and puts a set limit back into the form', () => {
+    expect(twinHuddleMoneyCapProblem({ currency: 'USD', perBill: '1', weekly: '1' })).toBeNull();
+    expect(twinHuddleMoneyCapProblem({ currency: 'SGD', perBill: '500', weekly: '2000' })).toBeNull();
+    expect(twinHuddleMoneyCapProblem({ currency: 'USD', perBill: '500.01', weekly: '2000' })?.zh).toMatch(/1\.00 到 500\.00/);
+    expect(twinHuddleMoneyCapProblem({ currency: 'USD', perBill: '50', weekly: '49.99' })?.zh).toMatch(/不能低于每笔上限/);
+    expect(twinHuddleMoneyCapProblem({ currency: 'USD', perBill: '50', weekly: '2000.01' })?.zh).toMatch(/2,000\.00/);
+    // The two rules spell the limits out, so they have to move together with the contract.
+    expect(TWIN_HUDDLE_MONEY_CAP_LIMITS_V0.perBillMinMinor).toBe(100);
+    expect(TWIN_HUDDLE_MONEY_CAP_LIMITS_V0.perBillMaxMinor).toBe(50_000);
+    expect(TWIN_HUDDLE_MONEY_CAP_LIMITS_V0.weeklyMaxMinor).toBe(200_000);
+    expect(twinHuddleMoneyCapInput('5000')).toBe('50.00');
+    expect(twinHuddleMoneyCapInput('8050')).toBe('80.50');
+  });
+
+  it('words the row, the rules and where my limit stands in both languages, never as a payment', () => {
+    const all = [
+      ...Object.values(TWIN_HUDDLE_MONEY_CAP_COPY),
+      TWIN_HUDDLE_MONEY_CAP_RULES,
+      twinHuddleMoneyCapStateWords(CAP_VIEW),
+      twinHuddleMoneyCapStateWords(NONE),
+      twinHuddleMoneyCapStateWords({ ...CAP_VIEW, available: false }),
+      twinHuddleMoneyCapStateWords({ ...NONE, available: false }),
+      twinHuddleMoneyCapProblem({ currency: 'SGD', perBill: '501', weekly: '600' })!,
+      twinHuddleMoneyCapProblem({ currency: 'SGD', perBill: '50', weekly: '40' })!,
+    ];
+    for (const words of all) {
+      expect(words.zh).toMatch(CJK);
+      expect(words.en).not.toMatch(CJK);
+      expect(words.zh).not.toMatch(/已付|付款|到账|已扣|已收|转账|代付/);
+      expect(words.en).not.toMatch(/\bpaid\b|\bpays?\b|\breceived\b|\btransferred\b|\bpayment\b/i);
+    }
+    expect(TWIN_HUDDLE_MONEY_CAP_COPY.row.zh).toBe('上限内不用问我');
+    expect(TWIN_HUDDLE_MONEY_CAP_COPY.byCap.zh).toBe('分身在上限内替你同意了');
+    expect(TWIN_HUDDLE_MONEY_CAP_COPY.revoke.zh).toBe('改成不同意');
+    expect(TWIN_HUDDLE_MONEY_CAP_RULES.zh).toMatch(/开单那一刻就记上了/);
+    expect(TWIN_HUDDLE_MONEY_CAP_RULES.zh).toMatch(/只能改一次/);
+    expect(TWIN_HUDDLE_MONEY_CAP_RULES.zh).toMatch(/只有你自己看得到/);
+    expect(TWIN_HUDDLE_MONEY_CAP_RULES.zh).toMatch(/不会扣你的钱/);
+    expect(twinHuddleMoneyCapStateWords(CAP_VIEW).zh).toBe('每笔不超过 50.00 SGD，每周不超过 80.00 SGD。这 7 天分身已经替你同意了 30.00 SGD。');
+    expect(twinHuddleMoneyCapStateWords({ ...CAP_VIEW, available: false }).zh).toMatch(/只能关掉/);
   });
 });

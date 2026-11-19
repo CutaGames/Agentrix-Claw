@@ -169,6 +169,12 @@
     "services/twinHuddleMoney.ts",
     "services/twinHuddleMoneySession.ts",
     "screens/four-zone/TwinHuddleMoneyCard.tsx",
+    "screens/four-zone/TwinHuddleMoneyCapRow.tsx",
+    "services/twinHuddleFill.ts",
+    "services/twinHuddleFillSession.ts",
+    "screens/four-zone/TwinHuddleFillCard.tsx",
+    "screens/four-zone/TwinHuddleFillInviteScreen.tsx",
+    "screens/four-zone/TwinHuddleFillInvitesSection.tsx",
     "services/twinTelegram.ts",
     "services/twinTelegramSession.ts",
     "screens/four-zone/TwinTelegramForward.tsx",
@@ -183,9 +189,11 @@
     "services/twinFind.ts",
     "services/twinFindSession.ts",
     "services/twinFindView.ts",
+    "services/twinFindCardView.ts",
     "screens/four-zone/TwinFindListScreen.tsx",
     "screens/four-zone/TwinFindStartScreen.tsx",
     "screens/four-zone/TwinFindDetailScreen.tsx",
-    "screens/four-zone/TwinFindIntroScreen.tsx"
+    "screens/four-zone/TwinFindIntroScreen.tsx",
+    "screens/four-zone/TwinFindCardEditor.tsx"
   ]
 }

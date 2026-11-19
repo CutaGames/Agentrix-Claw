@@ -21,10 +21,12 @@ import {
   type TwinHuddleReplyV0,
 } from '../../../shared/types/twin-huddle';
 import { TwinHuddleError } from '../../services/twinHuddle';
+import { TWIN_HUDDLE_FILL_ENABLED } from '../../services/twinHuddleFill';
 import { TWIN_HUDDLE_MONEY_ENABLED } from '../../services/twinHuddleMoney';
 import { TWIN_HUDDLE_PLACES_ENABLED } from '../../services/twinHuddlePlaces';
 import { mobileTwinHuddleClient } from '../../services/twinHuddleSession';
 import { TwinTelegramForward } from './TwinTelegramForward';
+import { TwinTelegramGroupCard } from './TwinTelegramGroupCard';
 import {
   TWIN_HUDDLE_ANSWER_WORDS,
   TWIN_HUDDLE_ROUTE_WORDS,
@@ -42,6 +44,7 @@ import {
   type TwinHuddleWords,
 } from '../../services/twinHuddleView';
 import { TwinHuddleChip } from './TwinHuddleChip';
+import { TwinHuddleFillCard } from './TwinHuddleFillCard';
 import { TwinHuddleMoneyCard } from './TwinHuddleMoneyCard';
 import { TwinHuddlePlacesCard } from './TwinHuddlePlacesCard';
 
@@ -115,6 +118,7 @@ export function TwinHuddleDetailScreen() {
       <DetailsCard details={view.details} now={now} />
       {TWIN_HUDDLE_PLACES_ENABLED ? <TwinHuddlePlacesCard huddleId={id} stage={view.status} people={view.role === 'initiator' ? view.people : undefined} /> : null}
       {TWIN_HUDDLE_MONEY_ENABLED && view.status === 'settled' ? <TwinHuddleMoneyCard huddleId={id} people={view.role === 'initiator' ? view.people : undefined} /> : null}
+      {TWIN_HUDDLE_FILL_ENABLED && view.status === 'settled' ? <TwinHuddleFillCard huddleId={id} people={view.role === 'initiator' ? view.people : undefined} /> : null}
       {view.role === 'initiator' ? (
         <InitiatorPart view={view} now={now} onView={onView} onFail={onFail} />
       ) : (
@@ -244,6 +248,7 @@ function InitiatorPart({ view, now, onView, onFail }: PartProps<TwinHuddleInitia
           </View>
         ) : null}
       </View>
+      <TwinTelegramGroupCard huddleId={view.id} open={open} linkSeats={view.people.filter((person) => person.route === 'link').length} />
       {open ? (
         <TouchableOpacity style={[styles.danger, busy && styles.dim]} disabled={busy} onPress={askCancel} accessibilityRole="button" testID="twin-huddle-cancel">
           <Text style={styles.dangerText}>{t({ en: 'Cancel this plan', zh: '取消这次商量' })}</Text>

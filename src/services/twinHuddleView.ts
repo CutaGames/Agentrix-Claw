@@ -15,6 +15,7 @@ import {
   type TwinHuddleBudgetBandV0,
   type TwinHuddleDecodeResultV0,
   type TwinHuddleDietTagV0,
+  type TwinHuddleFriendRouteV0,
   type TwinHuddleKindV0,
   type TwinHuddleListItemV0,
   type TwinHuddlePersonV0,
@@ -162,6 +163,46 @@ export function twinHuddleLinkLabels(
     const seat = guestLabels.findIndex((_, index) => twinHuddleGuestRefV0(index) === link.ref);
     return { ...link, label: seat >= 0 ? guestLabels[seat] : link.ref };
   });
+}
+
+/**
+ * People fixed before the form opens: the two a friend brought together (twinFindView.ts `twinFindMeetOffer`). The form
+ * shows them and does not let them be changed; what and when is still picked by hand.
+ */
+export interface TwinHuddleStartPreset {
+  from: 'find';
+  friends: { ref: string; label: string }[];
+  guestLabels: string[];
+}
+
+export interface TwinHuddlePresetPerson {
+  key: string;
+  label: string;
+  /** False when this person was not asked this time: the plan went ahead without them. */
+  asked: boolean;
+  words: TwinHuddleWords;
+}
+
+const PRESET_ROUTE_WORDS: Readonly<Record<TwinHuddleFriendRouteV0, TwinHuddleWords>> = {
+  twin: { en: 'Their twin answers from their calendar', zh: '对方的分身按日历回答' },
+  owner: { en: 'Asked in the app', zh: '已在 App 里请本人选' },
+  link: { en: 'Picks by the link you forward', zh: '要你把链接转给对方' },
+  pair_weekly_limit: { en: 'Not asked: the two of you have reached this week’s limit', zh: '没有去问：你和这位本周已经约满了' },
+  unavailable: { en: 'Not asked: they cannot be reached right now', zh: '没有去问：这位现在约不到' },
+};
+
+/**
+ * After starting with fixed people: what happened for each of them. A plan goes ahead even when one friend cannot be
+ * asked, so the page has to say who that was instead of only 「分身去商量了」.
+ */
+export function twinHuddlePresetPeople(preset: TwinHuddleStartPreset, routes: readonly { ref: string; route: TwinHuddleFriendRouteV0 }[]): TwinHuddlePresetPerson[] {
+  const friends = preset.friends.map((friend): TwinHuddlePresetPerson => {
+    const found = routes.find((item) => item.ref === friend.ref);
+    const route = found ? found.route : 'unavailable';
+    return { key: friend.ref, label: friend.label, asked: route === 'twin' || route === 'owner' || route === 'link', words: PRESET_ROUTE_WORDS[route] };
+  });
+  const guests = preset.guestLabels.map((label, index): TwinHuddlePresetPerson => ({ key: twinHuddleGuestRefV0(index), label, asked: true, words: PRESET_ROUTE_WORDS.link }));
+  return [...friends, ...guests];
 }
 
 /** The message that goes out with a forwarded link. */

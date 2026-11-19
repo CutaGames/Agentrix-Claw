@@ -7,24 +7,32 @@
  * The friend asked picks one person (from their own list, a reminder from their twin, or a name they write), sees how
  * that person is being asked, forwards the link when there is one, takes the introduction back, or says they cannot help.
  * The person introduced has their own page (TwinFindIntroScreen).
+ *
+ * Once all three agreed, the friend can open a plan for the three (TwinHuddleStartScreen) with the two people filled in.
+ * Only in builds with `EXPO_PUBLIC_TWIN_FIND_MEET=1` and `EXPO_PUBLIC_TWIN_HUDDLE=1`; opening it sends nothing.
  */
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useI18n } from '../../stores/i18nStore';
 import { useThemedStyles, type Palette } from '../../theme/useTheme';
-import { TWIN_ASK_TOPIC_LABELS_V0 } from '../../../shared/types/twin-ask';
 import { TWIN_FIND_LIMITS_V0, type TwinFindAskerViewV0, type TwinFindBridgeViewV0, type TwinFindPersonV0, type TwinFindPickV0 } from '../../../shared/types/twin-find';
-import { TwinFindError } from '../../services/twinFind';
+import { TWIN_FIND_MEET_ENABLED, TwinFindError } from '../../services/twinFind';
+import { TWIN_HUDDLE_ENABLED } from '../../services/twinHuddle';
+import type { TwinHuddleStartPreset } from '../../services/twinHuddleView';
 import { mobileTwinFindClient } from '../../services/twinFindSession';
 import { twinAskWhenWords } from '../../services/twinAskView';
 import {
   TWIN_FIND_CLOSED_WORDS,
   TWIN_FIND_LINK_ONCE_WORDS,
+  TWIN_FIND_MEET_HINT_WORDS,
+  TWIN_FIND_MEET_WORDS,
   TWIN_FIND_UNVERIFIED_WORDS,
   twinFindBridgeStateWords,
   twinFindFailureWords,
+  twinFindMeetOffer,
+  twinFindMeetUnavailableWords,
   twinFindOfferNameWords,
   twinFindPersonWords,
   twinFindPickFromForm,
@@ -35,6 +43,7 @@ import {
   twinFindTally,
   twinFindTallyWords,
   twinFindTimeLeftWords,
+  twinFindTopicWords,
   type TwinFindWords,
 } from '../../services/twinFindView';
 import { TwinAskChip as Chip } from './TwinAskChip';
@@ -90,7 +99,7 @@ export function TwinFindDetailScreen() {
 
   const view = find.data;
   const now = new Date();
-  const topic = t(TWIN_ASK_TOPIC_LABELS_V0[view.topic]);
+  const topic = t(twinFindTopicWords(view.topic));
   const open = view.status === 'open';
   const left = open ? twinFindTimeLeftWords(view.endsAt, now) : null;
   const ended = view.role === 'asker' && view.closedReason ? TWIN_FIND_CLOSED_WORDS[view.closedReason] : { en: 'Ended', zh: '已结束' };
@@ -216,6 +225,7 @@ function AskerPart({ view, now, onView, onFail }: PartProps<TwinFindAskerViewV0>
 function BridgePart({ view, onView, onFail, onProblem }: PartProps<TwinFindBridgeViewV0>) {
   const { t } = useI18n();
   const styles = useThemedStyles(makeStyles);
+  const navigation = useNavigation<{ navigate(name: 'TwinHuddleStart', params: { preset: TwinHuddleStartPreset }): void }>();
   const [friendRef, setFriendRef] = useState<string | null>(null);
   const [guestLabel, setGuestLabel] = useState('');
   const [note, setNote] = useState('');
@@ -252,6 +262,7 @@ function BridgePart({ view, onView, onFail, onProblem }: PartProps<TwinFindBridg
   });
   const busy = pick.isPending || relink.isPending || decline.isPending || withdraw.isPending;
   const picked = view.picked;
+  const meet = twinFindMeetOffer(view, TWIN_FIND_MEET_ENABLED && TWIN_HUDDLE_ENABLED);
   const link = url !== null && view.canRelink ? url : null;
   const suggested = view.suggestions;
   const others = (friends.data ?? []).filter((friend) => !suggested.some((item) => item.ref === friend.friendRef));
@@ -315,6 +326,24 @@ function BridgePart({ view, onView, onFail, onProblem }: PartProps<TwinFindBridg
             </TouchableOpacity>
           ) : null}
         </View>
+      ) : null}
+      {meet && meet.kind === 'start' ? (
+        <View style={styles.card} testID="twin-find-meet">
+          <Text style={styles.muted}>{t(TWIN_FIND_MEET_HINT_WORDS)}</Text>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() => navigation.navigate('TwinHuddleStart', { preset: { from: 'find', friends: meet.plan.friends, guestLabels: meet.plan.guestLabels } })}
+            accessibilityRole="button"
+            testID="twin-find-meet-start"
+          >
+            <Text style={styles.buttonText}>{t(TWIN_FIND_MEET_WORDS)}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      {meet && meet.kind === 'unavailable' ? (
+        <Text style={styles.muted} testID="twin-find-meet-unavailable">
+          {t(twinFindMeetUnavailableWords(meet.who, view.askerName))}
+        </Text>
       ) : null}
 
       {view.canPick ? (

@@ -1,7 +1,9 @@
 /**
  * TwinFindStartScreen — 分身 → 帮我找人 → 问问谁认识 (twinFind.ts, twinFindView.ts). Only in builds with
  * `EXPO_PUBLIC_TWIN_FIND=1`. Pick a topic, write who you are looking for and pick the friends to ask. Each friend may ask
- * one person they know; you see that person only after they agreed.
+ * one person they know; you see that person only after they agreed. Looking for a partner is a topic only in builds with
+ * `EXPO_PUBLIC_TWIN_FIND_DATING=1`; picking it says what is different about it before anything is sent, and the asker has
+ * to tick 「我已满 18 岁」.
  */
 import React, { useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -9,22 +11,26 @@ import { useNavigation } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useI18n } from '../../stores/i18nStore';
 import { useThemedStyles, type Palette } from '../../theme/useTheme';
-import { TWIN_ASK_TOPIC_LABELS_V0 } from '../../../shared/types/twin-ask';
-import { TWIN_FIND_LIMITS_V0, TWIN_FIND_TOPICS_V0, type TwinFindRequestV0, type TwinFindTopicV0 } from '../../../shared/types/twin-find';
-import { TWIN_FIND_REFUSAL_COPY } from '../../services/twinFind';
+import { TWIN_FIND_LIMITS_V0, twinFindIsDatingV0, type TwinFindRequestV0, type TwinFindTopicV0 } from '../../../shared/types/twin-find';
+import { TWIN_FIND_DATING_ENABLED, TWIN_FIND_REFUSAL_COPY } from '../../services/twinFind';
 import { mobileTwinFindClient } from '../../services/twinFindSession';
 import {
+  TWIN_FIND_ADULT_WORDS,
+  TWIN_FIND_DATING_ASK_WORDS,
   TWIN_FIND_HOW_WORDS,
   TWIN_FIND_ROUTE_WORDS,
   twinFindFailureWords,
   twinFindProblemWords,
   twinFindRequestFromForm,
   twinFindStartedPeople,
+  twinFindTopicChoices,
+  twinFindTopicWords,
   type TwinFindWords,
 } from '../../services/twinFindView';
 import { TwinAskChip as Chip } from './TwinAskChip';
 
 const LIMITS = TWIN_FIND_LIMITS_V0;
+const TOPICS = twinFindTopicChoices(TWIN_FIND_DATING_ENABLED);
 
 type StartNavigation = {
   goBack(): void;
@@ -39,6 +45,7 @@ export function TwinFindStartScreen() {
   const [topic, setTopic] = useState<TwinFindTopicV0 | null>(null);
   const [question, setQuestion] = useState('');
   const [friendRefs, setFriendRefs] = useState<string[]>([]);
+  const [adult, setAdult] = useState(false);
   const [problem, setProblem] = useState<TwinFindWords | null>(null);
   const friends = useQuery({ queryKey: ['twin-find', 'friends'], queryFn: () => mobileTwinFindClient().friends() });
   const start = useMutation({
@@ -50,13 +57,14 @@ export function TwinFindStartScreen() {
   });
   const full = friendRefs.length >= LIMITS.friendsMax;
   const outcome = start.data;
+  const dating = topic !== null && twinFindIsDatingV0(topic);
 
   const pickFriend = (ref: string): void => {
     if (friendRefs.includes(ref)) setFriendRefs(friendRefs.filter((item) => item !== ref));
     else if (!full) setFriendRefs([...friendRefs, ref]);
   };
   const submit = (): void => {
-    const request = twinFindRequestFromForm({ topic, question, friendRefs });
+    const request = twinFindRequestFromForm({ topic, question, friendRefs, adult });
     if (request.ok === false) {
       setProblem(twinFindProblemWords(request.reasonCode, request.field));
       return;
@@ -102,10 +110,15 @@ export function TwinFindStartScreen() {
 
       <Text style={styles.label}>{t({ en: 'Topic', zh: '话题' })}</Text>
       <View style={styles.chips}>
-        {TWIN_FIND_TOPICS_V0.map((value) => (
-          <Chip key={value} label={t(TWIN_ASK_TOPIC_LABELS_V0[value])} on={topic === value} onPress={() => setTopic(value)} testID={`twin-find-topic-${value}`} />
+        {TOPICS.map((value) => (
+          <Chip key={value} label={t(twinFindTopicWords(value))} on={topic === value} onPress={() => setTopic(value)} testID={`twin-find-topic-${value}`} />
         ))}
       </View>
+      {dating ? (
+        <Text style={styles.muted} testID="twin-find-dating-note">
+          {t(TWIN_FIND_DATING_ASK_WORDS)}
+        </Text>
+      ) : null}
 
       <Text style={styles.label}>{t({ en: 'Who are you looking for?', zh: '想找什么样的人？' })}</Text>
       <TextInput
@@ -114,7 +127,11 @@ export function TwinFindStartScreen() {
         onChangeText={setQuestion}
         maxLength={LIMITS.questionMax}
         multiline
-        placeholder={t({ en: 'e.g. Who knows a reliable renovation contractor?', zh: '比如：谁认识靠谱的装修师傅？' })}
+        placeholder={t(
+          dating
+            ? { en: 'e.g. Who knows someone single who likes hiking?', zh: '比如：谁认识喜欢爬山的单身朋友？' }
+            : { en: 'e.g. Who knows a reliable renovation contractor?', zh: '比如：谁认识靠谱的装修师傅？' },
+        )}
         testID="twin-find-question"
       />
       <Text style={styles.muted}>
@@ -145,6 +162,20 @@ export function TwinFindStartScreen() {
         ))}
       </View>
 
+      {dating ? (
+        <TouchableOpacity
+          style={styles.check}
+          onPress={() => setAdult(!adult)}
+          disabled={start.isPending}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: adult }}
+          accessibilityLabel={t(TWIN_FIND_ADULT_WORDS)}
+          testID="twin-find-start-adult"
+        >
+          <View style={[styles.checkBox, adult && styles.checkBoxOn]}>{adult ? <Text style={styles.checkMark}>✓</Text> : null}</View>
+          <Text style={styles.body}>{t(TWIN_FIND_ADULT_WORDS)}</Text>
+        </TouchableOpacity>
+      ) : null}
       {problem ? (
         <Text style={styles.problem} testID="twin-find-problem">
           {t(problem)}
@@ -168,11 +199,16 @@ const makeStyles = (c: Palette) =>
     content: { padding: 16, gap: 10, paddingBottom: 32 },
     title: { color: c.textPrimary, fontSize: 20, fontWeight: '800' },
     muted: { color: c.textMuted, fontSize: 13, lineHeight: 19 },
+    body: { color: c.textPrimary, fontSize: 14, lineHeight: 20 },
     label: { color: c.textSecondary, fontSize: 13, fontWeight: '600', marginTop: 6 },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     dim: { opacity: 0.45 },
     input: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: c.border, paddingHorizontal: 12, color: c.textPrimary, backgroundColor: c.bgCard },
     question: { minHeight: 88, paddingTop: 10, textAlignVertical: 'top' },
+    check: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 },
+    checkBox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1, borderColor: c.border, backgroundColor: c.bgPrimary, alignItems: 'center', justifyContent: 'center' },
+    checkBoxOn: { backgroundColor: c.accent, borderColor: c.accent },
+    checkMark: { color: c.onAccent, fontSize: 14, fontWeight: '800' },
     problem: { color: c.error, fontSize: 14, lineHeight: 20, fontWeight: '600' },
     warning: { color: c.warning, fontSize: 13, lineHeight: 19, fontWeight: '600' },
     button: { minHeight: 44, marginTop: 12, borderRadius: 12, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },

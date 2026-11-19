@@ -9,6 +9,12 @@
  *
  * Only in builds with `EXPO_PUBLIC_TWIN_FIND=1`; the routes answer 404 while the server switch is off or the user is
  * outside the cohort. No React Native import: the transport and token are injected (twinFindSession.ts binds them).
+ *
+ * Two additions, each with its own build switch on top of that one. `EXPO_PUBLIC_TWIN_FIND_DATING=1`: looking for a
+ * partner as a topic, and the person's own switch for being asked in the app about it (`profile`, `setDatingOpen`).
+ * `EXPO_PUBLIC_TWIN_FIND_MEET=1`: after all three agreed, the friend who introduced them can set up a time for the three.
+ * `EXPO_PUBLIC_TWIN_FIND_CARD=1` (inside a dating build): the person's own condition card (`card`, `setCard`), which the
+ * server compares with the other side's before it asks anyone in the app. Nobody else ever sees it.
  */
 import type { HttpResponseV1, HttpTransportV1 } from '../../shared/client/transport';
 import {
@@ -20,6 +26,7 @@ import {
   decodeTwinFindIntroViewV0,
   decodeTwinFindListV0,
   decodeTwinFindPickOutcomeV0,
+  decodeTwinFindProfileV0,
   decodeTwinFindRelinkV0,
   decodeTwinFindStartOutcomeV0,
   decodeTwinFindViewV0,
@@ -31,11 +38,13 @@ import {
   type TwinFindIntroViewV0,
   type TwinFindListItemV0,
   type TwinFindPickV0,
+  type TwinFindProfileV0,
   type TwinFindReasonCodeV0,
   type TwinFindRefusalCodeV0,
   type TwinFindRequestV0,
   type TwinFindStartOutcomeV0,
 } from '../../shared/types/twin-find';
+import { decodeTwinFindCardViewV0, type TwinFindCardV0 } from '../../shared/types/twin-find-card';
 
 const L = TWIN_FIND_LIMITS_V0;
 
@@ -45,6 +54,12 @@ export function isTwinFindMobileEnabled(value: string | undefined): boolean {
 
 // Read as a literal member expression so the Expo build inlines it.
 export const TWIN_FIND_ENABLED = isTwinFindMobileEnabled(process.env.EXPO_PUBLIC_TWIN_FIND);
+/** Looking for a partner as a topic, and the switch for being asked about it. Only inside a build that finds people at all. */
+export const TWIN_FIND_DATING_ENABLED = TWIN_FIND_ENABLED && isTwinFindMobileEnabled(process.env.EXPO_PUBLIC_TWIN_FIND_DATING);
+/** Setting up a time for the three after an introduction went through. The plan screens have their own switch as well. */
+export const TWIN_FIND_MEET_ENABLED = TWIN_FIND_ENABLED && isTwinFindMobileEnabled(process.env.EXPO_PUBLIC_TWIN_FIND_MEET);
+/** The condition card for dating. Only inside a build that has dating. */
+export const TWIN_FIND_CARD_ENABLED = TWIN_FIND_DATING_ENABLED && isTwinFindMobileEnabled(process.env.EXPO_PUBLIC_TWIN_FIND_CARD);
 
 export type TwinFindFailure =
   | 'no_session'
@@ -114,6 +129,14 @@ export interface MobileTwinFindClient {
   /** `null` after saying no: the introduction is no longer theirs to see. */
   consent(bridgeId: string, consent: TwinFindConsentV0): Promise<TwinFindIntroViewV0 | null>;
   revoke(bridgeId: string): Promise<void>;
+  /** The caller's own switch: may the platform ask them in the app when a friend picks them for someone looking for a partner. */
+  profile(): Promise<TwinFindProfileV0>;
+  /** Turning it off always works. Turning it on fails with `not_found` while the server has dating switched off. */
+  setDatingOpen(open: boolean): Promise<TwinFindProfileV0>;
+  /** The caller's own condition card for dating; `null` when they have none. */
+  card(): Promise<TwinFindCardV0 | null>;
+  /** `null` clears it, which always works. Saving one fails with `not_found` while the server has the card switched off. */
+  setCard(card: TwinFindCardV0 | null): Promise<TwinFindCardV0 | null>;
 }
 
 const FIND_PATH = '/twin-find';
@@ -148,7 +171,7 @@ export function createMobileTwinFindClient(deps: {
   token: () => string | null | undefined;
 }): MobileTwinFindClient {
   const base = deps.baseUrl.replace(/\/+$/, '');
-  const call = async (method: 'GET' | 'POST', path: string, body?: unknown): Promise<unknown> => {
+  const call = async (method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown): Promise<unknown> => {
     const token = deps.token();
     if (!token) throw new TwinFindError('no_session');
     let response: HttpResponseV1;
@@ -157,7 +180,7 @@ export function createMobileTwinFindClient(deps: {
         method,
         path: `${base}${FIND_PATH}${path}`,
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'X-Agentrix-Surface': 'mobile' },
-        ...(method === 'POST' ? { body: body ?? {} } : {}),
+        ...(method === 'GET' ? {} : { body: body ?? {} }),
       });
     } catch {
       throw new TwinFindError('unavailable');
@@ -199,7 +222,9 @@ export function createMobileTwinFindClient(deps: {
       return read(decodeTwinFindFriendOptionsV0(await call('GET', '/friends')));
     },
     async start(request) {
-      return read(decodeTwinFindStartOutcomeV0(await call('POST', '', { topic: request.topic, question: request.question, friendRefs: request.friendRefs })));
+      const adult = request.adult === true ? { adult: true } : {};
+      const body = { topic: request.topic, question: request.question, friendRefs: request.friendRefs, ...adult };
+      return read(decodeTwinFindStartOutcomeV0(await call('POST', '', body)));
     },
     async list(before) {
       return read(decodeTwinFindListV0(await call('GET', before === undefined ? '' : `?before=${encodeURIComponent(before)}`)));
@@ -234,12 +259,31 @@ export function createMobileTwinFindClient(deps: {
       return mine(bridgeId, read(decodeTwinFindIntroViewV0(await call('GET', `/intro/${checked(bridgeId)}`))));
     },
     async consent(bridgeId, consent) {
-      const body = consent.decision === 'agree' ? { decision: 'agree', displayName: consent.displayName, ...(consent.line === null ? {} : { line: consent.line }) } : { decision: 'decline' };
+      const body =
+        consent.decision === 'agree'
+          ? { decision: 'agree', displayName: consent.displayName, ...(consent.line === null ? {} : { line: consent.line }), ...(consent.adult === true ? { adult: true } : {}) }
+          : { decision: 'decline' };
       const outcome = read(decodeTwinFindConsentOutcomeV0(await call('POST', `/intro/${checked(bridgeId)}/consent`, body)));
       return outcome.view === null ? null : mine(bridgeId, outcome.view);
     },
     async revoke(bridgeId) {
       read(decodeTwinFindConsentOutcomeV0(await call('POST', `/intro/${checked(bridgeId)}/revoke`)));
+    },
+    async profile() {
+      return read(decodeTwinFindProfileV0(await call('GET', '/profile')));
+    },
+    async setDatingOpen(open) {
+      const saved = read(decodeTwinFindProfileV0(await call('PUT', '/profile', { datingOpen: open })));
+      if (saved.datingOpen !== open) throw new TwinFindError('unreadable');
+      return saved;
+    },
+    async card() {
+      return read(decodeTwinFindCardViewV0(await call('GET', '/card'))).card;
+    },
+    async setCard(card) {
+      const saved = read(decodeTwinFindCardViewV0(await call('PUT', '/card', { card })));
+      if ((saved.card === null) !== (card === null)) throw new TwinFindError('unreadable');
+      return saved.card;
     },
   };
 }

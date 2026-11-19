@@ -98,6 +98,13 @@ jobs:
       EXPO_PUBLIC_TWIN_HUDDLE_SERIES: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-staging-') && '1' || '' }}
       EXPO_PUBLIC_TWIN_HUDDLE_PLACES: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-staging-') && '1' || '' }}
       EXPO_PUBLIC_TWIN_HUDDLE_MONEY: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-staging-') && '1' || '' }}
+      # Short of people (bring someone along) and the dating condition card staging trial (owner 11-20): fill sits
+      # on EXPO_PUBLIC_TWIN_HUDDLE (src/services/twinHuddleFill.ts); the card only shows inside a dating build, so
+      # dating is switched on with it (src/services/twinFind.ts). Same refs as the staging switch; formal builds leave
+      # all three empty. Meeting up after an introduction (EXPO_PUBLIC_TWIN_FIND_MEET) is not switched on here.
+      EXPO_PUBLIC_TWIN_HUDDLE_FILL: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-staging-') && '1' || '' }}
+      EXPO_PUBLIC_TWIN_FIND_DATING: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-staging-') && '1' || '' }}
+      EXPO_PUBLIC_TWIN_FIND_CARD: ${{ startsWith(github.ref_name, 'build/mobile-four-zone-staging-') && '1' || '' }}
       # L9 package 3 (backlog 3.3): the L9 owner-facing screens whose server switches are on in production.
       # Only build/mobile-signing-check-* sets them (formal signing, no download-server deploy, no Release);
       # every other ref, including build/mobile-release-*, leaves them empty. The business export card needs
@@ -148,6 +155,7 @@ jobs:
           echo "[ci] ask switches: TWIN_ASK='${EXPO_PUBLIC_TWIN_ASK:-}'"
           echo "[ci] ask phase 2 switches: TWIN_ASK_DEVICE_PROOF='${EXPO_PUBLIC_TWIN_ASK_DEVICE_PROOF:-}' MEMORY_PROPOSALS='${EXPO_PUBLIC_MEMORY_PROPOSALS:-}'"
           echo "[ci] find / series / places / money switches: TWIN_FIND='${EXPO_PUBLIC_TWIN_FIND:-}' TWIN_HUDDLE_SERIES='${EXPO_PUBLIC_TWIN_HUDDLE_SERIES:-}' TWIN_HUDDLE_PLACES='${EXPO_PUBLIC_TWIN_HUDDLE_PLACES:-}' TWIN_HUDDLE_MONEY='${EXPO_PUBLIC_TWIN_HUDDLE_MONEY:-}' TWIN_TELEGRAM='${EXPO_PUBLIC_TWIN_TELEGRAM:-}'"
+          echo "[ci] fill / dating / card switches: TWIN_HUDDLE_FILL='${EXPO_PUBLIC_TWIN_HUDDLE_FILL:-}' TWIN_FIND_DATING='${EXPO_PUBLIC_TWIN_FIND_DATING:-}' TWIN_FIND_CARD='${EXPO_PUBLIC_TWIN_FIND_CARD:-}' TWIN_FIND_MEET='${EXPO_PUBLIC_TWIN_FIND_MEET:-}'"
           files=$(ls -1a .env* 2>/dev/null | xargs -r grep -lE '^[[:space:]]*(export[[:space:]]+)?EXPO_PUBLIC_(STAGING_SWITCH|PHONE_DEVICE_KEY)=' 2>/dev/null || true)
           if [ "$RELEASE_SIGNING" = "true" ]; then
             if [ -n "${EXPO_PUBLIC_STAGING_SWITCH:-}" ] || [ -n "${EXPO_PUBLIC_PHONE_DEVICE_KEY:-}" ] || [ -n "$files" ]; then

@@ -1,7 +1,10 @@
 /**
  * TwinFindListScreen — 分身 → 帮我找人 (twinFind.ts). Only in builds with `EXPO_PUBLIC_TWIN_FIND=1`. The questions you
  * started, the ones a friend asked you, and the ones where a friend would like to introduce you, newest first, each with
- * whose turn it is; a new question starts here.
+ * whose turn it is; a new question starts here. A question about looking for a partner shows neither topic nor text in
+ * the rows of the friend asked and the person introduced. Builds with `EXPO_PUBLIC_TWIN_FIND_DATING=1` also show the
+ * person's own switch for being asked about dating (TwinFindDatingSwitch), and builds that also have
+ * `EXPO_PUBLIC_TWIN_FIND_CARD=1` their condition card under it (TwinFindCardEditor).
  */
 import React from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native';
@@ -9,11 +12,13 @@ import { useNavigation } from '@react-navigation/native';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useI18n } from '../../stores/i18nStore';
 import { useThemedStyles, type Palette } from '../../theme/useTheme';
-import { TWIN_ASK_TOPIC_LABELS_V0 } from '../../../shared/types/twin-ask';
 import type { TwinFindListItemV0 } from '../../../shared/types/twin-find';
+import { TWIN_FIND_CARD_ENABLED, TWIN_FIND_DATING_ENABLED } from '../../services/twinFind';
 import { mobileTwinFindClient } from '../../services/twinFindSession';
 import { twinAskWhenWords } from '../../services/twinAskView';
-import { TWIN_FIND_HOW_WORDS, twinFindFailureWords, twinFindOpenTarget, twinFindSideWords, twinFindStatusWords } from '../../services/twinFindView';
+import { TWIN_FIND_HOW_WORDS, twinFindFailureWords, twinFindOpenTarget, twinFindRowWords, twinFindStatusWords } from '../../services/twinFindView';
+import { TwinFindCardEditor } from './TwinFindCardEditor';
+import { TwinFindDatingSwitch } from './TwinFindDatingSwitch';
 
 type FindNavigation = {
   navigate(name: 'TwinFindStart'): void;
@@ -49,6 +54,8 @@ export function TwinFindListScreen() {
       <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('TwinFindStart')} accessibilityRole="button" testID="twin-find-new">
         <Text style={styles.buttonText}>{t({ en: 'Ask who knows someone', zh: '问问谁认识' })}</Text>
       </TouchableOpacity>
+      {TWIN_FIND_DATING_ENABLED ? <TwinFindDatingSwitch /> : null}
+      {TWIN_FIND_CARD_ENABLED ? <TwinFindCardEditor /> : null}
       {finds.isPending ? <ActivityIndicator /> : null}
       {finds.isError ? (
         <Text style={styles.muted} testID="twin-find-list-error">
@@ -61,17 +68,15 @@ export function TwinFindListScreen() {
         </Text>
       ) : null}
       {items.map((item) => {
-        const topic = t(TWIN_ASK_TOPIC_LABELS_V0[item.topic]);
-        const side = t(twinFindSideWords(item.role));
+        const words = twinFindRowWords(item);
+        const label = t(words.label);
         // The same question can show twice for one person: asked as a friend, and introduced by another friend.
         const key = `${item.role}-${item.bridgeId ?? item.id}`;
         return (
-          <TouchableOpacity key={key} style={styles.row} onPress={() => open(item)} accessibilityRole="button" accessibilityLabel={`${topic} · ${side}`} testID={`twin-find-item-${key}`}>
-            <Text style={styles.rowLabel}>
-              {topic} · {side}
-            </Text>
+          <TouchableOpacity key={key} style={styles.row} onPress={() => open(item)} accessibilityRole="button" accessibilityLabel={label} testID={`twin-find-item-${key}`}>
+            <Text style={styles.rowLabel}>{label}</Text>
             <Text style={styles.rowQuestion} numberOfLines={2}>
-              {item.question}
+              {typeof words.question === 'string' ? words.question : t(words.question)}
             </Text>
             <Text style={item.needsMe ? styles.rowAlert : styles.rowHint}>{t(twinFindStatusWords(item))}</Text>
             <Text style={styles.rowHint}>{t(twinAskWhenWords(new Date(item.createdAt), now))}</Text>

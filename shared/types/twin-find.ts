@@ -17,19 +17,34 @@
  * - 结束：72 小时到，或提问的人提前结束；没接上的行里对方写的字一起清掉。90 天后整条删除。
  * - 分身的提醒（`twinFindSuggestV0`）：朋友自己关系簿里备注和问题对得上的人，最多 3 个。只按关键词对，只给朋友本人看。
  * - 自由文本只有问题、朋友写的介绍、称呼和被介绍的人那一句话：都不许带联系方式、地址和链接（`twinAskTextViolationsV0`）。
+ * - 「找对象」话题（`dating`，设计稿 `find-meet-dating-design.md`）多三条：站内只问自己开了「我也在找」的人，其余
+ *   的只给朋友链接；提问的人发起时、被介绍的人同意时都要声明已满 18 岁（只是声明，不验证件）；列表和通知里不出现
+ *   话题和问题。
+ * - 「先对条件卡」（`twin-find-card.ts`，设计稿 `find-card-design.md`）：找对象时平台要在站内问被选中的人之前，先对
+ *   提问的人和他的两张卡；对不上那一行是 `mismatched`，不问他，朋友可以换一位。提问的人看到的和其他没接上的一样。
+ * - 「牵上以后接着约」（同一份设计稿）：接上以后，牵线的朋友的视图里带上要约的两个人在他自己名单里的编号
+ *   （`TwinFindMeetV0`），手机拿去填「分身们商量」的发起页。这里不开单，也不记商量单的编号。
  *
  * 开关（后端接线时才读）：服务端 `TWIN_FIND_V0_ENABLED`，只认精确的 `'1'`；网页 `NEXT_PUBLIC_TWIN_FIND_ENABLED`；
- * 手机 `EXPO_PUBLIC_TWIN_FIND`。
+ * 手机 `EXPO_PUBLIC_TWIN_FIND`。找对象另有 `TWIN_FIND_DATING_V0_ENABLED` / `EXPO_PUBLIC_TWIN_FIND_DATING`，接着约另有
+ * `TWIN_FIND_MEET_V0_ENABLED` / `EXPO_PUBLIC_TWIN_FIND_MEET`；都要先开着上面那一组。条件卡另有
+ * `TWIN_FIND_CARD_V0_ENABLED` / `EXPO_PUBLIC_TWIN_FIND_CARD`，还要先开着找对象那一组。
  *
  * 本文件只有常量、类型和纯函数：不读环境变量、不碰数据库、不调模型。
  */
 import { AGENT_PASS_TIER_PRESETS_V1, type AgentPassTierPresetV1 } from './agent-pass';
-import { TWIN_ASK_TOPICS_V0, twinAskTextViolationsV0, type TwinAskTopicV0 } from './twin-ask';
+import { TWIN_ASK_TOPIC_LABELS_V0, TWIN_ASK_TOPICS_V0, twinAskTextViolationsV0 } from './twin-ask';
 
 export const TWIN_FIND_SCHEMA_VERSION_V0 = 'agentrix.twin-find.v0' as const;
 export const TWIN_FIND_FLAG_V0 = 'TWIN_FIND_V0_ENABLED';
 export const TWIN_FIND_WEB_FLAG_V0 = 'NEXT_PUBLIC_TWIN_FIND_ENABLED';
 export const TWIN_FIND_MOBILE_FLAG_V0 = 'EXPO_PUBLIC_TWIN_FIND';
+/** 「找对象」话题。服务端关着时不能发起、不能改「我也在找」，选人时人人都按没开算。 */
+export const TWIN_FIND_DATING_FLAG_V0 = 'TWIN_FIND_DATING_V0_ENABLED';
+export const TWIN_FIND_DATING_MOBILE_FLAG_V0 = 'EXPO_PUBLIC_TWIN_FIND_DATING';
+/** 「牵上以后接着约」。服务端关着时牵线朋友的视图里没有 `meet`。 */
+export const TWIN_FIND_MEET_FLAG_V0 = 'TWIN_FIND_MEET_V0_ENABLED';
+export const TWIN_FIND_MEET_MOBILE_FLAG_V0 = 'EXPO_PUBLIC_TWIN_FIND_MEET';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -61,9 +76,27 @@ export const TWIN_FIND_LIMITS_V0 = {
   retentionMs: 90 * DAY_MS,
 } as const;
 
-/** 话题和「问遍身边人」是同一份。这里没有「只问本人」：每一步都是本人点的，分身不代答。 */
-export const TWIN_FIND_TOPICS_V0 = TWIN_ASK_TOPICS_V0;
-export type TwinFindTopicV0 = TwinAskTopicV0;
+/**
+ * 话题是「问遍身边人」的那七个，加「找对象」（`dating`）。找对象只在这里有：那边分身会代答，找对象不该由分身答。
+ * 这里没有「只问本人」：每一步都是本人点的，分身不代答。
+ */
+export const TWIN_FIND_DATING_TOPIC_V0 = 'dating' as const;
+export const TWIN_FIND_TOPICS_V0 = [...TWIN_ASK_TOPICS_V0, TWIN_FIND_DATING_TOPIC_V0] as const;
+export type TwinFindTopicV0 = (typeof TWIN_FIND_TOPICS_V0)[number];
+
+export const TWIN_FIND_TOPIC_LABELS_V0: Readonly<Record<TwinFindTopicV0, { zh: string; en: string }>> = {
+  ...TWIN_ASK_TOPIC_LABELS_V0,
+  dating: { zh: '找对象', en: 'Dating' },
+};
+
+/**
+ * 找对象多出来的三条规矩都从这里判断：站内只问开了「我也在找」的人（`twinFindCandidateRouteV0`），提问的人发起时和
+ * 被介绍的人同意时都要声明已满 18 岁（`twinFindRequestMissingAdultV0`、`twinFindConsentMissingAdultV0`），列表和通知里
+ * 不出现话题和问题（`twinFindListQuietV0`、`TWIN_FIND_FIXED_PHRASES_V0` 里带 `Quiet` 的两句）。
+ */
+export function twinFindIsDatingV0(topic: TwinFindTopicV0): boolean {
+  return topic === TWIN_FIND_DATING_TOPIC_V0;
+}
 
 // ── 枚举 ──────────────────────────────────────────────────────────────────────
 
@@ -76,13 +109,14 @@ export type TwinFindCloseReasonV0 = (typeof TWIN_FIND_CLOSE_REASONS_V0)[number];
 /**
  * 每位被问的朋友一行：`asked` 等朋友作答；`declined` 朋友说不认识；`picked` 朋友选了人，等对方同意；`c_declined` 对方
  * 不同意或同意后撤回；`withdrawn` 朋友撤回牵线；`offered` 对方同意了，提问的人可以看到；`connected` 提问的人点了头；
- * `passed` 提问的人说先不用；`expired` 提问结束时还没接上。后三种是终点。
+ * `passed` 提问的人说先不用；`expired` 提问结束时还没接上。后三种是终点。`mismatched`：找对象时朋友选的人和提问的人
+ * 两张条件卡没对上，平台没有去问他（`twin-find-card.ts`）；行里不留任何关于他的东西。
  */
-export const TWIN_FIND_BRIDGE_STATES_V0 = ['asked', 'declined', 'picked', 'c_declined', 'withdrawn', 'offered', 'connected', 'passed', 'expired'] as const;
+export const TWIN_FIND_BRIDGE_STATES_V0 = ['asked', 'declined', 'picked', 'c_declined', 'withdrawn', 'mismatched', 'offered', 'connected', 'passed', 'expired'] as const;
 export type TwinFindBridgeStateV0 = (typeof TWIN_FIND_BRIDGE_STATES_V0)[number];
 
 /** 朋友在这些状态下可以选人（第一次选，或者换一个人）。 */
-export const TWIN_FIND_PICK_FROM_V0: readonly TwinFindBridgeStateV0[] = ['asked', 'declined', 'c_declined', 'withdrawn'];
+export const TWIN_FIND_PICK_FROM_V0: readonly TwinFindBridgeStateV0[] = ['asked', 'declined', 'c_declined', 'withdrawn', 'mismatched'];
 /** 这些状态下行里带着被介绍的人的信息；离开它们时一起清掉（`connected` 留到保留期满）。 */
 export const TWIN_FIND_CANDIDATE_STATES_V0: readonly TwinFindBridgeStateV0[] = ['picked', 'offered', 'connected'];
 export const TWIN_FIND_FINAL_STATES_V0: readonly TwinFindBridgeStateV0[] = ['connected', 'passed', 'expired'];
@@ -202,10 +236,12 @@ export interface TwinFindRequestV0 {
   question: string;
   /** 提问的人自己朋友名单里的人：`rel:<关系 id>`。 */
   friendRefs: string[];
+  /** 本人声明已满 18 岁，只能是 `true`。找对象必须带（`twinFindRequestMissingAdultV0`），别的话题带不带都行。 */
+  adult?: true;
 }
 
 export function decodeTwinFindRequestV0(value: unknown, field = 'request'): TwinFindDecodeResultV0<TwinFindRequestV0> {
-  const rec = strict(value, field, ['topic', 'question', 'friendRefs'], ['topic', 'question', 'friendRefs']);
+  const rec = strict(value, field, ['topic', 'question', 'friendRefs', 'adult'], ['topic', 'question', 'friendRefs']);
   if (rec.ok === false) return rec;
   const topic = decodeEnum(TWIN_FIND_TOPICS_V0, rec.value.topic, `${field}.topic`);
   if (topic.ok === false) return topic;
@@ -221,7 +257,14 @@ export function decodeTwinFindRequestV0(value: unknown, field = 'request'): Twin
     if (friendRefs.includes(ref.value)) return fail('invalid_value', `${field}.friendRefs[${i}]`);
     friendRefs.push(ref.value);
   }
-  return { ok: true, value: { topic: topic.value, question: question.value, friendRefs } };
+  if (rec.value.adult !== undefined && rec.value.adult !== true) return fail('invalid_value', `${field}.adult`);
+  const adult: { adult?: true } = rec.value.adult === true ? { adult: true } : {};
+  return { ok: true, value: { topic: topic.value, question: question.value, friendRefs, ...adult } };
+}
+
+/** 和同意时一样，不单独存这个声明：找对象的提问只要建了行，就是声明过的。 */
+export function twinFindRequestMissingAdultV0(request: TwinFindRequestV0): boolean {
+  return twinFindIsDatingV0(request.topic) && request.adult !== true;
 }
 
 export interface TwinFindFriendStateV0 {
@@ -307,10 +350,16 @@ export interface TwinFindCandidateStateV0 {
   blocked: boolean;
   /** 对方今天已经在站内被问了几次「愿不愿意被介绍」。 */
   introsToday: number;
+  /** 只有找对象才看：对方自己开着「我也在找」。没给就按没开算。 */
+  datingOpen?: boolean;
 }
 
-/** 平台只在站内联系和这位朋友互相定过档的人；其余的一律不联系，给朋友一条链接。 */
-export function twinFindCandidateRouteV0(candidate: TwinFindCandidateStateV0): TwinFindCandidateRouteV0 {
+/**
+ * 平台只在站内联系和这位朋友互相定过档的人；其余的一律不联系，给朋友一条链接。找对象还要对方自己开着「我也在找」：
+ * 平台不主动去问一个没说过自己在找的人，由朋友自己判断合不合适、自己转链接。
+ */
+export function twinFindCandidateRouteV0(candidate: TwinFindCandidateStateV0, topic: TwinFindTopicV0): TwinFindCandidateRouteV0 {
+  if (twinFindIsDatingV0(topic) && candidate.datingOpen !== true) return 'link';
   return candidate.inApp && candidate.mutual && !candidate.blocked && candidate.introsToday < L.introsPerDayMax ? 'app' : 'link';
 }
 
@@ -319,28 +368,37 @@ export function twinFindCandidateRouteV0(candidate: TwinFindCandidateStateV0): T
 export const TWIN_FIND_DECISIONS_V0 = ['agree', 'decline'] as const;
 export type TwinFindDecisionV0 = (typeof TWIN_FIND_DECISIONS_V0)[number];
 
-export type TwinFindConsentV0 = { decision: 'agree'; displayName: string; line: string | null } | { decision: 'decline' };
+/** `adult`：本人声明已满 18 岁，只能是 `true`。找对象必须带（`twinFindConsentMissingAdultV0`），别的话题带不带都行。 */
+export type TwinFindConsentV0 = { decision: 'agree'; displayName: string; line: string | null; adult?: true } | { decision: 'decline' };
+
+/** 找对象：同意里没有「已满 18 岁」的声明，不收。只是声明，不验证件；不单独存，找对象的行有同意时间就是声明过的。 */
+export function twinFindConsentMissingAdultV0(topic: TwinFindTopicV0, consent: TwinFindConsentV0): boolean {
+  return twinFindIsDatingV0(topic) && consent.decision === 'agree' && consent.adult !== true;
+}
 
 /** 同意要带称呼（给提问的人看），可以带一句话；不同意什么都不带。 */
 export function decodeTwinFindConsentV0(value: unknown, field = 'consent'): TwinFindDecodeResultV0<TwinFindConsentV0> {
-  const rec = strict(value, field, ['decision', 'displayName', 'line'], ['decision']);
+  const rec = strict(value, field, ['decision', 'displayName', 'line', 'adult'], ['decision']);
   if (rec.ok === false) return rec;
   const decision = decodeEnum(TWIN_FIND_DECISIONS_V0, rec.value.decision, `${field}.decision`);
   if (decision.ok === false) return decision;
   if (decision.value === 'decline') {
     if (rec.value.displayName !== undefined) return fail('unknown_field', `${field}.displayName`);
     if (rec.value.line !== undefined) return fail('unknown_field', `${field}.line`);
+    if (rec.value.adult !== undefined) return fail('unknown_field', `${field}.adult`);
     return { ok: true, value: { decision: 'decline' } };
   }
+  if (rec.value.adult !== undefined && rec.value.adult !== true) return fail('invalid_value', `${field}.adult`);
+  const adult: { adult?: true } = rec.value.adult === true ? { adult: true } : {};
   if (rec.value.displayName === undefined) return fail('missing_field', `${field}.displayName`);
   const displayName = decodeText(rec.value.displayName, `${field}.displayName`, 'displayName');
   if (displayName.ok === false) return displayName;
   if (rec.value.line === undefined || rec.value.line === null || rec.value.line === '') {
-    return { ok: true, value: { decision: 'agree', displayName: displayName.value, line: null } };
+    return { ok: true, value: { decision: 'agree', displayName: displayName.value, line: null, ...adult } };
   }
   const line = decodeText(rec.value.line, `${field}.line`, 'line');
   if (line.ok === false) return line;
-  return { ok: true, value: { decision: 'agree', displayName: displayName.value, line: line.value } };
+  return { ok: true, value: { decision: 'agree', displayName: displayName.value, line: line.value, ...adult } };
 }
 
 /** 提问的人对一位朋友那一行点头或说先不用：只带那一行的 ref。 */
@@ -461,6 +519,24 @@ export interface TwinFindPickedV0 {
   note: string | null;
 }
 
+/**
+ * 「牵上以后接着约」：接上以后，牵线的朋友可以开一张商量单约这两个人。这里给的都是他自己名单里的编号（`rel:<关系 id>`）
+ * 和他当初自己写的称呼，没有任何他本来不知道的东西。提问的人已经不在他名单里时 `askerRef` 是 null，约不了。被介绍的
+ * 人是从名单里选的就有 `candidateRef`，是写称呼走链接的就有 `candidateLabel`。
+ */
+export interface TwinFindMeetV0 {
+  askerRef: string | null;
+  candidateRef: string | null;
+  candidateLabel: string | null;
+}
+
+/** 商量发起页要的两样：名单里的人和链接名额的称呼。少一个人就约不了，是 null。 */
+export function twinFindMeetPeopleV0(meet: TwinFindMeetV0): { friendRefs: string[]; guestLabels: string[] } | null {
+  if (meet.askerRef === null) return null;
+  if (meet.candidateRef !== null) return meet.candidateRef === meet.askerRef ? null : { friendRefs: [meet.askerRef, meet.candidateRef], guestLabels: [] };
+  return meet.candidateLabel !== null ? { friendRefs: [meet.askerRef], guestLabels: [meet.candidateLabel] } : null;
+}
+
 export interface TwinFindBridgeViewV0 {
   schemaVersion: typeof TWIN_FIND_SCHEMA_VERSION_V0;
   id: string;
@@ -483,6 +559,8 @@ export interface TwinFindBridgeViewV0 {
   /** 分身的提醒：只在还能选人的时候给，只给这位朋友本人。 */
   suggestions: TwinFindSuggestionV0[];
   connectedAt: string | null;
+  /** 只有 `connected`、服务端开着「牵上以后接着约」时才有。 */
+  meet?: TwinFindMeetV0 | null;
 }
 
 export interface TwinFindIntroViewV0 {
@@ -523,6 +601,37 @@ export interface TwinFindListItemV0 {
   /** 只有我发起的有：已同意待我点头的几位、已接上的几位。 */
   offers: number | null;
   connected: number | null;
+}
+
+/**
+ * 列表里别人的找对象问题（我是被问的朋友，或者被介绍的人）：服务端不下发问题原文（`question` 是空串），界面不写话题，
+ * 只写 `TWIN_FIND_FIXED_PHRASES_V0.askedQuiet`；点进详情才看得到。自己发起的照常。
+ */
+export function twinFindListQuietV0(role: TwinFindRoleV0, topic: TwinFindTopicV0): boolean {
+  return role !== 'asker' && twinFindIsDatingV0(topic);
+}
+
+// ── 「我也在找」 ───────────────────────────────────────────────────────────────
+
+/**
+ * 每人一个开关，默认关，只能本人改。只用来决定找对象时平台在不在站内问他；不进任何别人的视图，不进日志和回执。
+ * 选了他的那位朋友能从「平台已在站内问他」看出他开着：开关旁边要写明（`TWIN_FIND_DATING_OPEN_NOTICE_V0`）。
+ */
+export interface TwinFindProfileV0 {
+  schemaVersion: typeof TWIN_FIND_SCHEMA_VERSION_V0;
+  datingOpen: boolean;
+}
+
+export const TWIN_FIND_DATING_OPEN_NOTICE_V0 = {
+  zh: '打开以后，朋友替别人找对象、选中你的时候，平台会直接在站内问你愿不愿意被介绍；选中你的那位朋友也因此知道你开着。别人看不到这个开关。关着的时候，平台不会为找对象的事联系你。',
+  en: 'While this is on, when a friend picks you for someone who is looking for a partner, Agentrix asks you directly whether you want to be introduced, and that friend can tell it is on. Nobody else can see this switch. While it is off, Agentrix never contacts you about dating.',
+} as const;
+
+export function decodeTwinFindProfilePatchV0(value: unknown, field = 'profile'): TwinFindDecodeResultV0<{ datingOpen: boolean }> {
+  const rec = strict(value, field, ['datingOpen'], ['datingOpen']);
+  if (rec.ok === false) return rec;
+  if (typeof rec.value.datingOpen !== 'boolean') return fail('invalid_type', `${field}.datingOpen`);
+  return { ok: true, value: { datingOpen: rec.value.datingOpen } };
 }
 
 export type TwinFindStartOutcomeV0 =
@@ -571,6 +680,9 @@ export const TWIN_FIND_UNVERIFIED_LABEL_V0 = { zh: '未验证', en: 'Unverified'
 export const TWIN_FIND_FIXED_PHRASES_V0 = {
   asked: { zh: '有朋友想请你帮忙找人', en: 'A friend is asking whether you know someone.' },
   intro: { zh: '有朋友想把你介绍给他的朋友，等你点头', en: 'A friend would like to introduce you to a friend of theirs. It is up to you.' },
+  /** 找对象时代替上面两句：不说是找人、介绍人，更不带话题。列表里别人的找对象问题也只写第一句。 */
+  askedQuiet: { zh: '有朋友想请你帮个忙', en: 'A friend is asking you for a favour.' },
+  introQuiet: { zh: '有朋友想请你帮个忙，等你点头', en: 'A friend is asking you for a favour. It is up to you.' },
   offered: { zh: '你找的人有朋友愿意牵线了', en: 'A friend can introduce you to someone.' },
   connected: { zh: '牵线成了：三方都同意了', en: 'The introduction is on: all three of you agreed.' },
   notNow: { zh: '这次介绍没有继续', en: 'This introduction did not go ahead.' },
@@ -663,6 +775,13 @@ function readPicked(value: unknown): TwinFindPickedV0 | null {
   return { route, label, note };
 }
 
+function readMeet(value: unknown): TwinFindMeetV0 | null {
+  if (!isRecord(value)) return null;
+  const { askerRef, candidateRef, candidateLabel } = value;
+  if (!isStringOrNull(askerRef) || !isStringOrNull(candidateRef) || !isStringOrNull(candidateLabel)) return null;
+  return { askerRef, candidateRef, candidateLabel };
+}
+
 function readBridgeView(value: Record<string, unknown>): TwinFindBridgeViewV0 | null {
   const common = readCommon(value);
   if (!common) return null;
@@ -677,7 +796,14 @@ function readBridgeView(value: Record<string, unknown>): TwinFindBridgeViewV0 | 
     picked = readPicked(value.picked);
     if (picked === null) return null;
   }
-  return { ...common, id, role: 'bridge', askerName, createdAt, myState, picked, picksLeft, canPick, canDecline, canWithdraw, canRelink, suggestions, connectedAt };
+  // 没开「接着约」的服务器不带这一项；带了但读不懂，整条不认。
+  let meet: TwinFindMeetV0 | null = null;
+  if (value.meet !== null && value.meet !== undefined) {
+    meet = readMeet(value.meet);
+    if (meet === null) return null;
+  }
+  const view: TwinFindBridgeViewV0 = { ...common, id, role: 'bridge', askerName, createdAt, myState, picked, picksLeft, canPick, canDecline, canWithdraw, canRelink, suggestions, connectedAt };
+  return meet === null ? view : { ...view, meet };
 }
 
 export function decodeTwinFindViewV0(body: unknown): TwinFindAskerViewV0 | TwinFindBridgeViewV0 | null {
@@ -711,6 +837,12 @@ export function decodeTwinFindConsentOutcomeV0(body: unknown): TwinFindConsentOu
   if (value.view === null) return { view: null };
   const view = readIntroView(value.view);
   return view === null ? null : { view };
+}
+
+export function decodeTwinFindProfileV0(body: unknown): TwinFindProfileV0 | null {
+  const value = unwrapData(body, 'datingOpen');
+  if (!isRecord(value) || value.schemaVersion !== TWIN_FIND_SCHEMA_VERSION_V0 || typeof value.datingOpen !== 'boolean') return null;
+  return { schemaVersion: TWIN_FIND_SCHEMA_VERSION_V0, datingOpen: value.datingOpen };
 }
 
 function readListItem(value: unknown): TwinFindListItemV0 | null {

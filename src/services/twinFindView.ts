@@ -8,11 +8,18 @@
 import {
   TWIN_FIND_FIXED_PHRASES_V0,
   TWIN_FIND_LIMITS_V0,
+  TWIN_FIND_TOPIC_LABELS_V0,
+  TWIN_FIND_TOPICS_V0,
   TWIN_FIND_UNVERIFIED_LABEL_V0,
   decodeTwinFindConsentV0,
   decodeTwinFindPickV0,
   decodeTwinFindRequestV0,
+  twinFindIsDatingV0,
+  twinFindListQuietV0,
+  twinFindMeetPeopleV0,
+  twinFindRequestMissingAdultV0,
   type TwinFindBridgeStateV0,
+  type TwinFindBridgeViewV0,
   type TwinFindCloseReasonV0,
   type TwinFindConsentV0,
   type TwinFindDecodeResultV0,
@@ -62,18 +69,40 @@ export function twinFindTimeLeftWords(endsAt: string, now: Date): TwinFindWords 
   return { en: days === 1 ? '1 day left' : `${days} days left`, zh: `还剩 ${days} 天` };
 }
 
+// ── Topics ───────────────────────────────────────────────────────────────────────────────
+
+export function twinFindTopicWords(topic: TwinFindTopicV0): TwinFindWords {
+  return TWIN_FIND_TOPIC_LABELS_V0[topic];
+}
+
+/** The topics a new question can be about. Looking for a partner is offered only in builds that switched it on. */
+export function twinFindTopicChoices(datingEnabled: boolean): TwinFindTopicV0[] {
+  return TWIN_FIND_TOPICS_V0.filter((topic) => datingEnabled || !twinFindIsDatingV0(topic));
+}
+
+/** Shown under the topics once looking for a partner is picked: what is different about this one. */
+export const TWIN_FIND_DATING_ASK_WORDS: TwinFindWords = {
+  en: 'For this topic your friends get a notice without the topic or the question; they read it after opening. You and the person introduced both have to state that you are 18 or older.',
+  zh: '选这个话题时，朋友收到的通知里不带话题和问题原文，点开才看得到。你和被介绍的人都要声明已满 18 岁。',
+};
+
 // ── Forms ────────────────────────────────────────────────────────────────────────
 
 export interface TwinFindStartForm {
   topic: TwinFindTopicV0 | null;
   question: string;
   friendRefs: readonly string[];
+  /** The box 「我已满 18 岁」: read only when the topic is looking for a partner, where it has to be ticked. */
+  adult?: boolean;
 }
 
 /** The same rules the server applies, so a bad form is caught before anything is sent. */
 export function twinFindRequestFromForm(form: TwinFindStartForm): TwinFindDecodeResultV0<TwinFindRequestV0> {
   if (form.topic === null) return { ok: false, reasonCode: 'missing_field', field: 'request.topic' };
-  return decodeTwinFindRequestV0({ topic: form.topic, question: form.question, friendRefs: [...form.friendRefs] });
+  const adult = twinFindIsDatingV0(form.topic) && form.adult === true;
+  const decoded = decodeTwinFindRequestV0({ topic: form.topic, question: form.question, friendRefs: [...form.friendRefs], ...(adult ? { adult: true } : {}) });
+  if (decoded.ok && twinFindRequestMissingAdultV0(decoded.value)) return { ok: false, reasonCode: 'missing_field', field: 'request.adult' };
+  return decoded;
 }
 
 export interface TwinFindPickForm {
@@ -88,8 +117,15 @@ export function twinFindPickFromForm(form: TwinFindPickForm): TwinFindDecodeResu
   return decodeTwinFindPickV0(form.note.trim() === '' ? { person } : { person, note: form.note });
 }
 
-export function twinFindConsentFromForm(displayName: string, line: string): TwinFindDecodeResultV0<TwinFindConsentV0> {
-  return decodeTwinFindConsentV0({ decision: 'agree', displayName, ...(line.trim() === '' ? {} : { line }) });
+/**
+ * `dating` is passed only when the question is about looking for a partner: `adult` is the box 「我已满 18 岁」, and it has
+ * to be ticked. For every other topic nothing about age is asked or sent.
+ */
+export function twinFindConsentFromForm(displayName: string, line: string, dating?: { adult: boolean }): TwinFindDecodeResultV0<TwinFindConsentV0> {
+  const adult = dating !== undefined && dating.adult;
+  const decoded = decodeTwinFindConsentV0({ decision: 'agree', displayName, ...(line.trim() === '' ? {} : { line }), ...(adult ? { adult: true } : {}) });
+  if (decoded.ok && dating !== undefined && !adult) return { ok: false, reasonCode: 'missing_field', field: 'consent.adult' };
+  return decoded;
 }
 
 /** The sentence under the field a rule was broken in (the client's own check and the server's 400 use the same codes). */
@@ -125,6 +161,7 @@ export function twinFindProblemWords(reasonCode: TwinFindReasonCodeV0 | null, fi
     if (reasonCode === 'text_violation') return { en: `The line can't include ${BLOCKED_TEXT}. Please change it.`, zh: `这句话里不能有${BLOCKED_TEXT_ZH}，请改一下。` };
     return { en: "The line can't be read. Please rewrite it on one line.", zh: '这句话读不出来，请改成一行重新写。' };
   }
+  if (at.endsWith('adult')) return { en: 'Tick that you are 18 or older first.', zh: '请先勾选「我已满 18 岁」。' };
   return TWIN_FIND_FAILURE_COPY.invalid;
 }
 
@@ -161,6 +198,17 @@ export function twinFindSideWords(role: TwinFindListItemV0['role']): TwinFindWor
   if (role === 'asker') return { en: 'I asked', zh: '我发起的' };
   if (role === 'bridge') return { en: 'A friend asked me', zh: '朋友问我的' };
   return { en: 'About introducing me', zh: '想介绍我的' };
+}
+
+/**
+ * The first line of a row. A question about looking for a partner shows neither its topic nor its text in the list of the
+ * friend asked or the person introduced (someone may be looking at their screen): they read it after opening the row.
+ */
+export function twinFindRowWords(item: Pick<TwinFindListItemV0, 'role' | 'topic' | 'question'>): { label: TwinFindWords; question: TwinFindWords | string } {
+  const side = twinFindSideWords(item.role);
+  if (twinFindListQuietV0(item.role, item.topic)) return { label: side, question: { en: 'Open to read it.', zh: '点开看是什么事。' } };
+  const topic = TWIN_FIND_TOPIC_LABELS_V0[item.topic];
+  return { label: { en: `${topic.en} · ${side.en}`, zh: `${topic.zh} · ${side.zh}` }, question: item.question };
 }
 
 export function twinFindStatusWords(item: Pick<TwinFindListItemV0, 'role' | 'status' | 'needsMe' | 'offers' | 'connected'>): TwinFindWords {
@@ -253,6 +301,11 @@ export function twinFindBridgeStateWords(state: TwinFindBridgeStateV0, status: '
       return status === 'open' ? { en: 'Waiting for the person you picked to agree.', zh: '等你选的人点头。' } : { en: 'This question has ended.', zh: '这次提问已经结束了。' };
     case 'c_declined':
       return { en: 'They would rather not this time. You can pick someone else.', zh: '对方这次不方便。可以换一位。' };
+    case 'mismatched':
+      return {
+        en: "Their condition card and the asker's did not match, so they were not asked. You can pick someone else.",
+        zh: '对方和提问的人的条件卡没对上，平台没去问他。可以换一位。',
+      };
     case 'withdrawn':
       return { en: 'You took your introduction back.', zh: '你撤回了这次介绍。' };
     case 'declined':
@@ -286,6 +339,49 @@ export const TWIN_FIND_LINK_ONCE_WORDS: TwinFindWords = {
   zh: '链接只显示这一次，请你自己转发给对方；弄丢了可以重新生成，旧链接随即失效。',
 };
 
+// ── After all three agreed: the friend sets up a time for the three ──────────────
+
+export interface TwinFindMeetPlan {
+  /** The asker and the person introduced, as entries of the friend's own relationship book, with the names the friend knows them by. */
+  friends: { ref: string; label: string }[];
+  /** The person introduced, when the friend reached them by link: they get a link for the plan as well. */
+  guestLabels: string[];
+}
+
+export type TwinFindMeetOffer = { kind: 'start'; plan: TwinFindMeetPlan } | { kind: 'unavailable'; who: 'asker' | 'candidate' } | null;
+
+/**
+ * What the friend who brought two people together is offered next. `null`: nothing is shown (the build or the server has it
+ * off, or the introduction has not gone through). `unavailable`: one of the two is no longer in the friend's relationship
+ * book, so the plan cannot be filled in from here. Nothing is sent by this: it only fills in the plan form.
+ */
+export function twinFindMeetOffer(view: Pick<TwinFindBridgeViewV0, 'myState' | 'askerName' | 'picked' | 'meet'>, enabled: boolean): TwinFindMeetOffer {
+  if (!enabled || view.myState !== 'connected' || view.meet === undefined || view.meet === null) return null;
+  const people = twinFindMeetPeopleV0(view.meet);
+  if (people === null) return { kind: 'unavailable', who: view.meet.askerRef === null ? 'asker' : 'candidate' };
+  const candidateLabel = view.picked ? view.picked.label : '';
+  return {
+    kind: 'start',
+    plan: {
+      friends: people.friendRefs.map((ref) => ({ ref, label: view.meet && ref === view.meet.askerRef ? view.askerName : candidateLabel })),
+      guestLabels: people.guestLabels,
+    },
+  };
+}
+
+export const TWIN_FIND_MEET_WORDS: TwinFindWords = { en: 'Set up a time for the three of you', zh: '约三个人见一面' };
+
+export const TWIN_FIND_MEET_HINT_WORDS: TwinFindWords = {
+  en: 'Opens a plan with the two of them filled in. You pick what and when; nothing is sent until you start it.',
+  zh: '会打开一张约时间的单子，两位已经填好。做什么、什么时候由你选，点发起之前不会发出任何东西。',
+};
+
+export function twinFindMeetUnavailableWords(who: 'asker' | 'candidate', askerName: string): TwinFindWords {
+  return who === 'asker'
+    ? { en: `${askerName} is no longer in your relationship book, so a plan can't be started from here.`, zh: `${askerName}已经不在你的关系簿里，这里没法替你约。` }
+    : { en: "The person you introduced is no longer in your relationship book, so a plan can't be started from here.", zh: '你介绍的那位已经不在你的关系簿里，这里没法替你约。' };
+}
+
 // ── The side of the person introduced ────────────────────────────────────────────
 
 export function twinFindIntroStateWords(state: TwinFindIntroStateV0, status: 'open' | 'closed'): TwinFindWords {
@@ -300,3 +396,15 @@ export const TWIN_FIND_CONSENT_WORDS: TwinFindWords = {
   en: 'If you agree, the asker sees the name and the line you write here, nothing else. No contact details are exchanged.',
   zh: '你同意以后，提问的人只看得到你在这里写的称呼和这句话。平台不交换联系方式。',
 };
+
+export const TWIN_FIND_ADULT_WORDS: TwinFindWords = { en: 'I am 18 or older', zh: '我已满 18 岁' };
+
+// ── The person's own switch for being asked about dating ───────────────────────────
+
+export const TWIN_FIND_DATING_SWITCH_WORDS: TwinFindWords = { en: 'Dating: I am looking too', zh: '找对象：我也在找' };
+
+/** Turning the switch on while the server has dating switched off answers 404: say that it is not open, not that something is gone. */
+export function twinFindDatingSwitchFailureWords(error: unknown): TwinFindWords {
+  if (error instanceof TwinFindError && error.failure === 'not_found') return { en: 'This is not open yet.', zh: '这一项还没开放。' };
+  return twinFindFailureWords(error);
+}

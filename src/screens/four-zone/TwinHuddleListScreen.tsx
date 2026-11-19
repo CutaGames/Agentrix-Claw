@@ -9,9 +9,11 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { useI18n } from '../../stores/i18nStore';
 import { useThemedStyles, type Palette } from '../../theme/useTheme';
 import { TWIN_HUDDLE_KIND_LABELS_V0, type TwinHuddleListItemV0 } from '../../../shared/types/twin-huddle';
+import { TWIN_HUDDLE_FILL_ENABLED } from '../../services/twinHuddleFill';
 import { TWIN_HUDDLE_SERIES_ENABLED } from '../../services/twinHuddleSeries';
 import { mobileTwinHuddleClient } from '../../services/twinHuddleSession';
 import { twinHuddleDayWords, twinHuddleFailureWords, twinHuddleStatusWords } from '../../services/twinHuddleView';
+import { TwinHuddleFillInvitesSection } from './TwinHuddleFillInvitesSection';
 import { TwinHuddleSeriesSection } from './TwinHuddleSeriesSection';
 
 type HuddleNavigation = {
@@ -45,6 +47,7 @@ export function TwinHuddleListScreen() {
           <Text style={styles.secondaryText}>{t({ en: 'Settings', zh: '设置' })}</Text>
         </TouchableOpacity>
       </View>
+      {TWIN_HUDDLE_FILL_ENABLED ? <TwinHuddleFillInvitesSection /> : null}
       {TWIN_HUDDLE_SERIES_ENABLED ? <TwinHuddleSeriesSection /> : null}
       {plans.isPending ? <ActivityIndicator /> : null}
       {plans.isError ? (

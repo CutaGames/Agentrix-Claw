@@ -3,10 +3,13 @@
  * `EXPO_PUBLIC_TWIN_HUDDLE=1`. Pick what it is, up to six times, the budget, friends from the relationship book and names
  * for people who are not on Agentrix; your twin asks the others' twins. Links for people reached by link come back once,
  * right after starting, for you to forward yourself.
+ *
+ * Opened from an introduction that went through (TwinFindDetailScreen), the people arrive filled in (`preset`) and cannot
+ * be changed here; after starting, the page says for each of them how they are being asked, or that they were not.
  */
 import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useI18n } from '../../stores/i18nStore';
 import { useThemedStyles, type Palette } from '../../theme/useTheme';
@@ -28,17 +31,21 @@ import {
   twinHuddleDayWords,
   twinHuddleFailureWords,
   twinHuddleLinkLabels,
+  twinHuddlePresetPeople,
   twinHuddleProblemWords,
   twinHuddleRequestFromForm,
   twinHuddleShareWords,
   twinHuddleSlotOptions,
   type TwinHuddleDayPart,
   type TwinHuddleSlotOption,
+  type TwinHuddleStartPreset,
   type TwinHuddleWords,
 } from '../../services/twinHuddleView';
 import { TwinHuddleChip as Chip } from './TwinHuddleChip';
 
 const LIMITS = TWIN_HUDDLE_LIMITS_V0;
+
+type StartRoute = RouteProp<{ TwinHuddleStart: { preset?: TwinHuddleStartPreset } | undefined }, 'TwinHuddleStart'>;
 
 const clock = (time: readonly number[]): string => time.map((part) => String(part).padStart(2, '0')).join(':');
 
@@ -67,13 +74,15 @@ export function TwinHuddleStartScreen() {
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<{ goBack: () => void; navigate: (name: 'TwinHuddleSettings') => void }>();
   const queryClient = useQueryClient();
+  const params = useRoute<StartRoute>().params;
+  const preset = params && params.preset ? params.preset : null;
   const [openedAt] = useState(() => new Date());
   const days = useMemo(() => groupByDay(twinHuddleSlotOptions(openedAt)), [openedAt]);
   const [kind, setKind] = useState<TwinHuddleKindV0>('meal');
   const [budget, setBudget] = useState<TwinHuddleBudgetBandV0>('any');
   const [picked, setPicked] = useState<TwinHuddleSlotOption[]>([]);
-  const [friendRefs, setFriendRefs] = useState<string[]>([]);
-  const [guestLabels, setGuestLabels] = useState<string[]>([]);
+  const [friendRefs, setFriendRefs] = useState<string[]>(() => (preset ? preset.friends.map((friend) => friend.ref) : []));
+  const [guestLabels, setGuestLabels] = useState<string[]>(() => (preset ? [...preset.guestLabels] : []));
   const [guestDraft, setGuestDraft] = useState('');
   const [note, setNote] = useState('');
   const [problem, setProblem] = useState<TwinHuddleWords | null>(null);
@@ -121,13 +130,24 @@ export function TwinHuddleStartScreen() {
   };
 
   if (outcome && outcome.started === true) {
-    const links = twinHuddleLinkLabels(outcome.links, friends.data ?? [], guestLabels);
+    const known = [...(preset ? preset.friends.map((friend) => ({ friendRef: friend.ref, label: friend.label })) : []), ...(friends.data ?? [])];
+    const links = twinHuddleLinkLabels(outcome.links, known, guestLabels);
     return (
       <ScrollView style={styles.screen} contentContainerStyle={styles.content} testID="twin-huddle-started">
         <Text style={styles.title} accessibilityRole="header">{t({ en: 'Your twin is on it', zh: '分身去商量了' })}</Text>
         <Text style={styles.muted}>
           {t({ en: "Once everyone's times are in, you'll be asked to choose.", zh: '大家的时间收齐后，会请你来选。' })}
         </Text>
+        {preset
+          ? twinHuddlePresetPeople(preset, outcome.routes).map((person) => (
+              <View key={person.key} style={styles.presetRow} testID={`twin-huddle-preset-outcome-${person.key}`}>
+                <Text style={styles.linkLabel} numberOfLines={1}>
+                  {person.label}
+                </Text>
+                <Text style={person.asked ? styles.muted : styles.warning}>{t(person.words)}</Text>
+              </View>
+            ))
+          : null}
         {links.length > 0 ? (
           <View style={styles.links}>
             <Text style={styles.label}>{t({ en: 'Forward each link to the person it is for', zh: '把链接分别发给对应的人' })}</Text>
@@ -193,61 +213,90 @@ export function TwinHuddleStartScreen() {
         ))}
       </View>
 
-      <Text style={styles.label}>{t({ en: `Who (${people}/${LIMITS.friendsMax})`, zh: `约谁（${people}/${LIMITS.friendsMax}）` })}</Text>
-      {friends.isPending ? <ActivityIndicator /> : null}
-      {friends.isError ? <Text style={styles.muted}>{t(twinHuddleFailureWords(friends.error))}</Text> : null}
-      {friends.data && friends.data.length === 0 ? (
-        <Text style={styles.muted} testID="twin-huddle-no-friends">
-          {t({ en: 'No one in your relationship book to ask yet. Add people by name below.', zh: '关系簿里还没有能约的人，可以在下面填称呼。' })}
-        </Text>
-      ) : null}
-      <View style={styles.chips}>
-        {(friends.data ?? []).map((friend) => (
-          <Chip
-            key={friend.friendRef}
-            label={friend.label}
-            on={friendRefs.includes(friend.friendRef)}
-            onPress={() => pickFriend(friend.friendRef)}
-            disabled={full}
-            testID={`twin-huddle-friend-${friend.friendRef}`}
-          />
-        ))}
-      </View>
+      {preset ? (
+        <>
+          <Text style={styles.label}>{t({ en: 'Who', zh: '约谁' })}</Text>
+          <Text style={styles.muted} testID="twin-huddle-preset-note">
+            {t({
+              en: 'From your introduction: these two are filled in and cannot be changed here.',
+              zh: '来自你牵的线：这两位已经填好，这里不能改。',
+            })}
+          </Text>
+          <View style={styles.chips}>
+            {[...preset.friends.map((friend) => friend.label), ...preset.guestLabels].map((label, index) => (
+              <View key={`${index}-${label}`} style={[styles.chip, styles.chipOn]} testID={`twin-huddle-preset-${index}`}>
+                <Text style={styles.chipTextOn}>{label}</Text>
+              </View>
+            ))}
+          </View>
+          {preset.guestLabels.length > 0 ? (
+            <Text style={styles.muted}>
+              {t({
+                en: 'Someone you reached by link gets a link for this plan too, which you forward yourself.',
+                zh: '当时用链接联系的那位，这次也会有一条链接，由你自己转给他。',
+              })}
+            </Text>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <Text style={styles.label}>{t({ en: `Who (${people}/${LIMITS.friendsMax})`, zh: `约谁（${people}/${LIMITS.friendsMax}）` })}</Text>
+          {friends.isPending ? <ActivityIndicator /> : null}
+          {friends.isError ? <Text style={styles.muted}>{t(twinHuddleFailureWords(friends.error))}</Text> : null}
+          {friends.data && friends.data.length === 0 ? (
+            <Text style={styles.muted} testID="twin-huddle-no-friends">
+              {t({ en: 'No one in your relationship book to ask yet. Add people by name below.', zh: '关系簿里还没有能约的人，可以在下面填称呼。' })}
+            </Text>
+          ) : null}
+          <View style={styles.chips}>
+            {(friends.data ?? []).map((friend) => (
+              <Chip
+                key={friend.friendRef}
+                label={friend.label}
+                on={friendRefs.includes(friend.friendRef)}
+                onPress={() => pickFriend(friend.friendRef)}
+                disabled={full}
+                testID={`twin-huddle-friend-${friend.friendRef}`}
+              />
+            ))}
+          </View>
 
-      <Text style={styles.label}>{t({ en: 'Not on Agentrix? Add them by name', zh: '没注册的朋友：填个称呼' })}</Text>
-      <Text style={styles.muted}>
-        {t({ en: 'Each gets a link to pick times, which you forward yourself.', zh: '每人会有一条链接，你自己转发给他，他点开就能选时间。' })}
-      </Text>
-      <View style={styles.inline}>
-        <TextInput
-          style={[styles.input, styles.grow]}
-          value={guestDraft}
-          onChangeText={setGuestDraft}
-          onSubmitEditing={addGuest}
-          maxLength={LIMITS.guestLabelMax}
-          placeholder={t({ en: 'e.g. May', zh: '比如：阿梅' })}
-          returnKeyType="done"
-          editable={!full}
-          testID="twin-huddle-guest-input"
-        />
-        <TouchableOpacity style={[styles.smallButton, full && styles.dim]} onPress={addGuest} disabled={full} accessibilityRole="button" testID="twin-huddle-guest-add">
-          <Text style={styles.smallButtonText}>{t({ en: 'Add', zh: '添加' })}</Text>
-        </TouchableOpacity>
-      </View>
-      <View style={styles.chips}>
-        {guestLabels.map((label, index) => (
-          <TouchableOpacity
-            key={label}
-            style={[styles.chip, styles.chipOn]}
-            onPress={() => setGuestLabels(guestLabels.filter((item) => item !== label))}
-            accessibilityRole="button"
-            accessibilityLabel={t({ en: `Remove ${label}`, zh: `去掉${label}` })}
-            testID={`twin-huddle-guest-${index}`}
-          >
-            <Text style={styles.chipTextOn}>{label} ×</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+          <Text style={styles.label}>{t({ en: 'Not on Agentrix? Add them by name', zh: '没注册的朋友：填个称呼' })}</Text>
+          <Text style={styles.muted}>
+            {t({ en: 'Each gets a link to pick times, which you forward yourself.', zh: '每人会有一条链接，你自己转发给他，他点开就能选时间。' })}
+          </Text>
+          <View style={styles.inline}>
+            <TextInput
+              style={[styles.input, styles.grow]}
+              value={guestDraft}
+              onChangeText={setGuestDraft}
+              onSubmitEditing={addGuest}
+              maxLength={LIMITS.guestLabelMax}
+              placeholder={t({ en: 'e.g. May', zh: '比如：阿梅' })}
+              returnKeyType="done"
+              editable={!full}
+              testID="twin-huddle-guest-input"
+            />
+            <TouchableOpacity style={[styles.smallButton, full && styles.dim]} onPress={addGuest} disabled={full} accessibilityRole="button" testID="twin-huddle-guest-add">
+              <Text style={styles.smallButtonText}>{t({ en: 'Add', zh: '添加' })}</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.chips}>
+            {guestLabels.map((label, index) => (
+              <TouchableOpacity
+                key={label}
+                style={[styles.chip, styles.chipOn]}
+                onPress={() => setGuestLabels(guestLabels.filter((item) => item !== label))}
+                accessibilityRole="button"
+                accessibilityLabel={t({ en: `Remove ${label}`, zh: `去掉${label}` })}
+                testID={`twin-huddle-guest-${index}`}
+              >
+                <Text style={styles.chipTextOn}>{label} ×</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      )}
 
       <Text style={styles.label}>{t({ en: 'Note (optional)', zh: '备注（可不填）' })}</Text>
       <TextInput
@@ -306,4 +355,5 @@ const makeStyles = (c: Palette) =>
     links: { gap: 8 },
     linkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, backgroundColor: c.bgCard, borderWidth: 1, borderColor: c.border },
     linkLabel: { flex: 1, color: c.textPrimary, fontSize: 15, fontWeight: '600' },
+    presetRow: { padding: 12, borderRadius: 12, backgroundColor: c.bgCard, borderWidth: 1, borderColor: c.border, gap: 2 },
   });

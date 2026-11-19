@@ -10,6 +10,8 @@ import { TWIN_HUDDLE_ID_PATTERN_V0, type TwinHuddlePersonV0 } from '../../shared
 import {
   TWIN_HUDDLE_MONEY_CONFLICT_CODES_V0,
   decodeTwinHuddleBillCreateV0,
+  decodeTwinHuddleMoneyCapV0,
+  decodeTwinHuddleMoneyCapViewV0,
   decodeTwinHuddleMoneyViewV0,
   twinHuddleMoneyFormatV0,
   twinHuddleMoneyParseAmountV0,
@@ -17,6 +19,7 @@ import {
   type TwinHuddleBillShareV0,
   type TwinHuddleBillStatusV0,
   type TwinHuddleBillV0,
+  type TwinHuddleMoneyCapViewV0,
   type TwinHuddleMoneyConflictCodeV0,
   type TwinHuddleMoneyCurrencyV0,
   type TwinHuddleMoneyDecisionV0,
@@ -28,6 +31,9 @@ import { TWIN_HUDDLE_ENABLED, TWIN_HUDDLE_FAILURE_COPY, TwinHuddleError, isTwinH
 
 // Read as a literal member expression so the Expo build inlines it.
 export const TWIN_HUDDLE_MONEY_ENABLED = TWIN_HUDDLE_ENABLED && isTwinHuddleMobileEnabled(process.env.EXPO_PUBLIC_TWIN_HUDDLE_MONEY);
+
+// Read as a literal member expression so the Expo build inlines it.
+export const TWIN_HUDDLE_MONEY_CAP_ENABLED = TWIN_HUDDLE_MONEY_ENABLED && isTwinHuddleMobileEnabled(process.env.EXPO_PUBLIC_TWIN_HUDDLE_MONEY_CAP);
 
 type Words = { en: string; zh: string };
 
@@ -198,41 +204,48 @@ export interface MobileTwinHuddleMoneyClient {
 
 const HUDDLE_PATH = '/twin-huddle';
 
-export function createMobileTwinHuddleMoneyClient(deps: {
+type MoneyDeps = {
   transport: HttpTransportV1;
   baseUrl: string;
   token: () => string | null | undefined;
-}): MobileTwinHuddleMoneyClient {
-  const base = deps.baseUrl.replace(/\/+$/, '');
+};
+
+/** One signed-in call under `/twin-huddle`: the body of a 2xx answer, or the failure the screen words. */
+async function moneyRequest(deps: MoneyDeps, method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<unknown> {
+  const token = deps.token();
+  if (!token) throw new TwinHuddleMoneyError('no_session');
+  let response: HttpResponseV1;
+  try {
+    response = await deps.transport.request({
+      method,
+      path: `${deps.baseUrl.replace(/\/+$/, '')}${HUDDLE_PATH}${path}`,
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'X-Agentrix-Surface': 'mobile' },
+      ...(method === 'GET' || method === 'DELETE' ? {} : { body: body ?? {} }),
+    });
+  } catch {
+    throw new TwinHuddleMoneyError('unavailable');
+  }
+  if (response.status < 200 || response.status >= 300) {
+    const failure = twinHuddleFailureOf(response.status);
+    const code = typeof response.body === 'object' && response.body !== null ? (response.body as { code?: unknown }).code : undefined;
+    throw new TwinHuddleMoneyError(failure, {
+      reason: failure === 'invalid' ? twinHuddleInvalidReason(response.body) : undefined,
+      conflict: failure === 'changed' && isConflict(code) ? code : null,
+    });
+  }
+  return response.body;
+}
+
+export function createMobileTwinHuddleMoneyClient(deps: MoneyDeps): MobileTwinHuddleMoneyClient {
   const checked = (id: string): string => {
     if (!TWIN_HUDDLE_ID_PATTERN_V0.test(id)) throw new TwinHuddleMoneyError('not_found');
     return id;
   };
   const call = async (huddleId: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<TwinHuddleMoneyViewV0> => {
     const id = checked(huddleId);
-    const token = deps.token();
-    if (!token) throw new TwinHuddleMoneyError('no_session');
-    let response: HttpResponseV1;
-    try {
-      response = await deps.transport.request({
-        method,
-        path: `${base}${HUDDLE_PATH}/${id}/money${path}`,
-        headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'X-Agentrix-Surface': 'mobile' },
-        ...(method === 'GET' || method === 'DELETE' ? {} : { body: body ?? {} }),
-      });
-    } catch {
-      throw new TwinHuddleMoneyError('unavailable');
-    }
-    if (response.status < 200 || response.status >= 300) {
-      const failure = twinHuddleFailureOf(response.status);
-      const code = typeof response.body === 'object' && response.body !== null ? (response.body as { code?: unknown }).code : undefined;
-      throw new TwinHuddleMoneyError(failure, {
-        reason: failure === 'invalid' ? twinHuddleInvalidReason(response.body) : undefined,
-        conflict: failure === 'changed' && isConflict(code) ? code : null,
-      });
-    }
+    const answer = await moneyRequest(deps, method, `/${id}/money${path}`, body);
     // The reader refuses any answer that is not marked test mode.
-    const view = decodeTwinHuddleMoneyViewV0(response.body);
+    const view = decodeTwinHuddleMoneyViewV0(answer);
     if (view === null || view.huddleId !== id) throw new TwinHuddleMoneyError('unreadable');
     return view;
   };
@@ -253,5 +266,113 @@ export function createMobileTwinHuddleMoneyClient(deps: {
     async cancel(huddleId, billId) {
       return call(huddleId, 'DELETE', `/${checked(billId)}`);
     },
+  };
+}
+
+/** The limit row at the bottom of the card, and what a sheet says once the twin agreed within the limit. */
+export const TWIN_HUDDLE_MONEY_CAP_COPY: Record<'row' | 'byCap' | 'revoke' | 'perBill' | 'weekly' | 'save' | 'clear', Words> = {
+  row: { en: "Within my limit, don't ask me", zh: '上限内不用问我' },
+  byCap: { en: 'Your twin agreed within your limit', zh: '分身在上限内替你同意了' },
+  revoke: { en: 'Change to no', zh: '改成不同意' },
+  perBill: { en: 'Up to, for one sheet', zh: '每笔不超过' },
+  weekly: { en: 'Up to, in 7 days', zh: '每周不超过' },
+  save: { en: 'Save my limit', zh: '存好上限' },
+  clear: { en: 'Turn it off', zh: '关掉' },
+};
+
+/**
+ * On the limit form, in so many words: what the twin will do, until when it can be taken back, that a sheet where
+ * everyone has a limit is on record the moment it is opened, and that nothing is charged.
+ */
+export const TWIN_HUDDLE_MONEY_CAP_RULES: Words = {
+  en: 'When a friend opens a sheet and your part is within your limit for one sheet, and within your limit for 7 days together with what your twin agreed to for you in the last 7 days, your twin agrees for you without asking. Until the sheet is on record you can change that to no, once. If everyone on a sheet has a limit, it is on record the moment it is opened and cannot be changed. Only you can see your limit. This version only keeps a record: you are not charged.',
+  zh: '朋友开的记账单里，你那份不超过每笔上限，加上这 7 天分身替你同意的也不超过每周上限，分身就直接替你同意，不用再问你。记上之前你可以改成不同意，只能改一次。单上每个人都设了上限时，开单那一刻就记上了，没有改的机会。上限只有你自己看得到。这一版只记账，不会扣你的钱。',
+};
+
+const CAP_PER_BILL_RULE: Words = { en: 'The limit for one sheet is from 1.00 to 500.00, with at most two decimals.', zh: '每笔上限要在 1.00 到 500.00 之间，最多两位小数。' };
+const CAP_WEEKLY_RULE: Words = { en: 'The limit for 7 days is at least the limit for one sheet and at most 2,000.00.', zh: '每周上限不能低于每笔上限，最多 2,000.00。' };
+
+export interface TwinHuddleMoneyCapDraft {
+  currency: TwinHuddleMoneyCurrencyV0;
+  /** As typed, for example "50" or "49.50". */
+  perBill: string;
+  weekly: string;
+}
+
+/** The request for a typed limit, checked by the rule the server applies. */
+function twinHuddleMoneyCapRequest(draft: TwinHuddleMoneyCapDraft): ReturnType<typeof decodeTwinHuddleMoneyCapV0> {
+  const perBillMinor = twinHuddleMoneyParseAmountV0(draft.perBill);
+  if (perBillMinor === null) return { ok: false, reasonCode: 'invalid_value', field: 'body.perBillMinor' };
+  const weeklyMinor = twinHuddleMoneyParseAmountV0(draft.weekly);
+  if (weeklyMinor === null) return { ok: false, reasonCode: 'invalid_value', field: 'body.weeklyMinor' };
+  return decodeTwinHuddleMoneyCapV0({ currency: draft.currency, perBillMinor, weeklyMinor });
+}
+
+function capRuleOf(field: string | null): Words | null {
+  if (field?.startsWith('body.perBillMinor')) return CAP_PER_BILL_RULE;
+  if (field?.startsWith('body.weeklyMinor')) return CAP_WEEKLY_RULE;
+  return null;
+}
+
+/** What to say about a typed limit before sending it; null when it would be accepted. */
+export function twinHuddleMoneyCapProblem(draft: TwinHuddleMoneyCapDraft): Words | null {
+  const request = twinHuddleMoneyCapRequest(draft);
+  if (request.ok === false) return capRuleOf(request.field) ?? TWIN_HUDDLE_FAILURE_COPY.invalid;
+  return null;
+}
+
+export function twinHuddleMoneyCapFailureWords(error: unknown): Words {
+  if (error instanceof TwinHuddleError && error.failure === 'invalid') {
+    const rule = capRuleOf(error.field);
+    if (rule) return rule;
+  }
+  return twinHuddleMoneyFailureWords(error);
+}
+
+/** Where my limit stands: none, or both limits and what the twin agreed to for me in the last 7 days. */
+export function twinHuddleMoneyCapStateWords(view: Pick<TwinHuddleMoneyCapViewV0, 'available' | 'cap' | 'usedMinor'>): Words {
+  if (view.cap === null) {
+    if (!view.available) return { en: 'No limit set. A limit cannot be set right now.', zh: '还没设上限。现在不能设。' };
+    return { en: 'No limit set: every sheet waits for your own answer.', zh: '还没设上限：每张单都等你自己答。' };
+  }
+  const { currency } = view.cap;
+  const perBill = twinHuddleMoneyFormatV0(view.cap.perBillMinor, currency);
+  const weekly = twinHuddleMoneyFormatV0(view.cap.weeklyMinor, currency);
+  const used = twinHuddleMoneyFormatV0(view.usedMinor, currency);
+  const words: Words = {
+    en: `Up to ${perBill} for one sheet and ${weekly} in 7 days. In the last 7 days your twin agreed to ${used} for you.`,
+    zh: `每笔不超过 ${perBill}，每周不超过 ${weekly}。这 7 天分身已经替你同意了 ${used}。`,
+  };
+  if (view.available) return words;
+  return { en: `${words.en} It cannot be changed right now, only turned off.`, zh: `${words.zh}现在不能改，只能关掉。` };
+}
+
+/** A limit as it goes back into the form: "50.00". */
+export function twinHuddleMoneyCapInput(minor: string): string {
+  return twinHuddleMoneyFormatV0(minor, '').trim();
+}
+
+export interface MobileTwinHuddleMoneyCapClient {
+  get(): Promise<TwinHuddleMoneyCapViewV0>;
+  /** Sets or changes my own limit. There is no call that reads or sets anyone else's. */
+  set(draft: TwinHuddleMoneyCapDraft): Promise<TwinHuddleMoneyCapViewV0>;
+  clear(): Promise<TwinHuddleMoneyCapViewV0>;
+}
+
+export function createMobileTwinHuddleMoneyCapClient(deps: MoneyDeps): MobileTwinHuddleMoneyCapClient {
+  const call = async (method: 'GET' | 'PUT' | 'DELETE', body?: unknown): Promise<TwinHuddleMoneyCapViewV0> => {
+    // Like the sheets, the reader refuses any answer that is not marked test mode.
+    const view = decodeTwinHuddleMoneyCapViewV0(await moneyRequest(deps, method, '/money-cap', body));
+    if (view === null) throw new TwinHuddleMoneyError('unreadable');
+    return view;
+  };
+  return {
+    get: () => call('GET'),
+    async set(draft) {
+      const request = twinHuddleMoneyCapRequest(draft);
+      if (request.ok === false) throw new TwinHuddleMoneyError('invalid', { reason: { reasonCode: request.reasonCode, field: request.field } });
+      return call('PUT', request.value);
+    },
+    clear: () => call('DELETE'),
   };
 }

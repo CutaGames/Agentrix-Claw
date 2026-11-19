@@ -3,6 +3,7 @@
  * `EXPO_PUBLIC_TWIN_FIND=1`. The page of the person a friend would like to introduce: who is asking, what about, and what
  * the friend wrote. They agree with a name and an optional line written for the asker, or say no; until the asker has
  * agreed too they can take it back. Saying no or taking it back ends their part: the asker is never told who it was.
+ * When the question is about looking for a partner, agreeing also takes a tick on 「我已满 18 岁」; no other topic asks.
  */
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -10,18 +11,19 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useI18n } from '../../stores/i18nStore';
 import { useThemedStyles, type Palette } from '../../theme/useTheme';
-import { TWIN_ASK_TOPIC_LABELS_V0 } from '../../../shared/types/twin-ask';
-import { TWIN_FIND_LIMITS_V0, type TwinFindConsentV0, type TwinFindIntroViewV0 } from '../../../shared/types/twin-find';
+import { TWIN_FIND_LIMITS_V0, twinFindIsDatingV0, type TwinFindConsentV0, type TwinFindIntroViewV0 } from '../../../shared/types/twin-find';
 import { TwinFindError } from '../../services/twinFind';
 import { mobileTwinFindClient } from '../../services/twinFindSession';
 import { twinAskWhenWords } from '../../services/twinAskView';
 import {
+  TWIN_FIND_ADULT_WORDS,
   TWIN_FIND_CONSENT_WORDS,
   twinFindConsentFromForm,
   twinFindFailureWords,
   twinFindIntroStateWords,
   twinFindProblemWords,
   twinFindTimeLeftWords,
+  twinFindTopicWords,
   type TwinFindWords,
 } from '../../services/twinFindView';
 
@@ -41,6 +43,7 @@ export function TwinFindIntroScreen() {
   const intro = useQuery({ queryKey: key, queryFn: () => mobileTwinFindClient().intro(bridgeId), enabled: left === null });
   const [displayName, setDisplayName] = useState('');
   const [line, setLine] = useState('');
+  const [adult, setAdult] = useState(false);
   const [problem, setProblem] = useState<TwinFindWords | null>(null);
 
   const onFail = (error: unknown): void => {
@@ -103,12 +106,13 @@ export function TwinFindIntroScreen() {
 
   const view = intro.data;
   const now = new Date();
-  const topic = t(TWIN_ASK_TOPIC_LABELS_V0[view.topic]);
+  const topic = t(twinFindTopicWords(view.topic));
+  const dating = twinFindIsDatingV0(view.topic);
   const open = view.status === 'open';
   const timeLeft = open ? twinFindTimeLeftWords(view.endsAt, now) : null;
 
   const agree = (): void => {
-    const decoded = twinFindConsentFromForm(displayName, line);
+    const decoded = twinFindConsentFromForm(displayName, line, dating ? { adult } : undefined);
     if (decoded.ok === false) {
       setProblem(twinFindProblemWords(decoded.reasonCode, decoded.field));
       return;
@@ -171,7 +175,7 @@ export function TwinFindIntroScreen() {
             value={displayName}
             onChangeText={setDisplayName}
             maxLength={L.displayNameMax}
-            placeholder={t({ en: 'e.g. Master Li', zh: '比如：李师傅' })}
+            placeholder={t(dating ? { en: 'e.g. Lin', zh: '比如：小林' } : { en: 'e.g. Master Li', zh: '比如：李师傅' })}
             returnKeyType="done"
             testID="twin-find-display-name"
           />
@@ -182,10 +186,24 @@ export function TwinFindIntroScreen() {
             onChangeText={setLine}
             maxLength={L.lineMax}
             multiline
-            placeholder={t({ en: 'e.g. Ten years of renovating old flats', zh: '比如：做了十年旧房翻新' })}
+            placeholder={t(dating ? { en: 'e.g. I like hiking and cooking', zh: '比如：喜欢爬山和做饭' } : { en: 'e.g. Ten years of renovating old flats', zh: '比如：做了十年旧房翻新' })}
             testID="twin-find-line"
           />
           <Text style={styles.muted}>{t({ en: 'No contact details, links or addresses.', zh: '不要写联系方式、链接或地址。' })}</Text>
+          {dating ? (
+            <TouchableOpacity
+              style={styles.check}
+              onPress={() => setAdult(!adult)}
+              disabled={busy}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: adult }}
+              accessibilityLabel={t(TWIN_FIND_ADULT_WORDS)}
+              testID="twin-find-adult"
+            >
+              <View style={[styles.checkBox, adult && styles.checkBoxOn]}>{adult ? <Text style={styles.checkMark}>✓</Text> : null}</View>
+              <Text style={styles.body}>{t(TWIN_FIND_ADULT_WORDS)}</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity style={[styles.button, busy && styles.dim]} onPress={agree} disabled={busy} accessibilityRole="button" testID="twin-find-agree">
             {consent.isPending ? <ActivityIndicator /> : <Text style={styles.buttonText}>{t({ en: 'Agree to be introduced', zh: '同意被介绍' })}</Text>}
           </TouchableOpacity>
@@ -225,6 +243,10 @@ const makeStyles = (c: Palette) =>
     dim: { opacity: 0.45 },
     input: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: c.border, paddingHorizontal: 12, color: c.textPrimary, backgroundColor: c.bgPrimary },
     line: { minHeight: 66, paddingTop: 10, textAlignVertical: 'top' },
+    check: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 },
+    checkBox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1, borderColor: c.border, backgroundColor: c.bgPrimary, alignItems: 'center', justifyContent: 'center' },
+    checkBoxOn: { backgroundColor: c.accent, borderColor: c.accent },
+    checkMark: { color: c.onAccent, fontSize: 14, fontWeight: '800' },
     button: { minHeight: 44, paddingHorizontal: 16, borderRadius: 12, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },
     buttonText: { color: c.onAccent, fontSize: 15, fontWeight: '700' },
     secondary: { minHeight: 44, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: c.border, alignItems: 'center', justifyContent: 'center' },

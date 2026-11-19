@@ -53,9 +53,12 @@ import { TwinHuddleListScreen } from '../../screens/four-zone/TwinHuddleListScre
 import { TwinHuddleSettingsScreen } from '../../screens/four-zone/TwinHuddleSettingsScreen';
 import { TwinHuddleStartScreen } from '../../screens/four-zone/TwinHuddleStartScreen';
 import { TWIN_HUDDLE_ENABLED } from '../../services/twinHuddle';
+import type { TwinHuddleStartPreset } from '../../services/twinHuddleView';
 import { TwinHuddleSeriesDetailScreen } from '../../screens/four-zone/TwinHuddleSeriesDetailScreen';
 import { TwinHuddleSeriesStartScreen } from '../../screens/four-zone/TwinHuddleSeriesStartScreen';
 import { TWIN_HUDDLE_SERIES_ENABLED } from '../../services/twinHuddleSeries';
+import { TwinHuddleFillInviteScreen } from '../../screens/four-zone/TwinHuddleFillInviteScreen';
+import { TWIN_HUDDLE_FILL_ENABLED } from '../../services/twinHuddleFill';
 import { TwinAskListScreen } from '../../screens/four-zone/TwinAskListScreen';
 import { TwinAskStartScreen } from '../../screens/four-zone/TwinAskStartScreen';
 import { TwinAskDetailScreen } from '../../screens/four-zone/TwinAskDetailScreen';
@@ -90,11 +93,12 @@ type TwinStackParamList = {
   TwinRelationships: undefined;
   TwinCardExchange: undefined;
   TwinHuddles: undefined;
-  TwinHuddleStart: undefined;
+  TwinHuddleStart: { preset?: TwinHuddleStartPreset } | undefined;
   TwinHuddleDetail: { id: string };
   TwinHuddleSettings: undefined;
   TwinHuddleSeriesStart: undefined;
   TwinHuddleSeriesDetail: { id: string };
+  TwinHuddleFillInvite: { personId: string };
   TwinAsks: undefined;
   TwinAskStart: undefined;
   TwinAskDetail: { id: string };
@@ -202,6 +206,10 @@ function TwinNavigator() {
       ) : null}
       {TWIN_HUDDLE_SERIES_ENABLED ? (
         <TwinStack.Screen name="TwinHuddleSeriesDetail" component={TwinHuddleSeriesDetailScreen} options={{ title: t({ en: 'Weekly plan', zh: '每周固定' }) }} />
+      ) : null}
+      {/* Short of people: registered only in builds that also set EXPO_PUBLIC_TWIN_HUDDLE_FILL=1. */}
+      {TWIN_HUDDLE_FILL_ENABLED ? (
+        <TwinStack.Screen name="TwinHuddleFillInvite" component={TwinHuddleFillInviteScreen} options={{ title: t({ en: 'Coming along?', zh: '一起去吗' }) }} />
       ) : null}
       {/* Twin ask: registered only in builds with EXPO_PUBLIC_TWIN_ASK=1. */}
       {TWIN_ASK_ENABLED ? (

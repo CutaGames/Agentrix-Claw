@@ -2,7 +2,8 @@
  * TwinHuddleMoneyCard — the 「账单」 block on a settled plan (TwinHuddleDetailScreen, twinHuddleMoney.ts). Test mode only:
  * it keeps a record and moves no money, and says so next to the heading at all times. Rendered only in builds with
  * `EXPO_PUBLIC_TWIN_HUDDLE_MONEY=1`. The organizer opens a sheet; everyone on it answers for their own part. When the
- * server has the feature off it answers 404 and this block shows nothing.
+ * server has the feature off it answers 404 and this block shows nothing. Builds with `EXPO_PUBLIC_TWIN_HUDDLE_MONEY_CAP=1`
+ * also show the limit row at the bottom (TwinHuddleMoneyCapRow).
  */
 import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -20,6 +21,8 @@ import {
 import { TwinHuddleError } from '../../services/twinHuddle';
 import {
   TWIN_HUDDLE_BILL_STATUS_COPY,
+  TWIN_HUDDLE_MONEY_CAP_COPY,
+  TWIN_HUDDLE_MONEY_CAP_ENABLED,
   TWIN_HUDDLE_MONEY_CONFLICT_COPY,
   TWIN_HUDDLE_MONEY_KIND_COPY,
   TWIN_HUDDLE_MONEY_TEST_BADGE,
@@ -36,6 +39,7 @@ import {
   twinHuddleShareWhoWords,
 } from '../../services/twinHuddleMoney';
 import { mobileTwinHuddleMoneyClient } from '../../services/twinHuddleMoneySession';
+import { TWIN_HUDDLE_MONEY_CAP_QUERY_KEY, TwinHuddleMoneyCapRow } from './TwinHuddleMoneyCapRow';
 
 interface Props {
   huddleId: string;
@@ -135,6 +139,29 @@ export function TwinHuddleMoneyCard({ huddleId, people }: Props) {
               <Text style={styles.hint} testID={`twin-huddle-bill-mine-${bill.id}`}>
                 {t(mine)}
               </Text>
+            ) : null}
+            {/* Whatever this build's limit switch says: the person can always see and take back what the twin agreed to. */}
+            {bill.mine?.byCap ? (
+              <View style={styles.inline}>
+                <Text style={[styles.hint, styles.grow]} testID={`twin-huddle-bill-by-cap-${bill.id}`}>
+                  {t(TWIN_HUDDLE_MONEY_CAP_COPY.byCap)}
+                </Text>
+                {bill.canRevoke ? (
+                  <TouchableOpacity
+                    style={[styles.smallButton, busy && styles.dim]}
+                    disabled={busy}
+                    onPress={() =>
+                      change.mutate(() => mobileTwinHuddleMoneyClient().decide(huddleId, bill.id, 'declined'), {
+                        onSuccess: () => void queryClient.invalidateQueries({ queryKey: TWIN_HUDDLE_MONEY_CAP_QUERY_KEY }),
+                      })
+                    }
+                    accessibilityRole="button"
+                    testID={`twin-huddle-bill-revoke-${bill.id}`}
+                  >
+                    <Text style={styles.smallButtonText}>{t(TWIN_HUDDLE_MONEY_CAP_COPY.revoke)}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             ) : null}
             {bill.shares
               ? bill.shares.map((share, index) => (
@@ -260,6 +287,7 @@ export function TwinHuddleMoneyCard({ huddleId, people }: Props) {
           {t(problem)}
         </Text>
       ) : null}
+      {TWIN_HUDDLE_MONEY_CAP_ENABLED ? <TwinHuddleMoneyCapRow /> : null}
     </View>
   );
 }
