@@ -227,7 +227,7 @@ describe('money on a settled plan, on the phone: the words', () => {
       expect(words.zh).not.toMatch(/已付|付款成功|到账|已扣|已收|转账/);
       expect(words.en).not.toMatch(/\bpaid\b|\breceived\b|\btransferred\b|\bpayment\b/i);
     }
-    expect(TWIN_HUDDLE_MONEY_TEST_BADGE).toEqual({ en: 'Test mode · no money moves', zh: '测试模式 · 不会扣钱' });
+    expect(TWIN_HUDDLE_MONEY_TEST_BADGE).toEqual({ en: 'Records only · no money moves', zh: '只记账 · 不会扣钱' });
     expect(TWIN_HUDDLE_BILL_STATUS_COPY.held.zh).toBe('都同意了 · 记上了');
     for (const role of ['initiator', 'invited'] as const) {
       expect(twinHuddleMoneyHintWords({ role, available: true }).zh).toMatch(/只记账.*不会扣/);

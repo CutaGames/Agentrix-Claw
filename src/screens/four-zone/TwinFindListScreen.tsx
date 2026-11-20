@@ -4,19 +4,27 @@
  * whose turn it is; a new question starts here. A question about looking for a partner shows neither topic nor text in
  * the rows of the friend asked and the person introduced. Builds with `EXPO_PUBLIC_TWIN_FIND_DATING=1` also show the
  * person's own switch for being asked about dating (TwinFindDatingSwitch), and builds that also have
- * `EXPO_PUBLIC_TWIN_FIND_CARD=1` their condition card under it (TwinFindCardEditor).
+ * `EXPO_PUBLIC_TWIN_FIND_CARD=1` their condition card under it (TwinFindCardEditor), once the server said dating is open
+ * to this person (twinFindDatingEntries).
  */
 import React from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useI18n } from '../../stores/i18nStore';
 import { useThemedStyles, type Palette } from '../../theme/useTheme';
 import type { TwinFindListItemV0 } from '../../../shared/types/twin-find';
 import { TWIN_FIND_CARD_ENABLED, TWIN_FIND_DATING_ENABLED } from '../../services/twinFind';
 import { mobileTwinFindClient } from '../../services/twinFindSession';
 import { twinAskWhenWords } from '../../services/twinAskView';
-import { TWIN_FIND_HOW_WORDS, twinFindFailureWords, twinFindOpenTarget, twinFindRowWords, twinFindStatusWords } from '../../services/twinFindView';
+import {
+  TWIN_FIND_HOW_WORDS,
+  twinFindDatingEntries,
+  twinFindFailureWords,
+  twinFindOpenTarget,
+  twinFindRowWords,
+  twinFindStatusWords,
+} from '../../services/twinFindView';
 import { TwinFindCardEditor } from './TwinFindCardEditor';
 import { TwinFindDatingSwitch } from './TwinFindDatingSwitch';
 
@@ -38,6 +46,8 @@ export function TwinFindListScreen() {
     getNextPageParam: (page: TwinFindListItemV0[]) => (page.length > 0 ? page[page.length - 1].createdAt : undefined),
   });
   const items = finds.data ? finds.data.pages.flat() : [];
+  const profile = useQuery({ queryKey: ['twin-find', 'profile'], queryFn: () => mobileTwinFindClient().profile(), enabled: TWIN_FIND_DATING_ENABLED });
+  const dating = twinFindDatingEntries({ dating: TWIN_FIND_DATING_ENABLED, card: TWIN_FIND_CARD_ENABLED }, profile.data);
   const now = new Date();
 
   const open = (item: TwinFindListItemV0): void => {
@@ -54,8 +64,8 @@ export function TwinFindListScreen() {
       <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('TwinFindStart')} accessibilityRole="button" testID="twin-find-new">
         <Text style={styles.buttonText}>{t({ en: 'Ask who knows someone', zh: '问问谁认识' })}</Text>
       </TouchableOpacity>
-      {TWIN_FIND_DATING_ENABLED ? <TwinFindDatingSwitch /> : null}
-      {TWIN_FIND_CARD_ENABLED ? <TwinFindCardEditor /> : null}
+      {dating.datingSwitch ? <TwinFindDatingSwitch /> : null}
+      {dating.card ? <TwinFindCardEditor canSave={dating.cardSave} /> : null}
       {finds.isPending ? <ActivityIndicator /> : null}
       {finds.isError ? (
         <Text style={styles.muted} testID="twin-find-list-error">

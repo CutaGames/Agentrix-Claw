@@ -8,6 +8,7 @@ import {
   TWIN_FIND_DATING_ASK_WORDS,
   TWIN_FIND_DATING_SWITCH_WORDS,
   twinFindConsentFromForm,
+  twinFindDatingEntries,
   twinFindDatingSwitchFailureWords,
   twinFindProblemWords,
   twinFindRequestFromForm,
@@ -40,7 +41,7 @@ const AGREED = {
   canRevoke: true,
   connectedAt: null,
 };
-const profileOf = (datingOpen: boolean) => ({ schemaVersion: TWIN_FIND_SCHEMA_VERSION_V0, datingOpen });
+const profileOf = (datingOpen: boolean, datingAvailable = true) => ({ schemaVersion: TWIN_FIND_SCHEMA_VERSION_V0, datingOpen, datingAvailable });
 
 type Scripted = { status: number; body?: unknown } | Error;
 
@@ -82,14 +83,17 @@ describe('looking for a partner on the phone: the requests', () => {
     const { calls, client } = scripted(
       { status: 200, body: profileOf(false) },
       { status: 200, body: { data: profileOf(true) } },
+      // An older server does not say whether dating is open to this person: read as not open.
+      { status: 200, body: { schemaVersion: TWIN_FIND_SCHEMA_VERSION_V0, datingOpen: true } },
       { status: 200, body: { schemaVersion: TWIN_FIND_SCHEMA_VERSION_V0, datingOpen: 'yes' } },
       { status: 200, body: { datingOpen: true } },
     );
     await expect(client.profile()).resolves.toEqual(profileOf(false));
     await expect(client.profile()).resolves.toEqual(profileOf(true));
+    await expect(client.profile()).resolves.toEqual(profileOf(true, false));
     expect((await failureOf(client.profile())).failure).toBe('unreadable');
     expect((await failureOf(client.profile())).failure).toBe('unreadable');
-    expect(sent(calls)).toEqual(Array.from({ length: 4 }, () => ['GET', '/twin-find/profile', undefined]));
+    expect(sent(calls)).toEqual(Array.from({ length: 5 }, () => ['GET', '/twin-find/profile', undefined]));
     expect(calls[0].headers).toEqual({ Accept: 'application/json', Authorization: 'Bearer tok', 'X-Agentrix-Surface': 'mobile' });
   });
 
@@ -176,6 +180,22 @@ describe('looking for a partner on the phone: the words', () => {
     expect(twinFindTopicChoices(true)).toEqual([...TWIN_ASK_TOPICS_V0, 'dating']);
     expect(twinFindTopicWords('dating')).toEqual({ en: 'Dating', zh: '找对象' });
     for (const topic of TWIN_FIND_TOPICS_V0) bilingual(twinFindTopicWords(topic));
+  });
+
+  it('shows dating only once the server said it is open to this person, and keeps the way out for someone it is not open to', () => {
+    const both = { dating: true, card: true };
+    const none = { topic: false, datingSwitch: false, card: false, cardSave: false };
+    // Not a dating build, or no answer yet (loading or failed): nothing about dating.
+    expect(twinFindDatingEntries({ dating: false, card: false }, profileOf(true))).toEqual(none);
+    expect(twinFindDatingEntries(both, undefined)).toEqual(none);
+    expect(twinFindDatingEntries(both, null)).toEqual(none);
+    // Open to them: the topic, the switch, and in a card build the card.
+    expect(twinFindDatingEntries(both, profileOf(false))).toEqual({ topic: true, datingSwitch: true, card: true, cardSave: true });
+    expect(twinFindDatingEntries({ dating: true, card: false }, profileOf(false))).toEqual({ topic: true, datingSwitch: true, card: false, cardSave: false });
+    // Not open to them: no topic; the switch only while it is on, so they can turn it off; the card only to clear it.
+    expect(twinFindDatingEntries(both, profileOf(false, false))).toEqual({ topic: false, datingSwitch: false, card: true, cardSave: false });
+    expect(twinFindDatingEntries(both, profileOf(true, false))).toEqual({ topic: false, datingSwitch: true, card: true, cardSave: false });
+    expect(twinFindTopicChoices(twinFindDatingEntries(both, profileOf(true, false)).topic)).toEqual([...TWIN_ASK_TOPICS_V0]);
   });
 
   it('asks for the age statement only when the question is about a partner', () => {

@@ -31,6 +31,7 @@ import {
   type TwinFindPersonV0,
   type TwinFindPickV0,
   type TwinFindPickedV0,
+  type TwinFindProfileV0,
   type TwinFindReasonCodeV0,
   type TwinFindRequestV0,
   type TwinFindTopicV0,
@@ -75,9 +76,37 @@ export function twinFindTopicWords(topic: TwinFindTopicV0): TwinFindWords {
   return TWIN_FIND_TOPIC_LABELS_V0[topic];
 }
 
-/** The topics a new question can be about. Looking for a partner is offered only in builds that switched it on. */
+/**
+ * The topics a new question can be about. Looking for a partner is offered only where `twinFindDatingEntries` says so:
+ * in builds that switched it on, to people the server opened it to.
+ */
 export function twinFindTopicChoices(datingEnabled: boolean): TwinFindTopicV0[] {
   return TWIN_FIND_TOPICS_V0.filter((topic) => datingEnabled || !twinFindIsDatingV0(topic));
+}
+
+/** Which dating entries a screen shows. */
+export interface TwinFindDatingEntries {
+  /** Looking for a partner among the topics of a new question. */
+  topic: boolean;
+  /** The person's own switch 「找对象：我也在找」. */
+  datingSwitch: boolean;
+  /** The condition card section; while `cardSave` is false it only clears a card saved earlier. */
+  card: boolean;
+  cardSave: boolean;
+}
+
+/**
+ * The server opens dating only to the people on its own list, so a dating build asks first (`profile().datingAvailable`)
+ * and shows nothing about dating until the answer is yes. Someone it is not open to keeps the switch while it is on, so
+ * they can turn it off, and the card section, which then only clears a card they saved earlier.
+ */
+export function twinFindDatingEntries(
+  build: { dating: boolean; card: boolean },
+  profile: Pick<TwinFindProfileV0, 'datingOpen' | 'datingAvailable'> | null | undefined,
+): TwinFindDatingEntries {
+  if (!build.dating || !profile) return { topic: false, datingSwitch: false, card: false, cardSave: false };
+  const available = profile.datingAvailable === true;
+  return { topic: available, datingSwitch: available || profile.datingOpen === true, card: build.card, cardSave: available && build.card };
 }
 
 /** Shown under the topics once looking for a partner is picked: what is different about this one. */

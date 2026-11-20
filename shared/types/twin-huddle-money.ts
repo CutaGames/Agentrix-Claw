@@ -70,12 +70,12 @@ export const TWIN_HUDDLE_MONEY_TEST_ONLY_CODE_V0 = 'test_mode_only' as const;
  * `ask` 发给单上每一位等确认的人；`held`、`declined` 发给发起人；`capped` 发给分身在上限内替他同意了的人（这时不发 `ask`）。
  */
 export const TWIN_HUDDLE_MONEY_FIXED_PHRASES_V0 = {
-  ask: { zh: '有一张记账单等你确认自己那份（测试模式，不会扣钱）。', en: 'A bookkeeping sheet is waiting for you to confirm your part (test mode, no money moves).' },
-  held: { zh: '记账单上每个人都确认了（测试模式，没有扣钱）。', en: 'Everyone confirmed their part of the sheet (test mode, no money moved).' },
+  ask: { zh: '有一张记账单等你确认自己那份（只记账，不会扣钱）。', en: 'A bookkeeping sheet is waiting for you to confirm your part (records only, no money moves).' },
+  held: { zh: '记账单上每个人都确认了（只记账，没有扣钱）。', en: 'Everyone confirmed their part of the sheet (records only, no money moved).' },
   declined: { zh: '记账单上有人不同意自己那份。', en: 'Someone did not agree to their part of the sheet.' },
   capped: {
-    zh: '分身在你设的上限内替你同意了一份记账单（测试模式，没有扣钱）。',
-    en: 'Your twin agreed to your part of a bookkeeping sheet within the limit you set (test mode, no money moved).',
+    zh: '分身在你设的上限内替你同意了一份记账单（只记账，没有扣钱）。',
+    en: 'Your twin agreed to your part of a bookkeeping sheet within the limit you set (records only, no money moved).',
   },
 } as const;
 

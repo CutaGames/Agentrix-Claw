@@ -28,7 +28,8 @@
  * 开关（后端接线时才读）：服务端 `TWIN_FIND_V0_ENABLED`，只认精确的 `'1'`；网页 `NEXT_PUBLIC_TWIN_FIND_ENABLED`；
  * 手机 `EXPO_PUBLIC_TWIN_FIND`。找对象另有 `TWIN_FIND_DATING_V0_ENABLED` / `EXPO_PUBLIC_TWIN_FIND_DATING`，接着约另有
  * `TWIN_FIND_MEET_V0_ENABLED` / `EXPO_PUBLIC_TWIN_FIND_MEET`；都要先开着上面那一组。条件卡另有
- * `TWIN_FIND_CARD_V0_ENABLED` / `EXPO_PUBLIC_TWIN_FIND_CARD`，还要先开着找对象那一组。
+ * `TWIN_FIND_CARD_V0_ENABLED` / `EXPO_PUBLIC_TWIN_FIND_CARD`，还要先开着找对象那一组。找对象（连同条件卡）服务端另有自己的
+ * 名单 `TWIN_FIND_DATING_USER_IDS`（`twinFindDatingAdmitsV0`），手机按服务端回的 `datingAvailable` 决定显不显示入口。
  *
  * 本文件只有常量、类型和纯函数：不读环境变量、不碰数据库、不调模型。
  */
@@ -42,6 +43,25 @@ export const TWIN_FIND_MOBILE_FLAG_V0 = 'EXPO_PUBLIC_TWIN_FIND';
 /** 「找对象」话题。服务端关着时不能发起、不能改「我也在找」，选人时人人都按没开算。 */
 export const TWIN_FIND_DATING_FLAG_V0 = 'TWIN_FIND_DATING_V0_ENABLED';
 export const TWIN_FIND_DATING_MOBILE_FLAG_V0 = 'EXPO_PUBLIC_TWIN_FIND_DATING';
+/**
+ * 找对象自己的名单（逗号分隔的主人 id）：服务端找对象开着时，也只有名单里的人能发起、能打开「我也在找」、能存条件卡，
+ * 朋友选人时名单外的人按没开「我也在找」算。和持牌名单 `L9_REGULATED_USER_IDS` 一个写法：只认精确 id，`*` 当没写，
+ * 空名单在所有环境都没有人。L9 名单 `L9_COHORT_USER_IDS` 的 `*` 管不到这里。
+ */
+export const TWIN_FIND_DATING_USER_IDS_VAR_V0 = 'TWIN_FIND_DATING_USER_IDS';
+/** 只认 `'1'`：开着时找对象不再看上面那份名单，L9 名单里的人都能用。改它只要重载后端，不用重新发版。 */
+export const TWIN_FIND_DATING_ALL_USERS_FLAG_V0 = 'TWIN_FIND_DATING_ALL_USERS_V0_ENABLED';
+
+/** 这位主人在不在找对象自己的名单里（总开关和 L9 名单由服务端另外看）。没有主人 id 一律不在。 */
+export function twinFindDatingAdmitsV0(input: { userId: string | null | undefined; raw: string | undefined; allUsers: string | undefined }): boolean {
+  if (typeof input.userId !== 'string' || input.userId.length === 0 || input.userId === '*') return false;
+  if (input.allUsers === '1') return true;
+  return (input.raw ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0 && item !== '*')
+    .includes(input.userId);
+}
 /** 「牵上以后接着约」。服务端关着时牵线朋友的视图里没有 `meet`。 */
 export const TWIN_FIND_MEET_FLAG_V0 = 'TWIN_FIND_MEET_V0_ENABLED';
 export const TWIN_FIND_MEET_MOBILE_FLAG_V0 = 'EXPO_PUBLIC_TWIN_FIND_MEET';
@@ -620,6 +640,11 @@ export function twinFindListQuietV0(role: TwinFindRoleV0, topic: TwinFindTopicV0
 export interface TwinFindProfileV0 {
   schemaVersion: typeof TWIN_FIND_SCHEMA_VERSION_V0;
   datingOpen: boolean;
+  /**
+   * 这个人现在能不能用找对象：总开关、L9 名单、找对象自己的名单都过了。手机按它显示找对象的话题、「我也在找」和条件卡；
+   * 不能用的人「我也在找」开着时手机还显示开关，好让他关掉。旧服务端不回这一项，按 `false` 算。
+   */
+  datingAvailable: boolean;
 }
 
 export const TWIN_FIND_DATING_OPEN_NOTICE_V0 = {
@@ -842,7 +867,7 @@ export function decodeTwinFindConsentOutcomeV0(body: unknown): TwinFindConsentOu
 export function decodeTwinFindProfileV0(body: unknown): TwinFindProfileV0 | null {
   const value = unwrapData(body, 'datingOpen');
   if (!isRecord(value) || value.schemaVersion !== TWIN_FIND_SCHEMA_VERSION_V0 || typeof value.datingOpen !== 'boolean') return null;
-  return { schemaVersion: TWIN_FIND_SCHEMA_VERSION_V0, datingOpen: value.datingOpen };
+  return { schemaVersion: TWIN_FIND_SCHEMA_VERSION_V0, datingOpen: value.datingOpen, datingAvailable: value.datingAvailable === true };
 }
 
 function readListItem(value: unknown): TwinFindListItemV0 | null {

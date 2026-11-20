@@ -1,6 +1,7 @@
 /**
  * TwinFindDatingSwitch — 分身 → 帮我找人 → 「找对象：我也在找」 (twinFind.ts). Only in builds with
- * `EXPO_PUBLIC_TWIN_FIND_DATING=1`. The person's own switch, off until they turn it on. While it is on, a friend who picks
+ * `EXPO_PUBLIC_TWIN_FIND_DATING=1`, and only while the server has dating open to this person or the switch is on
+ * (twinFindDatingEntries). The person's own switch, off until they turn it on. While it is on, a friend who picks
  * them for someone looking for a partner has the platform ask them in the app; while it is off the platform never contacts
  * them about dating. The friend who picked them can tell that it is on, so that sentence sits right under the switch.
  * Turning it off always works, also while the server has dating switched off.

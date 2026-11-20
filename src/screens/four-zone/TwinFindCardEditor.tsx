@@ -3,7 +3,8 @@
  * builds with `EXPO_PUBLIC_TWIN_FIND_CARD=1` on top of the dating build. The person's own card: six parts, each with
  * "I am" and "I am fine with", every one optional. Before the platform asks them in the app about dating, the server
  * compares it with the asker's; nobody else ever sees it, so the notice under the title says exactly that. Saving an
- * empty card clears it; clearing always works, also while the server has the card switched off.
+ * empty card clears it; clearing always works, also while the server has the card switched off. Without `canSave` (the
+ * server has not opened dating to this person) it shows nothing but a card saved earlier and the button that clears it.
  */
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -39,7 +40,7 @@ import { TwinAskChip as Chip } from './TwinAskChip';
 
 const KEY = ['twin-find', 'card'];
 
-export function TwinFindCardEditor() {
+export function TwinFindCardEditor({ canSave }: { canSave: boolean }) {
   const { t } = useI18n();
   const styles = useThemedStyles(makeStyles);
   const queryClient = useQueryClient();
@@ -74,6 +75,7 @@ export function TwinFindCardEditor() {
   const cityLabel = t(twinFindCardItemWords('city'));
   const sameCityLabel = t(TWIN_FIND_CARD_SAME_CITY_WORDS);
 
+  if (!canSave && !card.data) return null;
   return (
     <View style={styles.card} testID="twin-find-card-editor">
       <Text style={styles.title}>{t(TWIN_FIND_CARD_TITLE_WORDS)}</Text>
@@ -84,7 +86,7 @@ export function TwinFindCardEditor() {
           {t(twinFindFailureWords(card.error))}
         </Text>
       ) : null}
-      {form ? (
+      {form && canSave ? (
         <>
           <Text style={styles.part}>{cityLabel}</Text>
           <TextInput
@@ -132,12 +134,12 @@ export function TwinFindCardEditor() {
           <TouchableOpacity style={styles.button} onPress={submit} disabled={save.isPending} accessibilityRole="button" testID="twin-find-card-save">
             <Text style={styles.buttonText}>{t(TWIN_FIND_CARD_SAVE_WORDS)}</Text>
           </TouchableOpacity>
-          {card.data ? (
-            <TouchableOpacity style={styles.secondary} onPress={() => save.mutate(null)} disabled={save.isPending} accessibilityRole="button" testID="twin-find-card-clear">
-              <Text style={styles.secondaryText}>{t(TWIN_FIND_CARD_CLEAR_WORDS)}</Text>
-            </TouchableOpacity>
-          ) : null}
         </>
+      ) : null}
+      {card.data ? (
+        <TouchableOpacity style={styles.secondary} onPress={() => save.mutate(null)} disabled={save.isPending} accessibilityRole="button" testID="twin-find-card-clear">
+          <Text style={styles.secondaryText}>{t(TWIN_FIND_CARD_CLEAR_WORDS)}</Text>
+        </TouchableOpacity>
       ) : null}
       {message ? (
         <Text style={message.problem ? styles.problem : styles.muted} testID="twin-find-card-message">

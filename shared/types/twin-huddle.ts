@@ -57,7 +57,7 @@ export const TWIN_HUDDLE_LIMITS_V0 = {
   retentionDays: 90,
 } as const;
 
-export const TWIN_HUDDLE_KINDS_V0 = ['meal', 'sport', 'outing', 'carpool', 'party', 'other'] as const;
+export const TWIN_HUDDLE_KINDS_V0 = ['meal', 'sport', 'game', 'outing', 'carpool', 'party', 'other'] as const;
 export type TwinHuddleKindV0 = (typeof TWIN_HUDDLE_KINDS_V0)[number];
 
 /** 人均档，从低到高；`any` 是不限。只是档位，不是金额。 */
@@ -214,6 +214,7 @@ export const TWIN_HUDDLE_FIXED_PHRASES_V0 = {
 export const TWIN_HUDDLE_KIND_LABELS_V0: Readonly<Record<TwinHuddleKindV0, { zh: string; en: string }>> = {
   meal: { zh: '吃饭', en: 'Meal' },
   sport: { zh: '运动', en: 'Sport' },
+  game: { zh: '游戏', en: 'Gaming' },
   outing: { zh: '出游', en: 'Outing' },
   carpool: { zh: '拼车', en: 'Carpool' },
   party: { zh: '聚会', en: 'Party' },

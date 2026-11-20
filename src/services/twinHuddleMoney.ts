@@ -38,7 +38,7 @@ export const TWIN_HUDDLE_MONEY_CAP_ENABLED = TWIN_HUDDLE_MONEY_ENABLED && isTwin
 type Words = { en: string; zh: string };
 
 /** Always shown next to the heading: this version keeps a record and moves no money. */
-export const TWIN_HUDDLE_MONEY_TEST_BADGE: Words = { en: 'Test mode · no money moves', zh: '测试模式 · 不会扣钱' };
+export const TWIN_HUDDLE_MONEY_TEST_BADGE: Words = { en: 'Records only · no money moves', zh: '只记账 · 不会扣钱' };
 
 export const TWIN_HUDDLE_MONEY_KIND_COPY: Record<TwinHuddleMoneyKindV0, Words> = {
   deposit: { en: 'Booking deposit', zh: '订位定金' },

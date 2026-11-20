@@ -2,8 +2,8 @@
  * TwinFindStartScreen — 分身 → 帮我找人 → 问问谁认识 (twinFind.ts, twinFindView.ts). Only in builds with
  * `EXPO_PUBLIC_TWIN_FIND=1`. Pick a topic, write who you are looking for and pick the friends to ask. Each friend may ask
  * one person they know; you see that person only after they agreed. Looking for a partner is a topic only in builds with
- * `EXPO_PUBLIC_TWIN_FIND_DATING=1`; picking it says what is different about it before anything is sent, and the asker has
- * to tick 「我已满 18 岁」.
+ * `EXPO_PUBLIC_TWIN_FIND_DATING=1`, once the server said it is open to this person (twinFindDatingEntries); picking it
+ * says what is different about it before anything is sent, and the asker has to tick 「我已满 18 岁」.
  */
 import React, { useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -19,6 +19,7 @@ import {
   TWIN_FIND_DATING_ASK_WORDS,
   TWIN_FIND_HOW_WORDS,
   TWIN_FIND_ROUTE_WORDS,
+  twinFindDatingEntries,
   twinFindFailureWords,
   twinFindProblemWords,
   twinFindRequestFromForm,
@@ -30,7 +31,6 @@ import {
 import { TwinAskChip as Chip } from './TwinAskChip';
 
 const LIMITS = TWIN_FIND_LIMITS_V0;
-const TOPICS = twinFindTopicChoices(TWIN_FIND_DATING_ENABLED);
 
 type StartNavigation = {
   goBack(): void;
@@ -48,6 +48,8 @@ export function TwinFindStartScreen() {
   const [adult, setAdult] = useState(false);
   const [problem, setProblem] = useState<TwinFindWords | null>(null);
   const friends = useQuery({ queryKey: ['twin-find', 'friends'], queryFn: () => mobileTwinFindClient().friends() });
+  const profile = useQuery({ queryKey: ['twin-find', 'profile'], queryFn: () => mobileTwinFindClient().profile(), enabled: TWIN_FIND_DATING_ENABLED });
+  const topics = twinFindTopicChoices(twinFindDatingEntries({ dating: TWIN_FIND_DATING_ENABLED, card: false }, profile.data).topic);
   const start = useMutation({
     mutationFn: (request: TwinFindRequestV0) => mobileTwinFindClient().start(request),
     onSuccess: (outcome) => {
@@ -110,7 +112,7 @@ export function TwinFindStartScreen() {
 
       <Text style={styles.label}>{t({ en: 'Topic', zh: '话题' })}</Text>
       <View style={styles.chips}>
-        {TOPICS.map((value) => (
+        {topics.map((value) => (
           <Chip key={value} label={t(twinFindTopicWords(value))} on={topic === value} onPress={() => setTopic(value)} testID={`twin-find-topic-${value}`} />
         ))}
       </View>
